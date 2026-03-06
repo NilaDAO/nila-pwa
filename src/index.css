@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Root variables (override from JS or per-screen when needed) */
+:root {
+  --app-height: 100vh; /* JS will set this to window.innerHeight on mobile */
+  --text: #000000;
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+/* Hide scrollbar for Chrome, Safari, and Opera */
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Global reset / layout */
+html, body, #root {
+  height: 100dvh;       /* new */
+  min-height: 100dvh;   /* new */
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+  color: #000;
+  overscroll-behavior-y: none;   /* avoid rubber-banding exposing bg */
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;     /* Firefox */
+}
+
+/* Ensure app wrapper fills screen when you use a wrapper */
+.app-wrapper, .App {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* Small utility for a statusbar-cover element that matches meta theme color */
+.statusbar-cover {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: env(safe-area-inset-top, 0px); /* exact safe area */
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: none !important;
+  border: none !important;
+  transform: translateZ(0);      /* avoid sub-pixel seam */
+  backface-visibility: hidden;   /* avoid anti-alias seam */
+}
+
+/* Remove accidental borders / shadows on top elements that produce 1px slivers */
+header, .topbar, .statusbar-cover, .header {
+  border: none !important;
+  box-shadow: none !important;
+}
+.topbar { transform: translateZ(0); }
+
+/* Accessibility: respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+/* Small custom utility layer (kept from your file) */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Swap paths to be root-relative — adjust if your build expects different path */
+@font-face {
+  font-family: 'Chains';
+  src:
+    url('../public/fonts/Chains.ttf') format('ttf'), 
+    url('../public/fonts/Chains.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Plex-Regular"; /* same name */
+  src: url("../public/fonts/Plex-Regular.woff") format("woff2"),
+}
+@font-face {
+  font-family: "Plex-Bold"; /* same name */
+  src: url("../public/fonts/Plex-Bold.woff") format("woff2"),
+}
+
+/* animation kept but simplified */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

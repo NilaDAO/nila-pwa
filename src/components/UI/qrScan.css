@@ -1,0 +1,57 @@
+
+#qr-reader {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: absolute;
+  inset: 0;
+}
+
+.qr-shell {
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+}
+
+#qr-reader video {
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+#qr-reader .html5-qrcode-camera-stop,
+#qr-reader .html5-qrcode-button-start {
+  display: none !important;
+}
+
+#html5-qrcode-button-camera-start,
+#html5-qrcode-button-camera-stop,
+.html5-qrcode-button-camera-start,
+.html5-qrcode-button-camera-stop {
+  display: none !important;
+}
+
+#html5-qrcode-button-camera-start{
+    background-color: black;
+    padding: 10px;
+    margin: 10px;
+    width: 50%;
+    border-radius: 9999px;
+    font-weight: 600;
+    color: white;
+    font-size:medium;
+}
+
+#html5-qrcode-button-camera-stop{
+    background-color: black;
+    padding: 10px;
+    width: 50%;
+    border-radius: 9999px;
+    font-weight: 600;
+    color: white;
+    font-size:medium;
+}
+
+#qr-reader .html5-qrcode-viewfinder {
+  display: none !important;
+}

@@ -1,0 +1,1172 @@
+[
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        }
+      ],
+      "name": "AddressEmptyCode",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ECDSAInvalidSignature",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "length",
+          "type": "uint256"
+        }
+      ],
+      "name": "ECDSAInvalidSignatureLength",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "s",
+          "type": "bytes32"
+        }
+      ],
+      "name": "ECDSAInvalidSignatureS",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "name": "ERC1967InvalidImplementation",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ERC1967NonPayable",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "FailedCall",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidInitialization",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NotCore",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NotInitializing",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NotOracleOrLeader",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ReserveConfigSet",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "UUPSUnauthorizedCallContext",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "slot",
+          "type": "bytes32"
+        }
+      ],
+      "name": "UUPSUnsupportedProxiableUUID",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "version",
+          "type": "uint64"
+        }
+      ],
+      "name": "Initialized",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "name": "Upgraded",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        }
+      ],
+      "name": "ActivateUnion",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "encodedName",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "string",
+          "name": "fundid",
+          "type": "string"
+        }
+      ],
+      "name": "AddFundType",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "location",
+          "type": "string"
+        }
+      ],
+      "name": "CreateUnion",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        }
+      ],
+      "name": "DeactivateUnion",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "i",
+          "type": "uint256"
+        }
+      ],
+      "name": "RemoveFundType",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "UPGRADE_INTERFACE_VERSION",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "core",
+      "outputs": [
+        {
+          "internalType": "contract IFundCore",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getBorrowerInfo",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "borrower",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanType",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "principal",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "principalRepaid",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint16",
+          "name": "rateBP",
+          "type": "uint16"
+        },
+        {
+          "internalType": "uint40",
+          "name": "dueDate",
+          "type": "uint40"
+        },
+        {
+          "internalType": "bool",
+          "name": "closed",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "defaulted",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "outstanding",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint16",
+          "name": "milestone",
+          "type": "uint16"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "milestoneDigest",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint40",
+          "name": "digestTs",
+          "type": "uint40"
+        },
+        {
+          "internalType": "uint40",
+          "name": "drawdownTs",
+          "type": "uint40"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanType",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getBucketRatio",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "ratioWad",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "thresholdWad",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "enum IFundCore.Tranche",
+          "name": "tranche",
+          "type": "uint8"
+        },
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanType",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getFundTotalsByTranche",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "totalDeposits",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalBorrows",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "index",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        }
+      ],
+      "name": "getFundTypes",
+      "outputs": [
+        {
+          "internalType": "bytes32[]",
+          "name": "",
+          "type": "bytes32[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanType",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getLiquidityBuffer",
+      "outputs": [
+        {
+          "internalType": "uint16",
+          "name": "safetyBP",
+          "type": "uint16"
+        },
+        {
+          "internalType": "uint256",
+          "name": "safetyFloor",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "claimableReserved",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "idleCashForType",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "hardStop",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "requiredReserve",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "headroom",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "union",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "borrower",
+          "type": "address"
+        }
+      ],
+      "name": "getLoansByBorrower",
+      "outputs": [
+        {
+          "internalType": "bytes32[]",
+          "name": "",
+          "type": "bytes32[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        }
+      ],
+      "name": "getMaturityCoverageForUnion",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "availableCoverage",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maturedCredit",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maturedConsumed",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getMaturityMilestone",
+      "outputs": [
+        {
+          "internalType": "uint40",
+          "name": "maturityTs",
+          "type": "uint40"
+        },
+        {
+          "internalType": "uint16",
+          "name": "milestone",
+          "type": "uint16"
+        },
+        {
+          "internalType": "uint40",
+          "name": "digestTs",
+          "type": "uint40"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "milestoneDigest",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        }
+      ],
+      "name": "getTreasuryBalances",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "treasury",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "rainyDay",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        }
+      ],
+      "name": "getUnion",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "bytes32[]",
+              "name": "fundTypes",
+              "type": "bytes32[]"
+            },
+            {
+              "internalType": "string[]",
+              "name": "fundIds",
+              "type": "string[]"
+            },
+            {
+              "internalType": "string",
+              "name": "location",
+              "type": "string"
+            },
+            {
+              "internalType": "bool",
+              "name": "active",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct GenericFundViewer.Union",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "core_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_roles",
+          "type": "address"
+        }
+      ],
+      "name": "initialize",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "loansByBorrower",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "borrower",
+          "type": "address"
+        }
+      ],
+      "name": "onLoanClosed",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "borrower",
+          "type": "address"
+        }
+      ],
+      "name": "onLoanCreated",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "previewRateBP",
+      "outputs": [
+        {
+          "internalType": "uint16",
+          "name": "",
+          "type": "uint16"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanType",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "int256",
+          "name": "cashDelta",
+          "type": "int256"
+        }
+      ],
+      "name": "previewReserveHeadroom",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "requiredReserve",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "idleAfter",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "headroomAfter",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "hardStop",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanType",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "investor",
+          "type": "address"
+        }
+      ],
+      "name": "previewUnbondJunior",
+      "outputs": [
+        {
+          "internalType": "uint40",
+          "name": "requestTs",
+          "type": "uint40"
+        },
+        {
+          "internalType": "uint40",
+          "name": "minWindowTs",
+          "type": "uint40"
+        },
+        {
+          "internalType": "uint256",
+          "name": "pendingPrincipalSnap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maturedBudget",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "pastMin",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "coveredByMaturities",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "coveredByIdle",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "eligibleNow",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "pendingShares",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "investor",
+          "type": "address"
+        }
+      ],
+      "name": "previewUnbondSenior",
+      "outputs": [
+        {
+          "internalType": "uint40",
+          "name": "requestTs",
+          "type": "uint40"
+        },
+        {
+          "internalType": "uint40",
+          "name": "minWindowTs",
+          "type": "uint40"
+        },
+        {
+          "internalType": "bool",
+          "name": "pastMin",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "eligibleNow",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "proxiableUUID",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "coreAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanType",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "investor",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "collection",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amount1155",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "quoteAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint40",
+          "name": "expiry",
+          "type": "uint40"
+        },
+        {
+          "internalType": "bytes",
+          "name": "sig",
+          "type": "bytes"
+        }
+      ],
+      "name": "recoverQuote1155Signer",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "coreAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "borrower",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "unionAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maxAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint16",
+          "name": "minRateBP",
+          "type": "uint16"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "loanType",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "paramsHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bool",
+          "name": "fastDraw",
+          "type": "bool"
+        },
+        {
+          "internalType": "bytes",
+          "name": "sig",
+          "type": "bytes"
+        }
+      ],
+      "name": "recoverVoucherSigner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "roles",
+      "outputs": [
+        {
+          "internalType": "contract IRoles",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "core_",
+          "type": "address"
+        }
+      ],
+      "name": "setCore",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_roles",
+          "type": "address"
+        }
+      ],
+      "name": "setRoles",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newImplementation",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes",
+          "name": "data",
+          "type": "bytes"
+        }
+      ],
+      "name": "upgradeToAndCall",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    }
+  ]

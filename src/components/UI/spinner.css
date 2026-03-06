@@ -1,0 +1,18 @@
+@keyframes spin-count {
+    0%{
+      border-color: transparent transparent transparent transparent;
+    }
+    33% {
+      border-color: black transparent black transparent;
+    }
+    66% {
+      border-color: black black black black;
+    }
+    100% {
+      border-color: transparent black transparent black;
+    }
+  }
+  
+  .spinner {
+    animation: spin-count 3s linear infinite;
+  }

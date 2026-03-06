@@ -1,0 +1,66 @@
+{
+  "0": {
+    "crop": "paddy",
+    "varieties": {
+      "0": "CO51",
+      "1": "ADT 43",
+      "2": "TRY 3",
+      "3": "BPT 5204"
+    }
+  },
+  "1": {
+    "crop": "groundnut",
+    "varieties": {
+      "0": "TMV 7",
+      "1": "TMV 13",
+      "2": "VRI 2",
+      "3": "VRI 3",
+      "4": "VRI 6"
+    }
+  },
+  "2": {
+    "crop": "sugarcane",
+    "varieties": {
+      "0": "CO 86032",
+      "1": "COC 24",
+      "2": "COC 671",
+      "3": "CO 62175",
+      "4": "CoG 94077",
+      "5": "CoG 6",
+      "6": "Co 86032 (10\u201112 mnths)",
+      "7": "CoSi (SC)6",
+      "8": "TNAU SC Si 7",
+      "9": "TNAU SC Si 8",
+      "10": "COC 25"
+    }
+  },
+  "3": {
+    "crop": "banana",
+    "varieties": {
+      "0": "Grand Naine",
+      "1": "Poovan",
+      "2": "Nendran",
+      "3": "Rasthali",
+      "4": "Monthan",
+      "5": "Ney Poovan"
+    }
+  },
+  "4": {
+    "crop": "potato",
+    "varieties": {
+      "0": "Kufri Jyoti",
+      "1": "Kufri Super",
+      "2": "Kufri Surya",
+      "3": "Kufri Swarna"
+    }
+  },
+  "5": {
+    "crop": "onion",
+    "varieties": {
+      "0": "CO 3",
+      "1": "CO (On) 5",
+      "2": "Arka Kalyan",
+      "3": "Agrifound Dark Red"
+    }
+  }
+}
