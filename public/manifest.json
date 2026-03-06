@@ -1,0 +1,38 @@
+{
+  "short_name": "Nila",
+  "name": "Nila farm finance app",
+  "icons": [
+    { "src": "maskable_icon_x192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
+    { "src": "maskable_icon_x512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" },
+    { "src": "nila192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "nila512.png", "type": "image/png", "sizes": "512x512" }
+  ],
+  "id": "/?app=nila",
+  "start_url": "/?source=pwa",
+  "display_override": ["standalone","fullscreen"],
+  "display": "standalone",
+  "scope": "/",
+  "permissions": ["geolocation","deviceorientation"],
+  "protocol_handlers": [
+    {
+      "protocol": "web+NilaApp",
+      "url": "/?source=protocol&url=%s"
+    }
+  ],
+  "related_applications":[{ "platform":"webapp","url":"https://pwa.nila.land/manifest.json"}],
+  "prefer_related_applications": false,
+  "screenshots": [
+    {
+      "src": "screenshot.png",
+      "type": "image/png",
+      "sizes": "572x1266",
+      "form_factor": "wide"
+    },
+    {
+      "src": "screenshot.png",
+      "type": "image/png",
+      "sizes": "572x1266",
+      "form_factor": "narrow"
+    }
+  ]
+}

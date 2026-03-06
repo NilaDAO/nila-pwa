@@ -1,0 +1,44 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-nilapwa-dev-182410-authRole",
+      "UnauthRoleArn": "arn:aws:iam::867185477215:role/amplify-nilapwa-dev-182410-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::867185477215:role/amplify-nilapwa-dev-182410-authRole",
+      "Region": "ap-south-1",
+      "DeploymentBucketName": "amplify-nilapwa-dev-182410-deployment",
+      "UnauthRoleName": "amplify-nilapwa-dev-182410-unauthRole",
+      "StackName": "amplify-nilapwa-dev-182410",
+      "StackId": "arn:aws:cloudformation:ap-south-1:867185477215:stack/amplify-nilapwa-dev-182410/b65052f0-cf77-11ef-a500-0a61dca69017",
+      "AmplifyAppId": "d108zfeejs7ppp"
+    },
+    "categories": {
+      "hosting": {
+        "amplifyhosting": {
+          "appId": "d108zfeejs7ppp",
+          "type": "manual"
+        }
+      }
+    }
+  },
+  "prod": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-nilapwa-prod-103602-authRole",
+      "UnauthRoleArn": "arn:aws:iam::867185477215:role/amplify-nilapwa-prod-103602-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::867185477215:role/amplify-nilapwa-prod-103602-authRole",
+      "Region": "ap-south-1",
+      "DeploymentBucketName": "amplify-nilapwa-prod-103602-deployment",
+      "UnauthRoleName": "amplify-nilapwa-prod-103602-unauthRole",
+      "StackName": "amplify-nilapwa-prod-103602",
+      "StackId": "arn:aws:cloudformation:ap-south-1:867185477215:stack/amplify-nilapwa-prod-103602/cb0fb1a0-dfb6-11ef-8ced-068c3e722fdb",
+      "AmplifyAppId": "d108zfeejs7ppp"
+    },
+    "categories": {
+      "hosting": {
+        "amplifyhosting": {
+          "appId": "d108zfeejs7ppp",
+          "type": "manual"
+        }
+      }
+    }
+  }
+}
