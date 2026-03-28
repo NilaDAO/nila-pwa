@@ -1,14 +1,17 @@
 import { openDB,deleteDB } from 'idb';
 
 const DB_NAME = 'APPDB';
-const STORE_NAME = 'Init';
 
 const initDB = async () => {
-  return openDB(DB_NAME, 1, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
+  return openDB(DB_NAME, 2, {
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
         db.createObjectStore('Init', { keyPath: 'id', autoIncrement: true });
         db.createObjectStore('FarmData', { keyPath: 'id', autoIncrement: true });
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore('ActiveLoans', { keyPath: 'id', autoIncrement: true });
+        db.createObjectStore('Contacts', { keyPath: 'id', autoIncrement: true });
       }
     },
   });

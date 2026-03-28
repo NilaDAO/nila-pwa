@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../../utils/NavigationContext';
+import { useContactBook } from '../../hooks/useContactBook';
 import { ArrowRightCircleIcon, ArrowLeftCircleIcon } from '@heroicons/react/20/solid'
 import { usePolygonIndexer, useLatestBlock } from '../../hooks/useChainIndexer';
 import Spinner from '../UI/spinner';
@@ -22,13 +23,11 @@ const SetTag = (addr,hash) => {
   } 
 }
 
-const SetAddr = (addr) => {
+const SetAddr = (addr, resolveName) => {
   if (addr === "0xf18e4966731bd6d3a56c1eb23da7c708c9c48070"){
     return 'Show tag to collect cash:'
-  } else if (addr === "0xbae307fe0a453955c649cd8f81e3da572df448ea"){
-    return 'Collect cash at union'
   } else {
-    return addr.substring(0,15)
+    return resolveName(addr);
   }
 }
 
@@ -37,11 +36,11 @@ const SetDecimals = (d) => {
   return decimals === 6 ? 1e6 : 1e18;
 }
 
-const ReceiptItem = ({type,d,dictionary}) => (
+const ReceiptItem = ({type,d,resolveName}) => (
   <div className='flex flex-row justify-between my-6 w-full'>
     <div className='flex flex-col'>
       <div className='flex flex-row'>
-      { type ? 
+      { type ?
       <ArrowRightCircleIcon className='w-6 h-6 text-green dark:text-green_dark'/>
       :
       <ArrowLeftCircleIcon className='w-6 h-6 text-red dark:text-red_dark'/>
@@ -50,8 +49,8 @@ const ReceiptItem = ({type,d,dictionary}) => (
      </div>
      <div className='my-6'>
       <p className='text-sm dark:text-slate-400'>{SetDate(d.timeStamp)}</p>
-      <p className='text-sm dark:text-slate-400'>to: <b>{dictionary[type ? d.from : d.to]}</b></p>
-      <p className='text-sm dark:text-slate-400'>acc: {SetAddr(type ? d.from : d.to)}</p>
+      <p className='text-sm dark:text-slate-400'>to: <b>{resolveName(type ? d.from : d.to)}</b></p>
+      <p className='text-sm dark:text-slate-400'>acc: {SetAddr(type ? d.from : d.to, resolveName)}</p>
       <span>{SetTag(type ? d.from : d.to, d.hash)}</span>
      </div>
     </div>
@@ -64,29 +63,16 @@ const ReceiptItem = ({type,d,dictionary}) => (
 
 const Receipts = () => {
   const { db }                               = useDataContext()
-  const { data, error, isFetched }           = usePolygonIndexer(db.address,db?.chain)
+  const { resolveName }                      = useContactBook()
+  const { data, error, isFetched }           = usePolygonIndexer(db.address, Number(process.env.REACT_APP_CHAIN_ID) || 137)
   const { data: block }                      = useLatestBlock()
   const receipts = Array.isArray(data) ? data : [];
-
-  // 1) normalize dictionary keys once (lowercase + trim)
-  const rawDict = {
-    "0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070": "Collect cash at union",
-    "0xaF48a2282FD8A3cCb52D17EF08FE5db7d346Dbb7": "Collect cash at exchange",
-    "0x4173bbaf66a4f9a2705d05b800e8602370366756": "Nila Funds",
-    "0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070": "Mth Teresa Union", // <- this is *a specific address*, not default
-    "0xbae307fe0a453955c649cd8f81e3da572df448ea": "USD Exchange",
-    "0x0000000000000000000000000000000000000000": "nIN mint"
-  };
-
-  const dictionary = Object.fromEntries(
-    Object.entries(rawDict).map(([k, v]) => [k.trim().toLowerCase(), v])
-  );
 
   return (
     <div className='flex flex-col mx-12'>
     { isFetched ? receipts.length > 0 ? receipts.map((d,i) => (
         <div key={i} className={`flex flex-col ${i && 'border-t-2'} border-gray-200 dark:border-slate-600`}>
-              <ReceiptItem type={d.to === db.address.toLowerCase()} d={d} dictionary={dictionary} />
+              <ReceiptItem type={d.to === db.address.toLowerCase()} d={d} resolveName={resolveName} />
         </div>
       )) : (
         <div className="flex flex-col items-left justify-center py-8">

@@ -1,12 +1,17 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from 'react';
-import { useDataContext } from '../utils/NavigationContext';
+import { useDataContext, useNavContext } from '../utils/NavigationContext';
 import { ethers } from 'ethers';
-import { useCollectGrant } from './useCollectGrant.ts';
-import { useAcceptLoan } from './useLoadFunds.ts';
+import { useActiveLoans } from './useActiveLoans';
+import { useContactBook } from './useContactBook';
+import { useAcceptLoan, useRemoveLoan } from './useLoadFunds.ts';
 import { useSwitchMain, useTopUpGas, useProvider} from './useWallet.ts';
 import useTouch from './useTouch';
 import { subscribeUser } from '../features/apis/pushManager';
+import { useUnionCashReserve } from './useUnionCashReserve.ts';
+import { useGlobalOpenRedeemOrders, useGlobalOpenCashOffers, usePendingCashDeliveries, usePendingFilledCashOffers } from './useCashOffer.ts';
+import { useLPProfile } from './useLPProfile';
+import { useFxPool } from './useWallet.ts';
 
 export function usePolBalance(address, provider) {
   return useQuery({
@@ -21,21 +26,31 @@ export function usePolBalance(address, provider) {
 }
 
 export function useFilterTasks(LAND, CAP) {
-  const { db, tokenData, grantData } = useDataContext();
+  const { db, tokenData, setTxDetails, setTxIndex } = useDataContext();
+  const { setIx }                    = useNavContext();
   const { provider }                 = useProvider();
   const queryClient                  = useQueryClient();
   const isLeader                     = Boolean(db?.union?.leader);
+  const { resolveName }              = useContactBook();
   const { data: polBalance }         = usePolBalance(db?.address, provider);
-  const { data: loansResp, isFetched: loansFetched } = useTransferableLoans(
-    db?.union?.address,
-    isLeader
-  );
-
-  const { collectGrant }             = useCollectGrant();
+  const { data: loansData, isFetched: loansFetched } = useActiveLoans(db?.union?.address, isLeader);
+  const { data: reserveData }        = useUnionCashReserve(isLeader ? db?.union?.address : undefined);
+  const { profile: lpProfile }       = useLPProfile({ enabled: LAND?.current?.hasLand === false });
+  const isLP = Boolean(lpProfile?.isLP);
+  const { data: getOffers  = [] }    = useGlobalOpenRedeemOrders();
+  const { data: giveOffers = [] }    = useGlobalOpenCashOffers();
   const { topUpGas }                 = useTopUpGas();
   const { switchToMain }             = useSwitchMain();
   const { acceptLoan }               = useAcceptLoan();
+  const { removeLoan }               = useRemoveLoan();
   const { handleToggleView }         = useTouch();
+  const { lpFillRedeemOrder, commitCashRequest } = useFxPool();
+  const { data: pendingDeliveries = [] } = usePendingCashDeliveries(
+    isLeader ? db?.union?.address : undefined
+  );
+  const { data: filledCashOffers = [] } = usePendingFilledCashOffers(
+    isLeader ? db?.union?.address : undefined
+  );
   const getNotificationPermission = () => {
     if (typeof window === 'undefined') return 'default';
     const override = localStorage.getItem('notificationPermissionOverride');
@@ -44,25 +59,22 @@ export function useFilterTasks(LAND, CAP) {
   };
   const [notificationPermission, setNotificationPermission] = useState(getNotificationPermission);
 
-  const filteredTransferables = loansResp?.items?.filter(l => !l.fastDraw && !l.drawdownTs) ?? [];
+  const filteredTransferables = loansData?.allItems?.filter(l => !l.fastDraw && !l.drawdownTs) ?? [];
   const hasTransferables = filteredTransferables.length > 0;
 
   // compute readiness OUTSIDE queryFn so we can gate with `enabled`
   const tokenDataReady = Array.isArray(tokenData);
-  const grantReady = grantData && typeof grantData.alreadyClaimed === 'boolean' &&  typeof grantData.initialClaim === 'boolean';
   const landReady = Boolean(LAND?.current) && typeof LAND.current?.hasLand === 'boolean';
   const capReady = typeof CAP?.current === 'number' && Number.isFinite(CAP.current);
-  const accountReady = Boolean(db?.address) && Boolean(db?.chain);
+  const accountReady = Boolean(db?.address);
   const loansReady = !isLeader || loansFetched;
 
   const ready =
     tokenDataReady &&
-    grantReady &&
     landReady &&
     capReady &&
     accountReady &&
     loansReady;
-
   function shuffle(arr) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -75,6 +87,15 @@ export function useFilterTasks(LAND, CAP) {
   const handleAcceptLoan = async (union,id,borrower,amount) => {
     if (confirm(`Are you sure to accept the loan of ${amount} nIN to ${borrower}`)) {
       await acceptLoan(union, id);
+    }
+  }
+
+  const handleCancelLoan = async (union, id, borrower) => {
+    if (confirm(`Cancel the loan request from ${borrower}?`)) {
+      await removeLoan(union, id);
+      await fetch(`${process.env.REACT_APP_API_BASE_URL}/filter_events/loan/${union}/${id}`, {
+        method: 'DELETE',
+      });
     }
   }
 
@@ -99,29 +120,44 @@ export function useFilterTasks(LAND, CAP) {
     alert('Unable to enable notifications right now. Please try again.');
   }
 
+  // Extract leader treasury signals for queryKey + task generation
+  const now = Math.floor(Date.now() / 1000);
+  const pendingDisburse = reserveData?.pendingDisburse ?? [];
+  const scheduledExits  = reserveData?.scheduledExits  ?? [];
+  const treasury        = reserveData?.treasury        ?? 0n;
+  const available       = reserveData?.available       ?? 0n;
+  const hasUrgentEscrow = pendingDisburse.some(e => e.deadline - now < 86400);
+  const hasOpenUnbond   = scheduledExits.some(e => e.pastMin);
+  const treasuryLow     = treasury > 0n && Number(available) / Number(treasury) < 0.2;
+
   const query = useQuery({
     queryKey: [
       'tasks',
       tokenDataReady ? tokenData.length : 0,
-      grantReady ? grantData.alreadyClaimed : null,
       landReady ? LAND.current.hasLand : null,
       capReady ? CAP.current : null,
-      db?.chain ?? null,
+      Number(process.env.REACT_APP_CHAIN_ID) || 137,
       db?.union?.chain ?? null,
       db?.union?.address ?? null,
       loansFetched ? filteredTransferables.length : null,
       notificationPermission,
       tokenDataReady ? tokenData.find(i => i?.sym === 'LAND')?.bal ?? 0 : null,
       typeof polBalance === 'number' ? polBalance < 0.2 : null,
+      hasUrgentEscrow,
+      hasOpenUnbond,
+      treasuryLow,
+      isLP,
+      getOffers.length,
+      giveOffers.length,
+      pendingDeliveries.length,
+      filledCashOffers.length,
     ],
     staleTime: 5 * 60 * 1000,
     enabled: ready, // only run when inputs are ready
     queryFn: async () => {
       if (!ready) return [];
-      const foodtokens   = tokenData ? tokenData.filter(b => b.type === 'ERC1155').length + 1 : 0;
-      const month        = new Date().toLocaleDateString('en-US', { month: 'long' });
       const MINCAP       = Number(process.env.REACT_APP_MIN_CAP ?? 100);
-      const chainSync    = db?.chain == db?.union?.chain; // losy comparison string vs number
+      const chainSync    = (Number(process.env.REACT_APP_CHAIN_ID) || 137) == Number(db?.union?.chain);
       const fallowFields = !!db?.reloadActivity?.act?.features?.some(f => {
         const activity = f?.properties?.activity;
         if (typeof activity === 'string') return activity === 'fallow';
@@ -149,16 +185,7 @@ export function useFilterTasks(LAND, CAP) {
           subtitle: 'Make the switch too.',
           btn: 'Switch',
         },
-        { i: 1, 
-          active: !tokenData?.some(i => i.sym === 'nIN' && i.bal > 0) && !grantData.initialClaim, 
-          img: "images/label-06.webp", 
-          tx_nmb: 0, 
-          click: () => collectGrant(), 
-          title: 'Claim your first grant.', 
-          subtitle: 'Grants reward you for being active.',
-          btn: 'Claim',
-         },
-        { i: 2, 
+        { i: 2,
           active: !hasLandToken && !LAND?.current?.hasLand,
           img: "images/LAND.png", 
           tx_nmb: landMintPending ? 0 : { ix: 2, i: 0 },
@@ -172,22 +199,13 @@ export function useFilterTasks(LAND, CAP) {
             : 'A land title can get you loans, grants and more.',
           btn: landMintPending && notificationsGranted ? null : (landMintPending ? 'Enable' : 'Claim'),
          },
-        { i: 3, 
-          active: LAND?.current?.hasLand && grantData && grantData.alreadyClaimed == false, 
-          img: "images/label-06.webp", 
-          tx_nmb: 0, 
-          click: () => collectGrant(db.address, db.union.address, foodtokens), 
-          title: `Well done, you earned ${(grantData.pending * 100).toFixed(0)} nIN.`, 
-          subtitle: `See how we calculate the ${month} reward.`, subclick: handleToggleView, sub_tx_nmb: { ix: 0, i: 43 },
-          btn: 'Collect',
-        },
-        { i: 4, 
+        { i: 4,
           active: Number(CAP?.current) > MINCAP, 
           img: "images/label-06.webp", 
           tx_nmb: { ix: 1, i: 0 }, 
           click: handleToggleView, 
-          title: `Invest to reach the minimal loan cap`, 
-          subtitle: `You need at least ${MINCAP} nIN to be eligible.`,
+          title: `Invest to reach the minimal loan cap`,
+          subtitle: `Invest more nIN to unlock borrowing.`,
           btn: 'Invest',
          },
         { i: 5, 
@@ -210,15 +228,102 @@ export function useFilterTasks(LAND, CAP) {
           btn: 'Send',
         },
         // Loan acceptance by union leaders
-        ...(filteredTransferables.map((d, i) => ({
-            i: i + 7, 
-            active: isLeader && hasTransferables, 
-            img: 'images/label-06.webp', 
-            click: () => handleAcceptLoan(d.union, d.id, d.borrowerLabel ? d.borrowerLabel : d.borrower.slice(-15) , d.amount),
-            title: `${d.borrowerLabel ? d.borrowerLabel : d.borrower.slice(-15)} requests a loan.`, 
-            subtitle: `${d.amount} nIN.`,
-            btn: 'Accept'
-          })) || []), 
+        ...(filteredTransferables.map((d, i) => {
+            const label = resolveName(d.borrower);
+            return {
+              i: i + 7,
+              active: isLeader && hasTransferables,
+              img: 'images/label-06.webp',
+              click: () => handleAcceptLoan(d.union, d.id, label, d.amount),
+              title: `${label} requests a loan.`,
+              subtitle: `${d.amount} nIN.`,
+              btn: 'Accept',
+              btn2: 'Cancel',
+              click2: () => handleCancelLoan(d.union, d.id, label),
+            };
+          }) || []),
+        // Leader treasury urgency tasks
+        { i: 100,
+          active: isLeader && hasUrgentEscrow,
+          img: 'images/label-06.webp',
+          tx_nmb: { ix: 6 },
+          click: handleToggleView,
+          title: 'Loan draw expiring today.',
+          subtitle: 'Open Cash Out to disburse before the escrow expires.',
+          btn: 'Cash Out',
+        },
+        { i: 101,
+          active: isLeader && hasOpenUnbond,
+          img: 'images/label-06.webp',
+          tx_nmb: { ix: 6 },
+          click: handleToggleView,
+          title: 'Member ready to claim cash.',
+          subtitle: 'Open Cash Out to post a Redeem Order.',
+          btn: 'Cash Out',
+        },
+        // LP: one task per get-cash offer (LP deposits USDT, picks up INR cash from union)
+        ...(isLP ? getOffers.map((o, idx) => {
+          const usdtDisplay = o.usdtAmount > 0n
+            ? `$${(Number(o.usdtAmount) / 1e6).toFixed(2)} USDT`
+            : 'USDT';
+          return {
+            i: 200 + idx,
+            active: true,
+            img: 'images/label-06.webp',
+            tx_nmb: 0,
+            click: () => lpFillRedeemOrder(o.id),
+            title: `Collect ₹${Number(o.inrValue ?? 0).toLocaleString()} cash`,
+            subtitle: `Deposit ${usdtDisplay} · pick up cash from union`,
+            btn: 'Fill',
+          };
+        }) : []),
+        // LP: one task per give-cash offer (LP brings INR cash, receives USDT locked by union)
+        ...(isLP ? giveOffers.map((o, idx) => {
+          const usdtDisplay = o.usdtAmount > 0n
+            ? `$${(Number(o.usdtAmount) / 1e6).toFixed(2)} USDT`
+            : 'USDT';
+          return {
+            i: 300 + idx,
+            active: true,
+            img: 'images/label-06.webp',
+            tx_nmb: 0,
+            click: () => commitCashRequest(o.id),
+            title: `Earn ${usdtDisplay}`,
+            subtitle: `Bring ₹${Number(o.inrValue ?? 0).toLocaleString()} cash to member`,
+            btn: 'Fill',
+          };
+        }) : []),
+        // Union leader: count bills + confirm for LP-filled CashOffers (union has cash, LP deposited USDT)
+        ...(isLeader ? filledCashOffers.map((o, idx) => ({
+          i: 500 + idx,
+          active: true,
+          img: 'images/label-06.webp',
+          tx_nmb: 0,
+          click: () => { setTxDetails({ offerId: o.id, inrValue: o.inrValue }); setTxIndex('cashOffer-confirm'); setIx(5); },
+          title: `LP collected — hand over ₹${Number(o.inrValue).toLocaleString('en-IN')} cash`,
+          subtitle: `Count bills · confirm to release USDT to LP`,
+          btn: 'Count Bills',
+        })) : []),
+        // Union leader: count bills + confirm for LP-committed RedeemOrders
+        ...(isLeader ? pendingDeliveries.map((o, idx) => ({
+          i: 400 + idx,
+          active: true,
+          img: 'images/label-06.webp',
+          tx_nmb: 0,
+          click: () => { setTxDetails({ orderId: o.id }); setTxIndex('redeem'); setIx(5); },
+          title: `LP delivered ₹${Number(o.inrValue).toLocaleString('en-IN')} cash`,
+          subtitle: `Count bills · confirm to release $${(Number(o.usdtLocked) / 1e6).toFixed(2)} USDT to LP`,
+          btn: 'Count Bills',
+        })) : []),
+        { i: 102,
+          active: isLeader && treasuryLow,
+          img: 'images/label-06.webp',
+          tx_nmb: { ix: 6 },
+          click: handleToggleView,
+          title: 'Treasury liquidity low.',
+          subtitle: 'Post a Cash Offer to get USDT from an LP.',
+          btn: 'View',
+        },
       ];
 
       const active = taskList.filter(t => t.active);
@@ -233,69 +338,3 @@ export function useFilterTasks(LAND, CAP) {
   return query; // return the whole query object
 }
 
-export const useTransferableLoans = (union, enabled) =>
-  useQuery({
-    queryKey: ['transferableLoans', union],
-    queryFn: async () => {
-      const url = `${process.env.REACT_APP_API_BASE_URL}/filter_events/transferableLoans`;
-      console.log('fetching transferableLoans:', url, 'enabled', );
-      const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: union })
-    });
-    if (!res.ok) throw new Error('transferableLoans failed');
-    const json = await res.json();
-
-    const knownAddressBook = {
-      '0xaf7030023cf86611ffc5a71798a0f7022210f2b3': 'Carst',
-      '0xaf48a2282fd8a3ccb52d17ef08fe5db7d346dbb7': 'Anand',
-    };
-
-    const resolveAddress = (addr) => {
-      if (!addr) return addr;
-      const match = knownAddressBook[addr.toLowerCase()];
-      if (match) return match;
-      if (union && union.toLowerCase() === addr.toLowerCase()) return 'Union';
-
-      return `${addr.slice(0,6)}...${addr.slice(-4)}`;
-    };
-
-    const parseAmount = (raw) => {
-      try {
-        return Number(ethers.formatUnits(raw ?? '0', 18));
-      } catch (e) {
-        const fallback = Number(raw);
-        return Number.isFinite(fallback) ? fallback : 0;
-      }
-    };
-
-    const items = Array.isArray(json.items)
-      ? json.items.map((i) => ({
-          id: i.loan_id ?? i.id,
-          borrower: i.borrower,
-          borrowerLabel: resolveAddress(i.borrower),
-          fund: i.fund,
-          activity_stage: i.activity_stage,
-          activity_checked_at: i.activity_checked_at,
-          activity_stage_id: i.activity_stage_id,
-          displayName: i.display_name ?? resolveAddress(i.borrower),
-          active: Boolean(i.active),
-          amount: parseAmount(i.amount),
-          rateBP: Number(i.rate_bp ?? i.rateBP ?? 0),
-          maturityTs: i.maturity_ts,
-          drawdownTs: i.drawdown_ts,
-          milestone: i.milestone,
-          milestoneDigest: i.milestone_digest,
-          withincarryover: i.withincarryover ?? i.within_carryover ?? null,
-          txHash: i.tx_hash,
-          union: i.union_addr ?? union,
-          fastDraw: Boolean(i.fast_draw ?? i.fastDraw ?? false),
-        }))
-      : [];
-
-    return { ...json, items }; // { union, refresh, count, items }
-    },
-    enabled: enabled && !!union,
-    staleTime: 60 * 60 * 1000
-  });

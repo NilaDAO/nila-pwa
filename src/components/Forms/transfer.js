@@ -1,17 +1,20 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useDataContext } from '../../utils/NavigationContext.js';
 import { useTransfer } from "../../hooks/useLoadFunds.ts";
-import { useTransferableLoans } from "../../hooks/useFilterTasks.js";
+import { useActiveLoans } from "../../hooks/useActiveLoans";
+import { useContactBook } from "../../hooks/useContactBook";
 import useLendingFlow from '../../hooks/useDirectLendingFlow.js'
 import { ClaimButton, DropdownButtonLoans, RateSlider } from '../UI/buttons.js';
 import { CheckIcon, XMarkIcon, InformationCircleIcon } from '@heroicons/react/24/solid';
 import QRScanner from "../UI/qrScan.js";
+import NameGate from "../UI/NameGate";
 import Spinner from '../UI/spinner.js';
 import { calculateMINCAP,LoanConditions } from '../../misc/fund_loan_conditions.ts';
 
 const Transfer = ({handleOpenForm }) => {
   const { unionFunds,db }                      = useDataContext()
-  const { data: unionLoansResp }               = useTransferableLoans(db?.union?.address, db?.union?.leader);
+  const { data: loansData }                     = useActiveLoans(db?.union?.address, db?.union?.leader);
+  const { resolveName, hasName, addContact }    = useContactBook();
   const { handleIssueVoucher }                 = useLendingFlow()
   const { transfer }                           = useTransfer()
   const [ fund, setFund ]                      = useState({})
@@ -31,7 +34,7 @@ const Transfer = ({handleOpenForm }) => {
   const [ presets, setPresets ]                = useState()
   const V                                      = useRef()
   const FIXED_APR_TO_PERIODICALLY              = 3.2072 // when we use foodtokens, we can use a crop type specific constant
-  const unionLoans                             = unionLoansResp?.items;
+  const unionLoans                             = loansData?.allItems;
 
   const FUNDCONDITIONS = useMemo(() => {
         const MINCAP = calculateMINCAP(1)
@@ -103,10 +106,16 @@ const Transfer = ({handleOpenForm }) => {
       }
   }
 
+  const [nameGate, setNameGate] = useState(false);
+
   const handleScanResults = (address) => {
     if (!address) return;
     setCandidate(address)
-    setConfirm(true)
+    if (!hasName(address)) {
+      setNameGate(true);
+    } else {
+      setConfirm(true)
+    }
   }
 
   const measureRate = (rate,pre) => {
@@ -138,7 +147,7 @@ const Transfer = ({handleOpenForm }) => {
       {/* Select a member*/}
       <h3 className='p-4 my-6 font-bold dark:text-white'>Please select the loan you wish to transfer:</h3>
       { unionLoans ? 
-            <DropdownButtonLoans options={unionLoans} onSelect={(f) => setSelected(f)} color='white' />
+            <DropdownButtonLoans options={unionLoans} onSelect={(f) => setSelected(f)} color='white' resolveName={resolveName} />
             :
             <div>
             <Spinner size={'small'} stages={'Loading all active loans in your union'} />
@@ -169,6 +178,22 @@ const Transfer = ({handleOpenForm }) => {
         }
         </>
       }
+      {/* ── Name gate after QR scan ── */}
+      { nameGate && candidate && (
+        <NameGate
+          address={candidate}
+          onConfirm={(addr, name) => {
+            addContact(addr, name);
+            setNameGate(false);
+            setConfirm(true);
+          }}
+          onCancel={() => {
+            setCandidate(false);
+            setNameGate(false);
+          }}
+        />
+      )}
+
       {/* Apply for a voucher*/}
       { candidate && fund &&
           <>
