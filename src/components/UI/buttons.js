@@ -530,14 +530,15 @@ export function RateSlider({
   );
 }
 
-export function DropdownButtonLoans({ options, onSelect, z, color }) {
+export function DropdownButtonLoans({ options, onSelect, z, color, resolveName }) {
   const [open, setOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState('');
   const ref = useRef();
 
   const formatBorrower = (loan) => {
-    if (!loan) return ''; 
-    if (loan.borrowerLabel) return loan.borrowerLabel.startsWith('0x') ? loan.borrowerLabel.slice(0, 10) : loan.borrowerLabel;
+    if (!loan) return '';
+    if (resolveName) return resolveName(loan.borrower);
+    return loan.borrower ? `${loan.borrower.slice(0, 6)}...${loan.borrower.slice(-4)}` : '';
   };
 
   const PHENOSTAGES = {
@@ -600,8 +601,17 @@ export function DropdownButtonLoans({ options, onSelect, z, color }) {
 
 export function DropdownButton({ options, onSelect, z, color }) {
   const [open, setOpen] = useState(false);
-  const [selectedFund, setSelectedFund] = useState('');
+  const [selectedFund, setSelectedFund] = useState(() => options?.[0]?.[1] ?? '');
   const ref = useRef();
+
+  // Pre-select the first option on mount so callers don't need to re-click
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  useEffect(() => {
+    if (options?.[0]) {
+      onSelectRef.current?.(options[0]);
+    }
+  }, []);
 
   useEffect(() => {
     const onClickOutside = e => {
