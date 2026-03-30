@@ -90,6 +90,7 @@ export default function ActiveLoansCard({
   onRefresh,
   refreshing,
   onDeepSync,
+  unionAddress,
 }) {
   const [sortKey, setSortKey] = useState('amount');
   const [sortDir, setSortDir] = useState('desc');
@@ -97,6 +98,8 @@ export default function ActiveLoansCard({
   const [selectedFund, setSelectedFund] = useState('all');
   const [syncStep, setSyncStep] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [gisData, setGisData] = useState({});     // { loanId: { ...summary } }
+  const [gisLoading, setGisLoading] = useState({}); // { loanId: bool }
 
   const handleSort = useCallback((key) => {
     if (key === sortKey) {
@@ -177,6 +180,23 @@ export default function ActiveLoansCard({
     }
     return results;
   }, [active, fundLentMap, fundMap]);
+
+  const API = process.env.REACT_APP_API_BASE_URL;
+
+  const handleCheckCrop = useCallback(async (loan) => {
+    if (!unionAddress || !loan.id) return;
+    setGisLoading((prev) => ({ ...prev, [loan.id]: true }));
+    try {
+      const res = await fetch(`${API}/gis/summary?union=${unionAddress}&loan_id=${loan.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setGisData((prev) => ({ ...prev, [loan.id]: data }));
+      }
+    } catch (err) {
+      console.error('[GIS] check crop failed:', err);
+    }
+    setGisLoading((prev) => ({ ...prev, [loan.id]: false }));
+  }, [unionAddress, API]);
 
   const hasMismatch = accounting.some((a) => !a.match);
 
@@ -311,6 +331,40 @@ export default function ActiveLoansCard({
                   <p className="text-[10px] text-red-500 dark:text-red-400 mt-1">
                     This loan is {loan.defaulted ? 'defaulted' : 'closed'} on-chain but still in the backend list.
                   </p>
+                )}
+
+                {/* Check crop button + GIS data */}
+                {!loan.chainClosed && (
+                  <div className="mt-2 pt-2 border-t border-gray-200 dark:border-slate-500">
+                    {gisData[loan.id] ? (
+                      <div className="flex flex-col gap-1">
+                        {(gisData[loan.id].clusters || []).map((cl, i) => (
+                          <div key={i} className="flex flex-col gap-0.5">
+                            <DetailRow label={`Cluster ${cl.cluster_id}`} value={cl.crop_type || '--'} />
+                            <DetailRow label="Stage" value={cl.stage || '--'} />
+                            <DetailRow label="Health" value={cl.health || '--'} />
+                            <DetailRow label="Yield est." value={cl.yield_estimate ? `${cl.yield_estimate} kg/ac` : '--'} />
+                            <DetailRow label="SOS" value={cl.sos || '--'} />
+                            <DetailRow label="EOS" value={cl.eos || '--'} />
+                          </div>
+                        ))}
+                        {gisData[loan.id].cache_status === 'cold' && (
+                          <p className="text-[10px] text-amber-500 mt-1">Cache cold — initializing in background...</p>
+                        )}
+                        {gisData[loan.id].farmer_score != null && (
+                          <DetailRow label="Farmer score" value={gisData[loan.id].farmer_score} />
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCheckCrop(loan); }}
+                        disabled={gisLoading[loan.id]}
+                        className="w-full py-1.5 text-[10px] font-semibold rounded-lg bg-gray-200 dark:bg-slate-500 dark:text-white active:scale-95 disabled:opacity-40"
+                      >
+                        {gisLoading[loan.id] ? 'Loading...' : 'Check crop'}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )}
