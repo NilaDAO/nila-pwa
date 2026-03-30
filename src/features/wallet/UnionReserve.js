@@ -388,6 +388,7 @@ const UnionReserve = ({ handleOpenForm }) => {
           onRefresh={refreshFromChain}
           refreshing={chainSyncing}
           onDeepSync={handleDeepSync}
+          unionAddress={unionAddr}
         />
       </div>
 
