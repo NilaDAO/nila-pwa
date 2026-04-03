@@ -206,6 +206,12 @@ function App({installAvailable}) {
     const initDb = await readAllItems('Init');
     const farmDb = await readAllItems('FarmData');
     const merged = { ...farmDb, ...initDb };
+    // Local dev override: if RPC points to localhost, force chainId to 31337
+    // (db.chain is stored from Cognito custom:chain which holds the mainnet/testnet value)
+    const _rpc = process.env.REACT_APP_RPC || '';
+    if (_rpc.includes('127.0.0.1') || _rpc.includes('localhost')) {
+      merged.chain = '31337';
+    }
     setDb(merged);
     if (merged?.reloadActivity?.act) {
       setFieldActivity(merged.reloadActivity.act);
@@ -241,11 +247,11 @@ function App({installAvailable}) {
       const isFetched = Fbal && !cold_ready || Fbal && Fgrant && Fland
       if (!initDb.address){
         const attributes = await getUserAttributes(db['token'])
-        address = attributes.UserAttributes.find(attribute => attribute.Name === 'custom:address');
-        chain = attributes.UserAttributes.find(attribute => attribute.Name === 'custom:chain');
+        address = attributes.UserAttributes.find(attribute => attribute.Name === 'custom:address')?.Value;
+        chain = attributes.UserAttributes.find(attribute => attribute.Name === 'custom:chain')?.Value;
       }
       // set the props to load the wallet properties
-      setChain(merged.chain || chain || '137');
+      setChain(merged.chain || chain || process.env.REACT_APP_CHAIN_ID || '137');
       setAddress(merged.address || address);
 
       function handleSetLocalState(bal,grant,land){
@@ -254,11 +260,13 @@ function App({installAvailable}) {
         //  deleteItem('reload','Init')
         //  window.location.reload(true);
         //  return;
-        //}        
+        //}
         console.log('land', land)
         setTokenData(bal);
         setGrantData(grant);
-        LAND.current = land;
+        // If chain says no land but IndexedDB has a pending mint, preserve that state
+        const storedLand = db?.reload?.land;
+        LAND.current = (!land?.hasLand && storedLand?.pendingMint) ? storedLand : land;
         setBootStage('ready');
       }
 

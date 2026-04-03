@@ -3,16 +3,15 @@ import { useState } from 'react';
 import { useDataContext, useViewModeContext } from '../../utils/NavigationContext';
 import useTouch from '../../hooks/useTouch';
 import { useMintFoodToken, useBurnLandTitle } from '../../hooks/useMintLandTitle.ts'
-import { AssetsView } from './assetsView';
+import { AssetsView, UsdtSwapCard, UpiTransferCard, InfoCard } from './assetsView';
 
-const NILA_PRICE = process.env.REACT_APP_NILA_PRICE
 
 const AssetList = ({ data,handleTokenView,LAND, handleOpenForm }) => {
-    const { db, tokenData, setSelectedAsset }      = useDataContext();
+    const { tokenData, setSelectedAsset }          = useDataContext();
     const { tokenview, setTokenview, setCardView } = useViewModeContext();
     const { handleTouchStart, handleTouchEnd}      = useTouch()
-    const { burnFoodToken }                        = useMintFoodToken(db.chain); 
-    const { burnLandTitle }                        = useBurnLandTitle(db.chain);
+    const { burnFoodToken }                        = useMintFoodToken(Number(process.env.REACT_APP_CHAIN_ID) || 137);
+    const { burnLandTitle }                        = useBurnLandTitle(Number(process.env.REACT_APP_CHAIN_ID) || 137);
     const land                                     = LAND.current.hasLand ? LAND.current.LAND : {sym: 'LAND', bal: 0, p: 36000}
     const extendedList                             = [ land, ...tokenData ];
     const sym_short                                = data?.sym?.split('-')[0].toUpperCase()
@@ -60,8 +59,9 @@ const AssetList = ({ data,handleTokenView,LAND, handleOpenForm }) => {
 
     return (
         <>
-        { tokenview ? 
-            <AssetsView 
+        { tokenview && data?.sym ?
+            <div className="flex flex-col gap-4 w-full mb-[220px]">
+              <AssetsView
                 handletouchstart={handleTouchStart}
                 handletouchend={handleTouchEnd}
                 imagedata={imageData}
@@ -71,14 +71,23 @@ const AssetList = ({ data,handleTokenView,LAND, handleOpenForm }) => {
                 handlebacktolist={handleBackToList}
                 handleConfirmBurn={handleConfirmBurn}
                 attr={attr}
-                info={info}
                 handleSendTokens={() => {
                     setSelectedAsset(data);
                     setTokenview(false);
                     handleOpenForm('sendReceiveAssets');
                 }}
-                NilaPrice={NILA_PRICE}
-            />
+              />
+              {(sym_short === 'NIN' || sym_short === 'NILA' || sym_short === 'USDT') && (
+                <UsdtSwapCard
+                  ninBalance={tokenData?.find(t => t.sym === 'nIN')?.bal ?? 0}
+                  usdtBalance={tokenData?.find(t => t.sym === 'USDT')?.bal ?? 0}
+                  exchangeRate={tokenData?.find(t => t.sym === 'nIN')?.p ?? 0}
+                  handleOpenForm={handleOpenForm}
+                />
+              )}
+              {(sym_short === 'NIN' || sym_short === 'NILA') && <UpiTransferCard />}
+              <InfoCard info={info} data={data} sym_short={sym_short} hasLand={LAND.current.hasLand} />
+            </div>
             : 
             <div>
             { extendedList.map((t,i) => (

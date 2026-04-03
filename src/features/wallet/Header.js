@@ -96,11 +96,11 @@ const Header = ({version, cardShrink}) => {
                 <>
                 { /* set different button states: QR/History/back/close/none */}
                 { (tokenview || ix > 0) && <div onClick={handleBack} className="rounded-full h-10 w-10 m-2 dark:bg-slate-400 bg-gray-300" ><ArrowLeftIcon className='text-black h-6 m-2'/></div>}
-                { (!tokenview && ix === 0 ) && 
+                { (!tokenview && ix === null ) &&
                     <div onClick={handleScanQR} className="rounded-full h-10 w-10 m-2 dark:bg-slate-400 bg-gray-300" >
                         <QrCodeIcon className='text-black h-6 m-2'/>
                     </div> }
-                { (ix === null) && <div onClick={handlePaymentHistory} className="rounded-full h-10 w-10 m-2 dark:bg-slate-400 bg-gray-300" ><ClockIcon className='text-black h-6 m-2'/></div>}
+                { (ix === 0 && !tokenview) && <div onClick={handlePaymentHistory} className="rounded-full h-10 w-10 m-2 dark:bg-slate-400 bg-gray-300" ><ClockIcon className='text-black h-6 m-2'/></div>}
                 { (ix === null) && <div onClick={handleAllTasks} className="flex flex-grow text-xs mx-6 justify-center items-center rounded-full m-2 dark:text-slate-400 dark:bg-slate-800 font-bold text-darkgrey bg-gray-100 mx-2" ><DocumentIcon className='h-3 w-3 mr-1' />All Tasks</div>}
                 { (ix === undefined) && <h3 className='font-Chains h-8 w-8 text-xl m-3'>a</h3>}
                 { cardShrink >= 0.5 && <div className="flex font-bold text-black dark:text-white m-5 items-center">{cards[ix]}</div>}

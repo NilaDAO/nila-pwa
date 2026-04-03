@@ -48,7 +48,7 @@ export default function useLoadCerts() {
 
   // WE NEED TO UPDATE THE GRANT CLAIM (NOT USE FILTER), SIMPLE LAST TARGETMONTH BY USER IN A MAPPING! THE FILTER HERE SHOULD BE REMOVED!!!  
   useEffect(() => {
-    if (!grantData) return
+    if (!grantData || !Number.isFinite(grantData.currentMonth)) return
 
     let cancelled = false
     const grant = new ethers.Contract(nilaGrantContract, nilaGrantAbi, provider)
@@ -79,7 +79,7 @@ export default function useLoadCerts() {
         const unixForMonth = grantData.currentUnix - (2629743 * i)
         
         // already in storage?
-        if (histMths?.[i] != null) {
+        if (histMths?.[i] != null && Number.isFinite(histMths[i])) {
           GRANTS.push({
             month:  histMths[i],
             type:   '1',

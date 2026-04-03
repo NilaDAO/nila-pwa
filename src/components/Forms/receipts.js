@@ -70,7 +70,12 @@ const Receipts = () => {
 
   return (
     <div className='flex flex-col mx-12'>
-    { isFetched ? receipts.length > 0 ? receipts.map((d,i) => (
+    { error ? (
+        <div className="flex flex-col items-left justify-center py-8">
+          <p className="font-bold text-sm dark:text-white">Could not load transactions.</p>
+          <p className="text-xs text-gray-400 dark:text-slate-400">{error.message}</p>
+        </div>
+      ) : isFetched ? receipts.length > 0 ? receipts.map((d,i) => (
         <div key={i} className={`flex flex-col ${i && 'border-t-2'} border-gray-200 dark:border-slate-600`}>
               <ReceiptItem type={d.to === db.address.toLowerCase()} d={d} resolveName={resolveName} />
         </div>

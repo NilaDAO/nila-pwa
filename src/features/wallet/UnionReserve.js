@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDataContext } from '../../utils/NavigationContext';
 import { useUnionCashReserve } from '../../hooks/useUnionCashReserve.ts';
 import { usePendingCashDeliveries } from '../../hooks/useCashOffer.ts';
@@ -61,6 +61,97 @@ const UnionReserve = ({ handleOpenForm }) => {
   const { data: fundsData = [] } = useLoadFundsData(unionAddr, unionFunds ?? [], db?.address);
   const qc = useQueryClient();
 
+  // Batch EOS data for all active loans — pure DB read, sub-second
+  const { data: eosMap = new Map() } = useQuery({
+    queryKey: ['batchEos', unionAddr],
+    queryFn: async () => {
+      const res = await fetch(`${process.env.REACT_APP_API_BASE_URL}/gis/batch-eos?union=${unionAddr}`);
+      if (!res.ok) return new Map();
+      const json = await res.json();
+      const m = new Map();
+
+      if (json.results) {
+        // Borrower-keyed format — map to loan_ids (one borrower may have multiple loans)
+        const loans = qc.getQueryData(['activeLoans', unionAddr]);
+        const borrowerToLoanIds = new Map();
+        for (const l of (loans?.activeLoans ?? [])) {
+          const key = l.borrower?.toLowerCase();
+          if (!borrowerToLoanIds.has(key)) borrowerToLoanIds.set(key, []);
+          borrowerToLoanIds.get(key).push(l.id);
+        }
+        for (const [borrower, data] of Object.entries(json.results)) {
+          for (const loanId of (borrowerToLoanIds.get(borrower?.toLowerCase()) ?? [])) {
+            m.set(loanId, data);
+          }
+        }
+      } else {
+        // Legacy loan_id-keyed format
+        for (const l of (json.loans ?? [])) {
+          m.set(l.loan_id, l);
+        }
+      }
+
+      // Merge with any data already set (e.g. by auto-fetch setQueryData),
+      // preferring entries that have eos_date over stale server data
+      const existing = qc.getQueryData(['batchEos', unionAddr]);
+      if (existing instanceof Map) {
+        for (const [key, val] of existing) {
+          const hasData = val?.eos_date || val?.predicted_eos_earliest || val?.predicted_eos_latest;
+          const serverHasData = m.get(key)?.eos_date || m.get(key)?.predicted_eos_earliest;
+          if (hasData && !serverHasData) m.set(key, val);
+        }
+      }
+
+      return m;
+    },
+    enabled: !!unionAddr && !!db?.union?.leader,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Auto-fetch EOS for active loans missing satellite data
+  const fetchedEosRef = useRef(new Set());
+  useEffect(() => {
+    const loans = loansData?.activeLoans;
+    if (!loans?.length || !eosMap) return;
+    const API = process.env.REACT_APP_API_BASE_URL;
+
+    const missing = loans.filter((l) => {
+      if (!l.borrower || fetchedEosRef.current.has(l.borrower)) return false;
+      const eos = eosMap.get(l.id);
+      return !eos?.eos_date && !eos?.predicted_eos_earliest && !eos?.predicted_eos_latest;
+    });
+    if (!missing.length) return;
+
+    missing.forEach((l) => fetchedEosRef.current.add(l.borrower));
+    const borrowers = [...new Set(missing.map((l) => l.borrower))];
+    // Build borrower → [loanIds] map — one borrower may have multiple active loans
+    const borrowerToLoanIds = new Map();
+    for (const l of missing) {
+      const key = l.borrower?.toLowerCase();
+      if (!borrowerToLoanIds.has(key)) borrowerToLoanIds.set(key, []);
+      borrowerToLoanIds.get(key).push(l.id);
+    }
+    fetch(`${API}/gis/eos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ borrowers }),
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        console.log('[gis/eos] result:', json);
+        qc.setQueryData(['batchEos', unionAddr], (prev = new Map()) => {
+          const updated = new Map(prev);
+          for (const [borrower, data] of Object.entries(json.results ?? {})) {
+            for (const loanId of (borrowerToLoanIds.get(borrower?.toLowerCase()) ?? [])) {
+              updated.set(loanId, data);
+            }
+          }
+          return updated;
+        });
+      })
+      .catch(console.error);
+  }, [loansData?.activeLoans, eosMap, unionAddr, qc]);
+
   // Map fund bytes32 loanType → human name from unionFunds context
   const fundMap = useMemo(() => {
     const m = new Map();
@@ -84,26 +175,28 @@ const UnionReserve = ({ handleOpenForm }) => {
   // Deep sync: call sensingNode to re-scan on-chain events, returns diff
   const handleDeepSync = useCallback(async (lookbackBlocks) => {
     const url = `${process.env.REACT_APP_API_BASE_URL}/loans/scan`;
-    console.log('[DeepSync] calling', url, { union: unionAddr, lookback_blocks: lookbackBlocks });
+
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ union: unionAddr, lookback_blocks: lookbackBlocks }),
     });
     const data = await res.json();
-    console.log('[DeepSync] result:', data);
+
     return data;
   }, [unionAddr]);
 
   // treasury panel state
+  const [treasuryExpanded, setTreasuryExpanded] = useState(false);
   const [treasuryDir,    setTreasuryDir]    = useState('deposit'); // 'deposit' | 'withdraw'
   const [treasuryAmount, setTreasuryAmount] = useState(0n);
   const [treasuryStep,   setTreasuryStep]   = useState('input');   // 'input' | 'confirm'
 
   const handleTreasuryInput = (e) => {
-    if      (e === 'add')    setTreasuryAmount(a => a + STEP * 10n);
+    const cap = withdrawCap;
+    if      (e === 'add')    setTreasuryAmount(a => { const n = a + STEP * 10n; return cap != null && n > cap ? cap : n; });
     else if (e === 'remove') setTreasuryAmount(a => a >= STEP * 10n ? a - STEP * 10n : 0n);
-    else if (e === 0)        setTreasuryAmount(a => a + STEP);
+    else if (e === 0)        setTreasuryAmount(a => { const n = a + STEP; return cap != null && n > cap ? cap : n; });
     else                     setTreasuryAmount(a => a >= STEP ? a - STEP : 0n);
   };
 
@@ -134,6 +227,7 @@ const UnionReserve = ({ handleOpenForm }) => {
   const scheduledExits  = data?.scheduledExits   ?? [];
   const hasNoEscrow     = data?.hasNoEscrow      ?? true;
   const pct             = treasury > 0n ? Number(available) / Number(treasury) : 1;
+  const withdrawCap     = treasuryDir === 'withdraw' ? available : null;
 
   const now = Math.floor(Date.now() / 1000);
 
@@ -143,17 +237,82 @@ const UnionReserve = ({ handleOpenForm }) => {
       {/* ── Union Cash Reserve ── */}
       <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl w-full py-6 px-4 gap-6 shadow-bottom">
       <section className="flex flex-col gap-3">
-        <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide">Union Cash Reserve</p>
+        <div className="flex justify-between items-center">
+          <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide">Union Cash Reserve</p>
+          <button
+            onClick={() => { setTreasuryExpanded(e => !e); setTreasuryStep('input'); setTreasuryAmount(0n); }}
+            className={`active:scale-95 ${treasuryExpanded ? 'text-gray-400 dark:text-slate-400 text-sm px-1' : 'text-xs px-3 py-1.5 rounded-full font-semibold bg-gray-100 dark:bg-slate-600 dark:text-white text-gray-700'}`}
+          >{treasuryExpanded ? '✕' : 'Adjust'}</button>
+        </div>
 
         {isLoading ? (
           <p className="text-xs text-gray-400 dark:text-slate-500">Loading…</p>
         ) : (
           <>
             <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-500 dark:text-slate-400">Treasury</span>
-                <span className="text-xs font-bold dark:text-white">{inrDisplay(treasury)}</span>
+                <div className="flex items-center gap-1.5">
+                  {treasuryExpanded && treasuryAmount > 0n && (
+                    <span className="text-xs font-bold text-gray-400 dark:text-slate-500 line-through">{inrDisplay(treasury)}</span>
+                  )}
+                  <span className="text-xs font-bold dark:text-white">
+                    {treasuryExpanded && treasuryAmount > 0n
+                      ? inrDisplay(treasuryDir === 'deposit' ? treasury + treasuryAmount : treasury - treasuryAmount)
+                      : inrDisplay(treasury)}
+                  </span>
+                </div>
               </div>
+              {treasuryExpanded && (
+                <div className="flex flex-col gap-2 mt-1 pt-2 border-t border-gray-100 dark:border-slate-600">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setTreasuryDir('deposit'); setTreasuryStep('input'); setTreasuryAmount(0n); }}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold active:scale-95 ${treasuryDir === 'deposit' ? 'bg-black text-white dark:bg-white dark:text-gray-800' : 'bg-gray-100 dark:bg-slate-600 dark:text-white'}`}
+                    >Deposit</button>
+                    <button
+                      onClick={() => { setTreasuryDir('withdraw'); setTreasuryStep('input'); setTreasuryAmount(0n); }}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold active:scale-95 ${treasuryDir === 'withdraw' ? 'bg-black text-white dark:bg-white dark:text-gray-800' : 'bg-gray-100 dark:bg-slate-600 dark:text-white'}`}
+                    >Withdraw</button>
+                  </div>
+                  {treasuryStep === 'input' && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <p className="text-2xl font-bold dark:text-white">{inrDisplay(treasuryAmount)}</p>
+                        <div className="flex items-end gap-1">
+                          <IndividualExchangeButton
+                            disabled_add={withdrawCap != null && treasuryAmount >= withdrawCap}
+                            disabled_remove={treasuryAmount === 0n}
+                            handleTx={handleTreasuryInput}
+                            title=""
+                            texts={{ plus: 'add', minus: 'remove' }}
+                          />
+                          <p
+                            className={`flex text-sm items-end px-1 dark:text-white ${treasuryAmount === (treasuryDir === 'deposit' ? BigInt(Math.round(ninInitialBalance * 1e18)) : available) && 'opacity-40'}`}
+                            onClick={handleTreasuryMax}
+                          >max</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-slate-400">
+                        Balance: {(treasuryDir === 'deposit'
+                          ? ninInitialBalance - Number(treasuryAmount) / 1e18
+                          : ninInitialBalance + Number(treasuryAmount) / 1e18
+                        ).toLocaleString('en-IN', { maximumFractionDigits: 2 })} nIN
+                      </p>
+                      <ClaimButton disabled={treasuryAmount === 0n} handleClick={() => setTreasuryStep('confirm')} title="Set" />
+                    </>
+                  )}
+                  {treasuryStep === 'confirm' && (
+                    <div className="flex flex-col gap-2 items-center py-4">
+                      <p className="text-sm dark:text-white mb-2">
+                        {treasuryDir === 'deposit' ? 'Add' : 'Withdraw'} <span className="font-bold">{inrDisplay(treasuryAmount)}</span> {treasuryDir === 'deposit' ? 'to' : 'from'} treasury
+                      </p>
+                      <ClaimButton disabled={false} handleClick={handleTreasuryConfirm} title={treasuryDir === 'deposit' ? 'Deposit' : 'Withdraw'} />
+                      <button onClick={() => setTreasuryStep('input')} className="text-xs text-gray-400 dark:text-slate-400">change amount</button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-xs text-gray-500 dark:text-slate-400">In circulation</span>
                 <span className="text-xs font-bold dark:text-white">
@@ -183,7 +342,7 @@ const UnionReserve = ({ handleOpenForm }) => {
             <div className="flex gap-2 mt-1">
               <button
                 onClick={() => handleOpenForm('cashIn')}
-                className="flex-1 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold active:scale-95"
+                className="flex-1 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95"
               >
                 Cash In
               </button>
@@ -285,61 +444,6 @@ const UnionReserve = ({ handleOpenForm }) => {
       </section>
       </div>
 
-      {/* ── Adjust Treasury ── */}
-      <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl w-full py-6 px-4 gap-3 shadow-bottom">
-      <section className="flex flex-col gap-3">
-        <div className="flex justify-between items-center">
-          <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide">Adjust Treasury</p>
-          <div className="flex gap-1">
-            <button
-              onClick={() => { setTreasuryDir('deposit'); setTreasuryStep('input'); setTreasuryAmount(0n); }}
-              className={`text-xs px-3 py-1 rounded-full font-semibold ${treasuryDir === 'deposit' ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-gray-100 dark:bg-slate-600 dark:text-white'}`}
-            >Deposit</button>
-            <button
-              onClick={() => { setTreasuryDir('withdraw'); setTreasuryStep('input'); setTreasuryAmount(0n); }}
-              className={`text-xs px-3 py-1 rounded-full font-semibold ${treasuryDir === 'withdraw' ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-gray-100 dark:bg-slate-600 dark:text-white'}`}
-            >Withdraw</button>
-          </div>
-        </div>
-        {treasuryStep === 'input' && (
-          <>
-            <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold dark:text-white">{inrDisplay(treasuryAmount)}</p>
-              <div className="flex items-end gap-1">
-                <IndividualExchangeButton
-                  disabled_add={false}
-                  disabled_remove={treasuryAmount === 0n}
-                  handleTx={handleTreasuryInput}
-                  title=""
-                  texts={{ plus: 'add', minus: 'remove' }}
-                />
-                <p
-                  className={`flex text-sm items-end px-1 dark:text-white ${treasuryAmount === (treasuryDir === 'deposit' ? BigInt(Math.round(ninInitialBalance * 1e18)) : available) && 'opacity-40'}`}
-                  onClick={handleTreasuryMax}
-                >max</p>
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-slate-400">
-              Balance: {(treasuryDir === 'deposit'
-                ? ninInitialBalance - Number(treasuryAmount) / 1e18
-                : ninInitialBalance + Number(treasuryAmount) / 1e18
-              ).toLocaleString('en-IN', { maximumFractionDigits: 2 })} nIN
-            </p>
-            <ClaimButton disabled={treasuryAmount === 0n} handleClick={() => setTreasuryStep('confirm')} title="Set" />
-          </>
-        )}
-        {treasuryStep === 'confirm' && (
-          <div className="flex flex-col gap-2 items-center m-10">
-            <p className="text-sm dark:text-white mb-10">
-              {treasuryDir === 'deposit' ? 'Add' : 'Withdraw'} <span className="font-bold">{inrDisplay(treasuryAmount)}</span> {treasuryDir === 'deposit' ? 'to' : 'from'} treasury
-            </p>
-            <ClaimButton disabled={false} handleClick={handleTreasuryConfirm} title={treasuryDir === 'deposit' ? 'Deposit' : 'Withdraw'} />
-            <button onClick={() => setTreasuryStep('input')} className="text-xs text-gray-400 dark:text-slate-400">change amount</button>
-          </div>
-        )}
-      </section>
-      </div>
-
       {/* ── Pending LP Deliveries ── */}
       {pendingDeliveries.length > 0 && (
         <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl w-full py-6 px-4 gap-3 shadow-bottom">
@@ -379,6 +483,7 @@ const UnionReserve = ({ handleOpenForm }) => {
           loans={loansData?.allItems ?? []}
           fundMap={fundMap}
           fundLentMap={fundLentMap}
+          eosMap={eosMap}
           resolveName={resolveName}
           hasName={hasName}
           onAddContact={(addr) => {
@@ -388,6 +493,7 @@ const UnionReserve = ({ handleOpenForm }) => {
           onRefresh={refreshFromChain}
           refreshing={chainSyncing}
           onDeepSync={handleDeepSync}
+          onCashIn={(loan) => handleOpenForm('cashIn', { memberAddress: loan.borrower })}
           unionAddress={unionAddr}
         />
       </div>

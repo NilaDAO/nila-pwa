@@ -5,7 +5,7 @@ import { ArrowPathIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import useTouch from '../../hooks/useTouch.js';
 import { ethers } from "ethers";
 import useLendingFlow from '../../hooks/useDirectLendingFlow.js'
-import { useBorrowGeneric } from '../../hooks/useLoadFunds.ts';
+import { useBorrowGeneric, useLoadFundsData } from '../../hooks/useLoadFunds.ts';
 import { motion } from 'framer-motion';
 import { LoanConditions } from '../../misc/fund_loan_conditions.ts';
 
@@ -32,8 +32,9 @@ const DebtListed = ({ LAND, CAP}) => {
     const [ fund, setFund ]                                      = useState()
     const { handleToggleView }                                   = useTouch() 
     const { handleIssueVoucher }                                 = useLendingFlow()
-    const { unionFunds, debts, setDebts }                        = useDataContext();
+    const { db, unionFunds, debts, setDebts }                    = useDataContext();
     const { borrowGeneric }                                      = useBorrowGeneric(fund?.fundAddress,fund?.fundName)
+    const { data: fundsData = [] }                               = useLoadFundsData(db?.union?.address, unionFunds ?? [], db?.address)
     const { tokenview }                                          = useViewModeContext();
     const [ presets, setPresets ]                                = useState({amount: 10000, rate: 1924})
     const [ amount, setAmount ]                                  = useState(10000)  
@@ -48,6 +49,7 @@ const DebtListed = ({ LAND, CAP}) => {
     const [ rate, setRate ]                                      = useState()
     const [ accept, setAccept ]                                  = useState(false)
     const [ directLoanForm, setDirectLoanForm ]                  = useState(false)
+    const [ capWarning, setCapWarning ]                          = useState(null)  // null | 'liquidity' | 'ratio'
     const cap                                                    = CAP?.current    
     const MINCAP                                                 = (process.env.REACT_APP_MIN_CAP / (debts.length + 1)**2)
     const V                                                      = useRef()
@@ -58,9 +60,15 @@ const DebtListed = ({ LAND, CAP}) => {
     const hasLandAsset                                           = Boolean(LAND?.current?.hasLand)
     const hasPendingLandMint                                     = !hasLandAsset && Boolean(landMeta)
 
+    const bucketThresholdPct = useMemo(() => {
+        if (!fund?.loanType) return 10;
+        const token = fundsData.flatMap(f => f.tokens ?? []).find(t => t.loanType === fund.loanType);
+        return token?.bucketThresholdPct ?? 10;
+    }, [fundsData, fund?.loanType]);
+
     const FUNDCONDITIONS = useMemo(() => {
-        return LoanConditions(Number(MINCAP), landAreaM2);
-    }, [MINCAP, landAreaM2]);
+        return LoanConditions(Number(MINCAP), landAreaM2, bucketThresholdPct);
+    }, [MINCAP, landAreaM2, bucketThresholdPct]);
 
     const handleVerifyUser = async (f, chosenRateBP) => {
         if (!amount || amount <= 0) {
@@ -96,6 +104,9 @@ const DebtListed = ({ LAND, CAP}) => {
             if (chosenRateBP == null) setRate(rate_perc)
             if (amount > headroom){
                 setAmount(headroom)
+                setCapWarning(voucher.cap_reason ?? 'liquidity')
+            } else {
+                setCapWarning(null)
             }
             setNotEligable(false)
         } // if the voucher is returned but not all conditions are met, we set the conditions and not eligible.
@@ -127,6 +138,8 @@ const DebtListed = ({ LAND, CAP}) => {
             tokenAddress: '0x10D11eDD572ccb54D6D59f07521eA071Ed1C326E', // ONLY NILA
             contractname: f?.contractname
         }
+        console.log('fund',fund)
+
         setAPIOffline(false)
         setFund(fund)
         setConditions(FUNDCONDITIONS[type] || [])
@@ -141,7 +154,10 @@ const DebtListed = ({ LAND, CAP}) => {
         // add choosen amount and rate, format values in voucher
         const _V = V.current.voucher
         _V['sig'] = V.current.signature
-        _V['chosenAmount'] = ethers.parseUnits(String(amount),18)
+        const chosenWei = ethers.parseUnits(String(amount), 18)
+        // guard: never send more than the oracle signed — clamp silently
+        const maxWei = BigInt(_V.raw_maxAmount)
+        _V['chosenAmount'] = chosenWei > maxWei ? maxWei : chosenWei
         _V['chosenRate'] = rate * 100 * FIXED_APR_TO_PERIODICALLY
         _V['maturityTs'] = 0
 
@@ -165,8 +181,6 @@ const DebtListed = ({ LAND, CAP}) => {
         "PLANTING":`The ${fund?.fundName || ''} fund finances new cultivations on already cleaned or recently planted fields. To pay for labor costs, machinery and seeds.`,
         "GENERIC":`The ${fund?.fundName || ''} fund finances new cultivations marked on the map. To pay for labor costs, machinery and seeds.`
     }
-
-    console.log('conditions', conditions)
 
     return (
         <>
@@ -202,7 +216,10 @@ const DebtListed = ({ LAND, CAP}) => {
                     { /*<p className='p-1 pb-3 text-xs' >{cap < 100 ? 'The amount will be deposited directly to your wallet.' : 'Any amount will mainly be financed locally. Your union needs to sign first.' }</p> */ } 
                     <hr className="w-full border-t border-gray-500 dark:border-slate-800 my-4" />
                     <h3 className='p-1 font-bold'>Set amount to borrow:</h3>
-                    { !amountConfirmed ? 
+                    { capWarning === 'cap'       && <p className='text-xs text-rose-600 dark:text-red px-1 pb-2'>Your requested amount exceeds the maximum loan this fund allows.</p> }
+                    { capWarning === 'liquidity' && <p className='text-xs text-rose-600 dark:text-red px-1 pb-2'>The fund does not have enough liquidity for your requested amount.</p> }
+                    { capWarning === 'ratio'     && <p className='text-xs text-rose-600 dark:text-red px-1 pb-2'>The union needs to increase its local share of the fund before more can be borrowed.</p> }
+                    { !amountConfirmed ?
                         <AmountInput value={amount} color='white' initial={presets?.amount} onSet={() => handleSetAmountConfirmed(true)} onChange={(e) => setAmount(!e ? 0 : e)} />
                     :
                     <>

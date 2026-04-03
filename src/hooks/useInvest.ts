@@ -2,7 +2,8 @@ import { useState }               from "react";
 import { useTx }                  from "../hooks/useTx.ts";
 import { useWallet, useContract } from "../hooks/useWallet.ts";
 import { useQueryClient }         from "@tanstack/react-query";
-import genericFundViewerAbi       from '../components/ABI/genericFundViewer.json';
+import genericFundViewerArtifact   from '../components/ABI/genericFundViewer.json';
+const genericFundViewerAbi = genericFundViewerArtifact.abi;
 import nilaUnionAbi               from '../components/ABI/NilaUnion.json';
 import { ethers, ContractTransactionResponse, ContractTransactionReceipt } from "ethers";
 import { FundSpecific, RAY }           from "./useLoadFunds.ts";
@@ -23,8 +24,32 @@ export function usePreviewUnbond(unionAddr: string) {
   /** preview unbonding time and withdrawal period (if no pending) */
   const preview = async (loanType: string, s: FundSpecific, userAddr: string, seniority: number) => {
     if (!viewer || !provider) return;
-    
-    const p = await viewer.previewUnbondJunior(unionAddr, loanType, userAddr);
+
+    if (seniority === 1) {
+      // Senior: previewUnbondSenior(unionAddr, investor)
+      const fetchedAtWall = Math.floor(Date.now() / 1000);
+      const [p, block] = await Promise.all([
+        viewer.previewUnbondSenior(unionAddr, userAddr),
+        provider.getBlock('latest'),
+      ]);
+      return {
+        requestTs: p.requestTs,
+        minWindowTs: p.minWindowTs,
+        chainNowSec: block?.timestamp ?? fetchedAtWall,
+        fetchedAtWall,
+        pending: s.senior,
+        pendingPrincipalSnap: p.requestTs > 0n ? Number(ethers.formatUnits(p.pendingPrincipalSnap, DECIMALS)) : 0,
+        pastMin: p.pastMin,
+        coveredByIdle: p.coveredByIdle,
+        eligibleNow: p.eligibleNow,
+      };
+    }
+
+    const fetchedAtWall = Math.floor(Date.now() / 1000);
+    const [p, block] = await Promise.all([
+      viewer.previewUnbondJunior(unionAddr, loanType, userAddr),
+      provider.getBlock('latest'),
+    ]);
 
     // convert shares to nIn
     const pendingToken = BigInt(p.pendingShares) * BigInt(s.indexes.junior) / RAY
@@ -32,15 +57,15 @@ export function usePreviewUnbond(unionAddr: string) {
     const out = {
       requestTs: p.pendingPrincipalSnap !== 0n ? p.requestTs : 0n,
       minWindowTs: p.minWindowTs,
+      chainNowSec: block?.timestamp ?? fetchedAtWall,
+      fetchedAtWall,
       pending: Number(ethers.formatUnits(p.pendingShares, DECIMALS)),
       pendingPrincipalSnap: Number(ethers.formatUnits(pendingToken, DECIMALS)),
-      maturedBudget: p.maturedBudget.toString(),
       pastMin: p.pastMin,
-      coveredByMaturities: p.coveredByMaturities,
       coveredByIdle: p.coveredByIdle,
       eligibleNow: p.eligibleNow,
     };
-    return out 
+    return out
     };
 
     return { preview } as const;

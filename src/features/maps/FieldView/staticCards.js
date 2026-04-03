@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { useDataContext,useViewModeContext } from '../../../utils/NavigationContext';
+import { useDataContext, useNavContext, useViewModeContext } from '../../../utils/NavigationContext';
 import useActivityMapping from '../../../hooks/useActivityMapping'
 import { cropColor } from '../../../utils/cropColors.js';
-import { motion } from 'framer-motion';
+import { motion, useDragControls } from 'framer-motion';
 import { RateSlider, ClaimButton, DropdownButton } from '../../../components/UI/buttons';
 import Spinner from '../../../components/UI/spinner.js';
 import useLendingFlow from '../../../hooks/useDirectLendingFlow.js'
@@ -210,10 +210,15 @@ export const StaticCards = ({ LAND }) => {
   const [ action, setAction ]                  = useState(null)
   const [ loading, setLoading ]                = useState(true)
   const { db, fieldActivity,setFieldActivity } = useDataContext();
-  const { setCardView }                        = useViewModeContext();
+  const { setIx }                              = useNavContext();
+  const { setTokenview, setCardView }          = useViewModeContext();
+  const controls                               = useDragControls();
+  const startYRef                              = useRef(0);
+
+  const close = () => { setIx(null); setTokenview(false); setCardView('default'); };
   const [ selected, setSelected ]              = useState([])
   const { handleFieldActivity }                = useActivityMapping()
-  const { burnLandTitle }                      = useBurnLandTitle(db.chain);
+  const { burnLandTitle }                      = useBurnLandTitle(Number(process.env.REACT_APP_CHAIN_ID) || 137);
 
   const features = fieldActivity?.geojson?.features || fieldActivity?.features || []
   const clusterGroups = useMemo(() => {
@@ -314,9 +319,31 @@ export const StaticCards = ({ LAND }) => {
   return (
       <>
       <BetaWarning />
-      <div className="flex flex-col mb-[220px] py-4 mb-96"> 
+      <motion.div
+        initial={{ y: -300 }}
+        animate={{ y: 0 }}
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 300 }}
+        dragListener={false}
+        dragControls={controls}
+        dragElastic={0.12}
+        onDragEnd={(_, info) => { if (info.offset.y > 80) close(); }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 }}
+        className="flex flex-col py-4 mb-96"
+      >
         <div style={{ zIndex: 0}} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1">
-                <div className="flex flex-col justify-evenly p-8">
+                <div
+                  onPointerDown={(e) => controls.start(e)}
+                  onTouchStart={(e) => { startYRef.current = e.touches[0].clientY; }}
+                  onTouchEnd={(e) => { if (e.changedTouches[0].clientY - startYRef.current > 25) close(); }}
+                  className="h-10 w-full select-none cursor-grab active:cursor-grabbing flex justify-center items-center"
+                >
+                  <span className="h-1 w-16 rounded-full bg-slate-300 dark:bg-slate-500" />
+                </div>
+                <div className="flex flex-col justify-evenly p-8"
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onTouchEnd={(e) => e.stopPropagation()}
+                >
                   { fieldActivity && fieldActivity.features.length > 0 && fieldActivity.features.length < featureLength ?
                   (() => {
                     const props = fieldActivity.features[0].properties;
@@ -415,7 +442,7 @@ export const StaticCards = ({ LAND }) => {
         </div>
         { /* fieldActivity && fieldActivity.features.length < featureLength && (!action || action === 'mint') && <MintAsset fieldActivity={fieldActivity} selected={selected} LAND={LAND} setAction={() => setAction('mint')} /> */ }
         { /* fieldActivity && fieldActivity.features.length < featureLength && (!action || action === 'share') &&  <SharedCropping fieldActivity={fieldActivity} selected={selected} LAND={LAND} setAction={() => setAction('share')}  /> */ }
-      </div>
+      </motion.div>
       </>
   )
 

@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { useDataContext } from '../utils/NavigationContext';
+import { useReloadDB } from '../utils/reloadDb';
 import { setDBitem } from '../utils/db';
 import { buildFieldsFromGroups, isV3Response } from '../utils/buildFieldsFromGroups';
 import axios from 'axios';
@@ -8,7 +9,7 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function pollTask(taskId, { intervalMs = 2500, timeoutMs = 60000, signal } = {}) {
+async function pollTask(taskId, { intervalMs = 2500, timeoutMs = 300000, signal } = {}) {
   const start = Date.now();
   while (true) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -22,6 +23,7 @@ async function pollTask(taskId, { intervalMs = 2500, timeoutMs = 60000, signal }
 
 const useActivityMapping = () => {
   const { db, setFieldActivity } = useDataContext();
+  const reloadDb = useReloadDB();
   const inflight = useRef(false);
 
   const toArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
@@ -73,7 +75,7 @@ const useActivityMapping = () => {
 
   const resetCached = (data) => {
     const ttl = 259_200_000; // 3 days
-    setDBitem('reloadActivity', { expired: Date.now() + ttl, act: data }, 'FarmData');
+    setDBitem('reloadActivity', { expired: Date.now() + ttl, act: data }, 'FarmData').then(reloadDb);
   };
 
   const handleFieldActivity = async (LAND) => {
@@ -100,7 +102,7 @@ const useActivityMapping = () => {
     const payload = {
       landID: LAND.current.LAND.id,
       address: db?.address,
-      chain: db?.chain,
+      chain: String(Number(process.env.REACT_APP_CHAIN_ID) || 137),
       test_mode: false
     };
 
@@ -148,6 +150,9 @@ const useActivityMapping = () => {
       resetCached(processed);
     } catch (err) {
       console.log('Activity error:', err?.response?.data || err.message);
+      // Write a short-TTL sentinel so repeated failures don't re-fire on every mount
+      const errorTtl = 5 * 60 * 1000; // 5 minutes
+      setDBitem('reloadActivity', { expired: Date.now() + errorTtl, act: null }, 'FarmData').then(reloadDb);
     } finally {
       inflight.current = false;
       controller.abort(); // prevent leaks on unmount
