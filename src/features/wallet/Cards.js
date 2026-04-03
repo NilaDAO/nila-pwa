@@ -108,8 +108,16 @@ export const InvestmentCard = ({CAP, sums, cardShrink, inArrays }) => {
     const { tokenview }     = useViewModeContext()
     const { isCollapsed }   = useTouch()
     const { db, debts }     = useDataContext();
-    const { ix }            = useNavContext();  
+    const { ix }            = useNavContext();
     const { rateByPair }    = useWeightedRates(null, sums, db?.union?.address);
+    const qc                = useQueryClient();
+    const fundsFetching     = useIsFetching({ queryKey: ['fundsData'] });
+    const isRefetching      = fundsFetching > 0;
+
+    const handleReload = (e) => {
+        e.stopPropagation();
+        qc.invalidateQueries({ queryKey: ['fundsData'] });
+    }
 
     const totalInvestedByUser = sums ? sums.total_investedByUser : 0
     const nmbFunds            = sums ? sums.funds.length : 0
@@ -172,13 +180,23 @@ export const InvestmentCard = ({CAP, sums, cardShrink, inArrays }) => {
         <div className={`h-full w-full ${tokenview && 'hidden'} pt-4`}>
             { !info ?
                 <div>
-                    { cardShrink < SHRINK_PERC && (ix || isCollapsed) && 
+                    { cardShrink < SHRINK_PERC && (ix || isCollapsed) &&
                     <div>
                         <table className="w-full flex flex-row justify-between">
                             <tbody>
                                 <tr className='flex flex-col flex-grow'>
-                                    <td className="text-left text-xs">You invested</td>
-                                    <td className='text-left font-bold text-lg mb-3'>nIN {totalInvestedByUser.toLocaleString('en-IN', { maximumFractionDigits: 0 })}/-</td>
+                                    <td className="text-left text-xs flex items-center gap-1">
+                                        <span>{isRefetching ? 'refetching' : 'You invested'}</span>
+                                        <button
+                                            type="button"
+                                            onClick={handleReload}
+                                            className="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600"
+                                            aria-label="Refresh fund data"
+                                        >
+                                            <ArrowPathIcon className={`h-4 w-4 text-gray-500 dark:text-black ${isRefetching ? 'animate-spin' : ''}`} />
+                                        </button>
+                                    </td>
+                                    <td className={`text-left font-bold text-lg mb-3 ${isRefetching ? 'animate-pulse' : ''}`}>nIN {totalInvestedByUser.toLocaleString('en-IN', { maximumFractionDigits: 0 })}/-</td>
                                 </tr>
                             </tbody>
                             <tbody>
@@ -268,7 +286,7 @@ export const CultivationCard = ({ dominant, cardIndex = 0 }) => {
     return (
         <>
             {!tokenview &&
-            <div className="absolute inset-0 rounded-3xl border-b-4 border-darkgrey pointer-events-none">
+            <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none" style={{ boxShadow: 'inset 0 -4px 8px rgba(0,0,0,0.25)' }}>
             {url && (
                 <div
                     className="absolute inset-0 bg-cover bg-center"
@@ -372,6 +390,50 @@ export const MapCard = ({ db }) => {
     );
     };
 
+// ── Cash & Liquidity card summary ─────────────────────────────────────────────
+// Shown in the card stack for union leaders who also act as LPs.
+// treasury/available pulled from useUnionCashReserve; lpPending is a count of
+// open LP positions (CashOffers or RedeemOrders where lp === wallet.address).
+export const CashLiquidityCard = ({ treasury = 0n, available = 0n, lpPending = 0, cardShrink }) => {
+    const { ix }          = useNavContext();
+    const { isCollapsed } = useTouch();
+    const pct = treasury > 0n ? Number(available) / Number(treasury) : 1;
+    const availableInr = Number(available / 10n ** 18n).toLocaleString('en-IN');
+    const treasuryInr  = Number(treasury / 10n ** 18n).toLocaleString('en-IN');
+
+    return (
+        <div className="flex flex-col h-full w-full pt-4">
+            { cardShrink < SHRINK_PERC && (ix || isCollapsed) &&
+            <div>
+                <table className="w-full flex flex-row justify-between">
+                    <tbody>
+                        <tr className="flex flex-col flex-grow">
+                            <td className="text-left text-xs dark:text-slate-300">Available to scan</td>
+                            <td className="text-left font-bold text-lg mb-3 dark:text-white">₹{availableInr}</td>
+                        </tr>
+                    </tbody>
+                    <tbody>
+                        <tr className="text-xs dark:text-slate-300">
+                            <td>Treasury ₹{treasuryInr}</td>
+                        </tr>
+                        <tr className="text-xs dark:text-slate-300">
+                            <td className={ pct < 0.2 ? 'text-green dark:text-green_dark' : pct < 0.5 ? 'text-amber dark:text-amber-300' : undefined }>
+                                {Math.round(pct * 100)}% headroom
+                            </td>
+                        </tr>
+                        {lpPending > 0 && (
+                            <tr className="text-xs font-bold text-blue-500 dark:text-blue-500">
+                                <td>{lpPending} LP position{lpPending > 1 ? 's' : ''} open</td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+            }
+        </div>
+    );
+};
+
 export const Card = ({
     i,
     type,
@@ -410,6 +472,7 @@ export const Card = ({
         DEFAULTED: 'bg-gray-100 dark:bg-gray-700 border-2 dark:border-slate-400',
         INVEST: 'bg-green dark:bg-green_dark',
         MAP: 'bg-darkgrey',
+        CASH_LIQUIDITY: 'bg-indigo-50 dark:bg-slate-800',
     }
     const assetPull = type === 'ASSETS' && typeof pullY === 'number' ? pullY : 0;
     const variants = {
@@ -481,6 +544,7 @@ export const Card = ({
             ${type == 'ASSETS' && 'dark:text-slate-400'}
             ${type == 'DEFAULTED' && 'dark:text-slate-400'}
             ${type == 'MAP' && 'text-white z-10 dark:text-white'}
+            ${type == 'CASH_LIQUIDITY' && 'text-black z-10 dark:text-white'}
             `}>
             {titleDot && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: titleDot }} />}
             {title}

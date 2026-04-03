@@ -202,7 +202,7 @@ const useVerifyFlow = (LAND = null) => {
               const outline = JSON.parse(response.data.output)
               const { outline: normalizedOutline, mp } = normalizeOutline(outline);
               const normalizedMetadata = {
-                outline: normalizedOutline,
+                outline: mp ? normalizedOutline : [normalizedOutline],  // always array of rings
                 mp,
                 fields: approvedFields.map((f) => f.shape || []).map((ring) => toLatLngObjects(ring)),
               };

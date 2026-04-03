@@ -129,9 +129,8 @@ const BillScanner = ({ onBillConfirmed, billCount, runningTotal, onStop }) => {
         return;
       }
 
-      const serial = p.serial_number || (p.side === 'back' ? `back_${Date.now()}` : `unknown_${Date.now()}`);
       onBillConfirmed({
-        serialNumber: serial,
+        serialNumber: `bill_${Date.now()}`,
         denomination: p.denomination,
         side: p.side || 'front',
         imageDataUrl: croppedDataUrl,
@@ -277,7 +276,7 @@ const BillScanner = ({ onBillConfirmed, billCount, runningTotal, onStop }) => {
           className="absolute inset-0 w-full h-full pointer-events-none"
         />
 
-        {/* top bar: status left, badge right — below the card drag handle */}
+        {/* top bar: status left, badge right */}
         <div className="absolute top-12 left-3 right-3 z-10 flex items-center justify-between">
           {/* status pill */}
           <div className="min-w-0">

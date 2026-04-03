@@ -5,9 +5,12 @@ import { useTx } from "./useTx.ts";
 import { useProvider, useBasicProvider, useWallet, useContract } from "./useWallet.ts";
 import useTouch from "./useTouch";
 import MulticallAbi  from "../components/ABI/MultiCall3.json";
-import nilaTokenAbi from '../components/ABI/NilaToken.json';
-import genericFundViewerAbi from '../components/ABI/genericFundViewer.json';
-import genericFundCoreAbi from '../components/ABI/genericFundCore.json';
+import NilaNINV2Artifact from '../components/ABI/NilaNINV2.json';
+const nilaTokenAbi = NilaNINV2Artifact.abi;
+import genericFundViewerArtifact from '../components/ABI/genericFundViewer.json';
+const genericFundViewerAbi = genericFundViewerArtifact.abi;
+import genericFundCoreArtifact from '../components/ABI/genericFundCore.json';
+const genericFundCoreAbi = genericFundCoreArtifact.abi;
 import { useDataContext, useNavContext, useViewModeContext } from "../utils/NavigationContext.js";
 import { setDBitem } from '../utils/db';
 import { loadGenericFundData } from '../utils/loadfund_helpers.ts';
@@ -20,11 +23,39 @@ import { loadGenericFundData } from '../utils/loadfund_helpers.ts';
  */
 
 const genericFundViewerAddress: string = process.env.REACT_APP_VIEWER_MAIN!;
-const genericFundCoreAddress: string = process.env.REACT_APP_CORE_MAIN!; 
-const genericRolesAddress: string = process.env.REACT_APP_ROLES_MAIN!; 
+const genericFundCoreAddress: string = process.env.REACT_APP_CORE_MAIN!;
+const genericRolesAddress: string = process.env.REACT_APP_ROLES_MAIN!;
 const tokenAddress: string = process.env.REACT_APP_NIN_MAIN!;
+
+console.log('[nila:contracts]', {
+  rpc:       process.env.REACT_APP_RPC,
+  api:       process.env.REACT_APP_API_BASE_URL,
+  nin:       process.env.REACT_APP_NIN_MAIN,
+  fxPool:    process.env.REACT_APP_FX_POOL_MAIN,
+  core:      process.env.REACT_APP_CORE_MAIN,
+  viewer:    process.env.REACT_APP_VIEWER_MAIN,
+  landTitle: process.env.REACT_APP_LAND_TITLE_MAIN,
+  roles:     process.env.REACT_APP_ROLES_MAIN,
+});
+
 const PAYBACK_PERIOD = 1814400 // 3 weeks
 const decimals = 18
+
+const PERMIT_TYPES = { Permit: [
+  { name: 'owner',    type: 'address' },
+  { name: 'spender',  type: 'address' },
+  { name: 'value',    type: 'uint256' },
+  { name: 'nonce',    type: 'uint256' },
+  { name: 'deadline', type: 'uint256' },
+]};
+
+async function signPermit(wallet: ethers.Signer, spender: string, value: bigint, nonce: bigint, deadline: number) {
+  const chainId = (await wallet.provider!.getNetwork()).chainId;
+  const verifyingContract = tokenAddress;
+  const domain = { name: 'Nila Note', version: '1', chainId, verifyingContract };
+  const permitValue = { owner: await wallet.getAddress(), spender, value, nonce, deadline };
+  return ethers.Signature.from(await (wallet as ethers.Wallet).signTypedData(domain, PERMIT_TYPES, permitValue));
+}
 
 export const RAY = 10n ** 27n;
 
@@ -63,13 +94,17 @@ export type GenericTokenData = {
   type: string;
   name: string;
   totals: { funds: number; lent: number };
-  investor: { principal: number; junior: number, senior: number,pending: number, j_pending: number, s_pending: number; pendingWithdrawal: number; isFrozen: boolean };
+  investor: { principal: number; junior: number, senior: number, seniorPendingSnap: number, pending: number, j_pending: number, s_pending: number; pendingWithdrawal: number; isFrozen: boolean };
   indexes: { junior: number, senior: number };
   loanType: string;
-  maturedBudget: number,
   headroom: number,
   requiredReserve: number,
+  idleCash: number,
+  juniorCash: number,
+  seniorPrincipal: number,
+  claimableReserved: number,
   previewRateBP: number,
+  bucketThresholdPct: number,
 };
 
 export type FundSpecific = {
@@ -78,9 +113,11 @@ export type FundSpecific = {
     fund_type: string;
     junior: number;
     senior: number;
+    seniorPendingSnap: number;
     indexes: { junior: number, senior: number };
     requiredReserve: number,
     previewRateBP: number,
+    juniorCash: number,
     tokens: string[];
     principal: number;
     principal_raw: number;
@@ -157,6 +194,9 @@ export type LoanVoucherGeneric = {
   raw_maxAmount: string;   // Wei string from API — must NOT be coerced to number
   sig:          string;
   union:        string;
+  escrowId:     number;    // cash-scan escrow id (0 = none)
+  sosDate:      number;    // start-of-season unix timestamp (0 = none)
+  nonce:        number;    // per-borrower replay-protection nonce
 };
 
 export type FundDebtData = {
@@ -275,10 +315,8 @@ export function useUnionGenericFunds( unionAddress: string, enabled: Enabled) {
             console.error('err', e)
         }
         console.log('debts', debts)
-        if (debts.length > 0) {
-          setDBitem("debts", debts, "Init");
-          setDebts(debts);
-        }
+        setDBitem("debts", debts, "Init");
+        setDebts(debts);
         return funds;
       },
       }
@@ -292,7 +330,7 @@ export function useLoadFundsData(unionAddress: string, f: any[], investor: strin
     return useQuery({
       queryKey: ['fundsData', unionAddress, f, investor],
       enabled: !!provider && !!investor && hasFunds,
-      refetchOnWindowFocus: false, 
+      refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       retry: 3,
       retryDelay: (i) => Math.min(1000 * 2 ** i, 8000),
@@ -318,9 +356,9 @@ export function useInvestGeneric(
     initialBalance: number,
     fund_type: string,
   ) {
-    const runTx            = useTx()
-    const { wallet }       = useWallet()
-    const { setTokenview } = useViewModeContext();  
+    const runTx                        = useTx()
+    const { wallet }                   = useWallet()
+    const { setTokenview, setCardView } = useViewModeContext();  
     const core             = useContract(genericFundCoreAddress, genericFundCoreAbi, wallet)
     const token            = useContract(tokenAddress, nilaTokenAbi, wallet)
     const qc               = useQueryClient()
@@ -347,33 +385,33 @@ export function useInvestGeneric(
           const TakeMin = minBigInt(init,amt) - 10000n // make sure to allow some dust
           console.log('TakeMin', TakeMin)
 
-          // 1) ensure allowance
-          const current = await token.allowance(wallet.address, genericFundCoreAddress)
+          // 1) approve allowance
+          const approveTx = await token.approve(genericFundCoreAddress, TakeMin);
+          await approveTx.wait();
 
-          if (current < amt) {
-            const ap = await token.approve(genericFundCoreAddress, TakeMin)
-            await ap.wait()
-          }
           // 2) set the 0x00000 address for external investors
           const unionAddr = unionAddress ? unionAddress : '0x0000000000000000000000000000000000000000'
-        
+
           console.log('unionAddr', unionAddr, fund_type, TakeMin)
-          // check if this user has a land title (junior or senior (also verified onchain)) 
+          // Explicitly advance nonce past the approve tx — avoids stale nonce cache on local Hardhat
+          const depositNonce = approveTx.nonce + 1;
+          // check if this user has a land title (junior or senior (also verified onchain))
           // 3) do the invest
           if (hasLand){
-            return core.depositJunior(unionAddr, fund_type, TakeMin)
+            return core.depositJunior(unionAddr, fund_type, TakeMin, wallet.address, { nonce: depositNonce })
           } else {
-            return core.depositSenior(unionAddr, TakeMin)
+            return core.depositSenior(unionAddr, TakeMin, { nonce: depositNonce })
           }
         },
         {
           onSuccess: () => {
             // reset the card data
             setTokenview(false)
+            setCardView('default')
             // refresh balances/fund data
             qc.invalidateQueries({ queryKey: ['balances', wallet?.address] })
-            qc.invalidateQueries({ queryKey: ['fundsData'] }) 
-            qc.invalidateQueries({ queryKey: ['debtData'] }) 
+            qc.invalidateQueries({ queryKey: ['fundsData'] })
+            qc.invalidateQueries({ queryKey: ['debtData'] })
           }
         }
       )
@@ -381,68 +419,13 @@ export function useInvestGeneric(
     return { investgeneric }
   }
 
-export function useClaimYield(
-    unionAddress: string,
-  ) {
-    const runTx            = useTx()
-    const { setTokenview } = useViewModeContext();  
-    const { wallet }       = useWallet()
-    const core             = useContract(genericFundCoreAddress, genericFundCoreAbi, wallet)
-    const qc               = useQueryClient()
-  
-    const claimYield = (funds: GenericFundData[]) =>
-      runTx(
-        async (): Promise<ContractTransactionResponse> => {
-          if (!core || !wallet) throw new Error('Wallet or contract not ready')
-
-          let lastTx: ContractTransactionResponse | undefined;
-
-            for (const f of funds) {
-              if (f.type === 'INPUT') continue
-              const t = f.tokens?.[0];
-              if (!t) continue;
-              console.log('t', t)
-              const loanType32 = asBytes32(t.loanType);
-              const jPending = t.investor?.j_pending ?? 0;
-              const sPending = t.investor?.s_pending ?? 0;
-              const tranches = [[jPending,0n], [sPending,1n]].filter((T) => T[0] > 0)
-
-              for (const tranche of tranches) {
-                  const amt = ethers.parseUnits(String(tranche[0]), 18)
-                  console.log('amt', tranche[1], unionAddress, loanType32, amt)
-                  const tx = await core.claimYield(tranche[1], unionAddress, loanType32, amt);
-                  await tx.wait(); // ensure mined before next
-                  lastTx = tx;
-                }
-            }
-          if (!lastTx) throw new Error("No claims to execute");
-          return lastTx; // runTx can still call .wait() if it wants
-        },
-        {
-          onError: (err: any) => {
-            // (match your contract’s custom error)
-            console.error("claim failed:", err);
-          },    
-          onSuccess: () => {
-            // update the fund summary
-            setTokenview(false)
-            // refresh your fund data
-            qc.invalidateQueries({ queryKey: ['balances'] })
-            qc.invalidateQueries({ queryKey: ['fundsData'] }) 
-          }
-        }
-      )
-  
-    return { claimYield }
-  }
-
 export function useWithdrawGeneric(
     unionAddress: string,
     s: FundSpecific ,
     tokenAddress: string
   ) {
-    const runTx            = useTx()
-    const { setTokenview } = useViewModeContext();  
+    const runTx                        = useTx()
+    const { setTokenview, setCardView } = useViewModeContext();  
     const { wallet }       = useWallet()
     const core             = useContract(genericFundCoreAddress, genericFundCoreAbi, wallet)
     const qc               = useQueryClient()
@@ -469,35 +452,22 @@ export function useWithdrawGeneric(
             console.log('mkt', mkt)
             console.log('inv', inv)
 
-            console.log('inv unpacked', inv.shares, inv.pending, inv.unclaimed)
-            const availableShares = Number(inv.shares) - Number(inv.pending) - Number(inv.unclaimed);
-            //if (availableShares <= 0) {
-            //  console.log('return message')
-            //    throw new SoftError("You’ve already requested unbond for all your senior shares. The remaining amount is likely unclaimed interest.");
-            //}
-            //console.log('availableShares', availableShares)
+            console.log("inv unpacked", inv.shares, inv.pending)
+            const availableShares = BigInt(inv.shares) - BigInt(inv.pending);
 
             const to_shares = amt * RAY / BigInt(s.indexes.senior)
-            const min = Math.min(Number(to_shares), Number(availableShares))
-            console.log('requestUnbondSenior', min)
+            const rawShares = to_shares < availableShares ? to_shares : availableShares
+            const safeShares = rawShares > 10000n ? rawShares - 10000n : rawShares
+            console.log('requestUnbondSenior', safeShares)
 
-            //const senior_available = ethers.parseUnits(String(s.senior), decimals)
-            // in case of full withdrawal, sometimes amnt is more then actually deposited
-            //const TakeMin = minBigInt(senior_available,amt) - 10000n // make sure to allow some dust
-            //console.log('TakeMin', TakeMin)
-            return core.requestUnbondSenior(unionAddress, BigInt(min))
+            return core.requestUnbondSenior(unionAddress, safeShares)
           } else {
             const inv  = await core.getInvestorJunior(unionAddress, s.fund_id, wallet.address);
             const mkt  = await core.getJuniorMarket(unionAddress, s.fund_id); // or core.getSeniorMarket if you expose it
             console.log('mkt', mkt)
             console.log('inv', inv)
 
-            const availableShares = Number(inv.shares) - Number(inv.pending) - Number(inv.unclaimed);
-            //if (availableShares <= 0) {
-            //  console.log('availableShares', availableShares)
-            //  throw new SoftError("You’ve already requested unbond for all your senior shares. The remaining amount is likely unclaimed interest.");
-            //}
-            //console.log('availableShares', availableShares)
+            const availableShares = Number(inv.shares) - Number(inv.pending);
 
             const to_shares = amt * RAY / BigInt(s.indexes.junior)
             const min = Math.min(Number(to_shares), Number(availableShares))
@@ -511,13 +481,14 @@ export function useWithdrawGeneric(
           onSuccess: () => {
             // update the fund summary
             setTokenview(false)
+            setCardView('default')
             // refresh your fund data
             qc.invalidateQueries({ queryKey: ['balances'] })
-            qc.invalidateQueries({ queryKey: ['fundsData'] }) 
+            qc.invalidateQueries({ queryKey: ['fundsData'] })
           }
         }
       )
-  
+
     return { withdrawgeneric }
   }
 
@@ -526,8 +497,8 @@ export function useWithdrawClaimGeneric(
     s: FundSpecific ,
     tokenAddress: string
   ) {
-    const runTx            = useTx()
-    const { setTokenview } = useViewModeContext();  
+    const runTx                        = useTx()
+    const { setTokenview, setCardView } = useViewModeContext();  
     const { wallet }       = useWallet()
     const core             = useContract(genericFundCoreAddress, genericFundCoreAbi, wallet)
     const qc               = useQueryClient()
@@ -544,7 +515,7 @@ export function useWithdrawClaimGeneric(
 
           // withdraw SENIOR or JUNIOR
           if (seniority){
-            return core.claimSenior(unionAddress, amt)
+            return core.claimSenior(unionAddress, 0) // 0 = claim all claimable shares
           } else {
             console.log('amt', amt,  BigInt(s.indexes.junior))
             const to_shares = amt * RAY / BigInt(s.indexes.junior)
@@ -559,13 +530,14 @@ export function useWithdrawClaimGeneric(
           onSuccess: () => {
             // update the fund summary
             setTokenview(false)
+            setCardView('default')
             // refresh your fund data
             qc.invalidateQueries({ queryKey: ['balances'] })
-            qc.invalidateQueries({ queryKey: ['fundsData'] }) 
+            qc.invalidateQueries({ queryKey: ['fundsData'] })
           }
         }
       )
-  
+
     return { withdrawclaimgeneric }
   }
 
@@ -573,12 +545,10 @@ export function useTransfer() {
     const runTx                = useTx()
     const { wallet }           = useWallet()
     const core                 = useContract(genericFundCoreAddress, genericFundCoreAbi, wallet)
-    const coreIface            = new ethers.Interface(genericFundCoreAbi);
     const { debts, setDebts }  = useDataContext()
     const { handleToggleView } = useTouch()
     const qc                   = useQueryClient()
-  
-    
+
     const transfer = (V: LoanVoucherGeneric) =>
       runTx(
         async () => {
@@ -642,7 +612,7 @@ export function useBorrowGeneric(
           if (!core || !wallet) throw new Error('Wallet or contracts not ready')
           console.log('voucher:', V)
 
-          const {borrower,chosenAmount,chosenRate,loanId,loanType,maturityTs,minRateBP,paramsHash,raw_maxAmount,sig,union} = V
+          const {borrower,chosenAmount,chosenRate,loanId,loanType,maturityTs,minRateBP,paramsHash,raw_maxAmount,sig,union,escrowId,sosDate,nonce} = V
           const fastDraw = V.fastDraw ?? V._fastDraw
 
           const to0x = (h: string) => h.startsWith("0x") ? h : `0x${h}`;
@@ -654,17 +624,15 @@ export function useBorrowGeneric(
           const paramsHash32 = asBytes32(paramsHash);
           const rate = Number(chosenRate.toFixed(0))
 
-          console.log('union', union)
-          console.log('loanIdBytes32', loanIdBytes32)
-          console.log('loanType32', loanType32)
-          console.log('BigInt(chosenAmount)', BigInt(chosenAmount))
-          console.log('rate', rate)
-          console.log(' Number(maturityTs)',  Number(maturityTs))
-          console.log('paramsHash32', paramsHash32)
-          console.log('to0x(sig)', to0x(sig))
-          console.log('BigInt(raw_maxAmount)', BigInt(raw_maxAmount))
-          console.log('minRateBP', minRateBP)
-          console.log('fastDraw', fastDraw)
+          // Sign burn permit: allows FxPool to burn farmer's nIN at cash collection time.
+          // Deadline uses collectDeadline from ReserveCfg (set per union by leader/oracle).
+          const token = new ethers.Contract(tokenAddress, nilaTokenAbi, wallet);
+          const viewer = new ethers.Contract(genericFundViewerAddress, genericFundViewerAbi, wallet);
+          const permitNonce = await token.nonces(wallet.address);
+          const collectDeadlineSecs = Number(await viewer.getUnionCollectDeadline(union));
+          const burnDeadline = Math.floor(Date.now() / 1000) + collectDeadlineSecs;
+          const fxPoolAddr = process.env.REACT_APP_FX_POOL_MAIN!;
+          const burnSig = await signPermit(wallet, fxPoolAddr, BigInt(chosenAmount), permitNonce, burnDeadline);
 
           // call to draw a loan
           return core.drawLoanWithVoucher(
@@ -678,7 +646,12 @@ export function useBorrowGeneric(
             to0x(sig),             // bytes
             BigInt(raw_maxAmount), // uint256 — SOP: use raw_maxAmount (Wei string), never normalize
             minRateBP,             // uint16
-            fastDraw               // bool
+            fastDraw,              // bool
+            escrowId ?? 0,         // uint256
+            sosDate ?? 0,          // uint40
+            nonce,                 // uint256
+            burnDeadline,          // uint256 — exact deadline signed in burn permit
+            burnSig.v, burnSig.r, burnSig.s  // EIP-2612 permit for FxPool burn at collection
           );
         },
         {
@@ -733,7 +706,7 @@ export function useBorrowGeneric(
 export function useIsLeader(options: { address?: string; chain?: string | number } = {}) {    
     const { db }          = useDataContext();
     const isLeaderABI     = [ "function isLeader(address unionAddr, address acct) view returns (bool)"];
-    const chainId         = Number(options.chain ?? db?.chain);
+    const chainId         = Number(options.chain) || Number(process.env.REACT_APP_CHAIN_ID) || 137;
     const rpcUrl          = chainId === 137 ? process.env.REACT_APP_RPC_ALCHEMY! : process.env.REACT_APP_RPC!;
     const provider        = useMemo(() => {
       if (!rpcUrl) {
@@ -758,11 +731,10 @@ export function useAcceptLoan() {
     const runTx                = useTx()
     const { wallet }           = useWallet()
     const core                 = useContract(genericFundCoreAddress, genericFundCoreAbi, wallet)
-    const coreIface            = new ethers.Interface(genericFundCoreAbi);
     const { debts, setDebts }  = useDataContext()
     const { handleToggleView } = useTouch()
     const qc                   = useQueryClient()
-  
+
     const acceptLoan = (union: string, loanId: string) =>
       runTx(
         async () => {
@@ -772,7 +744,8 @@ export function useAcceptLoan() {
           // call to accept a loan
           return core.AcceptLoan(
             union,
-            loanId
+            loanId,
+            0
           );
         },
         {
@@ -780,7 +753,8 @@ export function useAcceptLoan() {
             console.error("transferLoan failed:", err);
           },    
           onSuccess: () => {
-            handleToggleView({ ix: 0, i: 0  }) //
+            qc.invalidateQueries({ queryKey: ['transferableLoans'], refetchType: 'all' })
+            handleToggleView({ ix: 0, i: 0  })
           }
         }
       )
@@ -819,19 +793,13 @@ export function useRepayGeneric() {
           // const buffer = ethers.parseUnits('1', tokenDecimals); // small extra to avoid rounding shortfalls
           // const allowanceNeeded = repayAmt + buffer;
 
-          const current = await token?.allowance(wallet.address, genericFundCoreAddress)
-          console.error("allowance current:", current);
-          console.error("allowance required:", repayAmt); 
-
           const balance = await token.balanceOf(wallet.address);
           if (balance < repayAmt) throw new Error('Insufficient balance to repay this amount');
 
-          if (current < repayAmt) {
-            const ap = await token?.approve(genericFundCoreAddress, ethers.MaxUint256)
-            await ap.wait()
-            const updated = await token?.allowance(wallet.address, genericFundCoreAddress)
-            console.error("allowance after approve:", updated);
-          }
+          // approve allowance for repayment
+          const approveTx = await token.approve(genericFundCoreAddress, repayAmt);
+          await approveTx.wait();
+          const repayNonce = approveTx.nonce + 1;
 
           // 4) simulate call to know if we tag fully repaid
           try {
@@ -850,7 +818,7 @@ export function useRepayGeneric() {
          
           // 5) (partial) repay the loan
           try {
-            return await core.repayLoan(union,loanID,repayAmt)
+            return await core.repayLoan(union,loanID,repayAmt, { nonce: repayNonce })
           } catch (err: any) {
             const data = err?.data || err?.error?.data;
             try {
@@ -903,3 +871,66 @@ export function useRepayGeneric() {
   
     return { repaygeneric }
   }
+
+export function useRemoveLoan() {
+    const runTx                = useTx()
+    const { wallet }           = useWallet()
+    const { debts, setDebts }  = useDataContext()
+    const { handleToggleView } = useTouch()
+    const { setCardIx }        = useNavContext()
+    const core                 = useContract(genericFundCoreAddress, genericFundCoreAbi, wallet)
+    const qc                   = useQueryClient()
+
+    const removeLoan = (union: string, loanId: string) =>
+      runTx(
+        async () => {
+          if (!core || !wallet) throw new Error('Wallet or contract not ready')
+          return core.removeLoan(union, loanId)
+        },
+        {
+          onError: (err: any) => {
+            console.error('removeLoan failed:', err)
+          },
+          onSuccess: () => {
+            const newDebtsArray = debts.filter((d: any) => d.loanID !== loanId)
+            setDebts(newDebtsArray)
+            setCardIx(false)
+            setDBitem('debts', newDebtsArray, 'Init')
+            handleToggleView({ ix: null })
+            qc.invalidateQueries({ queryKey: ['unionGenericFunds'] })
+            qc.invalidateQueries({ queryKey: ['fundsData'] })
+            qc.invalidateQueries({ queryKey: ['transferableLoans'], refetchType: 'all' })
+          }
+        }
+      )
+
+    return { removeLoan }
+}
+
+export function useUnionTreasury() {
+  const runTx  = useTx();
+  const { wallet } = useWallet();
+  const qc     = useQueryClient();
+  const core   = useContract(genericFundCoreAddress, genericFundCoreAbi, wallet);
+  const token  = useContract(tokenAddress, nilaTokenAbi, wallet);
+
+  const deposit = (unionAddr: string, amountWei: bigint) =>
+    runTx(async () => {
+      if (!core || !token || !wallet) throw new Error('Wallet or contracts not ready');
+      const approveTx = await token.approve(genericFundCoreAddress, amountWei);
+      await approveTx.wait();
+      return core.withdrawUnionTreasury(unionAddr, amountWei, false, true, { nonce: approveTx.nonce + 1 });
+    }, {
+      onSuccess: () => qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] }),
+    });
+
+  const withdraw = (unionAddr: string, amountWei: bigint, fromRainy = false) =>
+    runTx(async () => {
+      if (!core) throw new Error('Contract not ready');
+      return core.withdrawUnionTreasury(unionAddr, amountWei, fromRainy, false);
+    }, {
+      onSuccess: () => qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] }),
+    });
+
+  return { deposit, withdraw };
+}

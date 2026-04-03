@@ -124,7 +124,7 @@ function TreasuryCapBlock({ runningTotal, available }) {
 // ── Main component ────────────────────────────────────────────────────────────
 // phases: 'pre-scan' | 'scan-qr' | 'scan' | 'scanning-single' | 'scanning-bulk' | 'review' | 'confirm'
 const CashCounter = ({ handleOpenForm }) => {
-  const { db, unionFunds } = useDataContext();
+  const { db, unionFunds, txdetails } = useDataContext();
   const { resolveName, hasName, addContact } = useContactBook();
   const unionAddr = db?.union?.address;
 
@@ -153,8 +153,12 @@ const CashCounter = ({ handleOpenForm }) => {
   const { executeSwap, isProcessing } = useCashSwap(clearSession, handleOpenForm);
   const { queueCapture, pendingCount, isUploading, uploadPending } = useTrainingData();
 
-  const [phase, setPhase] = useState(scannedBills.length > 0 ? 'scanning-bulk' : 'pre-scan');
-  const [memberAddress, setMemberAddress] = useState(null);
+  const prefillAddress = txdetails?.memberAddress ?? null;
+  const [memberAddress, setMemberAddress] = useState(prefillAddress);
+  const [phase, setPhase] = useState(
+    prefillAddress        ? 'scan'
+    : scannedBills.length > 0 ? 'scanning-bulk' : 'pre-scan'
+  );
   // investOverride: member has a loan but explicitly wants to invest instead
   const [investOverride, setInvestOverride] = useState(false);
 

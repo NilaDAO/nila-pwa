@@ -3,8 +3,8 @@ import QR from "../UI/qrCode";
 const sendDigital = ({db}) => {
     
     return (
-        <div className="flex flex-col w-full justify-center">
-            <div className="mx-12">
+        <div className="flex flex-col w-full bg-white justify-center">
+            <div className="m-12">
             <QR digitalAddress={db['address']} />
             </div>
             <div className="mx-12">

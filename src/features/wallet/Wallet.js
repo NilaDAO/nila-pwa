@@ -8,7 +8,7 @@ import { cropColor } from '../../utils/cropColors.js';
 import Assets from '../assets/assets'
 import DebtsActive from '../lending/debtsActive';
 import Investments from '../lending/investments';
-import { InvestmentCard, DebtCard, Card, AssetCard,CultivationCard,MapCard } from "./Cards";
+import { InvestmentCard, DebtCard, Card, AssetCard,CultivationCard,MapCard, CashLiquidityCard } from "./Cards";
 import MapNav from '../maps/mapsNav';
 import { StaticCards } from '../maps/FieldView/staticCards';
 import FieldReg_cards from '../maps/FieldRegistration/fieldRegCards';
@@ -17,6 +17,9 @@ import TaskMessage from "./tasks";
 import Settings from './Settings';
 import Forms from '../../components/Forms/forms';
 import Tabs from './tabs';
+import UnionReserve from './UnionReserve';
+import { useUnionCashReserve } from '../../hooks/useUnionCashReserve.ts';
+import { useOpenCashOffers } from '../../hooks/useCashOffer.ts';
 import Spinner from "../../components/UI/spinner";
 import { ClaimButton, CollapseButton } from "../../components/UI/buttons";
 import { useSummary } from "../../hooks/useSummary";
@@ -104,8 +107,9 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums }) =>
               )
               : <FieldReg_cards LAND={LAND} />
             : ix === 3 ? <DebtsActive debt={debts[cardIx]} />
-            : ix === 4 ? <Settings handleOpenForm={handleOpenForm} />
-            : ix === 5 && <Forms LAND={LAND} CAP={CAP} handleOpenForm={handleOpenForm} />
+            : ix === 4 ? <Settings handleOpenForm={handleOpenForm} LAND={LAND} />
+            : ix === 5 ? <Forms LAND={LAND} CAP={CAP} handleOpenForm={handleOpenForm} />
+            : ix === 6 && <UnionReserve handleOpenForm={handleOpenForm} />
             }
         </motion.div>
         </div> 
@@ -201,11 +205,11 @@ function Wallet({LAND}) {
      *      - total infungible amounts (LAND)
      *      - status invest/borrow
      */
-    const { setTxIndex, debts, db, unionFunds, tokenData, fieldActivity, setFieldActivity } = useDataContext()
+    const { setTxIndex, setTxDetails, debts, db, unionFunds, tokenData, fieldActivity, setFieldActivity } = useDataContext()
     const funds                                                                           = !unionFunds ? [] : unionFunds //?.map(f => f[0])
     const { stage }                                                                       = useTxContext()
     const [ cardShrink, setShrinkProgress]                                                = useState(0); 
-    const { data , isLoading, error}                                                      = useSummary(db.chain,db.address,funds);
+    const { data , isLoading, error}                                                      = useSummary(process.env.REACT_APP_CHAIN_ID || '137',db.address,funds);
     const { ix,setIx,cardIx,prevIx }                                                      = useNavContext()
     const { tokenview, cardView, setCardView }                                            = useViewModeContext();
     const {
@@ -233,13 +237,23 @@ function Wallet({LAND}) {
     const sums = data ? data : db['union_fund_sums']
     const earnings = sums ? sums.total_rewards : 0
 
-    const handleOpenForm = (e) => {
+    // Union Cash & Liquidity — only fetched when user is a leader
+    const { data: reserveData } = useUnionCashReserve(db?.union?.leader ? db?.union?.address : undefined);
+    const { data: openOffers = 0 } = useOpenCashOffers(db?.union?.leader ? db?.union?.address : undefined);
+
+    const handleOpenForm = (e, params) => {
+        if (e === 'cashDesk') {
+            // Navigate directly to the Union Reserve card (ix=6) rather than the form sheet
+            setIx((prev) => { prevIx.current = prev; return 6; });
+            return;
+        }
+        setTxDetails(params ?? null);
         setTxIndex(e)
         setIx((prev) => {
             prevIx.current = prev
             return 5;
         })
-    }   
+    }
 
     useEffect(() => {
         if (ix) return 
@@ -319,6 +333,19 @@ function Wallet({LAND}) {
           onClick: () => handleToggleView({ ix: 1}),
           content: <InvestmentCard CAP={CAP} sums={sums} cardShrink={cardShrink} inArrays={inArrays} />
         },
+        ...(db?.union?.leader ? [{
+          key: 'union-reserve',
+          type: 'CASH_LIQUIDITY',
+          show: ix === 6 || ix === null,
+          title: "Cash & Liquidity",
+          onClick: () => handleToggleView({ ix: 6 }),
+          content: <CashLiquidityCard
+            treasury={reserveData?.treasury ?? 0n}
+            available={reserveData?.available ?? 0n}
+            lpPending={openOffers}
+            cardShrink={cardShrink}
+          />,
+        }] : []),
         // Generate Active Debt cards
         ...(debts.map((d, i) => ({
             key: `debts-${i}`,

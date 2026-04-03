@@ -16,21 +16,23 @@ import { decodeMetadataUri } from '../utils/decodeMetadataUri.ts';
 import { useDataContext } from "../utils/NavigationContext.js";
 
 const nilaGrantContract = String(process.env.REACT_APP_GRANT_ADDRESS)
-const foodTokenContract = '0x27C4115d77ECA4f300fB34060b1719A3d1159709'
+const foodTokenContract = process.env.REACT_APP_FOODTOKEN_ADDRESS || '0x27C4115d77ECA4f300fB34060b1719A3d1159709'
 const USDCpriceFeedAddress = '0x1b8739bB4CdF0089d07097A9Ae5Bd274b29C6F16';
 const USDTpriceFeedAddress = '0x0A6513e40db6EB1b165753AD52E80663aeA50545'; // update to real USDT feed when available
 const INRpriceFeedAddress  = '0xDA0F8Df6F5dB15b346f4B8D1156722027E194E60'; // Chainlink USD/INR feed
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const inrFeedCache: { value: number | null; fetchedAt: number } = { value: null, fetchedAt: 0 };
 
-const AMOY_TOKENS = [
-  { addr: "0x10D11eDD572ccb54D6D59f07521eA071Ed1C326E", abi: erc20ABI, decimals: 18, key: "NILA" }, // NILA to nIN
-  { addr: "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582", abi: erc20ABI, decimals: 6,  key: "USDC" },
-];
+
 const MAIN_POLYGON_TOKENS = [
-  { addr: "0xD1F49598E42D30Cd900Ea86244485ca0647d31C7", abi: erc20ABI, decimals: 18, key: "NILA" }, // NILA to nIN
+  { addr: String(process.env.REACT_APP_NIN_MAIN), abi: erc20ABI, decimals: 18, key: "NILA" },
   { addr: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", abi: erc20ABI, decimals: 6,  key: "USDT" },
 ];
+// Local Hardhat chain (chainId 31337) — addresses from .env.local
+const LOCAL_TOKENS = [
+  { addr: String(process.env.REACT_APP_NIN_MAIN),  abi: erc20ABI, decimals: 18, key: "NILA" },
+  { addr: String(process.env.REACT_APP_USDT_MAIN || "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"), abi: erc20ABI, decimals: 6, key: "USDT" },
+].filter(t => t.addr && t.addr !== 'undefined');
 
 const LOOKUP_TABLE : any = {
     "0": {
@@ -193,8 +195,8 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
 
         // ----------------- build ERC-20 calls -----------------
         let erc20Calls: [string, string][] = [];
-        if (chain === '80002') {
-          erc20Calls = AMOY_TOKENS.flatMap(t => ([
+        if (chain === '31337') {
+          erc20Calls = LOCAL_TOKENS.flatMap(t => ([
             [t.addr, erc20Iface.encodeFunctionData("symbol")],
             [t.addr, erc20Iface.encodeFunctionData("balanceOf", [address])]
           ]));
@@ -231,9 +233,14 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
         const [, returnData] = await mc.aggregate.staticCall(calls);
 
         // ----------------- helpers -----------------
-        async function getUsdcPrice(p: ethers.Provider) {
+        // Chainlink price feeds live on Polygon mainnet (137) regardless of app chain.
+        // Use REACT_APP_RPC_MAINNET which always points at the production Alchemy mainnet URL.
+        const _mainnetRpc = process.env.REACT_APP_RPC_MAINNET || process.env.REACT_APP_RPC_ALCHEMY || '';
+        const priceFeedProvider: ethers.Provider = new ethers.JsonRpcProvider(_mainnetRpc);
+
+        async function getUsdcPrice() {
           try {
-            const feed = new ethers.Contract(USDCpriceFeedAddress, priceFeedAbi, p);
+            const feed = new ethers.Contract(USDCpriceFeedAddress, priceFeedAbi, priceFeedProvider);
             const round = await feed.latestRoundData();
             return (Number(round.answer) / 1e8)
           } catch (e) {
@@ -241,10 +248,10 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
             return 1;
           }
         }
-        
-        async function getUsdtPrice(p: ethers.Provider) {
+
+        async function getUsdtPrice() {
           try {
-            const feed = new ethers.Contract(USDTpriceFeedAddress, priceFeedAbi, p);
+            const feed = new ethers.Contract(USDTpriceFeedAddress, priceFeedAbi, priceFeedProvider);
             const round = await feed.latestRoundData();
             return (Number(round.answer) / 1e8)
           } catch (e) {
@@ -253,7 +260,7 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
           }
         }
 
-        async function getINRprice(p: ethers.Provider) {
+        async function getINRprice() {
           // INR/USD updates daily; avoid hitting this feed on each balances poll.
           if (
             Number.isFinite(inrFeedCache.value) &&
@@ -262,7 +269,7 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
             return inrFeedCache.value as number;
           }
           try {
-            const feed = new ethers.Contract(INRpriceFeedAddress, priceFeedAbi, p);
+            const feed = new ethers.Contract(INRpriceFeedAddress, priceFeedAbi, priceFeedProvider);
             const round = await feed.latestRoundData();
             const price = Number(round.answer) / 1e8;
             inrFeedCache.value = price;
@@ -277,15 +284,15 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
 
         // ----------------- decode ERC-20 -----------------
         let i = 0;
-        const TOKENBOOK = chain === '80002' ? AMOY_TOKENS : MAIN_POLYGON_TOKENS;
+        const TOKENBOOK = chain === '31337' ? LOCAL_TOKENS : MAIN_POLYGON_TOKENS;
 
         for (const t of TOKENBOOK) {
           const raw_sym = erc20Iface.decodeFunctionResult("symbol",    returnData[i++])[0] as string;
           const sym = raw_sym === "NILA" ? "nIN" : raw_sym === "USDT0" ? "USDT" : raw_sym;
           const raw = erc20Iface.decodeFunctionResult("balanceOf", returnData[i++])[0] as bigint;
-          const price = sym === "nIN" ? await getINRprice(rpc) // use Nila as nIN 
-                     : sym === "USDC" ? await getUsdcPrice(rpc)
-                     : sym === "USDT" ? await getUsdtPrice(rpc)
+          const price = sym === "nIN" ? await getINRprice() // use Nila as nIN
+                     : sym === "USDC" ? await getUsdcPrice()
+                     : sym === "USDT" ? await getUsdtPrice()
                      : 1;
           decoded.push({
             type: "ERC20",

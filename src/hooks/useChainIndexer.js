@@ -17,7 +17,7 @@ async function fetchPolygonTxs(address,chain) {
     &sort=desc
     &apikey=${apiKey}`.replace(/\s+/g, '')
 
-  console.log('url', apiKey, address);
+  console.log('url', url, address);
   const res = await fetch(url)
   const { status, result } = await res.json()
   if (status !== '1') throw new Error('Failed to fetch txs')

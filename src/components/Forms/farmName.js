@@ -112,7 +112,7 @@ const FarmNameForm = ({ LAND }) => {
         />
       </div>
       <span className="flex flex-row text-gray-800 dark:text-slate-400 px-4 my-6">
-        The farm name is part of your property asset and can NOT be changed afterwards.
+        ⚠️ Once issued, this name is permanent. Choose carefully.
       </span>
       {(flow === 10 || flow === 13) &&
         <>

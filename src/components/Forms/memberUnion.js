@@ -13,8 +13,12 @@ const MemberUnion = ({handleSetNotifications, address, chain}) => {
     useEffect(() => {
         setCardView('transactionview')
         // fetch unions in the area "அன்னை தெரசா சகோதர வாழ்வு நாணய சங்கம்"
-        const rows = [
-        { name: "Mother Theresa Union", rep: "Mrs. Rosalie Susairaj", address: '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070', location: [11.878671,78.964561], chain: 137, transfers: true },
+        const rpc = process.env.REACT_APP_RPC || '';
+        const isLocal = rpc.includes('127.0.0.1') || rpc.includes('localhost');
+        const rows = isLocal ? [
+            { name: "Local Test Union", rep: "Hardhat account[2]", address: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC', location: [11.878671,78.964561], chain: 31337, transfers: true },
+        ] : [
+            { name: "Mother Theresa Union", rep: "Mrs. Rosalie Susairaj", address: '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070', location: [11.878671,78.964561], chain: 137, transfers: true },
         ]
         setUnions(rows)
     },[])

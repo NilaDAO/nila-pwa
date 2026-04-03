@@ -46,7 +46,12 @@ const mapBackendItem = (i, union) => ({
 
 /**
  * Primary hook: reads from IndexedDB (source of truth after chain sync).
- * Backend seeds IndexedDB with new loans, chain sync enriches with on-chain state.
+ *
+ * Sync model (like contacts):
+ *   1. Read local IndexedDB
+ *   2. Push local active loans to /loans/sync (leader → node merge)
+ *   3. Pull merged list back (other leaders' loans included)
+ *   4. Upsert new loans into IndexedDB (don't overwrite chain-enriched data)
  *
  * Returns { activeLoans, allItems, count, synced }
  */
@@ -54,24 +59,40 @@ export function useActiveLoans(unionAddress, enabled) {
   return useQuery({
     queryKey: ['activeLoans', unionAddress],
     queryFn: async () => {
+      const API = process.env.REACT_APP_API_BASE_URL;
+
       // 1. Read IndexedDB — this IS the display source
       let stored = {};
       try {
         stored = await readAllItems('ActiveLoans') ?? {};
       } catch (_) { /* first run */ }
 
-      // 2. Backend fetch — only to discover NEW loans, not to overwrite chain data
+      // 2. Push local active loans to node, pull merged list back
       let backendCount = 0;
       try {
-        const url = `${process.env.REACT_APP_API_BASE_URL}/filter_events/transferableLoans`;
-        const res = await fetch(url, {
+        // Build push payload from local active loans
+        const localActive = Object.values(stored)
+          .filter((l) => l.active && !l.chainClosed && l.drawdownTs)
+          .map((l) => ({
+            loan_id: l.id,
+            borrower: l.borrower || '',
+            fund: l.fund || '',
+            amount: String(l.amount ?? '0'),
+            rate_bp: l.rateBP ?? 0,
+            maturity_ts: l.maturityTs ?? 0,
+            drawdown_ts: l.drawdownTs ?? 0,
+            active: true,
+          }));
+
+        const res = await fetch(`${API}/loans/sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address: unionAddress }),
+          body: JSON.stringify({ union: unionAddress, loans: localActive }),
         });
+
         if (res.ok) {
           const json = await res.json();
-          backendCount = json.count ?? 0;
+          backendCount = json.total ?? 0;
           const backendItems = Array.isArray(json.items)
             ? json.items.map((i) => mapBackendItem(i, unionAddress))
             : [];
@@ -92,6 +113,7 @@ export function useActiveLoans(unionAddress, enabled) {
         (l) => l.drawdownTs && l.active && !l.chainClosed
       );
       const localCount = allItems.length;
+      console.log('[activeLoans] loaded:', activeLoans.length, 'active /', allItems.length, 'total');
 
       return {
         activeLoans,

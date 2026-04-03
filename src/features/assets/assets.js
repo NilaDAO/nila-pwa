@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { useViewModeContext } from '../../utils/NavigationContext';
+import { useViewModeContext, useNavContext } from '../../utils/NavigationContext';
 import CertGrid from '../assets/certGrid';
 import AssetList from './assetsList';
 
 const Assets = ({LAND,handleOpenForm}) => {
     const { navRef,tokenview,setTokenview,setCardView } = useViewModeContext();
+    const { ix, prevIx } = useNavContext();
     const [ data, setData ] = useState({ tab: true });
     const [ tab, setTab] = useState(navRef.current.assetTab) // ref only on remount of component
 
     const handleTokenView = (elements) => {
+        prevIx.current = ix;
         setData(elements)
         setTokenview(true);
         setCardView('transactionview')
@@ -38,7 +40,7 @@ const Assets = ({LAND,handleOpenForm}) => {
                 <h3 onClick={() => handleSetTab(false)} className={`font-bold ${tab ? 'text-gray-400 dark:text-slate-400' : 'dark:text-white'} text-sm`}>Certificates</h3>
             </div>
             { tab ?
-            <div className='bg-white dark:bg-gray-700 rounded-3xl w-full mb-[220px] py-6 rounded-br-3xl rounded-bl-3xl shadow-bottom'>
+            <div className={tokenview ? '' : 'bg-white dark:bg-gray-700 rounded-3xl w-full mb-[220px] py-6 shadow-bottom'}>
                 <AssetList LAND={LAND} data={data} handleTokenView={handleTokenView} handleOpenForm={handleOpenForm} />
             </div>
             :

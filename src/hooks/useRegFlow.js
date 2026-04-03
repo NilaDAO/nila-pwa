@@ -52,7 +52,6 @@ const useRegFlow = () => {
   const { setCardView } = useViewModeContext();
   const timerRef = useRef(0); // Used in counter
   const {track, flow, apiOnline, positions, approvedFields, results, remote,neighbours, property, alts } = fieldReg
-  const [ altIndex, setAltIndex ] = useState(0);
   const taskIdRef = useRef(null);
 
   const handleDeleteApprovedFields = () => {
@@ -202,15 +201,12 @@ const useRegFlow = () => {
   useEffect(() => {
   }, []);
 
-  // persist positions/fields as they change
+  // persist positions/fields as they change — only clear on explicit reset
   useEffect(() => {
     localStorage.setItem('positions', JSON.stringify(positions));
     if (approvedFields.length !== 0) {
       localStorage.setItem('fields', JSON.stringify(approvedFields));
       localStorage.setItem('property', JSON.stringify(property));
-    } else {
-      localStorage.removeItem('fields');
-      localStorage.removeItem('property');
     }
   }, [positions, approvedFields, property]);
 

@@ -178,7 +178,7 @@ export function useTx() {
             txTimerRef.current = null;
           }
           setStage("approval");
-          setTxMessage("Confirm this transaction in your wallet.");
+          setTxMessage("Confirming this transaction");
           opts.onPending?.();
         },
         onSubmitted: (tx) => {
@@ -228,7 +228,7 @@ export function useTx() {
           if (e?.code === "ACTION_REJECTED") {
             setTxMessage("Transaction rejected by user.");
           } else if (e?.code === "INSUFFICIENT_FUNDS") {
-            setTxMessage("Insufficient funds.");
+            setTxMessage("Request gas subsidy from Nila.");
           } else if (e?.code === "UNPREDICTABLE_GAS_LIMIT") {
             setTxMessage("Unable to estimate gas. The transaction may fail or require a manual gas limit.");
           } else {
