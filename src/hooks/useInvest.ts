@@ -40,7 +40,7 @@ export function usePreviewUnbond(unionAddr: string) {
         pending: s.senior,
         pendingPrincipalSnap: p.requestTs > 0n ? Number(ethers.formatUnits(p.pendingPrincipalSnap, DECIMALS)) : 0,
         pastMin: p.pastMin,
-        coveredByIdle: p.coveredByIdle,
+        coveredByBucket: p.coveredByBucket,
         eligibleNow: p.eligibleNow,
       };
     }
@@ -62,7 +62,7 @@ export function usePreviewUnbond(unionAddr: string) {
       pending: Number(ethers.formatUnits(p.pendingShares, DECIMALS)),
       pendingPrincipalSnap: Number(ethers.formatUnits(pendingToken, DECIMALS)),
       pastMin: p.pastMin,
-      coveredByIdle: p.coveredByIdle,
+      coveredByBucket: p.coveredByBucket,
       eligibleNow: p.eligibleNow,
     };
     return out

@@ -199,11 +199,9 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                 </div>
                 <div className='bg-gray-200 dark:bg-gray-700 pb-6 rounded-3xl'>
                     { activeWithdrawal && (() => {
-                        const coveredByIdle  = Boolean(hasMaturing?.coveredByIdle);
-                        const juniorLiquidityShort = coveredByIdle && (s?.juniorCash ?? 0) < (hasMaturing?.pendingPrincipalSnap ?? 0);
-                        const covered        = coveredByIdle && !juniorLiquidityShort;
-                        const canClaimNow         = readyToClaim && covered;
-                        const liquidityShort      = !coveredByIdle || juniorLiquidityShort;
+                        const coveredByBucket = Boolean(hasMaturing?.coveredByBucket);
+                        const canClaimNow         = readyToClaim && coveredByBucket;
+                        const liquidityShort      = !coveredByBucket;
                         return (
                         <div className='bg-gray-200 dark:bg-gray-700'>
                             <div className='flex flex-col relative z-20 -my-6 mx-3 rounded-xl bg-green dark:bg-green_dark shadow-2xl overflow-hidden'>
@@ -215,7 +213,7 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                                     <div className='text-xs flex flex-col items-center justify-center'>
                                         { canClaimNow
                                             ? <HandleUnbondClaim />
-                                            : covered
+                                            : coveredByBucket
                                                 ? <CountdownCircleWithdraw remainingSec={remainingSec} size={size} onDone={handleCountdownDone} />
                                                 : (
                                                     <div style={{ width: size, height: size }} className='flex flex-col items-center justify-center rounded-full bg-white bg-opacity-20 text-white text-center gap-0.5'>
@@ -234,11 +232,9 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                                 { liquidityShort && (
                                     <div className='bg-amber-600 dark:bg-amber-700 px-12 py-6 flex flex-col gap-2'>
                                         <p className='text-xs text-white font-semibold'>
-                                            { juniorLiquidityShort
-                                                ? '⚠ Window open but blocked — the pool has funds, but not enough in the junior tranche to pay out right now. Contact your union.'
-                                                : hasMaturing?.pastMin
-                                                    ? '⚠ Window open but blocked — new borrowing restricted until loan repayments arrive'
-                                                    : 'New borrowing restricted — waiting for loan repayments before payout can proceed'
+                                            { hasMaturing?.pastMin
+                                                ? '⚠ Waiting for loan repayments — your shares will be claimable once enough loans repay into this fund.'
+                                                : 'Waiting for loan repayments before payout can proceed'
                                             }
                                         </p>
                                         <button
