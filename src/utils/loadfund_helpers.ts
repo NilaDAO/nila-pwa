@@ -41,14 +41,7 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
         return [];
     }
 
-    console.log('[loadGenericFundData] env addresses', {
-        genericFundViewerAddress,
-        genericFundCoreAddress,
-        unionAddress,
-        fundAddress,
-        investor,
-        loanType,
-    });
+    // console.log('[loadGenericFundData] env addresses', { genericFundViewerAddress, genericFundCoreAddress, unionAddress, fundAddress, investor, loanType });
 
     // ---- single-loanType (JUNIOR) + one SENIOR row ----
     const labels = [
@@ -79,15 +72,13 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
         [genericFundCoreAddress,   coreIface.encodeFunctionData("bucketTresholds", [unionAddress, loanType])],
     ];
 
-    console.log('[loadGenericFundData] calls', calls.map(([addr, data], idx) => ({
-        label: labels[idx], to: addr, data: data.slice(0, 10) + '…'
-    })));
+    // console.log('[loadGenericFundData] calls', calls.map(([addr, data], idx) => ({ label: labels[idx], to: addr, data: data.slice(0, 10) + '…' })));
 
     let ret: string[];
     try {
         const [, _ret]: [boolean[], string[]] = await mc.aggregate.staticCall(calls);
         ret = _ret;
-        console.log('[loadGenericFundData] raw ret', ret.map((r, idx) => ({ label: labels[idx], bytes: r.slice(0, 66) + '…' })));
+        // console.log('[loadGenericFundData] raw ret', ret.map((r, idx) => ({ label: labels[idx], bytes: r.slice(0, 66) + '…' })));
     } catch (err) {
         console.error('[loadGenericFundData] aggregate failed:', err);
         // probe individual calls to see which fails
@@ -111,22 +102,15 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
     let i = 0;
     // ---- decode ----
     // JUNIOR
-    console.log('[loadGenericFundData] decoding getFundTotalsByTranche junior, raw:', ret[i]?.slice(0, 66));
     const [JuniorDeposits, JuniorBorrows, JuniorIndex] = viewerIface.decodeFunctionResult("getFundTotalsByTranche", ret[i++]);
-    console.log('[loadGenericFundData] JuniorDeposits', JuniorDeposits, 'JuniorBorrows', JuniorBorrows, 'JuniorIndex', JuniorIndex);
-    console.log('[loadGenericFundData] decoding getInvestorJunior, raw:', ret[i]?.slice(0, 66));
     const [jInv] = coreIface.decodeFunctionResult("getInvestorJunior", ret[i++]); // (shares, locked, pending)
-    console.log('[loadGenericFundData] jInv', jInv);
     const lb = viewerIface.decodeFunctionResult("getLiquidityBuffer", ret[i++]);
     const prRaw = viewerIface.decodeFunctionResult("previewRateBP", ret[i++]);      // uint16
     const pr = Number(prRaw) / 100;
     const j_entryIndex = jInv.entryIndex
     // SENIOR
-    console.log('[loadGenericFundData] decoding getFundTotalsByTranche senior, raw:', ret[i]?.slice(0, 66));
     const [SeniorDeposits, SeniorBorrows,SeniorIndex] = viewerIface.decodeFunctionResult("getFundTotalsByTranche", ret[i++]);
-    console.log('[loadGenericFundData] decoding getInvestorSenior, raw:', ret[i]?.slice(0, 66));
     const [sInv] = coreIface.decodeFunctionResult("getInvestorSenior", ret[i++]); // (shares, locked, pending)
-    console.log('[loadGenericFundData] sInv', sInv);
     const s_entryIndex = sInv.entryIndex
     const [jMarket] = coreIface.decodeFunctionResult("getJuniorMarket", ret[i++]);
     const juniorMarketCash = jMarket.cash as bigint;
@@ -185,6 +169,7 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
         requiredReserve: Number(ethers.formatUnits(lb.requiredReserve, decimals)),
         idleCash: Number(ethers.formatUnits(lb.idleCashForType, decimals)),
         juniorCash: Number(ethers.formatUnits(juniorMarketCash, decimals)),
+        juniorEquity: Number(ethers.formatUnits(JuniorDeposits, decimals)),
         seniorPrincipal: Number(ethers.formatUnits(SeniorDeposits, decimals)),
         claimableReserved: Number(ethers.formatUnits(lb.claimableReserved, decimals)),
         previewRateBP: Number(pr),
@@ -199,6 +184,5 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
     };
 
     const result = Object.values(fundMap) as GenericFundData[];
-    console.log('[loadGenericFundData] result', result);
-    return result; 
+    return result;
 }
