@@ -85,7 +85,7 @@ export function useSendTokens() {
       []
     );
   const MAIN_POLYGON_TOKENS = [
-    { addr: "0xD1F49598E42D30Cd900Ea86244485ca0647d31C7", abi: erc20Abi, decimals: 18, key: "NILA" }, // NILA to nIN
+    { addr: process.env.REACT_APP_NIN_MAIN!, abi: erc20Abi, decimals: 18, key: "NILA" },
     { addr: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", abi: erc20Abi, decimals: 6,  key: "USDT" },
   ];
   
@@ -153,6 +153,7 @@ export function useFxPool(opts: FxOptions = {}) {
     () => [
       "function allowance(address owner, address spender) view returns (uint256)",
       "function approve(address spender, uint256 amount) returns (bool)",
+      "function balanceOf(address account) view returns (uint256)",
     ],
     []
   );
@@ -407,7 +408,12 @@ export function useFxPool(opts: FxOptions = {}) {
       await fxPool.commitCashRequest.staticCall(orderId);
       return fxPool.commitCashRequest(orderId, { nonce });
     }, {
-      onSuccess: () => { qc.invalidateQueries({ queryKey: ["globalOpenCashOffers"] }); },
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ["globalOpenCashOffers"] });
+        qc.invalidateQueries({ queryKey: ["globalOpenRedeemOrders"] });
+        qc.invalidateQueries({ queryKey: ["pendingCashDeliveries"] });
+        qc.invalidateQueries({ queryKey: ["tasks"] });
+      },
       onError: (err: any) => { console.error("commitCashRequest failed:", err); },
     });
   }, [fxPool, wallet, runTx, qc]);
@@ -488,6 +494,45 @@ export function useFxPool(opts: FxOptions = {}) {
     });
   }, [fxPool, wallet, runTx, qc]);
 
+  // Union cancels an open RedeemOrder (status=0) before any LP fills it.
+  // Contract returns locked USDT to the union.
+  const cancelRedeemOrder = useCallback(async (orderId: bigint) => {
+    if (!fxPool || !wallet) throw new Error('FX pool or wallet not ready');
+    return runTx(async () => {
+      const nonce = await (wallet.provider as ethers.JsonRpcProvider).send('eth_getTransactionCount', [wallet.address, 'pending']);
+      await fxPool.cancelRedeemOrder.staticCall(orderId);
+      return fxPool.cancelRedeemOrder(orderId, { nonce });
+    }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ['balances'] });
+        qc.invalidateQueries({ queryKey: ['unionOpenRedeemOrdersList'] });
+        qc.invalidateQueries({ queryKey: ['globalOpenCashOffers'] });
+        qc.invalidateQueries({ queryKey: ['openCashOffers'] });
+      },
+      onError: (err: any) => { console.error('cancelRedeemOrder failed:', err); },
+    });
+  }, [fxPool, wallet, runTx, qc]);
+
+  // Union cancels an open CashOffer (status=0) before any LP fills it.
+  // No tokens move — postCashOffer never locked anything; the underlying
+  // CashEscrow stays active and can be re-offered or allowed to expire.
+  // Contract function lands with plan 019 Phase 1b.
+  const cancelCashOffer = useCallback(async (offerId: bigint) => {
+    if (!fxPool || !wallet) throw new Error('FX pool or wallet not ready');
+    return runTx(async () => {
+      const nonce = await (wallet.provider as ethers.JsonRpcProvider).send('eth_getTransactionCount', [wallet.address, 'pending']);
+      await fxPool.cancelCashOffer.staticCall(offerId);
+      return fxPool.cancelCashOffer(offerId, { nonce });
+    }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ['unionOpenCashOffersList'] });
+        qc.invalidateQueries({ queryKey: ['globalOpenRedeemOrders'] });
+        qc.invalidateQueries({ queryKey: ['openCashOffers'] });
+      },
+      onError: (err: any) => { console.error('cancelCashOffer failed:', err); },
+    });
+  }, [fxPool, wallet, runTx, qc]);
+
   // LP reclaims USDT from a filled RedeemOrder (PWA) = contract CashOffer,
   // if union failed to deliver ₹ cash within the deadline.
   const lpReclaimRedeemOrder = useCallback(async (offerId: bigint) => {
@@ -527,6 +572,30 @@ export function useFxPool(opts: FxOptions = {}) {
     return receipt;
   }, [fxPool, wallet, runTx, qc]);
 
+  // Read a member's nIN token balance (used by CashOutForm to cap payout at what the wallet holds).
+  const getNinBalance = useCallback(async (addr: string): Promise<bigint> => {
+    if (!nin) throw new Error("NIN contract not ready");
+    return nin.balanceOf(addr) as Promise<bigint>;
+  }, [nin]);
+
+  // CS016: Atomic cash-out — burn farmer nIN + drain escrows in one tx (no partial-completion window).
+  const burnAndDrainEscrows = useCallback(async (farmer: string, burnAmount: bigint, escrowIds: bigint[], amounts: bigint[]) => {
+    if (!fxPool || !wallet) throw new Error("FX pool or wallet not ready");
+    const receipt = await runTx(async () => {
+      const nonce = await (wallet.provider as ethers.JsonRpcProvider).send("eth_getTransactionCount", [wallet.address, "pending"]);
+      return fxPool.burnAndDrainEscrows(farmer, burnAmount, escrowIds, amounts, { nonce });
+    }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ["balances"] });
+        qc.invalidateQueries({ queryKey: ["unionGenericFunds"] });
+        qc.invalidateQueries({ queryKey: ["unionCashReserve"] });
+      },
+      onError: (err: any) => { console.error("burnAndDrainEscrows failed:", err); },
+    });
+    if (!receipt) throw new Error("burnAndDrainEscrows did not confirm");
+    return receipt;
+  }, [fxPool, wallet, runTx, qc]);
+
   // Union burns nIN held by a member (cash-out: member surrenders nIN, leader hands physical INR).
   const burnFarmerNin = useCallback(async (farmer: string, amount: bigint) => {
     if (!fxPool || !wallet) throw new Error("FX pool or wallet not ready");
@@ -554,7 +623,9 @@ export function useFxPool(opts: FxOptions = {}) {
     resolveEscrowCash,
     getActiveEscrowForUnion,
     acceptLoan,
+    getNinBalance,
     burnFarmerNin,
+    burnAndDrainEscrows,
     redeemFarmerNin,
     postRedeemOrder,
     commitCashRequest,
@@ -564,6 +635,8 @@ export function useFxPool(opts: FxOptions = {}) {
     lpFillRedeemOrder,
     lpFillCashOffer,
     lpReclaimRedeemOrder,
+    cancelRedeemOrder,
+    cancelCashOffer,
   } as const;
   
 }
