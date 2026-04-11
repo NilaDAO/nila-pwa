@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ethers } from 'ethers';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDataContext } from '../../utils/NavigationContext';
+import { readItem, setDBitem } from '../../utils/db';
 import { useContactBook } from '../../hooks/useContactBook';
 import { useFxPool } from '../../hooks/useWallet.ts';
 import { useCashOffer } from '../../hooks/useCashOffer.ts';
@@ -10,6 +11,7 @@ import { useRedeemOrder } from '../../hooks/useRedeemOrder.ts';
 import { useMemberLoans } from '../../hooks/useMemberLoans';
 import { useUnionCashReserve } from '../../hooks/useUnionCashReserve.ts';
 import useCashSession from '../../hooks/useCashSession';
+import { useLPCashOnHand } from '../../hooks/useLPCashOnHand';
 import BulkBillScanner from './BulkBillScanner';
 import BillList from './BillList';
 import QRScanner from '../UI/qrScan';
@@ -34,16 +36,22 @@ function deadlineSecs(dl) {
 
 // steps: scan-qr | review-loan | set-fee | posting | waiting | filled | confirm | done
 export function CashOutForm({ handleOpenForm }) {
-  const { db } = useDataContext();
+  const { db, txdetails } = useDataContext();
   const { resolveName, hasName, addContact } = useContactBook();
   const unionAddr = db?.union?.address;
 
   const qc = useQueryClient();
-  const { postCashOffer, confirmCashOfferDelivered, burnFarmerNin, redeemFarmerNin, postRedeemOrder, confirmCashDelivery, cashScanMint, resolveEscrowCash, acceptLoan } = useFxPool();
+  const { postCashOffer, confirmCashOfferDelivered, burnFarmerNin, burnAndDrainEscrows, redeemFarmerNin, postRedeemOrder, confirmCashDelivery, cashScanMint, acceptLoan, getNinBalance } = useFxPool();
   const { scanGroups, scannedBills, runningTotal, addBulkGroup, clearSession } = useCashSession();
+  const { addCash: addLPCash, consumeCash: consumeLPCash } = useLPCashOnHand(unionAddr);
 
-  const [step,           setStep]          = useState('scan-qr');
-  const [memberAddress,  setMemberAddress] = useState(null);
+  const prefillAddress = txdetails?.memberAddress ?? null;
+  const [step,           setStep]          = useState(
+    prefillAddress
+      ? (hasName(prefillAddress) ? 'review-loan' : 'name-gate')
+      : 'scan-qr'
+  );
+  const [memberAddress,  setMemberAddress] = useState(prefillAddress);
   const [feeBP,          setFeeBP]         = useState(100); // 1% default
   const [offerId,        setOfferId]       = useState(null);
   const [redeemOrderId,  setRedeemOrderId] = useState(null);
@@ -53,8 +61,78 @@ export function CashOutForm({ handleOpenForm }) {
   const activeLoan     = loans.find((l) => l.drawdownTs !== 0n && l.drawdownTs !== BigInt(0) && !l.defaulted) ?? null;
   const pendingLoan    = !activeLoan ? loans.find((l) => l.drawdownTs === 0n || l.drawdownTs === BigInt(0)) ?? null : null;
   const currentLoan    = activeLoan ?? pendingLoan ?? null;
-  const principal      = currentLoan?.principal ?? 0;                     // Number, for display only
-  const principalRaw   = currentLoan?.principalRaw ?? 0n;                 // exact bigint for on-chain calls
+  const principalRaw   = currentLoan?.principalRaw ?? 0n;                 // original loan bigint
+
+  // Fetch the member's actual nIN wallet balance — this is one input to the
+  // payout cap. The other is the loan principal: see maxPayoutRaw below for why
+  // we cap at min(balance, principal) instead of just balance.
+  const [ninBalanceRaw, setNinBalanceRaw]         = useState(0n);
+  const [ninBalanceFetched, setNinBalanceFetched] = useState(false);
+  const [cashOutInput, setCashOutInput]           = useState('');       // leader-entered amount (string for input)
+  useEffect(() => {
+    if (!memberAddress || !getNinBalance) { setNinBalanceRaw(0n); setNinBalanceFetched(false); return; }
+    let stale = false;
+    setNinBalanceFetched(false);
+    getNinBalance(memberAddress).then((b) => {
+      console.log('[CashOut] nIN balance for', memberAddress, '=', b.toString());
+      if (!stale) { setNinBalanceRaw(b); setNinBalanceFetched(true); setCashOutInput(''); }
+    }).catch((err) => { console.error('[CashOut] getNinBalance failed:', err); });
+    return () => { stale = true; };
+  }, [memberAddress, getNinBalance]);
+
+  // For pending loans, payout = full principal (acceptLoan mints nIN first).
+  // For active loans, cap = min(wallet nIN, loan principal).
+  //   - Wallet nIN may include residue from prior loans/repayments. FxPool's
+  //     burnFarmerNin holds BURNER_ROLE on nIN so it CAN burn that residue,
+  //     but the residue doesn't belong to *this* loan and burning it would
+  //     silently over-disburse (loan.outstanding stays at principal while the
+  //     borrower loses nIN they paid for elsewhere).
+  //   - Capping at principal makes the form match what the loan can legally
+  //     disburse without over-burning the borrower's other balances.
+  const activeCapRaw   = activeLoan
+    ? (ninBalanceRaw < activeLoan.principalRaw ? ninBalanceRaw : activeLoan.principalRaw)
+    : 0n;
+  const maxPayoutRaw   = activeLoan ? activeCapRaw : principalRaw;
+  const maxPayout      = Number(maxPayoutRaw / 10n ** 18n);
+  const inputRaw       = cashOutInput ? ethers.parseUnits(cashOutInput, 18) : maxPayoutRaw;
+  const payoutRaw      = inputRaw > maxPayoutRaw ? maxPayoutRaw : inputRaw;
+  const principal      = Number(payoutRaw / 10n ** 18n);                  // for display
+
+  // Persist the freshly-read nIN balance into the ActiveLoans IDB record so
+  // ActiveLoansCard can gate its swipe-right (cash-out) action without making
+  // a dedicated chain call. Reuses the getNinBalance call we already do above.
+  useEffect(() => {
+    if (!ninBalanceFetched) return;
+    if (!currentLoan?.loanID) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const existing = await readItem(currentLoan.loanID, 'ActiveLoans');
+        if (!existing || cancelled) return;
+        const balNum = Number(ethers.formatUnits(ninBalanceRaw, 18));
+        if (existing.borrowerNinBal === balNum) return;
+        await setDBitem(currentLoan.loanID, {
+          ...existing,
+          borrowerNinBal: balNum,
+          borrowerNinBalCheckedAt: Date.now(),
+        }, 'ActiveLoans');
+        if (!cancelled && unionAddr) {
+          qc.invalidateQueries({ queryKey: ['activeLoans', unionAddr] });
+        }
+      } catch (_) { /* non-blocking */ }
+    })();
+    return () => { cancelled = true; };
+  }, [ninBalanceFetched, ninBalanceRaw, currentLoan?.loanID, unionAddr, qc]);
+
+  // Auto-bail: active loan + empty wallet = nothing left to cash out.
+  // Show a terminal "fully cashed out" screen instead of rendering a ₹0 form.
+  useEffect(() => {
+    if (!ninBalanceFetched) return;
+    if (step !== 'review-loan') return;
+    if (!activeLoan || pendingLoan) return;
+    if (ninBalanceRaw !== 0n) return;
+    setStep('fully-cashed-out');
+  }, [ninBalanceFetched, ninBalanceRaw, activeLoan, pendingLoan, step]);
 
   const { data: reserveData } = useUnionCashReserve(unionAddr);
   // Accumulate active escrows (sorted by deadline asc) until they cover the principal.
@@ -63,14 +141,14 @@ export function CashOutForm({ handleOpenForm }) {
   const escrowsToUse   = [];
   let   escrowAccumRaw = 0n;
   for (const e of allEscrows) {
-    if (escrowAccumRaw >= principalRaw) break;
+    if (escrowAccumRaw >= payoutRaw) break;
     escrowsToUse.push(e);
     escrowAccumRaw += e.ninAmount;  // exact nIN from contract
   }
   const cashInHandRaw  = escrowAccumRaw;
-  // Cap fromEscrow at principal; LP covers any shortfall
-  const fromEscrowRaw  = cashInHandRaw < principalRaw ? cashInHandRaw : principalRaw;
-  const fromLPRaw      = principalRaw - fromEscrowRaw;
+  // Cap fromEscrow at payout; LP covers any shortfall
+  const fromEscrowRaw  = cashInHandRaw < payoutRaw ? cashInHandRaw : payoutRaw;
+  const fromLPRaw      = payoutRaw - fromEscrowRaw;
   const fromEscrow     = Number(fromEscrowRaw / 10n ** 18n);              // for display
   const fromLP         = Number(fromLPRaw / 10n ** 18n);                  // for display
 
@@ -103,6 +181,8 @@ export function CashOutForm({ handleOpenForm }) {
     try {
       await acceptLoan(unionAddr, pendingLoan.loanID, escrowId ?? 0n);
       // nIN now in member wallet — proceed to count bills
+      qc.invalidateQueries({ queryKey: ['activeLoans'] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
       setStep('scan-bills');
     } catch (err) {
       setError(err?.reason || err?.message || 'Accept loan failed');
@@ -118,18 +198,28 @@ export function CashOutForm({ handleOpenForm }) {
     try {
       const serialNumbers = scannedBills.map((b) => b.serialNumber).filter(Boolean);
       const scanHash = await buildScanHash(serialNumbers);
+      // Effective payout = min(bills scanned, loan principal).
+      // Bills < principal → partial: farmer keeps remaining nIN in wallet.
+      // Bills >= principal → full: surplus bills are physical change, not tracked on-chain.
+      const principalINR = Number(pendingLoan.principalRaw / 10n ** 18n);
+      const effectiveAmount = Math.min(runningTotal, principalINR);
+      const effectiveRaw = BigInt(effectiveAmount) * 10n ** 18n;
       await cashScanMint(
         unionAddr,
         pendingLoan.loanType || 'GENERIC',
-        runningTotal,
+        effectiveAmount,
         scanHash,
         0, // INVEST — records physical INR held by union
         ethers.ZeroHash,
         ethers.ZeroAddress,
         0n,
       );
-      await burnFarmerNin(memberAddress, pendingLoan.principalRaw);
+      await burnFarmerNin(memberAddress, effectiveRaw);
+      consumeLPCash(effectiveAmount);
       clearSession();
+      qc.invalidateQueries({ queryKey: ['activeLoans'] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] });
       setStep('done');
     } catch (err) {
       setError(err?.reason || err?.message || 'Failed');
@@ -142,37 +232,45 @@ export function CashOutForm({ handleOpenForm }) {
     setError(null);
     setStep('posting');
     try {
-      // Drain escrows with partial support — last escrow may be partially consumed.
-      const drainEscrows = async (totalRaw) => {
+      // CS016: build escrow arrays for atomic burn+drain
+      const buildEscrowArrays = (totalRaw) => {
+        const ids = [];
+        const amts = [];
         let remaining = totalRaw;
         for (const e of escrowsToUse) {
           if (remaining === 0n) break;
           const consume = remaining < e.ninAmount ? remaining : e.ninAmount;
-          await resolveEscrowCash(e.escrowId, consume);
+          ids.push(e.escrowId);
+          amts.push(consume);
           remaining -= consume;
         }
+        return { ids, amts };
       };
 
       if (fromLP > 0) {
         // Mixed: escrow(s) cover part, LP covers the rest.
-        // 1. Burn escrow portion from farmer — union hands that cash now.
+        // 1. Atomic: burn escrow portion + drain escrows in one tx (CS016 fix).
         if (fromEscrowRaw > 0n) {
-          await burnFarmerNin(memberAddress, fromEscrowRaw);
+          const { ids, amts } = buildEscrowArrays(fromEscrowRaw);
+          await burnAndDrainEscrows(memberAddress, fromEscrowRaw, ids, amts);
         }
-        // 2. Resolve each used escrow.
-        await drainEscrows(fromEscrowRaw);
-        // 3. Burn LP portion from farmer's wallet → receive USDT equivalent.
+        // 2. Burn LP portion from farmer's wallet → receive USDT equivalent.
         const usdtOut = await redeemFarmerNin(memberAddress, fromLPRaw);
-        // 4. Post RedeemOrder: lock the USDT we received (no extra bonus — union has exactly usdtOut).
+        // 3. Post RedeemOrder: lock the USDT we received (no extra bonus — union has exactly usdtOut).
         const id = await postRedeemOrder(unionAddr, memberAddress, BigInt(Math.round(fromLP)), usdtOut, feeBP);
         qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] });
+        qc.invalidateQueries({ queryKey: ['activeLoans'] });
+        qc.invalidateQueries({ queryKey: ['tasks'] });
         setRedeemOrderId(id);
         setStep('redeem-waiting');
       } else {
-        // Escrow(s) cover everything — burn full principal then drain escrows.
-        await burnFarmerNin(memberAddress, principalRaw);
-        await drainEscrows(principalRaw);
+        // Escrow(s) cover everything — atomic burn + drain in one tx (CS016 fix).
+        const { ids, amts } = buildEscrowArrays(payoutRaw);
+        await burnAndDrainEscrows(memberAddress, payoutRaw, ids, amts);
+        consumeLPCash(principal);
         qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] });
+        qc.invalidateQueries({ queryKey: ['activeLoans'] });
+        qc.invalidateQueries({ queryKey: ['tasks'] });
         setStep('done');
       }
     } catch (err) {
@@ -187,7 +285,7 @@ export function CashOutForm({ handleOpenForm }) {
     setError(null);
     setStep('redeem-posting');
     try {
-      const usdtOut = await redeemFarmerNin(memberAddress, principalRaw);
+      const usdtOut = await redeemFarmerNin(memberAddress, payoutRaw);
       const id = await postRedeemOrder(unionAddr, memberAddress, BigInt(Math.round(fromLP)), usdtOut, feeBP);
       setRedeemOrderId(id);
       setStep('redeem-waiting');
@@ -202,6 +300,9 @@ export function CashOutForm({ handleOpenForm }) {
     setError(null);
     try {
       await confirmCashDelivery(redeemOrderId);
+      addLPCash(redeemOrderId, Math.round(fromLP));
+      qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
       setStep('done');
     } catch (err) {
       setError(err?.reason || err?.message || 'Confirm failed');
@@ -217,6 +318,9 @@ export function CashOutForm({ handleOpenForm }) {
         await burnFarmerNin(memberAddress, fromLPRaw);
       }
       await confirmCashOfferDelivered(offerId);
+      qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] });
+      qc.invalidateQueries({ queryKey: ['activeLoans'] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
       setStep('done');
     } catch (err) {
       setError(err?.reason || err?.message || 'Failed to confirm delivery');
@@ -243,9 +347,8 @@ export function CashOutForm({ handleOpenForm }) {
                 addContact(addr, name);
                 setStep('review-loan');
               }}
-              onCancel={() => {
-                setMemberAddress(null);
-                setStep('scan-qr');
+              onSkip={() => {
+                setStep('review-loan');
               }}
             />
           </motion.div>
@@ -281,7 +384,7 @@ export function CashOutForm({ handleOpenForm }) {
               {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
               <button
                 onClick={onConfirm}
-                disabled={!scannedBills.length || runningTotal < scanTarget}
+                disabled={step !== 'scan-bills' || !scannedBills.length || runningTotal < scanTarget}
                 className="w-full py-3.5 rounded-2xl bg-black dark:bg-white text-white dark:text-black font-bold text-sm active:scale-[0.98] disabled:opacity-40"
               >
                 {scannedBills.length
@@ -344,6 +447,28 @@ export function CashOutForm({ handleOpenForm }) {
               )
             ) : (
               <>
+                {/* Amount input — leader can choose partial payout */}
+                <div className="rounded-xl bg-gray-100 dark:bg-slate-800 px-4 py-3 flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 dark:text-slate-400">Cash out amount</label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold dark:text-white">₹</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder={maxPayout.toString()}
+                      value={cashOutInput}
+                      onChange={(e) => setCashOutInput(e.target.value)}
+                      className="flex-1 bg-transparent text-lg font-bold dark:text-white outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    {cashOutInput && (
+                      <button onClick={() => setCashOutInput('')} className="text-xs text-gray-400 dark:text-slate-500 underline">max</button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-slate-500">
+                    Available: ₹{maxPayout.toLocaleString('en-IN')} nIN in wallet
+                  </p>
+                </div>
+
                 {/* Cash breakdown card */}
                 {escrowLoading ? (
                   <p className="text-xs text-gray-400 dark:text-slate-500">Checking escrow…</p>
@@ -462,6 +587,32 @@ export function CashOutForm({ handleOpenForm }) {
                 ))}
               </>
             )}
+          </motion.div>
+        )}
+
+        {/* ── Fully cashed out: active loan with empty wallet ── */}
+        {step === 'fully-cashed-out' && activeLoan && (
+          <motion.div key="fully-cashed-out" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-gray-400" />
+              <p className="text-xs font-mono dark:text-slate-300">{resolveName(memberAddress)}</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 px-4 py-4 flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold dark:text-white">{activeLoan.loanType || 'Loan'}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-slate-300">Cashed out</span>
+              </div>
+              <p className="text-base font-bold dark:text-white">₹{Number(activeLoan.principalRaw / 10n ** 18n).toLocaleString('en-IN')} fully disbursed</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                This loan has no remaining nIN to cash out. The borrower can repay once their collect window closes.
+              </p>
+            </div>
+            <button
+              onClick={() => handleOpenForm(null)}
+              className="w-full py-3.5 rounded-2xl bg-gray-100 dark:bg-slate-800 dark:text-white font-bold text-sm active:scale-[0.98]"
+            >
+              Close
+            </button>
           </motion.div>
         )}
 
