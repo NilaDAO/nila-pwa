@@ -269,11 +269,10 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                     const token       = d?.tokens?.[0];
                     const juniorEq    = token?.juniorEquity    ?? 0;
                     const seniorPrinc = token?.seniorPrincipal ?? 0;
-                    const threshPct   = token?.bucketThresholdPct ?? 10;
-                    const juniorFloor = seniorPrinc * threshPct / 100;
                     const totalEq     = juniorEq + seniorPrinc;
                     const currentPct  = totalEq > 0 ? (juniorEq / totalEq * 100) : null;
-                    const ratioOk     = juniorEq >= juniorFloor;
+                    const threshPct   = token?.bucketThresholdPct ?? 10;
+                    const ratioOk     = currentPct !== null && currentPct >= threshPct;
                     return (
                         <div className='flex items-center justify-between mx-0 mt-4 rounded-2xl bg-white dark:bg-gray-800 px-4 py-3'>
                             <p className={`text-xs font-bold ${ratioOk ? 'text-black dark:text-white' : 'text-black dark:text-white'}`}>
