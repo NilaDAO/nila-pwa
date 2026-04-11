@@ -271,7 +271,8 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                     const seniorPrinc = token?.seniorPrincipal ?? 0;
                     const threshPct   = token?.bucketThresholdPct ?? 10;
                     const juniorFloor = seniorPrinc * threshPct / 100;
-                    const currentPct  = seniorPrinc > 0 ? (juniorEq / seniorPrinc * 100) : null;
+                    const totalEq     = juniorEq + seniorPrinc;
+                    const currentPct  = totalEq > 0 ? (juniorEq / totalEq * 100) : null;
                     const ratioOk     = juniorEq >= juniorFloor;
                     return (
                         <div className='flex items-center justify-between mx-0 mt-4 rounded-2xl bg-white dark:bg-gray-800 px-4 py-3'>
