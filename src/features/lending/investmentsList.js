@@ -267,12 +267,12 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                 </div>
                 { (() => {
                     const token       = d?.tokens?.[0];
-                    const juniorCash  = token?.juniorCash      ?? 0;
+                    const juniorEq    = token?.juniorEquity    ?? 0;
                     const seniorPrinc = token?.seniorPrincipal ?? 0;
                     const threshPct   = token?.bucketThresholdPct ?? 10;
                     const juniorFloor = seniorPrinc * threshPct / 100;
-                    const currentPct  = seniorPrinc > 0 ? (juniorCash / seniorPrinc * 100) : null;
-                    const ratioOk     = juniorCash >= juniorFloor;
+                    const currentPct  = seniorPrinc > 0 ? (juniorEq / seniorPrinc * 100) : null;
+                    const ratioOk     = juniorEq >= juniorFloor;
                     return (
                         <div className='flex items-center justify-between mx-0 mt-4 rounded-2xl bg-white dark:bg-gray-800 px-4 py-3'>
                             <p className={`text-xs font-bold ${ratioOk ? 'text-black dark:text-white' : 'text-black dark:text-white'}`}>
