@@ -4,7 +4,8 @@ import { useProvider, useBasicProvider } from "./useWallet.ts";
 import MulticallAbi  from "../components/ABI/MultiCall3.json";
 import nilaGrantAbi  from '../components/ABI/NilaGrant.json';
 import foodTokensAbi  from '../components/ABI/FoodTokens.json';
-import landTitleAbi  from '../components/ABI/NilaLandTitleWithName.json'; //NilaLandTitleWithName
+import landTitleArtifact  from '../components/ABI/NilaLandTitleWithName.json'; //NilaLandTitleWithName
+const landTitleAbi = (landTitleArtifact as any).abi ?? landTitleArtifact;
 import erc20ABI  from '../components/ABI/genericErc20.json';
 import erc1155ABI  from '../components/ABI/genericErc1155.json';
 import priceFeedAbi from '../components/ABI/USDCPriceFeed.json';

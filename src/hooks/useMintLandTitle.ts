@@ -4,7 +4,8 @@
 import { Contract } from "ethers";
 import { useWallet, useContract } from "./useWallet.ts";
 import { useTx } from "./useTx.ts";
-import landTitleAbi from '../components/ABI/NilaLandTitleWithName.json';
+import landTitleArtifact from '../components/ABI/NilaLandTitleWithName.json';
+const landTitleAbi = (landTitleArtifact as any).abi ?? landTitleArtifact;
 import foodTokenAbi from '../components/ABI/FoodTokens.json';
 import { useQueryClient } from "@tanstack/react-query";
 import { deleteItem } from '../utils/db.js';
