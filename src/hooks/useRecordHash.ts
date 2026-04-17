@@ -162,7 +162,6 @@ export function useRecordHash(tokenId: number | string | null) {
       const cacheKey = `recordHash_${tid}`;
       const cached = await readItem(cacheKey, DB_STORE);
       if (cached?.record && cached?.commitment) {
-        // Cache hit — use immediately, verify commitment in background
         setState((s) => ({
           ...s,
           record: cached.record,
@@ -170,7 +169,7 @@ export function useRecordHash(tokenId: number | string | null) {
           commitment: cached.commitment,
           loading: false,
         }));
-        // Background: check if commitment changed (invalidate on next load if so)
+        // Background: check if commitment changed
         readCommitment().then((live) => {
           if (live && live !== cached.commitment) {
             console.log("[useRecordHash] commitment changed — will refresh next load");
@@ -178,7 +177,6 @@ export function useRecordHash(tokenId: number | string | null) {
           }
         });
         if (!cached.stale) return;
-        // Fall through if stale — re-fetch below
       }
 
       // 2. Read commitment from chain
@@ -191,16 +189,12 @@ export function useRecordHash(tokenId: number | string | null) {
 
       let recordHash: string;
       if (isOwner) {
-        // Owner: free read via staticCall (no tx, no gas)
         recordHash = await landTitle.getRecordHash.staticCall(tid);
       } else {
-        // Approved viewer: pay nIN fee (state-changing tx)
         const fee: bigint = await landTitle.quoteViewFee(tid, wallet.address);
         if (fee > 0n) {
           await ensureAllowance(fee);
         }
-        // Send the actual tx and read the return value via staticCall first
-        // to get the hash, then send the real tx for the payment.
         recordHash = await landTitle.getRecordHash.staticCall(tid);
         await runTx(() => landTitle.getRecordHash(tid));
       }
@@ -222,9 +216,7 @@ export function useRecordHash(tokenId: number | string | null) {
         `${API_BASE_URL}/gis/record-by-hash/${recordHash}`
       );
 
-      // 5. Verify integrity: the record's embedded hash must match the on-chain hash.
-      //    Cross-language SHA-256 recomputation is unreliable (JSON serialization
-      //    differs between Python and JS), so we trust the server-embedded field.
+      // 5. Verify integrity
       const embeddedHash = record?.report_hash_bytes32;
       if (embeddedHash && embeddedHash !== recordHash) {
         console.warn(
