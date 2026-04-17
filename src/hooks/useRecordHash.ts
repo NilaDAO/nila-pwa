@@ -47,6 +47,8 @@ type RecordHashState = {
   isOwner: boolean;
   /** True if the current wallet is an approved viewer. */
   isApproved: boolean;
+  /** nIN claimable by the token owner from data view fees (wei). */
+  claimableFees: bigint | null;
 };
 
 
@@ -65,6 +67,7 @@ export function useRecordHash(tokenId: number | string | null) {
     loading: false,
     error: null,
     isOwner: false,
+    claimableFees: null,
     isApproved: false,
   });
 
@@ -96,7 +99,22 @@ export function useRecordHash(tokenId: number | string | null) {
       } else if (isApproved) {
         fee = await landTitle.quoteViewFee(tid, wallet.address);
       }
-      setState((s) => ({ ...s, isOwner, isApproved, fee }));
+      // Read claimable fees — cache for 2 weeks
+      let claimableFees: bigint | null = null;
+      if (isOwner) {
+        const feeCacheKey = `viewFeeBalance_${wallet.address}`;
+        const feeCached = await readItem(feeCacheKey, DB_STORE);
+        const twoWeeks = 14 * 24 * 60 * 60 * 1000;
+        if (feeCached?.ts && Date.now() - feeCached.ts < twoWeeks) {
+          claimableFees = BigInt(feeCached.value);
+        } else {
+          try {
+            claimableFees = await landTitle.viewFeeBalance(wallet.address);
+            await setDBitem(feeCacheKey, { value: claimableFees!.toString(), ts: Date.now() }, DB_STORE);
+          } catch { }
+        }
+      }
+      setState((s) => ({ ...s, isOwner, isApproved, fee, claimableFees }));
     } catch (err: any) {
       console.warn("[useRecordHash] checkAccess error:", err.message);
     }
@@ -105,6 +123,17 @@ export function useRecordHash(tokenId: number | string | null) {
   useEffect(() => {
     checkAccess();
   }, [checkAccess]);
+
+  // ── Claim accumulated view fees ────────────────────────────
+
+  const claimViewFees = useCallback(async () => {
+    if (!landTitle || !wallet) return;
+    await runTx(() => landTitle.claimViewFees());
+    // Invalidate fee cache
+    const feeCacheKey = `viewFeeBalance_${wallet.address}`;
+    await setDBitem(feeCacheKey, { value: "0", ts: Date.now() }, DB_STORE);
+    setState((s) => ({ ...s, claimableFees: 0n }));
+  }, [landTitle, wallet]);
 
   // ── Ensure nIN allowance for the fee ──────────────────────
 
@@ -129,23 +158,32 @@ export function useRecordHash(tokenId: number | string | null) {
     setState((s) => ({ ...s, loading: true, error: null }));
 
     try {
-      // 1. Read commitment (free)
-      const commitment = await readCommitment();
-      setState((s) => ({ ...s, commitment }));
-
-      // 2. Check IndexedDB cache — skip chain call if commitment unchanged
+      // 1. Check IndexedDB cache first — skip all chain calls if fresh
       const cacheKey = `recordHash_${tid}`;
       const cached = await readItem(cacheKey, DB_STORE);
-      if (cached?.commitment === commitment && cached?.record) {
+      if (cached?.record && cached?.commitment) {
+        // Cache hit — use immediately, verify commitment in background
         setState((s) => ({
           ...s,
           record: cached.record,
           recordHash: cached.recordHash,
-          commitment,
+          commitment: cached.commitment,
           loading: false,
         }));
-        return;
+        // Background: check if commitment changed (invalidate on next load if so)
+        readCommitment().then((live) => {
+          if (live && live !== cached.commitment) {
+            console.log("[useRecordHash] commitment changed — will refresh next load");
+            setDBitem(cacheKey, { ...cached, stale: true }, DB_STORE);
+          }
+        });
+        if (!cached.stale) return;
+        // Fall through if stale — re-fetch below
       }
+
+      // 2. Read commitment from chain
+      const commitment = await readCommitment();
+      setState((s) => ({ ...s, commitment }));
 
       // 3. Get the actual hash via the gated function
       const owner: string = await landTitle.ownerOf(tid);
@@ -224,5 +262,6 @@ export function useRecordHash(tokenId: number | string | null) {
     ...state,
     fetchRecord,
     checkAccess,
+    claimViewFees,
   };
 }

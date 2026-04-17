@@ -139,6 +139,68 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     return () => markers.forEach(m => { m.map = null; });
   }, [map, features]);
 
+  // ------------------ info labels (dormant / historical) -------------------------
+  useEffect(() => {
+    if (!map) return;
+    const markers = [];
+    const labelStyle = 'background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);color:white;padding:8px 14px;border-radius:12px;font-size:11px;line-height:1.6;white-space:nowrap;';
+
+    const fmtDate = (d) => {
+      if (!d) return '';
+      const dt = new Date(d);
+      return dt.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+    };
+
+    if (fieldActivity?.dormant && !fieldActivity?.historical && outline.length) {
+      // Current state: fallow / dormant — single label at outline centroid
+      const poly = outline[0];
+      const center = poly.latLngs.reduce(
+        (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
+        { lat: 0, lng: 0 }
+      );
+      center.lat /= poly.latLngs.length;
+      center.lng /= poly.latLngs.length;
+
+      const d = fieldActivity.dormantStatus || {};
+      const el = document.createElement('div');
+      el.style.cssText = labelStyle;
+      el.innerHTML = [
+        `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${fieldActivity.dormantColor || '#8B6914'};margin-right:6px;vertical-align:middle;"></span><b>Fallow</b>`,
+        d.surface ? `Surface: ${d.surface}` : '',
+        d.moisture ? `Soil: ${d.moisture}` : '',
+        d.ploughed || '',
+        d.daysSinceCrop != null ? `Last crop: ${d.daysSinceCrop}d ago` : '',
+      ].filter(Boolean).join('<br>');
+
+      markers.push(new window.google.maps.marker.AdvancedMarkerElement({
+        map, position: center, content: el,
+      }));
+
+    } else if (fieldActivity?.historical && features.length) {
+      // Historical state: one label per cluster at its centroid
+      const cycle = fieldActivity.historicalCycle || {};
+      features.forEach(f => {
+        const p = f.properties || {};
+        if (p.cluster_id === 0 || p.activity === 'border_area') return;
+
+        const el = document.createElement('div');
+        el.style.cssText = labelStyle;
+        el.innerHTML = [
+          `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.class_color || '#888'};margin-right:6px;vertical-align:middle;"></span><b>${cycle.crop_type || p.class || '?'}</b>`,
+          cycle.sos ? `${fmtDate(cycle.sos)} → ${fmtDate(cycle.eos)}` : '',
+          p.area_m2 ? `${Number(p.area_m2).toLocaleString('en-IN', { maximumFractionDigits: 0 })} m²` : '',
+          cycle.peak_ndvi ? `Peak NDVI: ${cycle.peak_ndvi.toFixed(2)}` : '',
+        ].filter(Boolean).join('<br>');
+
+        markers.push(new window.google.maps.marker.AdvancedMarkerElement({
+          map, position: centroidOf(f), content: el,
+        }));
+      });
+    }
+
+    return () => markers.forEach(m => { m.map = null; });
+  }, [map, fieldActivity?.dormant, fieldActivity?.historical, fieldActivity?.historicalCycle, features, outline]);
+
   return isLoaded ? (
       <GoogleMap
         mapContainerStyle={containerStyle}
@@ -146,17 +208,17 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
         options={options}
         onUnmount={onUnmount}
       >
-        {/* Outline */}
-        // ------------------ V1 -------------------------
+        {/* Outline — dormant color when fallow, white when active */}
         { metadata?.outline  && outline.map((poly, i) => (
           <Polygon
             key={i}
             paths={poly.latLngs}
             options={{
-              fillColor: "rgba(255, 255, 255, 0.4)",
-              strokeColor: "#333333",
+              fillColor: (fieldActivity?.dormant && !fieldActivity?.historical) ? fieldActivity.dormantColor : "rgba(255, 255, 255, 0.4)",
+              fillOpacity: (fieldActivity?.dormant && !fieldActivity?.historical) ? 0.5 : 0.4,
+              strokeColor: (fieldActivity?.dormant && !fieldActivity?.historical) ? "#5C4A1E" : "#333333",
               strokeOpacity: 0.8,
-              strokeWeight: 0.5,
+              strokeWeight: (fieldActivity?.dormant && !fieldActivity?.historical) ? 1.5 : 0.5,
               clickable: false,
               zIndex: 1,
             }}
