@@ -25,10 +25,20 @@ const BulkBillScanner = ({ onBulkConfirmed, onStop }) => {
           } catch { /* not supported */ }
         }
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
         });
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
+
+        // reset zoom to minimum so the camera doesn't start zoomed in
+        const track = stream.getVideoTracks()[0];
+        try {
+          const caps = track.getCapabilities?.();
+          if (caps?.zoom) {
+            await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
+          }
+        } catch { /* zoom not supported — no problem */ }
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
@@ -59,7 +69,7 @@ const BulkBillScanner = ({ onBulkConfirmed, onStop }) => {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
 
     setScanState('counting');
-    setStatusText('Counting bills…');
+    setStatusText('Counting cash…');
     navigator.vibrate?.(50);
 
     if (!navigator.onLine) {
@@ -73,12 +83,17 @@ const BulkBillScanner = ({ onBulkConfirmed, onStop }) => {
       const formData = new FormData();
       formData.append('image', blob, `bulk_${Date.now()}.jpg`);
 
-      const { data } = await axios.post(`${API}/inr/scan-bulk`, formData);
+      // 60s timeout — two parallel Claude vision calls take ~4–5s best case,
+      // plus origin/network jitter. Without this, axios defaults to no timeout
+      // and the request hangs until a proxy cuts it off with an opaque error.
+      const { data } = await axios.post(`${API}/inr/scan-bulk`, formData, {
+        timeout: 60000,
+      });
       console.log('Bulk scan result:', data);
 
-      if (data.source === 'error' || !data.bills?.length) {
+      if (data.source === 'error' || !data.items?.length) {
         setScanState('error');
-        setStatusText('No bills detected — try again');
+        setStatusText('No cash detected — try again');
         return;
       }
 
@@ -87,7 +102,7 @@ const BulkBillScanner = ({ onBulkConfirmed, onStop }) => {
       setStatusText(`₹${data.total_inr.toLocaleString('en-IN')} counted`);
 
       onBulkConfirmed({
-        bills: data.bills,
+        items: data.items,
         total: data.total_inr,
         imageDataUrl: dataUrl,
         s3Key: data.s3_key || null,
@@ -120,7 +135,7 @@ const BulkBillScanner = ({ onBulkConfirmed, onStop }) => {
   }
 
   const statusPill = scanState === 'idle'
-    ? <span className="bg-black/50 text-white/80">Lay bills flat, then tap shutter</span>
+    ? <span className="bg-black/50 text-white/80">Lay bills within the rectangular</span>
     : scanState === 'counting'
     ? <span className="bg-blue-500/80 text-white animate-pulse">Counting…</span>
     : scanState === 'success'
@@ -131,8 +146,20 @@ const BulkBillScanner = ({ onBulkConfirmed, onStop }) => {
 
   return (
     <div className="flex flex-col w-full">
-      <div className="relative overflow-hidden rounded-2xl bg-black" style={{ height: '45dvh' }}>
+      <div className="relative overflow-hidden rounded-2xl bg-black" style={{ height: '60dvh' }}>
         <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
+
+        {/* guide box — forces margin between bills and frame edge */}
+        <div
+          className="absolute pointer-events-none z-[1]"
+          style={{ top: '8%', bottom: '15%', left: '5%', right: '5%' }}
+        >
+          <div className="absolute inset-0 rounded-lg" style={{ boxShadow: '0 0 0 9999px rgba(0,0,0,0.3)' }} />
+          <div className="absolute top-0 left-0 w-6 h-6 border-t-[2.5px] border-l-[2.5px] border-white/70 rounded-tl" />
+          <div className="absolute top-0 right-0 w-6 h-6 border-t-[2.5px] border-r-[2.5px] border-white/70 rounded-tr" />
+          <div className="absolute bottom-0 left-0 w-6 h-6 border-b-[2.5px] border-l-[2.5px] border-white/70 rounded-bl" />
+          <div className="absolute bottom-0 right-0 w-6 h-6 border-b-[2.5px] border-r-[2.5px] border-white/70 rounded-br" />
+        </div>
 
         {/* top: status pill */}
         <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between">
@@ -146,7 +173,7 @@ const BulkBillScanner = ({ onBulkConfirmed, onStop }) => {
         </div>
 
         {/* bottom: stop + shutter */}
-        <div className="absolute bottom-3 inset-x-0 flex justify-center gap-4">
+        <div className="absolute bottom-3 inset-x-0 flex justify-center gap-4 z-10">
           <button
             onClick={onStop}
             className="rounded-full w-11 h-11 flex items-center justify-center bg-white/20 backdrop-blur active:scale-95"

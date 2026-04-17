@@ -50,11 +50,13 @@ export function totalFunds(
     const fund_type = fund.type
     const fund_id = fund.tokens[0].loanType
     const previewRateBP = fund.tokens[0].previewRateBP
+    const baseRateBP = fund.tokens[0].baseRateBP
     const requiredReserve = fund.tokens[0].requiredReserve
     const junior = fund.tokens[0].investor.junior
     const senior = fund.tokens[0].investor.senior
     const seniorPendingSnap = fund.tokens[0].investor.seniorPendingSnap ?? 0
     const indexes = fund.tokens[0].indexes
+    const entryIndexes = fund.tokens[0].entryIndexes
     // list accepted tokens
     const tokens = fund.tokens.map(t => t.token);
 
@@ -100,7 +102,7 @@ export function totalFunds(
     total_rewards_raw += pending_raw
     total_investedByUser += fund.tokens.reduce((sum, t) => {
       const price = tokenData.find(td => td.sym === t.name)?.p ?? 1;
-      return sum + t.investor.principal * price;
+      return sum + (t.investor.principal - t.investor.pendingWithdrawal) * price;
     }, 0);
     total_invested += totals;
     if (fund.tokens.some(t => t.investor.isFrozen)) {
@@ -116,7 +118,9 @@ export function totalFunds(
       senior,
       seniorPendingSnap,
       indexes,
+      entryIndexes,
       previewRateBP,
+      baseRateBP,
       requiredReserve,
       idleCash: fund.tokens[0].idleCash ?? 0,
       claimableReserved: fund.tokens[0].claimableReserved ?? 0,

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from 'react';
-import { useDataContext, useNavContext } from '../utils/NavigationContext';
+import { useState, useMemo } from 'react';
+import { useDataContext } from '../utils/NavigationContext';
 import { ethers } from 'ethers';
 import { useActiveLoans } from './useActiveLoans';
 import { useContactBook } from './useContactBook';
@@ -12,6 +12,7 @@ import { useUnionCashReserve } from './useUnionCashReserve.ts';
 import { useGlobalOpenRedeemOrders, useGlobalOpenCashOffers, usePendingCashDeliveries, usePendingFilledCashOffers } from './useCashOffer.ts';
 import { useLPProfile } from './useLPProfile';
 import { useFxPool } from './useWallet.ts';
+import { useLoadFundsData } from './useLoadFunds.ts';
 
 export function usePolBalance(address, provider) {
   return useQuery({
@@ -26,25 +27,29 @@ export function usePolBalance(address, provider) {
 }
 
 export function useFilterTasks(LAND, CAP) {
-  const { db, tokenData, setTxDetails, setTxIndex } = useDataContext();
-  const { setIx }                    = useNavContext();
+  const { db, tokenData, unionFunds } = useDataContext();
   const { provider }                 = useProvider();
   const queryClient                  = useQueryClient();
   const isLeader                     = Boolean(db?.union?.leader);
   const { resolveName }              = useContactBook();
   const { data: polBalance }         = usePolBalance(db?.address, provider);
   const { data: loansData, isFetched: loansFetched } = useActiveLoans(db?.union?.address, isLeader);
-  const { data: reserveData }        = useUnionCashReserve(isLeader ? db?.union?.address : undefined);
-  const { profile: lpProfile }       = useLPProfile({ enabled: LAND?.current?.hasLand === false });
+  const { data: reserveData, isPending: reservePending } = useUnionCashReserve(isLeader ? db?.union?.address : undefined);
+  const { profile: lpProfile, isPending: lpProfilePending } = useLPProfile();
   const isLP = Boolean(lpProfile?.isLP);
-  const { data: getOffers  = [] }    = useGlobalOpenRedeemOrders();
-  const { data: giveOffers = [] }    = useGlobalOpenCashOffers();
+  const { data: getOffers  = [], isPending: getOffersPending  } = useGlobalOpenRedeemOrders();
+  const { data: giveOffers = [], isPending: giveOffersPending } = useGlobalOpenCashOffers();
   const { topUpGas }                 = useTopUpGas();
   const { switchToMain }             = useSwitchMain();
   const { acceptLoan }               = useAcceptLoan();
   const { removeLoan }               = useRemoveLoan();
   const { handleToggleView }         = useTouch();
-  const { lpFillRedeemOrder, commitCashRequest } = useFxPool();
+  const { lpFillRedeemOrder, commitCashRequest, redeemFarmerNin, postRedeemOrder, postCashOffer, confirmCashOfferDelivered, confirmCashDelivery, cancelRedeemOrder } = useFxPool();
+  const { data: fundsData = [] } = useLoadFundsData(
+    db?.union?.address ?? '',
+    unionFunds ?? [],
+    db?.address ?? ''
+  );
   const { data: pendingDeliveries = [] } = usePendingCashDeliveries(
     isLeader ? db?.union?.address : undefined
   );
@@ -59,8 +64,14 @@ export function useFilterTasks(LAND, CAP) {
   };
   const [notificationPermission, setNotificationPermission] = useState(getNotificationPermission);
 
-  const filteredTransferables = loansData?.allItems?.filter(l => !l.fastDraw && !l.drawdownTs) ?? [];
+  const [dismissedLoans, setDismissedLoans] = useState(new Set());
+  const filteredTransferables = loansData?.allItems?.filter(l => !l.fastDraw && !l.drawdownTs && l.txHash && !dismissedLoans.has(l.id)) ?? [];
   const hasTransferables = filteredTransferables.length > 0;
+
+  // Local-only dismissals for LP offers (swipe-left removes the row from this
+  // user's task list without touching on-chain state).
+  const [dismissedGetOffers,  setDismissedGetOffers]  = useState(new Set());
+  const [dismissedGiveOffers, setDismissedGiveOffers] = useState(new Set());
 
   // compute readiness OUTSIDE queryFn so we can gate with `enabled`
   const tokenDataReady = Array.isArray(tokenData);
@@ -75,6 +86,15 @@ export function useFilterTasks(LAND, CAP) {
     capReady &&
     accountReady &&
     loansReady;
+
+  // Upstream signals that contribute to the task list. While any of these is
+  // still loading, the composed list is incomplete and we should keep the task
+  // area in a loading state instead of flashing "All tasks completed".
+  const upstreamLoading =
+    lpProfilePending ||
+    getOffersPending ||
+    giveOffersPending ||
+    (isLeader && reservePending);
   function shuffle(arr) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -84,20 +104,61 @@ export function useFilterTasks(LAND, CAP) {
     return a;
   }
 
-  const handleAcceptLoan = async (union,id,borrower,amount) => {
-    if (confirm(`Are you sure to accept the loan of ${amount} nIN to ${borrower}`)) {
-      await acceptLoan(union, id);
-    }
-  }
+  // Total escrow nIN the union holds (human-readable)
+  const escrowBalance = useMemo(() => {
+    const raw = reserveData?.activeEscrowNin;
+    if (!raw) return 0;
+    return Number(ethers.formatUnits(raw, 18));
+  }, [reserveData]);
 
-  const handleCancelLoan = async (union, id, borrower) => {
+  const handleAcceptLoan = async (union, id, borrower, borrowerAddr, amount, lpOpts) => {
+    if (!confirm(`Accept the loan of ${Math.round(amount).toLocaleString('en-IN')} nIN to ${borrower}?`)) return;
+    setDismissedLoans(prev => new Set(prev).add(id));
+    await acceptLoan(union, id);
+
+    if (lpOpts?.sendLP && lpOpts.amount > 0) {
+      try {
+        const amountRaw = ethers.parseUnits(String(lpOpts.amount), 18);
+        const usdtOut = await redeemFarmerNin(borrowerAddr, amountRaw);
+        await postRedeemOrder(union, borrowerAddr, BigInt(lpOpts.amount), usdtOut, 100);
+        queryClient.invalidateQueries({ queryKey: ['globalOpenCashOffers'] });
+        queryClient.invalidateQueries({ queryKey: ['globalOpenRedeemOrders'] });
+      } catch (e) { console.error('LP offer creation failed:', e); }
+    }
+  };
+
+  const handleCancelLoan = async (union, id, borrower, txHash) => {
     if (confirm(`Cancel the loan request from ${borrower}?`)) {
-      await removeLoan(union, id);
+      setDismissedLoans(prev => new Set(prev).add(id));
+      if (txHash) await removeLoan(union, id);
       await fetch(`${process.env.REACT_APP_API_BASE_URL}/filter_events/loan/${union}/${id}`, {
         method: 'DELETE',
       });
     }
-  }
+  };
+
+  // Mirrors UnionReserve.handleSettle: posts a CashOffer at 1% LP fee per escrow.
+  // The leader settles via an LP provider, not directly from the treasury.
+  const handleSettleExpiringEscrows = async (escrows) => {
+    if (!escrows?.length || !db?.union?.address) return;
+    const totalInr = Number(
+      escrows.reduce((s, e) => s + (e?.ninAmount != null ? BigInt(e.ninAmount) : 0n), 0n) / 10n ** 18n
+    );
+    const msg =
+      `Post a CashOffer for ₹${totalInr.toLocaleString('en-IN')} at 1% LP fee?\n\n` +
+      `An LP provider will deliver the cash on the union's behalf.`;
+    if (!confirm(msg)) return;
+    for (const e of escrows) {
+      try {
+        await postCashOffer(db.union.address, e.escrowId, 100); // 100 BP = 1%
+      } catch (err) {
+        console.error('postCashOffer failed:', err);
+        break;
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ['unionCashReserve'] });
+    queryClient.invalidateQueries({ queryKey: ['unionOpenCashOffersList'] });
+  };
 
   const handleEnableNotifications = async () => {
     const res = await subscribeUser(db?.address);
@@ -126,9 +187,42 @@ export function useFilterTasks(LAND, CAP) {
   const scheduledExits  = reserveData?.scheduledExits  ?? [];
   const treasury        = reserveData?.treasury        ?? 0n;
   const available       = reserveData?.available       ?? 0n;
-  const hasUrgentEscrow = pendingDisburse.some(e => e.deadline - now < 86400);
+  // Group pending escrows into a 4h bucket anchored on the earliest deadline
+  // and drive the settlement task from that bucket only. pendingDisburse is
+  // sorted asc by deadline (useUnionCashReserve). Mirrors the Countdown in
+  // UnionReserve.js:735-758. The task card triggers at <1d to match the bar's
+  // red-flash threshold (Countdown isWarning = remaining < 86400).
+  const BUCKET_WINDOW = 4 * 3600;
+  const earliestDeadline = pendingDisburse[0]?.deadline ?? null;
+  const settleBucket = earliestDeadline === null
+    ? []
+    : pendingDisburse.filter(e => e.deadline - earliestDeadline < BUCKET_WINDOW);
+  const hasUrgentEscrow = earliestDeadline !== null && (earliestDeadline - now) < 86400;
+  let urgentInr = 0;
+  try {
+    const sumRaw = settleBucket.reduce(
+      (s, e) => s + (e?.ninAmount != null ? BigInt(e.ninAmount) : 0n),
+      0n
+    );
+    urgentInr = Number(sumRaw / 10n ** 18n);
+  } catch (err) {
+    console.error('urgentInr calc failed:', err);
+  }
   const hasOpenUnbond   = scheduledExits.some(e => e.pastMin);
   const treasuryLow     = treasury > 0n && Number(available) / Number(treasury) < 0.2;
+
+  // Total available-to-borrow across all union funds. Mirrors the per-fund
+  // "Available" line on the Investment card (investmentsList.js:406):
+  //   Math.max(0, idleCash - claimableReserved)
+  // This is the cash a new borrower could actually draw against right now.
+  const totalAvailable = (fundsData ?? []).reduce(
+    (s, f) => s + Math.max(
+      0,
+      Number(f?.tokens?.[0]?.idleCash ?? 0) - Number(f?.tokens?.[0]?.claimableReserved ?? 0)
+    ),
+    0
+  );
+  const hasBorrowRoom = totalAvailable >= urgentInr && urgentInr > 0;
 
   const query = useQuery({
     queryKey: [
@@ -144,15 +238,28 @@ export function useFilterTasks(LAND, CAP) {
       tokenDataReady ? tokenData.find(i => i?.sym === 'LAND')?.bal ?? 0 : null,
       typeof polBalance === 'number' ? polBalance < 0.2 : null,
       hasUrgentEscrow,
+      urgentInr,
+      hasBorrowRoom,
       hasOpenUnbond,
       treasuryLow,
+      escrowBalance,
       isLP,
       getOffers.length,
+      dismissedGetOffers.size,
       giveOffers.length,
+      dismissedGiveOffers.size,
       pendingDeliveries.length,
       filledCashOffers.length,
     ],
-    staleTime: 5 * 60 * 1000,
+    // useFilterTasks is a pure derivation over upstream hooks — no network call.
+    // Treat the composed list as never-stale: when an upstream signal changes the
+    // queryKey shifts and the queryFn re-runs anyway. placeholderData keeps the
+    // previous list visible across key changes so we don't flash "loading tasks..".
+    staleTime: Infinity,
+    gcTime: Infinity,
+    placeholderData: (prev) => prev,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     enabled: ready, // only run when inputs are ready
     queryFn: async () => {
       if (!ready) return [];
@@ -229,28 +336,43 @@ export function useFilterTasks(LAND, CAP) {
         },
         // Loan acceptance by union leaders
         ...(filteredTransferables.map((d, i) => {
-            const label = resolveName(d.borrower);
+            const label   = resolveName(d.borrower);
+            const fullAmt = Math.round(d.amount);
+            // Only the first pending loan can use the escrow; the rest must settle in full.
+            const avail   = i === 0 ? escrowBalance : 0;
+            const netAmt  = Math.max(0, Math.round(d.amount - avail));
             return {
               i: i + 7,
               active: isLeader && hasTransferables,
               img: 'images/label-06.webp',
-              click: () => handleAcceptLoan(d.union, d.id, label, d.amount),
-              title: `${label} requests a loan.`,
-              subtitle: `${d.amount} nIN.`,
+              click: (_, lpOpts) => handleAcceptLoan(d.union, d.id, label, d.borrower, d.amount, lpOpts),
+              title: `${label} requests a ₹${fullAmt.toLocaleString('en-IN')} loan.`,
+              subtitle: null,
               btn: 'Accept',
               btn2: 'Cancel',
-              click2: () => handleCancelLoan(d.union, d.id, label),
+              click2: () => handleCancelLoan(d.union, d.id, label, d.txHash),
+              lp: { fullAmt, netAmt, escrowBalance: avail },
             };
           }) || []),
         // Leader treasury urgency tasks
         { i: 100,
           active: isLeader && hasUrgentEscrow,
-          img: 'images/label-06.webp',
+          img: 'images/NILA.png',
           tx_nmb: { ix: 6 },
-          click: handleToggleView,
-          title: 'Loan draw expiring today.',
-          subtitle: 'Open Cash Out to disburse before the escrow expires.',
-          btn: 'Cash Out',
+          title: hasBorrowRoom
+            ? `Cash-out ₹${urgentInr.toLocaleString('en-IN')} today`
+            : `Settle ₹${urgentInr.toLocaleString('en-IN')} cash today`,
+          subtitle: hasBorrowRoom
+            ? 'Find a borrower and cash-out today.'
+            : 'Settle the cash with an LP provider today.',
+          // Swipe right → settle from treasury, swipe left → open cash-out form
+          click:  () => handleSettleExpiringEscrows(settleBucket),
+          click2: () => handleToggleView({ ix: 6 }),
+          btn:  'Settle',
+          btn2: 'Cash Out',
+          swipeRightLabel: 'Settle ✓',
+          swipeLeftLabel:  'Cash Out ✓',
+          swipeLeftPositive: true,
         },
         { i: 101,
           active: isLeader && hasOpenUnbond,
@@ -262,59 +384,108 @@ export function useFilterTasks(LAND, CAP) {
           btn: 'Cash Out',
         },
         // LP: one task per get-cash offer (LP deposits USDT, picks up INR cash from union)
-        ...(isLP ? getOffers.map((o, idx) => {
-          const usdtDisplay = o.usdtAmount > 0n
-            ? `$${(Number(o.usdtAmount) / 1e6).toFixed(2)} USDT`
-            : 'USDT';
-          return {
-            i: 200 + idx,
-            active: true,
-            img: 'images/label-06.webp',
-            tx_nmb: 0,
-            click: () => lpFillRedeemOrder(o.id),
-            title: `Collect ₹${Number(o.inrValue ?? 0).toLocaleString()} cash`,
-            subtitle: `Deposit ${usdtDisplay} · pick up cash from union`,
-            btn: 'Fill',
-          };
-        }) : []),
+        ...(isLP ? getOffers
+          .filter(o => !dismissedGetOffers.has(o.id))
+          .map((o, idx) => {
+            const inr  = Number(o.inrValue ?? 0);
+            const usdt = o.usdtAmount > 0n ? Number(o.usdtAmount) / 1e6 : 0;
+            const rate = usdt > 0 ? (inr / usdt).toFixed(2) : '—';
+            return {
+              i: 200 + idx,
+              active: true,
+              img: 'images/USDT0.png',
+              tx_nmb: 0,
+              // Swipe right → fill, swipe left → dismiss locally
+              click:  () => lpFillRedeemOrder(o.id),
+              click2: () => setDismissedGetOffers(prev => new Set(prev).add(o.id)),
+              title: `Collect ₹${inr.toLocaleString('en-IN')} cash`,
+              subtitle: `Get $${usdt.toFixed(2)} · ₹${rate}/$`,
+              btn:  'Fill',
+              btn2: 'Not interested',
+              swipeRightLabel: 'Fill ✓',
+              swipeLeftLabel:  '✕ Not interested',
+            };
+          }) : []),
         // LP: one task per give-cash offer (LP brings INR cash, receives USDT locked by union)
-        ...(isLP ? giveOffers.map((o, idx) => {
-          const usdtDisplay = o.usdtAmount > 0n
-            ? `$${(Number(o.usdtAmount) / 1e6).toFixed(2)} USDT`
-            : 'USDT';
+        ...(isLP ? giveOffers
+          .filter(o => !dismissedGiveOffers.has(o.id))
+          .map((o, idx) => {
+            const inr  = Number(o.inrValue ?? 0);
+            const feeInr = Math.round(inr * (o.feeBP ?? 100) / 10000);
+            return {
+              i: 300 + idx,
+              active: true,
+              img: 'images/USDT0.png',
+              tx_nmb: 0,
+              // Swipe right → fill, swipe left → dismiss locally
+              click:  () => commitCashRequest(o.id),
+              click2: () => setDismissedGiveOffers(prev => new Set(prev).add(o.id)),
+              title: `Bring ₹${inr.toLocaleString('en-IN')} cash to ${resolveName(o.union)}`,
+              subtitle: `Earn ₹${feeInr.toLocaleString('en-IN')} fee (${(o.feeBP ?? 100) / 100}%) holding $${(Number(o.usdtAmount) / 1e6).toFixed(2)}`,
+              btn:  'Fill',
+              btn2: 'Not interested',
+              swipeRightLabel: 'Fill ✓',
+              swipeLeftLabel:  '✕ Not interested',
+            };
+          }) : []),
+        // Union leader: LP filled a CashOffer (deposited USDT) — swipe to accept
+        ...(isLeader ? filledCashOffers.map((o, idx) => {
+          const lpName = resolveName(o.lp);
+          const inr    = Number(o.inrValue);
+          const feeInr = Math.round(inr * (o.feeBP ?? 100) / 10000);
           return {
-            i: 300 + idx,
+            i: 500 + idx,
             active: true,
-            img: 'images/label-06.webp',
+            img: 'images/USDT0.png',
             tx_nmb: 0,
-            click: () => commitCashRequest(o.id),
-            title: `Earn ${usdtDisplay}`,
-            subtitle: `Bring ₹${Number(o.inrValue ?? 0).toLocaleString()} cash to member`,
-            btn: 'Fill',
+            click: async () => {
+              if (!confirm(`Accept ${lpName} collecting ₹${inr.toLocaleString('en-IN')} cash?`)) return;
+              try {
+                await confirmCashOfferDelivered(o.id);
+                queryClient.invalidateQueries({ queryKey: ['pendingFilledCashOffers'] });
+                queryClient.invalidateQueries({ queryKey: ['unionCashReserve'] });
+              } catch (err) { console.error('confirmCashOfferDelivered failed:', err); }
+            },
+            title: `${lpName} is collecting ₹${inr.toLocaleString('en-IN')} cash.`,
+            subtitle: `For a ₹${feeInr.toLocaleString('en-IN')} fee.`,
+            btn: 'Accept',
+            swipeRightLabel: 'Accept ✓',
           };
         }) : []),
-        // Union leader: count bills + confirm for LP-filled CashOffers (union has cash, LP deposited USDT)
-        ...(isLeader ? filledCashOffers.map((o, idx) => ({
-          i: 500 + idx,
-          active: true,
-          img: 'images/label-06.webp',
-          tx_nmb: 0,
-          click: () => { setTxDetails({ offerId: o.id, inrValue: o.inrValue }); setTxIndex('cashOffer-confirm'); setIx(5); },
-          title: `LP collected — hand over ₹${Number(o.inrValue).toLocaleString('en-IN')} cash`,
-          subtitle: `Count bills · confirm to release USDT to LP`,
-          btn: 'Count Bills',
-        })) : []),
-        // Union leader: count bills + confirm for LP-committed RedeemOrders
-        ...(isLeader ? pendingDeliveries.map((o, idx) => ({
-          i: 400 + idx,
-          active: true,
-          img: 'images/label-06.webp',
-          tx_nmb: 0,
-          click: () => { setTxDetails({ orderId: o.id }); setTxIndex('redeem'); setIx(5); },
-          title: `LP delivered ₹${Number(o.inrValue).toLocaleString('en-IN')} cash`,
-          subtitle: `Count bills · confirm to release $${(Number(o.usdtLocked) / 1e6).toFixed(2)} USDT to LP`,
-          btn: 'Count Bills',
-        })) : []),
+        // Union leader: LP committed to a RedeemOrder — swipe to accept or deny
+        ...(isLeader ? pendingDeliveries.map((o, idx) => {
+          const lpName = resolveName(o.lp);
+          const inr    = Number(o.inrValue);
+          const feeInr = Math.round(inr * (o.feeBP ?? 100) / 10000);
+          return {
+            i: 400 + idx,
+            active: true,
+            img: 'images/USDT0.png',
+            tx_nmb: 0,
+            click: async () => {
+              if (!confirm(`Accept ₹${inr.toLocaleString('en-IN')} cash delivery from ${lpName}?`)) return;
+              try {
+                await confirmCashDelivery(o.id);
+                queryClient.invalidateQueries({ queryKey: ['pendingCashDeliveries'] });
+                queryClient.invalidateQueries({ queryKey: ['unionCashReserve'] });
+              } catch (err) { console.error('confirmCashDelivery failed:', err); }
+            },
+            click2: async () => {
+              if (!confirm(`Deny ${lpName}? This cancels the order.`)) return;
+              try {
+                await cancelRedeemOrder(o.id);
+                queryClient.invalidateQueries({ queryKey: ['pendingCashDeliveries'] });
+                queryClient.invalidateQueries({ queryKey: ['unionCashReserve'] });
+              } catch (err) { console.error('cancelRedeemOrder failed:', err); }
+            },
+            title: `${lpName} is delivering ₹${inr.toLocaleString('en-IN')} cash.`,
+            subtitle: `For a ₹${feeInr.toLocaleString('en-IN')} fee.`,
+            btn: 'Accept',
+            btn2: 'Deny',
+            swipeRightLabel: 'Accept ✓',
+            swipeLeftLabel: '✕ Deny',
+          };
+        }) : []),
         { i: 102,
           active: isLeader && treasuryLow,
           img: 'images/label-06.webp',
@@ -328,13 +499,17 @@ export function useFilterTasks(LAND, CAP) {
 
       const active = taskList.filter(t => t.active);
       
-      // Always place chain-switch task (i=0) and land task (i=2) first if active, then shuffle the rest
-      const pinned = active.filter(t => t.i === 0 || t.i === 2);
-      const others = active.filter(t => t.i !== 0 && t.i !== 2);
+      // Pin chain-switch (i=0), land (i=2), and loan tasks (i=7+) first in order, shuffle the rest
+      const isLoan = (t) => t.i >= 7 && t.i < 100;
+      const pinned = active.filter(t => t.i === 0 || t.i === 2 || isLoan(t));
+      const others = active.filter(t => t.i !== 0 && t.i !== 2 && !isLoan(t));
       const highlighted_task = [...pinned, ...shuffle(others)];
       return highlighted_task; // ✅ return the list
     },
   });
-  return query; // return the whole query object
+  // Surface upstream loading alongside the query result so the UI can keep the
+  // task area in a loading state while data is still streaming in (avoids the
+  // "All tasks completed" flash on hard reloads).
+  return { ...query, upstreamLoading };
 }
 

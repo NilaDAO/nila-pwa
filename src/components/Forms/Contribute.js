@@ -50,8 +50,8 @@ const Contribute = ({ handleOpenForm }) => {
   );
 
   const handleBulkConfirmed = useCallback(
-    ({ bills, s3Key, confidence, reasoning }) => {
-      addBulkGroup({ bills, s3Key, confidence, reasoning });
+    ({ items, s3Key, confidence, reasoning }) => {
+      addBulkGroup({ items, s3Key, confidence, reasoning });
       setPhase('review');
     },
     [addBulkGroup]
@@ -110,9 +110,8 @@ const Contribute = ({ handleOpenForm }) => {
                 addContact(addr, name);
                 setPhase('scan-choice');
               }}
-              onCancel={() => {
-                setMemberAddress(null);
-                setPhase('pre-scan');
+              onSkip={() => {
+                setPhase('scan-choice');
               }}
             />
           </motion.div>

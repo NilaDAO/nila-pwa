@@ -29,8 +29,8 @@ export function CashOfferConfirmForm({ handleOpenForm }) {
 
   const { scannedBills, scanGroups, runningTotal, addBulkGroup, removeScanGroup, removeBill } = useCashSession();
 
-  const handleBulkConfirmed = useCallback(({ bills, s3Key, confidence, reasoning }) => {
-    addBulkGroup({ bills, s3Key, confidence, reasoning });
+  const handleBulkConfirmed = useCallback(({ items, s3Key, confidence, reasoning }) => {
+    addBulkGroup({ items, s3Key, confidence, reasoning });
   }, [addBulkGroup]);
 
   const handleConfirm = async () => {

@@ -114,18 +114,6 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
   return () => window.google.maps.event.removeListener(listener);
 }, [map, metadata]);
 
-  // ------------------ portfolio: multi-property outlines -------------------------
-  useEffect(() => {
-    if (!map || !fieldActivity?.portfolioProperties?.length) return;
-    const bounds = new window.google.maps.LatLngBounds();
-    fieldActivity.portfolioProperties.forEach(p => {
-      if (p.centroid) bounds.extend({ lat: p.centroid[0], lng: p.centroid[1] });
-    });
-    if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, 60);
-    }
-  }, [map, fieldActivity?.portfolioProperties]);
-
   // ------------------ signal markers -------------------------
   useEffect(() => {
     if (!map || !features.length) return;
@@ -260,23 +248,6 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
             }}
           />
         ))}
-        {/* Portfolio: multi-property outlines */}
-        {fieldActivity?.portfolioProperties?.flatMap((prop, pi) =>
-          (prop.outline || []).map((poly, ri) => (
-            <Polygon
-              key={`ptf-${pi}-${ri}`}
-              paths={poly.map(p => ({ lat: Number(p.lat), lng: Number(p.lng) }))}
-              options={{
-                fillColor: 'rgba(255,255,255,0.3)',
-                strokeColor: '#ffffff',
-                strokeOpacity: 0.9,
-                strokeWeight: 1,
-                clickable: false,
-                zIndex: 1,
-              }}
-            />
-          ))
-        )}
         // ------------------ Dominant features -------------------------
         {/* Activity / Select mode */}
         {features && features.filter((_f, i) => featureIds.includes(i)).flatMap((f, i) => {

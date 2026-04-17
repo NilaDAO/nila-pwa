@@ -4,6 +4,7 @@ import { useDataContext } from '../../utils/NavigationContext';
 import { useFxPool } from '../../hooks/useWallet.ts';
 import { useRedeemOrder } from '../../hooks/useRedeemOrder.ts';
 import useCashSession from '../../hooks/useCashSession';
+import { useLPCashOnHand } from '../../hooks/useLPCashOnHand';
 import BulkBillScanner from './BulkBillScanner';
 import BillList from './BillList';
 import QRScanner from '../UI/qrScan';
@@ -37,6 +38,7 @@ export function RedeemForm({ handleOpenForm }) {
   const unionAddr = db?.union?.address;
 
   const { redeemFarmerNin, postRedeemOrder, confirmCashDelivery, quoteRedeem } = useFxPool();
+  const { addCash: addLPCash } = useLPCashOnHand(unionAddr);
 
   // When opened from the pending-deliveries list, txdetails.orderId is pre-set
   const presetOrderId = txdetails?.orderId ?? null;
@@ -108,14 +110,15 @@ export function RedeemForm({ handleOpenForm }) {
     setError(null);
     try {
       await confirmCashDelivery(orderId);
+      addLPCash(orderId, inrTarget);
       setStep('done');
     } catch (err) {
       setError(err?.reason || err?.message || 'Confirm failed');
     }
   };
 
-  const handleBulkConfirmed = useCallback(({ bills, s3Key, confidence, reasoning }) => {
-    addBulkGroup({ bills, s3Key, confidence, reasoning });
+  const handleBulkConfirmed = useCallback(({ items, s3Key, confidence, reasoning }) => {
+    addBulkGroup({ items, s3Key, confidence, reasoning });
   }, [addBulkGroup]);
 
   const inrTarget = Number(permit?.inrValue ?? order?.inrValue ?? 0n);

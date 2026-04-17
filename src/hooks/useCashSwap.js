@@ -31,6 +31,7 @@ const useCashSwap = (clearSession, handleOpenForm) => {
       loanID,
       loanType,
       loanPending, // true = drawdownTs===0 (pending loan, no nIN yet), false = already drawn (nIN in wallet)
+      outstanding, // principal + accrued interest from chain (human-readable number)
     } = {}) => {
       if (isProcessing || !scannedBills.length) return;
       setIsProcessing(true);
@@ -46,7 +47,17 @@ const useCashSwap = (clearSession, handleOpenForm) => {
 
         const resolvedLoanType = loanType || 'GENERIC';
         const loanIdBytes = loanID ?? ethers.ZeroHash;
-        const ninAmount = BigInt(runningTotal) * 10n ** 18n;
+
+        // For REPAY: clamp to outstanding so we don't over-mint.
+        // bills < outstanding → partial repay (send bills amount)
+        // bills >= outstanding → full repay (send outstanding + 1 INR dust for rounding)
+        let effectiveTotal = runningTotal;
+        if (purpose === 'repay' && outstanding != null && outstanding > 0) {
+          const fullRepayAmount = Math.ceil(outstanding) + 1; // +1 INR dust to ensure full closure
+          effectiveTotal = Math.min(runningTotal, fullRepayAmount);
+        }
+
+        const ninAmount = BigInt(effectiveTotal) * 10n ** 18n;
 
         if (purpose === 'give') {
           // CASH-OUT: member wants physical INR, surrenders nIN from their wallet.
@@ -90,7 +101,7 @@ const useCashSwap = (clearSession, handleOpenForm) => {
           await cashScanMint(
             unionAddr,
             resolvedLoanType,
-            runningTotal,
+            effectiveTotal,
             scanHash,
             SCAN_PURPOSE[purpose] ?? SCAN_PURPOSE.repay,
             loanIdBytes,
