@@ -383,22 +383,44 @@ const DormantCard = ({ record }) => {
 
 // ── Portfolio view (union leader views all borrower properties) ───────
 
+import landTitleArtifact from '../../../components/ABI/NilaLandTitleWithName.json';
+import { parseCompactMeta, ringsAreaMeters2 } from '../../../utils/fetch_landTitleMeta.ts';
+import { decodeMetadataUri } from '../../../utils/decodeMetadataUri.ts';
+import { ethers } from 'ethers';
+import { useWallet, useContract } from '../../../hooks/useWallet.ts';
+import { runTx } from '../../../utils/runTx.ts';
+import axios from 'axios';
+
+const ptfLandTitleAbi = (landTitleArtifact).abi ?? landTitleArtifact;
+const PTF_LAND_TITLE = process.env.REACT_APP_LAND_TITLE_MAIN;
+const PTF_NIN_ADDR = process.env.REACT_APP_NIN_MAIN;
+const PTF_API = process.env.REACT_APP_API_BASE_URL;
+const ptfErc20Abi = [
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+];
+
 const PortfolioCards = () => {
   const { db, fieldActivity, setFieldActivity } = useDataContext();
   const { setIx } = useNavContext();
   const { setCardView } = useViewModeContext();
   const controls = useDragControls();
   const startYRef = useRef(0);
+  const { wallet, provider } = useWallet();
+  const landTitle = useContract(PTF_LAND_TITLE, ptfLandTitleAbi, wallet ?? provider);
+  const nin = useContract(PTF_NIN_ADDR, ptfErc20Abi, wallet);
 
   const loans = fieldActivity?.portfolioLoans || [];
   const landIds = loans.map(l => l.landId).filter(Boolean);
-  const uniqueLandIds = [...new Set(landIds)];
-  const viewFee = 1; // nIN per property (from contract)
-  const totalCost = uniqueLandIds.length * viewFee;
+  const uniqueLandIds = useMemo(() => [...new Set(landIds)], [landIds.join(',')]);
 
-  const [accepted, setAccepted] = useState(false);
-  const [fetching, setFetching] = useState(false);
+  const [step, setStep] = useState('loading'); // loading | ready | paying | done
+  const [properties, setProperties] = useState([]); // { landId, outline, centroid, bbox, farmName, area }
+  const [records, setRecords] = useState([]); // { landId, record }
+  const [viewFee, setViewFee] = useState(null);
   const [fetched, setFetched] = useState(0);
+
+  const totalCost = viewFee != null ? uniqueLandIds.length * Number(viewFee / 10n**14n) / 10000 : null;
 
   const close = () => {
     setFieldActivity(null);
@@ -406,24 +428,124 @@ const PortfolioCards = () => {
     setCardView('default');
   };
 
-  const handleAcceptAndPay = async () => {
-    setAccepted(true);
-    setFetching(true);
-    // TODO: batch getRecordHash calls (pay nIN per property)
-    // For now, fetch records directly from backend by land_id
-    for (const lid of uniqueLandIds) {
-      try {
-        const res = await fetch(`${process.env.REACT_APP_API_BASE_URL}/gis/record/${lid}`);
-        if (res.ok) {
-          setFetched(prev => prev + 1);
-          console.log(`[portfolio] fetched land_id=${lid}`);
+  // Step 1: fetch metadata (outlines) for all land_ids — free view calls
+  useEffect(() => {
+    if (!landTitle || !uniqueLandIds.length) return;
+    let cancelled = false;
+
+    (async () => {
+      const props = [];
+      for (const lid of uniqueLandIds) {
+        try {
+          const uri = await landTitle.tokenURI(lid);
+          const meta = await decodeMetadataUri(uri);
+          const { outlineRings, centroid, bbox } = parseCompactMeta(meta);
+          const area = Number(ringsAreaMeters2(outlineRings).toFixed(0));
+          props.push({ landId: lid, outline: outlineRings, centroid, bbox, farmName: meta.farm, area });
+        } catch (e) {
+          console.warn(`[portfolio] metadata failed for ${lid}:`, e.message);
         }
-      } catch (e) {
-        console.warn(`[portfolio] failed land_id=${lid}`, e);
+      }
+      if (cancelled) return;
+      setProperties(props);
+
+      // Read viewFeeNin from contract
+      try {
+        const fee = await landTitle.viewFeeNin();
+        setViewFee(fee);
+      } catch { setViewFee(0n); }
+
+      setStep('ready');
+    })();
+
+    return () => { cancelled = true; };
+  }, [landTitle, uniqueLandIds.join(',')]);
+
+  // Step 2: accept & pay — approve nIN, then getRecordHash per property
+  const handleAcceptAndPay = useCallback(async () => {
+    if (!landTitle || !wallet || !nin) return;
+    setStep('paying');
+    setFetched(0);
+
+    try {
+      // Approve total nIN spend
+      const totalWei = (viewFee || 0n) * BigInt(uniqueLandIds.length);
+      if (totalWei > 0n) {
+        const allowance = await nin.allowance(wallet.address, PTF_LAND_TITLE);
+        if (allowance < totalWei) {
+          await runTx(() => nin.approve(PTF_LAND_TITLE, totalWei));
+        }
+      }
+
+      // Fetch each record
+      const loaded = [];
+      for (const lid of uniqueLandIds) {
+        try {
+          // Pay the fee + get hash
+          const hash = await landTitle.getRecordHash.staticCall(lid);
+          if (hash && hash !== ethers.ZeroHash) {
+            // Send the actual tx (pays nIN)
+            await runTx(() => landTitle.getRecordHash(lid));
+            // Fetch record from backend
+            const { data: record } = await axios.get(`${PTF_API}/gis/record-by-hash/${hash}`);
+            loaded.push({ landId: lid, record });
+            setRecords(prev => [...prev, { landId: lid, record }]);
+            setFetched(prev => prev + 1);
+            console.log(`[portfolio] loaded land_id=${lid}`);
+          }
+        } catch (e) {
+          console.warn(`[portfolio] failed land_id=${lid}:`, e.message);
+          setFetched(prev => prev + 1); // count anyway for progress
+        }
+      }
+
+      setStep('done');
+    } catch (e) {
+      console.error('[portfolio] payment failed:', e);
+      setStep('ready');
+    }
+  }, [landTitle, wallet, nin, viewFee, uniqueLandIds]);
+
+  // Step 3: as records load, push outlines + clusters to the map
+  useEffect(() => {
+    if (!properties.length && !records.length) return;
+
+    // Build combined features for the map
+    const allFeatures = [];
+    for (const { landId, record } of records) {
+      const cc = record?.current_cycle;
+      const openKey = Object.keys(record?.cycles || {}).find(k => record.cycles[k].is_open);
+      const pcc = openKey ? record?.per_cycle_clusters?.[openKey] : null;
+      if (pcc?.features) {
+        for (const f of pcc.features) {
+          allFeatures.push({
+            ...f,
+            properties: {
+              ...f.properties,
+              crop_type: cc?.[0]?.crop_type || f.properties?.crop_type,
+              activity: 'active',
+              portfolio_land_id: landId,
+            }
+          });
+        }
       }
     }
-    setFetching(false);
-  };
+
+    setFieldActivity(prev => ({
+      ...prev,
+      features: allFeatures,
+      geojson: { type: 'FeatureCollection', features: allFeatures },
+      featurelength: allFeatures.length,
+      portfolioProperties: properties,
+    }));
+  }, [records.length, properties.length]);
+
+  // Loan info keyed by landId for the property list
+  const loanByLand = useMemo(() => {
+    const m = new Map();
+    for (const l of loans) { if (l.landId && !m.has(l.landId)) m.set(l.landId, l); }
+    return m;
+  }, [loans]);
 
   return (
     <>
@@ -453,53 +575,95 @@ const PortfolioCards = () => {
           onPointerDown={(e) => controls.start(e)}
         >
           <h3 className="font-bold px-4 dark:text-white">Portfolio view</h3>
-          <p className="text-[10px] px-4 dark:text-slate-500">View all borrower properties on the map</p>
 
-          {!accepted && (
+          {step === 'loading' && <Spinner size="small" stages="Loading property metadata" />}
+
+          {step === 'ready' && (
             <>
               <div className="flex flex-col gap-1.5 px-4">
                 <div className="flex justify-between text-xs">
                   <span className="text-gray-500 dark:text-slate-400">Properties</span>
-                  <span className="font-bold dark:text-white">{uniqueLandIds.length}</span>
+                  <span className="font-bold dark:text-white">{properties.length}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 dark:text-slate-400">Cost per property</span>
-                  <span className="font-bold dark:text-white">{viewFee} nIN</span>
+                  <span className="text-gray-500 dark:text-slate-400">Fee per property</span>
+                  <span className="font-bold dark:text-white">{viewFee != null ? `${Number(viewFee / 10n**14n) / 10000} nIN` : '—'}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 dark:text-slate-400">Total cost</span>
-                  <span className="font-bold dark:text-white">{totalCost} nIN</span>
+                  <span className="text-gray-500 dark:text-slate-400">Total</span>
+                  <span className="font-bold dark:text-white">{totalCost != null ? `${totalCost} nIN` : '—'}</span>
                 </div>
               </div>
+
+              {/* Property list */}
+              <div className="flex flex-col gap-1 px-4 max-h-40 overflow-y-auto">
+                {properties.map(p => {
+                  const loan = loanByLand.get(p.landId);
+                  return (
+                    <div key={p.landId} className="flex justify-between text-[10px] py-0.5">
+                      <span className="dark:text-slate-300">{p.farmName || `Land #${p.landId}`}</span>
+                      <span className="dark:text-slate-400">{loan?.displayName}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
               <button
                 onClick={handleAcceptAndPay}
                 className="mx-4 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95"
               >
-                Accept & pay {totalCost} nIN
+                Accept & pay {totalCost != null ? `${totalCost} nIN` : ''}
               </button>
-              <p className="text-[10px] px-4 dark:text-slate-500">
-                Fees go directly to each farmer
-              </p>
+              <p className="text-[10px] px-4 dark:text-slate-500">Fees go directly to each farmer</p>
             </>
           )}
 
-          {accepted && (
+          {step === 'paying' && (
             <div className="flex flex-col gap-2 px-4">
               <div className="flex justify-between text-xs">
-                <span className="text-gray-500 dark:text-slate-400">Loading properties</span>
+                <span className="text-gray-500 dark:text-slate-400">Loading crop data</span>
                 <span className="font-bold dark:text-white">{fetched} / {uniqueLandIds.length}</span>
               </div>
-              {fetching && (
-                <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1.5">
-                  <div
-                    className="h-1.5 rounded-full bg-green-500 transition-all"
-                    style={{ width: `${uniqueLandIds.length > 0 ? (fetched / uniqueLandIds.length) * 100 : 0}%` }}
-                  />
-                </div>
-              )}
-              {!fetching && fetched > 0 && (
-                <p className="text-xs dark:text-green-400">{fetched} properties loaded</p>
-              )}
+              <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1.5">
+                <div
+                  className="h-1.5 rounded-full bg-green-500 transition-all"
+                  style={{ width: `${uniqueLandIds.length > 0 ? (fetched / uniqueLandIds.length) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {step === 'done' && (
+            <div className="flex flex-col gap-2 px-4">
+              <p className="text-xs dark:text-green-400">{records.length} properties loaded</p>
+              {/* Per-property summary */}
+              {records.map(({ landId, record }) => {
+                const cc = record?.current_cycle?.[0];
+                const prop = properties.find(p => p.landId === landId);
+                const loan = loanByLand.get(landId);
+                const healthColor = cc?.health === 'stressed' ? 'text-amber-500' : cc?.health === 'poor' ? 'text-red-500' : 'text-green-500';
+                return (
+                  <div key={landId} className="flex flex-col gap-0.5 py-1 border-t border-slate-100 dark:border-slate-600">
+                    <div className="flex justify-between text-xs">
+                      <span className="font-semibold dark:text-white">{prop?.farmName || `Land #${landId}`}</span>
+                      <span className="dark:text-slate-400">{loan?.displayName}</span>
+                    </div>
+                    {cc ? (
+                      <div className="flex gap-3 text-[10px] dark:text-slate-300">
+                        <span className="flex items-center gap-1">
+                          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: cropColor(cc.crop_type) }} />
+                          {cc.crop_type}
+                        </span>
+                        <span>{cc.stage}</span>
+                        <span className={healthColor}>{cc.health}</span>
+                        {cc.expected_yield_kg_acre && <span>{cc.expected_yield_kg_acre} kg/ac</span>}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] dark:text-slate-500">Fallow</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
