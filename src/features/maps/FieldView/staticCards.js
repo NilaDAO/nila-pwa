@@ -697,7 +697,8 @@ export const StaticCards = ({ LAND }) => {
                   {fieldActivity?.activeCycle?.length > 0 && (() => {
                     const ac = fieldActivity.activeCycle[0];
                     const eos = ac.predicted_eos;
-                    const harvestText = eos?.length ? `${eos[0]} – ${eos[1] || eos[0]}` : null;
+                    const fmtHarvest = (d) => { if (!d) return ''; const dt = new Date(d); return dt.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }); };
+                    const harvestText = eos?.length ? `${fmtHarvest(eos[0])}${eos[1] ? ` → ${fmtHarvest(eos[1])}` : ''}` : null;
                     const daysToHarvest = eos?.[0] ? Math.round((new Date(eos[0]) - new Date()) / 86400000) : null;
                     const healthColor = ac.health === 'stressed' ? 'text-amber-500' : ac.health === 'poor' ? 'text-red-500' : 'text-green-500';
                     const w = ac.weather_summary || {};
