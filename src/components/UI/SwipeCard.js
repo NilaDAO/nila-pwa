@@ -4,34 +4,67 @@ const SWIPE_THRESHOLD = 80;
 
 /**
  * SwipeCard — swipe right to accept, swipe left to cancel.
- * t.click(t.tx_nmb) = accept, t.click2() = cancel
+ * t.click(t.tx_nmb, lpOpts?) = accept, t.click2() = cancel
+ *
+ * When t.lp is present ({ fullAmt, netAmt }) the card renders an inline
+ * LP-request checkbox + amount toggle. The selected state is forwarded to
+ * t.click() on swipe-right so the handler can fire the LP request.
  */
 const SwipeCard = ({ t }) => {
     const [dx, setDx]  = useState(0);
     const startX       = useRef(null);
     const isDragging   = useRef(false);
 
-    const onTouchStart = (e) => {
-        startX.current     = e.touches[0].clientX;
+    // Customizable swipe labels (defaults: Accept right / Cancel left)
+    const rightLabel = t.swipeRightLabel ?? 'Accept ✓';
+    const leftLabel  = t.swipeLeftLabel  ?? '✕ Cancel';
+    const hintText   = t.swipeHint       ?? `${leftLabel} \u00a0·\u00a0 ${rightLabel}`;
+    // When the left swipe is also a positive action (e.g. preferred path),
+    // tint it green instead of red.
+    const leftPositive = Boolean(t.swipeLeftPositive);
+
+    // LP options — local state lives on the card
+    const noEscrow        = t.lp?.escrowBalance === 0;
+    const escrowCoversAll = t.lp && t.lp.escrowBalance >= t.lp.fullAmt;
+    const [sendLP, setSendLP] = useState(!escrowCoversAll);
+    const [inFull, setInFull] = useState(noEscrow);
+
+    const onStart = (x) => {
+        startX.current     = x;
         isDragging.current = false;
     };
-
-    const onTouchMove = (e) => {
+    const onMove = (x) => {
         if (startX.current === null) return;
-        const delta = e.touches[0].clientX - startX.current;
+        const delta = x - startX.current;
         if (!isDragging.current && Math.abs(delta) < 8) return;
         isDragging.current = true;
         setDx(Math.max(-130, Math.min(130, delta)));
     };
-
-    const onTouchEnd = () => {
+    const onEnd = () => {
         const triggered = dx > SWIPE_THRESHOLD ? 'accept' : dx < -SWIPE_THRESHOLD ? 'cancel' : null;
         setDx(0);
         startX.current     = null;
         isDragging.current = false;
-        if (triggered === 'accept') t.click(t.tx_nmb);
+        if (triggered === 'accept') {
+            const lpOpts = t.lp ? {
+                sendLP,
+                amount: sendLP ? (inFull ? t.lp.fullAmt : t.lp.netAmt) : 0,
+            } : undefined;
+            t.click(t.tx_nmb, lpOpts);
+        }
         if (triggered === 'cancel') t.click2();
     };
+
+    // Touch
+    const onTouchStart = (e) => onStart(e.touches[0].clientX);
+    const onTouchMove  = (e) => onMove(e.touches[0].clientX);
+    const onTouchEnd   = onEnd;
+
+    // Mouse (desktop)
+    const mouseDown = useRef(false);
+    const onMouseDown = (e) => { mouseDown.current = true; onStart(e.clientX); };
+    const onMouseMove = (e) => { if (mouseDown.current) onMove(e.clientX); };
+    const onMouseUp   = ()  => { mouseDown.current = false; onEnd(); };
 
     // right swipe → accept (green), left swipe → cancel (red)
     const acceptPct = Math.min(1, Math.max(0,  dx / SWIPE_THRESHOLD));
@@ -41,20 +74,20 @@ const SwipeCard = ({ t }) => {
         <div className="relative overflow-hidden">
             {/* full-width tinted bg */}
             <div className="absolute inset-0 bg-green-500" style={{ opacity: acceptPct * 0.25 }} />
-            <div className="absolute inset-0 bg-red-500"   style={{ opacity: cancelPct * 0.25 }} />
+            <div className={`absolute inset-0 ${leftPositive ? 'bg-green-500' : 'bg-red-500'}`} style={{ opacity: cancelPct * 0.25 }} />
 
             {/* fixed labels — accept on LEFT (revealed when card slides right), cancel on RIGHT */}
             <div
                 className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10"
                 style={{ opacity: acceptPct }}
             >
-                <span className="text-green dark:text-green font-bold text-sm">Accept ✓</span>
+                <span className="text-green dark:text-green font-bold text-sm">{rightLabel}</span>
             </div>
             <div
                 className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-10"
                 style={{ opacity: cancelPct }}
             >
-                <span className="text-red dark:text-red font-bold text-sm">✕ Cancel</span>
+                <span className={`${leftPositive ? 'text-green dark:text-green' : 'text-red dark:text-red'} font-bold text-sm`}>{leftLabel}</span>
             </div>
 
             {/* draggable content */}
@@ -68,6 +101,10 @@ const SwipeCard = ({ t }) => {
                 onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}
+                onMouseDown={onMouseDown}
+                onMouseMove={onMouseMove}
+                onMouseUp={onMouseUp}
+                onMouseLeave={onMouseUp}
             >
                 <div className="flex justify-center mb-2">
                     <div className="relative flex items-center justify-center h-12 w-12">
@@ -82,9 +119,53 @@ const SwipeCard = ({ t }) => {
                     </div>
                 </div>
                 <p className="font-bold text-xs text-center dark:text-slate-100">{t.title}</p>
-                <p className="text-xs text-center text-gray-400 dark:text-slate-400">{t.subtitle}</p>
+                {t.subtitle && <p className="text-xs text-center text-gray-400 dark:text-slate-400">{t.subtitle}</p>}
+
+                {/* ── Inline LP request options ── */}
+                {t.lp && (
+                    <div className="mt-3 flex flex-col items-center gap-1"
+                         onTouchStart={e => e.stopPropagation()}
+                         onMouseDown={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-2 cursor-pointer select-none"
+                             onClick={() => {
+                                 if (!sendLP && escrowCoversAll) {
+                                     if (!confirm('Escrow covers the full amount. Settling via LP will draw from the treasury. Continue?')) return;
+                                 }
+                                 setSendLP(v => { if (v) setInFull(noEscrow); return !v; });
+                             }}>
+                            <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors
+                                ${sendLP
+                                    ? 'bg-green border-green dark:bg-green_dark dark:border-green_dark'
+                                    : 'border-gray-300 dark:border-slate-600'}`}>
+                                {sendLP && (
+                                    <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
+                                        <path d="M2.5 6l2.5 2.5 4.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                )}
+                            </div>
+                            <span className="text-[11px] font-medium dark:text-slate-200">
+                                Settle{' '}
+                                {noEscrow
+                                    ? <span>₹{t.lp.fullAmt.toLocaleString('en-IN')}</span>
+                                    : <span onClick={e => { e.stopPropagation(); if (sendLP) setInFull(f => !f); }}
+                                            className={sendLP ? 'underline decoration-dotted cursor-pointer' : ''}>
+                                        ₹{(inFull ? t.lp.fullAmt : t.lp.netAmt).toLocaleString('en-IN')}
+                                      </span>
+                                }
+                                {' '}cash from LP
+                            </span>
+                        </div>
+
+                        {sendLP && !inFull && !noEscrow && (
+                            <p className="text-[10px] text-gray-400 dark:text-slate-500">
+                                Tap to settle full amount in cash
+                            </p>
+                        )}
+                    </div>
+                )}
+
                 <p className="text-center text-[10px] text-gray-300 dark:text-slate-600 mt-2">
-                    ✕ cancel &nbsp;·&nbsp; accept ✓
+                    {hintText}
                 </p>
             </div>
         </div>

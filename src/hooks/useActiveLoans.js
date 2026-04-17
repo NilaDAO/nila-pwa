@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ethers } from 'ethers';
-import { setDBitem, readAllItems } from '../utils/db';
+import { setDBitem, readAllItems, deleteItem } from '../utils/db';
 import { useProvider } from './useWallet.ts';
 import genericFundViewerArtifact from '../components/ABI/genericFundViewer.json';
 import MulticallAbi from '../components/ABI/MultiCall3.json';
@@ -24,7 +24,7 @@ const parseAmount = (raw) => {
 const mapBackendItem = (i, union) => ({
   id: i.loan_id ?? i.id,
   borrower: i.borrower,
-  fund: i.fund,
+  fund: i.fund?.startsWith('0x') ? i.fund : i.fund ? `0x${i.fund}` : '',
   activity_stage: i.activity_stage,
   activity_checked_at: i.activity_checked_at,
   activity_stage_id: i.activity_stage_id,
@@ -97,11 +97,19 @@ export function useActiveLoans(unionAddress, enabled) {
             ? json.items.map((i) => mapBackendItem(i, unionAddress))
             : [];
 
-          // Upsert ONLY new loans (don't overwrite chain-synced records)
+          // Upsert new loans AND refresh stale ones (but don't overwrite chain-synced records)
           for (const item of backendItems) {
-            if (!stored[item.id]) {
+            const existing = stored[item.id];
+            if (!existing) {
+              // Brand-new loan from backend
               try { await setDBitem(item.id, item, 'ActiveLoans'); } catch (_) {}
               stored[item.id] = item;
+            } else if (!existing.chainVerified) {
+              // Backend has fresher data than our un-verified local copy
+              // (e.g. pending → accepted: drawdownTs changed from 0 to non-zero)
+              const merged = { ...existing, ...item };
+              try { await setDBitem(item.id, merged, 'ActiveLoans'); } catch (_) {}
+              stored[item.id] = merged;
             }
           }
         }
@@ -160,9 +168,20 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
           viewerIface.encodeFunctionData('getBorrowerInfo', [unionAddress, id]),
         ]);
 
-        const [, ret] = await mc.aggregate.staticCall(calls);
+        // tryAggregate(false, calls) — don't revert on per-call failure
+        const results = await mc.tryAggregate.staticCall(false, calls);
 
         for (let j = 0; j < batch.length; j++) {
+          const [success, returnData] = results[j];
+          const id = batch[j];
+          const existing = stored[id] ?? {};
+
+          if (!success) {
+            // Call reverted (LoanNotExist) — delete ghost
+            try { await deleteItem(id, 'ActiveLoans'); } catch (_) {}
+            continue;
+          }
+
           const {
             borrower,
             principal,
@@ -176,19 +195,23 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
             milestoneDigest,
             digestTs,
             drawdownTs,
-          } = viewerIface.decodeFunctionResult('getBorrowerInfo', ret[j]);
+          } = viewerIface.decodeFunctionResult('getBorrowerInfo', returnData);
 
-          const id = batch[j];
-          const existing = stored[id] ?? {};
+          // Ghost row: no principal, no drawdown — expired voucher pre-insert
+          if (principal === 0n && drawdownTs === 0n && !closed) {
+            try { await deleteItem(id, 'ActiveLoans'); } catch (_) {}
+            continue;
+          }
 
           if (closed || defaulted) {
-            // Flag as closed — don't delete, so UI can show warning
+            // Flag as closed — keep for 7 days so UI can show warning, then auto-delete
             const flagged = {
               ...existing,
               chainVerified: true,
               chainClosed: true,
               active: false,
               defaulted: Boolean(defaulted),
+              closedAt: existing.closedAt || Date.now(),
             };
             try { await setDBitem(id, flagged, 'ActiveLoans'); } catch (_) {}
             continue;
@@ -213,6 +236,16 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
           };
 
           try { await setDBitem(id, updated, 'ActiveLoans'); } catch (_) {}
+        }
+      }
+
+      // Delete stale closed loans older than 7 days
+      const STALE_MS = 7 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      for (const id of loanIds) {
+        const item = stored[id];
+        if (item?.chainClosed && item.closedAt && (now - item.closedAt) > STALE_MS) {
+          try { await deleteItem(id, 'ActiveLoans'); } catch (_) {}
         }
       }
 

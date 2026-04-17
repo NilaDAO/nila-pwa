@@ -60,9 +60,9 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
         const fundId = String(fund?.tokens?.[0]?.loanType || sums?.funds?.[idx]?.fund_id || '').toLowerCase();
         const key = `${union}-${fundId}`;
         const apiRate = rateByPair?.[key];
-        if (Number.isFinite(apiRate)) return apiRate;
-        const fallback = Number(fund?.tokens?.[0]?.previewRateBP ?? 0);
-        return Number.isFinite(fallback) ? fallback : 0;
+        const floor = Number(sums?.funds?.[idx]?.baseRateBP || fund?.tokens?.[0]?.baseRateBP || 0);
+        if (Number.isFinite(apiRate) && apiRate >= floor) return apiRate;
+        return Number.isFinite(floor) && floor > 0 ? floor : 0;
     };
 
     useEffect(() => {
@@ -91,9 +91,11 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [d?.tokens?.[0]?.loanType, db?.address, SENIORITY, s?.senior, s?.junior]);
 
+    const pendingEarnings = Math.round(s?.pending ?? 0);
     const handleSetTab = (bool) => {
         setTab(bool) // state required as ref won't rerender on tab change.
-        setAmount(0)
+        // withdraw tab: pre-fill with pending earnings so user sees they're included
+        setAmount(bool ? 0 : pendingEarnings)
         setBalance(initialBalance)
     }
     const setMax = (e) => {
@@ -208,8 +210,8 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                                 <div className='flex flex-row justify-evenly p-3'>
                                     <div className='flex flex-col justify-center'>
                                         <p className='font-bold'>{canClaimNow ? 'Shares unbonded' : 'Unbonding your shares'}</p>
-                                        <p className='text-xs'>amount: {(hasMaturing?.pendingPrincipalSnap).toFixed(2)} nIN</p>
-                                                    </div>
+                                        <p className='text-xs'>payout: {(hasMaturing?.pendingPrincipalSnap).toFixed(2)} nIN</p>
+                                    </div>
                                     <div className='text-xs flex flex-col items-center justify-center'>
                                         { canClaimNow
                                             ? <HandleUnbondClaim />
@@ -276,7 +278,7 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                     return (
                         <div className='flex items-center justify-between mx-0 mt-4 rounded-2xl bg-white dark:bg-gray-800 px-4 py-3'>
                             <p className={`text-xs font-bold ${ratioOk ? 'text-black dark:text-white' : 'text-black dark:text-white'}`}>
-                                Junior / Senior Ratio{currentPct !== null ? `: ${currentPct.toFixed(1)}%` : ''}
+                                First-loss reserve {currentPct !== null ? `: ${currentPct.toFixed(1)}%`: ''}
                             </p>
                             <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ratioOk ? 'text-green dark:text-green' : 'text-red dark:text-red'}`}>
                                 {ratioOk ? `✓ ≥ ${threshPct.toFixed(0)}%` : `✗ Below ${threshPct.toFixed(0)}%`}
@@ -311,6 +313,7 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                                 </div>
                             </div>
                             <p className='flex text-xs py-3 dark:text-slate-400'>⚠️ Withdrawal from this fund will take {handleWithdrawalPeriodWarning(amount)}.</p>
+                            <p className='flex text-xs dark:text-slate-400'>⚠️ Earnings are always withdrawn first — they are included in your withdrawal amount.</p>
                         </div>
                         { isFrozen && <p className='flex text-xs py-3 dark:text-white'> ❌ To withdraw, pay off any debts first.</p> }
                         </>
@@ -373,10 +376,6 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                 } 
                 { !tab &&
                 <div className='flex flex-col justify-evenly text-center'>
-                <div className="flex p-8 dark:text-slate-400">
-                    <input checked={true} readOnly type="checkbox" className="w-4 h-4 my-1 accent-black dark:accent-green_dark border-gray-300 rounded" />
-                    <div className="pl-3 text-left">This will automatically withdraw all your pending earnings!</div>
-                </div>                      
                 <ClaimButton disabled={attr.invested > 0 && !isFrozen ? false : true } handleClick={() => withdrawgeneric(amount,SENIORITY)} title='Withdraw' /> 
                 </div>                } 
                 <div key="info" className='flex flex-col p-4'>

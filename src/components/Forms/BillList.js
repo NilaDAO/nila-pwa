@@ -60,7 +60,7 @@ const BillList = ({
       </AnimatePresence>
 
       {scanGroups.length === 0 && (
-        <p className="text-sm dark:text-slate-400 text-center py-4">No bills scanned yet</p>
+        <p className="text-sm dark:text-slate-400 text-center py-4">No cash scanned yet</p>
       )}
 
       {/* Summary footer */}
@@ -68,7 +68,7 @@ const BillList = ({
         <div className="flex justify-between items-baseline pt-2 border-t border-gray-200 dark:border-slate-700 mt-1">
           <div>
             <p className="text-xs dark:text-slate-400">
-              {scannedBills.length} bill{scannedBills.length !== 1 ? 's' : ''}
+              {scannedBills.length} item{scannedBills.length !== 1 ? 's' : ''}
               {(frontCount > 0 || backCount > 0) && (
                 <span className="ml-1.5 text-slate-400 dark:text-slate-500">
                   ({frontCount}f + {backCount}b)

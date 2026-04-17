@@ -2,10 +2,11 @@ import { useState, useRef } from 'react';
 import { ClaimButton } from '../../components/UI/buttons';
 import { useFilterTasks } from '../../hooks/useFilterTasks';
 import SwipeCard from '../../components/UI/SwipeCard';
+import Spinner from '../../components/UI/spinner';
 
 const TaskMessage = ({ LAND, CAP, inArrays }) => {
     const [ index, setIndex ] = useState(0);
-    const { data, isPending } = useFilterTasks(LAND, CAP);
+    const { data, isPending, upstreamLoading } = useFilterTasks(LAND, CAP);
     const scrollerRef         = useRef(null);
 
     const onScroll = () => {
@@ -15,17 +16,26 @@ const TaskMessage = ({ LAND, CAP, inArrays }) => {
         if (i !== index) setIndex(i);
     };
 
-    if (isPending) {
+    // Treat first-load AND any upstream hook still streaming as "loading" so we
+    // don't flash "All tasks completed" while data is on the way.
+    const loading = isPending || upstreamLoading;
+    // Fixed min-height matches the tallest task card (a SwipeCard with the
+    // inline LP-options block ≈ 226px including the scroller's my-6). Loading,
+    // empty, and all task variants share the slot so the surrounding card
+    // never shifts on state transitions.
+    const SLOT_CLASSES = "flex justify-center mx-6 min-h-[230px]";
+
+    if (loading) {
         return (
-            <div className="flex flex-col justify-center m-6">
-                <p className="font-bold text-xs text-center dark:text-white">loading tasks..</p>
+            <div className={SLOT_CLASSES}>
+                <Spinner size="small" />
             </div>
         )
     }
 
     return (
-        <div className={`flex justify-center mx-6`}>
-            { !isPending && data && data.length > 0 ?
+        <div className={SLOT_CLASSES}>
+            { data && data.length > 0 ?
             <div
                 ref={scrollerRef}
                 onScroll={onScroll}
@@ -53,7 +63,7 @@ const TaskMessage = ({ LAND, CAP, inArrays }) => {
                                 <div className='flex flex-row justify-center'>
                                     <div className="mr-1" >
                                         <p className="font-bold text-xs my-1 dark:text-slate-100">{t.title}</p>
-                                        <p onClick={() => 'subclick' in t && t.subclick(t.sub_tx_nmb)} className="text-xs dark:text-slate-400 text-gray-400">{t.subtitle}</p>
+                                        {t.subtitle && <p onClick={() => 'subclick' in t && t.subclick(t.sub_tx_nmb)} className="text-xs dark:text-slate-400 text-gray-400">{t.subtitle}</p>}
                                     </div>
                                     {t.btn && (
                                       <div className="flex flex-col gap-1">
@@ -71,7 +81,7 @@ const TaskMessage = ({ LAND, CAP, inArrays }) => {
                 ))}
             </div>
             :
-            <div className="flex flex-col justify-center m-6">
+            <div className="flex flex-col items-center justify-center my-6">
                 <p className="font-bold text-xs dark:text-white">All tasks completed.</p>
                 <p className="text-xs text-gray-400">We will notify you when more tasks are available.</p>
             </div>

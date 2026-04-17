@@ -63,6 +63,14 @@ function GetCashFillSheet({ offer, onClose }) {
   const expired = step === 'pending' && live?.deadline && Math.floor(Date.now() / 1000) > live.deadline;
 
   const handleFill = async () => {
+    const usdtLabel = usdtEst != null ? `$${usdtEst.toFixed(2)} USDT` : 'USDT';
+    const msg =
+      `Deposit ${usdtLabel} on-chain now?\n\n` +
+      `You will then walk to ${truncate(offer.union)} and collect ` +
+      `₹${Number(offer.inrValue).toLocaleString('en-IN')} cash ` +
+      `(+ ${(offer.feeBP / 100).toFixed(2)}% bonus).`;
+    if (!confirm(msg)) return;
+
     setError(null);
     setStep('filling');
     try {
@@ -195,6 +203,14 @@ function GiveCashFillSheet({ offer, onClose }) {
   }, [live?.status, step]);
 
   const handleFill = async () => {
+    const usdtLabel = usdtEst != null ? `$${usdtEst.toFixed(2)} USDT` : 'USDT';
+    const msg =
+      `Deposit ${usdtLabel} on-chain now?\n\n` +
+      `You will then bring ₹${Number(offer.inrValue).toLocaleString('en-IN')} cash ` +
+      `to ${truncate(offer.union)}. After the union confirms receipt, ` +
+      `your USDT + ${(offer.feeBP / 100).toFixed(2)}% fee is released.`;
+    if (!confirm(msg)) return;
+
     setError(null);
     setStep('filling');
     try {

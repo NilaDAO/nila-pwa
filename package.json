@@ -13,6 +13,7 @@
     "axios": "^1.7.7",
     "cra-template-pwa": "2.0.0",
     "crypto-js": "^4.2.0",
+    "driver.js": "^1.4.0",
     "eruda": "^3.4.3",
     "ethers": "^6.13.2",
     "fast-glob": "^3.3.3",

@@ -96,6 +96,7 @@ export type GenericTokenData = {
   totals: { funds: number; lent: number };
   investor: { principal: number; junior: number, senior: number, seniorPendingSnap: number, pending: number, j_pending: number, s_pending: number; pendingWithdrawal: number; isFrozen: boolean };
   indexes: { junior: number, senior: number };
+  entryIndexes: { junior: number, senior: number };
   loanType: string;
   headroom: number,
   requiredReserve: number,
@@ -104,6 +105,7 @@ export type GenericTokenData = {
   seniorPrincipal: number,
   claimableReserved: number,
   previewRateBP: number,
+  baseRateBP: number,
   bucketThresholdPct: number,
 };
 
@@ -115,6 +117,7 @@ export type FundSpecific = {
     senior: number;
     seniorPendingSnap: number;
     indexes: { junior: number, senior: number };
+    entryIndexes?: { junior: number, senior: number };
     requiredReserve: number,
     previewRateBP: number,
     juniorCash: number,
@@ -326,28 +329,31 @@ export function useUnionGenericFunds( unionAddress: string, enabled: Enabled) {
 export function useLoadFundsData(unionAddress: string, f: any[], investor: string) {
     const { provider } = useProvider();
     const hasFunds = Array.isArray(f) && f.length > 0;
+    // Stabilise queryKey: derive a primitive key from fund addresses so a new
+    // array reference with the same funds doesn't bust the cache.
+    const fundsKey = useMemo(() => (f ?? []).map((x: any) => x?.[0] ?? '').join(','), [f]);
 
     return useQuery({
-      queryKey: ['fundsData', unionAddress, f, investor],
+      queryKey: ['fundsData', unionAddress, fundsKey, investor],
+      staleTime: 300_000,            // 5 min — on-chain data changes infrequently
       enabled: !!provider && !!investor && hasFunds,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       retry: 3,
       retryDelay: (i) => Math.min(1000 * 2 ** i, 8000),
-      networkMode: 'always',     
+      networkMode: 'always',
       queryFn: async () => {
         if (!provider || !investor) return [] as GenericFundData[];
         
         const data: GenericFundData[] = [];
         for (const fund of f) {
-          console.log('loadGenericFundData CALLED!', fund);
           const d = await loadGenericFundData(unionAddress,fund, provider, investor, fund?.[2]);
-          console.log('loaded fund data', d);
           if (d?.length) data.push(d[0]);
         }
         return data;
       },
       initialData: [] as GenericFundData[],
+      initialDataUpdatedAt: 0,         // marks initialData as already stale → triggers immediate fetch
     });
   }
   
@@ -754,6 +760,9 @@ export function useAcceptLoan() {
           },    
           onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['transferableLoans'], refetchType: 'all' })
+            qc.invalidateQueries({ queryKey: ['activeLoans'] })
+            qc.invalidateQueries({ queryKey: ['tasks'] })
+            qc.invalidateQueries({ queryKey: ['unionCashReserve'] })
             handleToggleView({ ix: 0, i: 0  })
           }
         }
@@ -900,6 +909,8 @@ export function useRemoveLoan() {
             qc.invalidateQueries({ queryKey: ['unionGenericFunds'] })
             qc.invalidateQueries({ queryKey: ['fundsData'] })
             qc.invalidateQueries({ queryKey: ['transferableLoans'], refetchType: 'all' })
+            qc.invalidateQueries({ queryKey: ['activeLoans'] })
+            qc.invalidateQueries({ queryKey: ['tasks'] })
           }
         }
       )

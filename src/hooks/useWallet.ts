@@ -346,7 +346,7 @@ export function useFxPool(opts: FxOptions = {}) {
     });
   }, [wallet, runTx, qc]);
 
-  // Step 1: union swaps farmer's nIN for USDT. FxPool has BURNER_ROLE — no allowance needed.
+  // Step 1: burn farmer's nIN — USDT stays in pool. FxPool has BURNER_ROLE — no allowance needed.
   const redeemFarmerNin = useCallback(async (
     farmer: string,
     ninAmount: bigint,
@@ -367,7 +367,7 @@ export function useFxPool(opts: FxOptions = {}) {
     return usdtOut;
   }, [fxPool, wallet, runTx, qc]);
 
-  // Step 2: union locks USDT and posts cash request for LP to bring INR cash.
+  // Step 2: record earmarked USDT as a cash request — USDT stays in pool, no allowance needed.
   const postRedeemOrder = useCallback(async (
     unionAddr: string,
     farmer: string,
@@ -376,7 +376,6 @@ export function useFxPool(opts: FxOptions = {}) {
     feeBP: number,
   ): Promise<bigint> => {
     if (!fxPool || !wallet) throw new Error("FX pool or wallet not ready");
-    await ensureUsdtAllowance(usdtAmount);
     let orderId = 0n;
     let txError: unknown = null;
     const fxIface = new ethers.Interface((nilaFxPoolArtifact as any).abi ?? nilaFxPoolArtifact);
@@ -398,7 +397,7 @@ export function useFxPool(opts: FxOptions = {}) {
     });
     if (txError) throw txError;
     return orderId;
-  }, [fxPool, wallet, runTx, qc, ensureUsdtAllowance]);
+  }, [fxPool, wallet, runTx, qc]);
 
   // LP commits to bring cash — registers address on-chain, no USDT needed.
   const commitCashRequest = useCallback(async (orderId: bigint) => {

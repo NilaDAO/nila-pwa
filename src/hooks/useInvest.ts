@@ -6,7 +6,7 @@ import genericFundViewerArtifact   from '../components/ABI/genericFundViewer.jso
 const genericFundViewerAbi = genericFundViewerArtifact.abi;
 import nilaUnionAbi               from '../components/ABI/NilaUnion.json';
 import { ethers, ContractTransactionResponse, ContractTransactionReceipt } from "ethers";
-import { FundSpecific, RAY }           from "./useLoadFunds.ts";
+import { FundSpecific }                from "./useLoadFunds.ts";
 const genericFundViewerAddress: string = process.env.REACT_APP_VIEWER_MAIN!;
 
 interface Rewards {
@@ -51,16 +51,16 @@ export function usePreviewUnbond(unionAddr: string) {
       provider.getBlock('latest'),
     ]);
 
-    // convert shares to nIn
-    const pendingToken = BigInt(p.pendingShares) * BigInt(s.indexes.junior) / RAY
     // p.requestTs === 0 means no unbond has been started yet
+    const snap = p.pendingPrincipalSnap as bigint;
+
     const out = {
-      requestTs: p.pendingPrincipalSnap !== 0n ? p.requestTs : 0n,
+      requestTs: snap !== 0n ? p.requestTs : 0n,
       minWindowTs: p.minWindowTs,
       chainNowSec: block?.timestamp ?? fetchedAtWall,
       fetchedAtWall,
       pending: Number(ethers.formatUnits(p.pendingShares, DECIMALS)),
-      pendingPrincipalSnap: Number(ethers.formatUnits(pendingToken, DECIMALS)),
+      pendingPrincipalSnap: Number(ethers.formatUnits(snap, DECIMALS)),
       pastMin: p.pastMin,
       coveredByBucket: p.coveredByBucket,
       eligibleNow: p.eligibleNow,

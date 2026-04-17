@@ -17,13 +17,14 @@ const getInitialNotificationPermission = () => {
 }
 
 function Settings({ handleOpenForm, LAND }) {
+    const { db, setDb } = useDataContext();
     const hasLand = LAND?.current?.hasLand ?? false;
     const landReady = LAND?.current !== null && typeof LAND?.current?.hasLand === 'boolean';
-    const { profile: lpProfile, refetch: refetchLP } = useLPProfile({ enabled: landReady && !hasLand });
+    const isLeader = Boolean(db?.union?.leader);
+    const { profile: lpProfile, refetch: refetchLP } = useLPProfile();
     const [isCollapsed, setIsCollapsed] = useState();
     const [copyAddress, setCopyAddress] = useState(false);
     const [notificationPermission, setNotificationPermission] = useState(() => getInitialNotificationPermission());
-    const { db, setDb } = useDataContext();
     const { setIx } = useNavContext();
     const { setTokenview, setCardView } = useViewModeContext();
     const hardReload = useHardReload();
@@ -205,8 +206,8 @@ function Settings({ handleOpenForm, LAND }) {
                     <ClaimButton disabled={false} handleClick={handleChangeUnion} title={'Change Union'} />
                 </div>
 
-                {/* LIQUIDITY (leaders/non-landholders only) */}
-                {!hasLand && (
+                {/* LIQUIDITY (leaders + non-landholders) */}
+                {(!hasLand || isLeader) && (
                     <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl shadow-bottom my-2 py-6 px-4 gap-3">
                         <SectionLabel label="Liquidity" />
                         <LPSignup lpProfile={lpProfile} onRegistered={refetchLP} onBrowse={() => handleOpenForm('lp-offers')} />

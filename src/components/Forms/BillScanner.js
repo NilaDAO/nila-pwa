@@ -44,10 +44,20 @@ const BillScanner = ({ onBillConfirmed, billCount, runningTotal, onStop }) => {
           } catch { /* not supported */ }
         }
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
         });
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
+
+        // reset zoom to minimum so the camera doesn't start zoomed in
+        const track = stream.getVideoTracks()[0];
+        try {
+          const caps = track.getCapabilities?.();
+          if (caps?.zoom) {
+            await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
+          }
+        } catch { /* zoom not supported — no problem */ }
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
@@ -253,7 +263,7 @@ const BillScanner = ({ onBillConfirmed, billCount, runningTotal, onStop }) => {
 
   // status pill content
   const statusPill = scanState === 'idle'
-    ? <span className="bg-black/50 text-white/80">Point at bill</span>
+    ? <span className="bg-black/50 text-white/80">Lay bills within the rectangular</span>
     : scanState === 'locking'
     ? <span className="bg-green/80 text-black">Hold steady...</span>
     : scanState === 'scanning'
@@ -267,13 +277,25 @@ const BillScanner = ({ onBillConfirmed, billCount, runningTotal, onStop }) => {
   return (
     <div className="flex flex-col w-full">
       {/* ── Camera container — fills the card region ── */}
-      <div className="relative overflow-hidden rounded-2xl bg-black" style={{ height: '80dvh' }}>
+      <div className="relative overflow-hidden rounded-2xl bg-black" style={{ height: '70dvh' }}>
         <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
+
+        {/* guide box — forces margin between bills and frame edge */}
+        <div
+          className="absolute pointer-events-none z-[1]"
+          style={{ top: '12%', bottom: '15%', left: '8%', right: '8%' }}
+        >
+          <div className="absolute inset-0 rounded-lg" style={{ boxShadow: '0 0 0 9999px rgba(0,0,0,0.3)' }} />
+          <div className="absolute top-0 left-0 w-6 h-6 border-t-[2.5px] border-l-[2.5px] border-white/70 rounded-tl" />
+          <div className="absolute top-0 right-0 w-6 h-6 border-t-[2.5px] border-r-[2.5px] border-white/70 rounded-tr" />
+          <div className="absolute bottom-0 left-0 w-6 h-6 border-b-[2.5px] border-l-[2.5px] border-white/70 rounded-bl" />
+          <div className="absolute bottom-0 right-0 w-6 h-6 border-b-[2.5px] border-r-[2.5px] border-white/70 rounded-br" />
+        </div>
 
         {/* edge detection overlay */}
         <canvas
           ref={overlayRef}
-          className="absolute inset-0 w-full h-full pointer-events-none"
+          className="absolute inset-0 w-full h-full pointer-events-none z-[2]"
         />
 
         {/* top bar: status left, badge right */}
@@ -299,7 +321,7 @@ const BillScanner = ({ onBillConfirmed, billCount, runningTotal, onStop }) => {
         </div>
 
         {/* capture button + stop */}
-        <div className="absolute bottom-3 inset-x-0 flex justify-center gap-4">
+        <div className="absolute bottom-3 inset-x-0 flex justify-center gap-4 z-10">
           <button
             onClick={onStop}
             className="rounded-full w-11 h-11 flex items-center justify-center bg-white/20 backdrop-blur active:scale-95"
