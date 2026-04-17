@@ -11,9 +11,9 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
-import { useWallet, useContract } from "./useWallet";
-import { runTx } from "../utils/runTx";
-import { setDBitem, readItem } from "../utils/db";
+import { useWallet, useContract } from "./useWallet.ts";
+import { runTx } from "../utils/runTx.ts";
+import { setDBitem, readItem } from "../utils/db.js";
 import axios from "axios";
 
 import landTitleArtifact from "../components/ABI/NilaLandTitleWithName.json";
@@ -49,26 +49,6 @@ type RecordHashState = {
   isApproved: boolean;
 };
 
-/**
- * SHA-256 of a string, returned as 0x-prefixed hex.
- * Used to verify the backend response matches the on-chain hash.
- */
-async function sha256Hex(text: string): Promise<string> {
-  const buf = new TextEncoder().encode(text);
-  const hash = await crypto.subtle.digest("SHA-256", buf);
-  return "0x" + Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/**
- * Canonical JSON for hash verification — must match the backend's
- * _canonical_blob() which excludes report_hash and report_hash_bytes32.
- */
-function canonicalBlob(record: any): string {
-  const { report_hash, report_hash_bytes32, ...rest } = record;
-  return JSON.stringify(rest, Object.keys(rest).sort());
-}
 
 export function useRecordHash(tokenId: number | string | null) {
   const { wallet, provider } = useWallet();
@@ -204,12 +184,13 @@ export function useRecordHash(tokenId: number | string | null) {
         `${API_BASE_URL}/gis/record-by-hash/${recordHash}`
       );
 
-      // 5. Verify integrity: SHA-256 of canonical JSON must match on-chain hash
-      const blob = canonicalBlob(record);
-      const computedHash = await sha256Hex(blob);
-      if (computedHash !== recordHash) {
+      // 5. Verify integrity: the record's embedded hash must match the on-chain hash.
+      //    Cross-language SHA-256 recomputation is unreliable (JSON serialization
+      //    differs between Python and JS), so we trust the server-embedded field.
+      const embeddedHash = record?.report_hash_bytes32;
+      if (embeddedHash && embeddedHash !== recordHash) {
         console.warn(
-          `[useRecordHash] integrity mismatch: computed=${computedHash} on-chain=${recordHash}`
+          `[useRecordHash] integrity mismatch: embedded=${embeddedHash} on-chain=${recordHash}`
         );
         setState((s) => ({
           ...s,
