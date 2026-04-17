@@ -511,10 +511,6 @@ const PortfolioCards = () => {
 
 
 export const StaticCards = ({ LAND }) => {
-  // Portfolio mode: render portfolio view instead of single property
-  const { fieldActivity: fa } = useDataContext();
-  if (fa?.portfolioMode) return <PortfolioCards />;
-
   const [ action, setAction ]                  = useState(null)
   const [ showAdvice, setShowAdvice ]          = useState(false)
   const [ loading, setLoading ]                = useState(true)
@@ -678,8 +674,9 @@ export const StaticCards = ({ LAND }) => {
   const featureLength = fieldActivity?.featurelength || features.length
   const land_v2 = LAND.current.LAND?.metadata?.v ? true : false
 
-  // fetch once on mount — cache guard inside handleFieldActivity prevents redundant API calls
+  // fetch once on mount — skip in portfolio mode to preserve portfolioLoans
   useEffect(() => {
+    if (fieldActivity?.portfolioMode) return;
     console.log('activity in staticCards effect', LAND)
     handleFieldActivity(LAND);
   }, []);
@@ -783,6 +780,9 @@ export const StaticCards = ({ LAND }) => {
     setCardView('mapview');
     setAction(null)
   }
+
+  // Portfolio mode: render portfolio view instead of single property
+  if (fieldActivity?.portfolioMode) return <PortfolioCards />;
 
   return (
       <>
