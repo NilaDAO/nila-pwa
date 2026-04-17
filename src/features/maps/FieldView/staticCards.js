@@ -475,6 +475,25 @@ export const StaticCards = ({ LAND }) => {
     }));
   }, [setFieldActivity, record]);
 
+  // Sync selected clusters from map into form (select mode)
+  useEffect(() => {
+    if (!fieldActivity?.selectMode && form.coverage === 'partial') {
+      // Select mode ended (confirm was clicked) — bring card back up
+      setCardView('default');
+      setForm(prev => ({ ...prev, coverage: 'confirmed' }));
+      // Scroll crop dropdown into view after card animates back
+      setTimeout(() => {
+        cropRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 400);
+      return;
+    }
+    if (!fieldActivity?.selectMode) return;
+    const sel = (fieldActivity.features || [])
+      .filter(f => f.properties?.selected)
+      .map(f => f.properties.cluster_id);
+    setForm(prev => ({ ...prev, selectedClusters: sel }));
+  }, [fieldActivity?.selectMode, fieldActivity?.features]);
+
   const features = fieldActivity?.geojson?.features || fieldActivity?.features || []
   const clusterGroups = useMemo(() => {
     const groups = new Map();
@@ -585,13 +604,18 @@ export const StaticCards = ({ LAND }) => {
       <>
       <motion.div
         initial={{ y: -300 }}
-        animate={{ y: 0 }}
+        animate={{ y: fieldActivity?.selectMode ? 250 : 0 }}
         drag="y"
         dragConstraints={{ top: -500, bottom: 150 }}
         dragListener={false}
         dragControls={controls}
         dragElastic={0.05}
-        onDragEnd={() => {}}
+        onDragEnd={(_, info) => {
+          if (fieldActivity?.selectMode && info.offset.y < -50) {
+            // Dragged up during select mode — confirm selection
+            setFieldActivity(prev => prev ? { ...prev, selectMode: false } : prev);
+          }
+        }}
         transition={{ type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 }}
         style={{ touchAction: 'none' }}
         className="flex flex-col py-4 mb-96"
@@ -753,12 +777,12 @@ export const StaticCards = ({ LAND }) => {
                   >Entire property</button>
                   <button
                     onClick={() => {
-                      setForm(prev => ({...prev, coverage: 'partial'}));
-                      // Show most recent historical clusters on map for selection
+                      setForm(prev => ({...prev, coverage: 'partial', selectedClusters: []}));
+                      setCardView('mapview');
+                      // Flatten + dedupe all historical clusters, mark as unselected
                       if (record?.per_cycle_clusters) {
                         const sortedKeys = Object.keys(record.per_cycle_clusters)
                           .sort((a, b) => parseInt(b.split('_')[1]) - parseInt(a.split('_')[1]));
-                        // Merge all unique clusters from recent cycles
                         const seen = new Set();
                         const allFeats = [];
                         for (const k of sortedKeys) {
@@ -767,7 +791,7 @@ export const StaticCards = ({ LAND }) => {
                             const cid = f.properties?.cluster_id;
                             if (cid != null && !seen.has(cid)) {
                               seen.add(cid);
-                              allFeats.push({...f, properties: {...f.properties, activity: 'selectable', crop_type: record.cycles?.[k]?.crop_type}});
+                              allFeats.push({...f, properties: {...f.properties, activity: 'selectable', selected: false}});
                             }
                           }
                         }
@@ -779,16 +803,24 @@ export const StaticCards = ({ LAND }) => {
                             featurelength: allFeats.length,
                             dormant: false,
                             historical: false,
+                            selectMode: true,
                           }));
                         }
                       }
                     }}
-                    className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${form.coverage === 'partial' ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-semibold' : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white'}`}
-                  >Selected fields</button>
+                    className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${(form.coverage === 'partial' || form.coverage === 'confirmed') ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-semibold' : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white'}`}
+                  >Select fields</button>
                 </div>
 
                 {form.coverage === 'partial' && (
-                  <p className="text-[10px] dark:text-slate-500">Select fields on the map, then confirm.</p>
+                  <p className="text-[10px] dark:text-slate-500">
+                    {form.selectedClusters?.length > 0
+                      ? `${form.selectedClusters.length} area(s) selected — confirm on map`
+                      : 'Tap areas on the map'}
+                  </p>
+                )}
+                {form.coverage === 'confirmed' && form.selectedClusters?.length > 0 && (
+                  <p className="text-[10px] text-green-600 dark:text-green-400">{form.selectedClusters.length} area(s) confirmed</p>
                 )}
 
                 <p className="text-xs dark:text-slate-300">Crop</p>
@@ -838,12 +870,26 @@ export const StaticCards = ({ LAND }) => {
                 )}
 
                 {form.var && (
+                  <>
+                  <div className="mt-3 p-3 rounded-xl bg-gray-50 dark:bg-slate-600/50">
+                    <p className="text-[10px] dark:text-slate-300 leading-relaxed">
+                      Create a <span className="font-semibold">crop passport</span> for this season —
+                      a digital certificate that proves what you're growing, where, and when.
+                      With it you can:
+                    </p>
+                    <ul className="text-[10px] dark:text-slate-300 mt-1.5 ml-3 space-y-0.5">
+                      <li>· Get better loan terms from your union</li>
+                      <li>· Pre-sell your harvest at a locked price</li>
+                      <li>· Join bulk growing plans for higher rates</li>
+                    </ul>
+                  </div>
                   <button
                     onClick={() => { setAction('mint'); setCardView('transactionview'); }}
-                    className="py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95 mt-1"
+                    className="py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95 mt-2"
                   >
-                    Mint asset
+                    Create crop passport
                   </button>
+                  </>
                 )}
               </div>
             )}
