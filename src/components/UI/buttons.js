@@ -599,7 +599,7 @@ export function DropdownButtonLoans({ options, onSelect, z, color, resolveName }
   );
 }
 
-export function DropdownButton({ options, onSelect, z, color }) {
+export function DropdownButton({ options, onSelect, z, color, compact }) {
   const [open, setOpen] = useState(false);
   const [selectedFund, setSelectedFund] = useState(() => options?.[0]?.[1] ?? '');
   const ref = useRef();
@@ -623,14 +623,18 @@ export function DropdownButton({ options, onSelect, z, color }) {
     return () => document.removeEventListener('click', onClickOutside);
   }, []);
 
+  const pad = compact ? 'px-3 py-2' : 'p-4';
+  const textSize = compact ? 'text-xs' : '';
+  const iconSize = compact ? 'w-4 h-4' : 'w-7 h-7';
+
   return (
     <div ref={ref} className="relative w-full">
-      <button className={`flex p-4 flex-row w-full ${color === 'white' ? 'bg-gray-200 dark:bg-slate-800' : 'bg-black dark:bg-gray-800'} justify-between`} onClick={() => setOpen(o => !o)}>
-        <p>{selectedFund}</p>
-        {!open ? <ChevronDownIcon className="w-7 h-7" /> : <ChevronUpIcon className="w-7 h-7" />}
+      <button className={`flex ${pad} flex-row w-full rounded-xl items-center ${color === 'white' ? 'bg-gray-100 dark:bg-slate-600' : 'bg-black dark:bg-gray-800'} justify-between`} onClick={() => setOpen(o => !o)}>
+        <p className={`dark:text-white ${textSize}`}>{selectedFund}</p>
+        {!open ? <ChevronDownIcon className={iconSize} /> : <ChevronUpIcon className={iconSize} />}
       </button>
       {open && (
-        <ul className={`absolute left-0 z-${z} py-3 w-full bg-white dark:bg-gray-800 text-black`}>
+        <ul className={`absolute left-0 z-${z} py-1 w-full bg-white dark:bg-gray-800 text-black rounded-xl shadow-lg`}>
           {options.map((opt, i) => (
             <li
               key={i}
@@ -639,9 +643,9 @@ export function DropdownButton({ options, onSelect, z, color }) {
                 setOpen(false);
                 setSelectedFund(opt[1])
               }}
-              className={`pointer p-4 dark:text-white ${opt[3] && 'line-through'} `}
+              className={`cursor-pointer ${compact ? 'px-3 py-2 text-xs' : 'p-4'} dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700 ${opt[3] && 'line-through'} `}
             >
-              {opt[4] + ' ' + opt[1]}
+              {(opt[4] != null ? opt[4] + ' ' : '') + opt[1]}
             </li>
           ))}
         </ul>
