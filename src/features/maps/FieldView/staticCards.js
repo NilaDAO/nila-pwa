@@ -226,10 +226,10 @@ export const StaticCards = ({ LAND }) => {
   const { record, commitment, recordHash, fee, isOwner, isApproved, loading: recordLoading, error: recordError, fetchRecord } = useRecordHash(tokenId);
 
   useEffect(() => {
-    if (!tokenId) return;
-    console.log('[CS023] useRecordHash mounted', { tokenId, isOwner, isApproved, fee: fee?.toString() });
+    if (!tokenId || !isOwner && !isApproved && fee === null) return;
+    console.log('[CS023] useRecordHash ready', { tokenId, isOwner, isApproved, fee: fee?.toString() });
     fetchRecord();
-  }, [tokenId]);
+  }, [tokenId, isOwner, isApproved, fee]);
 
   useEffect(() => {
     if (record) {
@@ -364,7 +364,7 @@ export const StaticCards = ({ LAND }) => {
                   onTouchStart={(e) => e.stopPropagation()}
                   onTouchEnd={(e) => e.stopPropagation()}
                 >
-                  { fieldActivity && fieldActivity.features.length > 0 && fieldActivity.features.length < featureLength ?
+                  { fieldActivity?.features?.length > 0 && fieldActivity.features.length < featureLength ?
                   (() => {
                     const props = fieldActivity.features[0].properties;
                     const cropType = typeof props?.crop_type === 'string' ? props.crop_type : (props?.crop_type?.dominant?.label || props?.crop_type?.label);
