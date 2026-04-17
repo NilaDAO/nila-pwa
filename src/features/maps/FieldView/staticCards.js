@@ -7,6 +7,7 @@ import { RateSlider, ClaimButton, DropdownButton } from '../../../components/UI/
 import Spinner from '../../../components/UI/spinner.js';
 import useLendingFlow from '../../../hooks/useDirectLendingFlow.js'
 import { useMintFoodToken, useBurnLandTitle } from '../../../hooks/useMintLandTitle.ts'
+import { useRecordHash } from '../../../hooks/useRecordHash.ts'
 
 const clusterKeyOf = (feature, idx) => {
   const clusterId = feature?.properties?.cluster_id;
@@ -219,6 +220,25 @@ export const StaticCards = ({ LAND }) => {
   const [ selected, setSelected ]              = useState([])
   const { handleFieldActivity }                = useActivityMapping()
   const { burnLandTitle }                      = useBurnLandTitle(Number(process.env.REACT_APP_CHAIN_ID) || 137);
+
+  // CS023: gated property data — log record hash flow for verification
+  const tokenId = LAND?.current?.LAND?.id;
+  const { record, commitment, recordHash, fee, isOwner, isApproved, loading: recordLoading, error: recordError, fetchRecord } = useRecordHash(tokenId);
+
+  useEffect(() => {
+    if (!tokenId) return;
+    console.log('[CS023] useRecordHash mounted', { tokenId, isOwner, isApproved, fee: fee?.toString() });
+    fetchRecord();
+  }, [tokenId]);
+
+  useEffect(() => {
+    if (record) {
+      console.log('[CS023] record loaded', { tokenId, recordHash, commitment, clusters: record?.clusters?.features?.length, scorecard: record?.scorecard });
+    }
+    if (recordError) {
+      console.warn('[CS023] record error', recordError);
+    }
+  }, [record, recordError]);
 
   const features = fieldActivity?.geojson?.features || fieldActivity?.features || []
   const clusterGroups = useMemo(() => {
