@@ -219,7 +219,6 @@ function Wallet({LAND}) {
         handleToggleView,
         handleCollapse,
         isCollapsed,
-        pullY,
         isDragging,
     } = useTouch()
     const dominantClusters                                                                = Array.isArray(fieldActivity?.dominant)
@@ -269,6 +268,23 @@ function Wallet({LAND}) {
 
     const handleFeatureClick = useCallback((feature) => {
         if (!feature || !fieldActivity) return;
+
+        // Select mode: toggle selected state on the clicked cluster
+        if (feature._toggle && fieldActivity.selectMode) {
+          const cid = feature.properties?.cluster_id;
+          const updated = (fieldActivity.features || []).map(f =>
+            f.properties?.cluster_id === cid
+              ? { ...f, properties: { ...f.properties, selected: !f.properties.selected } }
+              : f
+          );
+          setFieldActivity({
+            ...fieldActivity,
+            features: updated,
+            geojson: { type: 'FeatureCollection', features: updated },
+          });
+          return;
+        }
+
         const clusterId = feature.properties?.cluster_id;
         const allFeatures = fieldActivity?.geojson?.features || fieldActivity?.features || [];
         const matched = clusterId !== undefined && clusterId !== null
@@ -321,7 +337,6 @@ function Wallet({LAND}) {
             onTouchStart: handleTouchStart,
             onTouchMove: handleTouchMove,
             onTouchEnd: handleTouchEnd,
-            pullY,
             isDragging,
           },
         },

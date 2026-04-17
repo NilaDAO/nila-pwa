@@ -225,15 +225,29 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
           />
         ))}
         // ------------------ Dominant features -------------------------
-        {/* Activity */}
+        {/* Activity / Select mode */}
         {features && features.filter((_f, i) => featureIds.includes(i)).flatMap((f, i) => {
           const isBorderArea = f.properties?.activity === 'border_area' || f.properties?.cluster_id === 0;
-          const yieldIndex = Number(f.properties?.yield_index ?? f.properties?.yield_kg_per_acre ?? NaN);
-          const fillOpacity = isBorderArea
-            ? 0.3
-            : Number.isFinite(yieldIndex) && yieldIndex > 0
-              ? Math.min(0.95, 0.25 + yieldIndex * 0.7)
-              : 0.55;
+          const isSelectMode = fieldActivity?.selectMode;
+          const isSelected = f.properties?.selected;
+
+          let fillColor, fillOpacity, strokeWeight;
+          if (isSelectMode) {
+            // Select mode: outline only, fill on select
+            fillColor = isSelected ? '#16a34a' : 'transparent';
+            fillOpacity = isSelected ? 0.45 : 0;
+            strokeWeight = 1.5;
+          } else {
+            const yieldIndex = Number(f.properties?.yield_index ?? f.properties?.yield_kg_per_acre ?? NaN);
+            fillColor = isBorderArea ? '#c0c0c0' : cropColor(f.properties?.crop_type);
+            fillOpacity = isBorderArea
+              ? 0.3
+              : Number.isFinite(yieldIndex) && yieldIndex > 0
+                ? Math.min(0.95, 0.25 + yieldIndex * 0.7)
+                : 0.55;
+            strokeWeight = 0.5;
+          }
+
           const polygons = f.geometry.type === 'MultiPolygon'
             ? f.geometry.coordinates.map(poly => poly[0].map(([lng, lat]) => ({ lat, lng })))
             : [f.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }))];
@@ -242,14 +256,20 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
             key={`${i}-${j}`}
             paths={paths}
             options={{
-              fillColor: isBorderArea ? '#c0c0c0' : cropColor(f.properties?.crop_type),
+              fillColor,
               fillOpacity,
-              strokeColor: "#333333",
-              strokeOpacity: 0.8,
-              strokeWeight: 0.5,
-              clickable: !!onFeatureClick && !isBorderArea,
+              strokeColor: isSelectMode ? (isSelected ? '#16a34a' : '#ffffff') : "#333333",
+              strokeOpacity: isSelectMode ? 1 : 0.8,
+              strokeWeight,
+              clickable: isSelectMode || (!!onFeatureClick && !isBorderArea),
             }}
-            onClick={() => !isBorderArea && onFeatureClick?.(f)}
+            onClick={() => {
+              if (isSelectMode) {
+                onFeatureClick?.({ ...f, _toggle: true });
+              } else if (!isBorderArea) {
+                onFeatureClick?.(f);
+              }
+            }}
           />
           ));
         })}
