@@ -78,7 +78,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
   */
   // ------------------ outline -------------------------
  useEffect(() => {
-  if (!metadata?.outline || !map) return;
+  if (!metadata?.outline || !map || fieldActivity?.portfolioMode) return;
 
   const outline = metadata.outline;
 
