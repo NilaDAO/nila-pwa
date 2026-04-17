@@ -8,17 +8,10 @@ import {
   XCircleIcon,
 } from '@heroicons/react/20/solid';
 
-const YEAR_SEC = 31_557_600;
 const DAY_MS = 86_400_000;
 const SWIPE_REVEAL  = 60;
-const SWIPE_TRIGGER = 130;
-
-const calcPendingInterest = (loan) => {
-  if (!loan.drawdownTs || !loan.amount) return 0;
-  const elapsed = Math.floor(Date.now() / 1000) - Number(loan.drawdownTs);
-  if (elapsed <= 0) return 0;
-  return (loan.amount * loan.rateBP / 10_000) * (elapsed / YEAR_SEC);
-};
+const SWIPE_TRIGGER = 80;
+const SWIPE_MAX     = 160;
 
 const formatDate = (ts) => {
   if (!ts) return '--';
@@ -130,7 +123,7 @@ function SortIcon({ active, dir }) {
  *   fundLentMap — Map<bytes32, totalLent> from getFundTotalsByTranche (chain)
  *   resolveName — from useContactBook
  *   hasName     — from useContactBook
- *   onAddContact — (address) => void
+ *   onAddContact — (address, suggestedName?) => void
  *   onRefresh   — () => void triggers chain sync
  *   refreshing  — boolean
  *   onDeepSync  — (lookbackBlocks) => Promise — calls POST /reset_active_loans
@@ -147,6 +140,9 @@ export default function ActiveLoansCard({
   refreshing,
   onDeepSync,
   onCashIn,
+  onCashOut,
+  onViewMap,
+  collectDeadline,
   unionAddress,
 }) {
   const [sortKey, setSortKey] = useState('eos');
@@ -160,15 +156,40 @@ export default function ActiveLoansCard({
   const [gisData, setGisData] = useState({});     // { loanId: { ...summary } }
   const [gisLoading, setGisLoading] = useState({}); // { loanId: bool }
 
-  // Swipe-to-cash-in
+  // Per-loan collect-deadline window check.
+  // Within window (drawdownTs + collectDeadline > now): swipe right → cash-out (DISBURSE more).
+  // Outside window: swipe left → repay.
+  const isInCollectWindow = useCallback((loan) => {
+    if (!collectDeadline || !loan?.drawdownTs) return false;
+    const nowSec = Math.floor(Date.now() / 1000);
+    return nowSec - Number(loan.drawdownTs) < Number(collectDeadline);
+  }, [collectDeadline]);
+
+  // Swipe: left = repay (only outside window), right = cash-out (only inside window)
   const [swipe, setSwipe] = useState({ id: null, dx: 0 });
-  const swipeRef  = useRef({ startX: null, id: null, dragging: false });
+  const swipeRef  = useRef({ startX: null, id: null, dragging: false, allowLeft: false, allowRight: false });
   const swipeDxRef = useRef(0);
   const wasSwipingRef = useRef(false);
 
-  const onSwipeTouchStart = useCallback((e, loanId) => {
-    swipeRef.current = { startX: e.touches[0].clientX, id: loanId, dragging: false };
-  }, []);
+  // A loan is "fully cashed out" when CashOutForm has observed the borrower's
+  // wallet at zero nIN and persisted that into IDB. Once flagged, swipe-right
+  // (cash-out) is disabled — there's nothing left to disburse — and swipe-left
+  // (repay) becomes the only meaningful action even inside the collect window.
+  const isFullyCashedOut = useCallback((loan) => (
+    loan?.borrowerNinBal === 0 && Boolean(loan?.borrowerNinBalCheckedAt)
+  ), []);
+
+  const onSwipeTouchStart = useCallback((e, loan) => {
+    const inWindow      = isInCollectWindow(loan);
+    const fullyCashedOut = isFullyCashedOut(loan);
+    swipeRef.current = {
+      startX: e.touches[0].clientX,
+      id: loan.id,
+      dragging: false,
+      allowLeft:  !inWindow || fullyCashedOut, // repay enabled outside window OR once fully drained
+      allowRight: inWindow && !fullyCashedOut, // cash-out only while window open AND wallet has nIN
+    };
+  }, [isInCollectWindow, isFullyCashedOut]);
 
   const onSwipeTouchMove = useCallback((e) => {
     const { startX, id } = swipeRef.current;
@@ -177,18 +198,21 @@ export default function ActiveLoansCard({
     if (!swipeRef.current.dragging && Math.abs(delta) < 8) return;
     swipeRef.current.dragging = true;
     wasSwipingRef.current = true;
-    const dx = Math.max(-140, Math.min(0, delta * 0.45));
+    // Always allow visual swipe in both directions — disabled side reveals an "unavailable" message.
+    const dx = Math.max(-SWIPE_MAX, Math.min(SWIPE_MAX, delta * 0.8));
     swipeDxRef.current = dx;
     setSwipe({ id, dx });
   }, []);
 
   const onSwipeTouchEnd = useCallback((loan) => {
-    const triggered = swipeDxRef.current < -SWIPE_TRIGGER;
-    swipeRef.current = { startX: null, id: null, dragging: false };
+    const dx = swipeDxRef.current;
+    const { allowLeft, allowRight } = swipeRef.current;
+    swipeRef.current = { startX: null, id: null, dragging: false, allowLeft: false, allowRight: false };
     swipeDxRef.current = 0;
     setSwipe({ id: null, dx: 0 });
-    if (triggered) onCashIn?.(loan);
-  }, [onCashIn]);
+    if (dx < -SWIPE_TRIGGER && allowLeft)  onCashIn?.(loan);
+    else if (dx >  SWIPE_TRIGGER && allowRight) onCashOut?.(loan);
+  }, [onCashIn, onCashOut]);
 
   // Close fund dropdown on outside click
   useEffect(() => {
@@ -209,11 +233,14 @@ export default function ActiveLoansCard({
     }
   }, [sortKey]);
 
+  // Normalize fund to always have 0x prefix
+  const normFund = (f) => (!f ? '' : f.startsWith('0x') ? f : `0x${f}`);
+
   // Unique fund keys from loans
   const fundKeys = useMemo(() => {
     const keys = new Set();
     for (const l of loans) {
-      if (l.fund) keys.add(l.fund);
+      if (l.fund) keys.add(normFund(l.fund));
     }
     return Array.from(keys);
   }, [loans]);
@@ -222,7 +249,7 @@ export default function ActiveLoansCard({
   const { active, flagged } = useMemo(() => {
     const a = [], f = [];
     for (const l of loans) {
-      if (selectedFund !== 'all' && l.fund !== selectedFund) continue;
+      if (selectedFund !== 'all' && normFund(l.fund) !== selectedFund) continue;
       if (l.chainClosed) { f.push(l); }
       else if (l.drawdownTs && l.active) { a.push(l); }
     }
@@ -243,10 +270,21 @@ export default function ActiveLoansCard({
       const eosDate = satelliteEos || maturityDate;
       const daysEos = daysToDate(eosDate) ?? daysToDate(predictedEarliest);
       const daysToMaturity = daysToDate(maturityDate); // null if no contract deadline
+      // Display priority: contact name → farm name (from /gis/batch-eos record.json) → 0xABCD…
+      const hasContact = hasName(l.borrower);
+      const contactName = resolveName(l.borrower); // already returns truncated addr if no contact
+      const farmName = eos?.farm_name || null;
+      const landId = eos?.land_id ?? null;
+      const displayName = hasContact ? contactName : (farmName || contactName);
       return {
         ...l,
-        displayName: resolveName(l.borrower),
-        totalAmount: l.amount + calcPendingInterest(l),
+        farmName,
+        landId,
+        hasContact,
+        displayName,
+        // l.amount already equals chain `outstanding` (principal + accrued interest)
+        // from useActiveLoans chain sync — don't add interest on top.
+        totalAmount: l.amount,
         eosDate,
         maturityDate,
         satelliteEos,
@@ -288,7 +326,7 @@ export default function ActiveLoansCard({
     // group principal sum by fund for active (non-closed) loans in current filter
     const principalByFund = new Map();
     for (const l of active) {
-      const key = l.fund || 'unknown';
+      const key = normFund(l.fund) || 'unknown';
       const outstanding = (l.principal != null && l.principalRepaid != null)
         ? l.principal - l.principalRepaid
         : l.amount ?? 0;
@@ -384,9 +422,10 @@ export default function ActiveLoansCard({
         </button>
       </div>
 
-      {/* Fund filter dropdown (custom — native <select> mispositions inside Framer Motion transform) */}
+      {/* Fund filter dropdown + view on map */}
       {fundKeys.length > 0 && (
-        <div ref={fundRef} className="relative">
+        <div className="flex gap-2">
+        <div ref={fundRef} className="relative flex-1">
           <button
             onClick={() => setFundOpen((o) => !o)}
             className="w-full text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white text-left flex items-center justify-between"
@@ -411,6 +450,12 @@ export default function ActiveLoansCard({
               ))}
             </div>
           )}
+        </div>
+        <button
+          onClick={() => onViewMap?.(enriched.filter(l => l.landId))}
+          disabled={!enriched.some(l => l.landId)}
+          className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
+        >View on map</button>
         </div>
       )}
 
@@ -438,22 +483,49 @@ export default function ActiveLoansCard({
             {(() => {
               const isTarget = swipe.id === loan.id;
               const dx = isTarget ? swipe.dx : 0;
-              const swipePct = Math.min(1, -dx / SWIPE_REVEAL);
+              const leftPct  = Math.min(1, Math.max(0, -dx / SWIPE_REVEAL)); // swiping left → repay
+              const rightPct = Math.min(1, Math.max(0,  dx / SWIPE_REVEAL)); // swiping right → cash-out
+              const inWindow       = isInCollectWindow(loan);
+              const fullyCashedOut = isFullyCashedOut(loan);
+              const repayAllowed   = !inWindow || fullyCashedOut;
+              const cashOutAllowed = inWindow && !fullyCashedOut;
+              // Disabled actions get a muted gray bar with an "unavailable" hint.
+              const repayBg   = repayAllowed
+                ? `rgba(34,197,94,${leftPct * 0.9})`     // green
+                : `rgba(107,114,128,${leftPct * 0.9})`;  // gray
+              const cashOutBg = cashOutAllowed
+                ? `rgba(59,130,246,${rightPct * 0.9})`   // blue
+                : `rgba(107,114,128,${rightPct * 0.9})`; // gray
+              const repayLabel   = repayAllowed   ? 'Repay'    : 'Repay later';
+              const cashOutLabel = cashOutAllowed
+                ? 'Cash out'
+                : (fullyCashedOut ? 'Cashed out' : 'Cash-out closed');
               return (
               <div className={`relative overflow-hidden rounded-lg ${loan.maturityTs && !loan.chainClosed ? 'bg-red/25' : ''}`}>
-                {/* Cash-in reveal (right side) */}
-                {swipePct > 0 && (
+                {/* Repay reveal (right side, shown when swiping left) */}
+                {leftPct > 0 && (
                   <div
                     className="absolute right-0 top-0 bottom-0 flex items-center justify-end pr-3 rounded-lg"
-                    style={{ width: 100, backgroundColor: `rgba(34,197,94,${swipePct * 0.9})` }}
+                    style={{ width: 100, backgroundColor: repayBg }}
                   >
-                    <span className="text-white text-[10px] font-bold" style={{ opacity: swipePct }}>
-                      Repay
+                    <span className="text-white text-[10px] font-bold text-right leading-tight" style={{ opacity: leftPct }}>
+                      {repayLabel}
+                    </span>
+                  </div>
+                )}
+                {/* Cash-out reveal (left side, shown when swiping right) */}
+                {rightPct > 0 && (
+                  <div
+                    className="absolute left-0 top-0 bottom-0 flex items-center justify-start pl-3 rounded-lg"
+                    style={{ width: 110, backgroundColor: cashOutBg }}
+                  >
+                    <span className="text-white text-[10px] font-bold leading-tight" style={{ opacity: rightPct }}>
+                      {cashOutLabel}
                     </span>
                   </div>
                 )}
                 <div
-                  onTouchStart={(e) => onSwipeTouchStart(e, loan.id)}
+                  onTouchStart={(e) => onSwipeTouchStart(e, loan)}
                   onTouchMove={onSwipeTouchMove}
                   onTouchEnd={() => onSwipeTouchEnd(loan)}
                   onClick={() => {
@@ -471,12 +543,15 @@ export default function ActiveLoansCard({
                 <span className={`text-xs font-semibold dark:text-white truncate ${loan.chainClosed ? 'line-through' : ''}`}>
                   {loan.displayName}
                 </span>
-                {!hasName(loan.borrower) && !loan.chainClosed && (
+                {!loan.hasContact && !loan.chainClosed && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); onAddContact(loan.borrower); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddContact(loan.borrower, loan.farmName || null);
+                    }}
                     className="text-[10px] text-blue-500 dark:text-blue-400 whitespace-nowrap"
                   >
-                    +add
+                    {loan.farmName ? 'edit' : '+add'}
                   </button>
                 )}
               </div>
@@ -520,6 +595,12 @@ export default function ActiveLoansCard({
                       ? ` — default deadline passed ${Math.abs(loan.daysToMaturity + 21)} days ago.`
                       : ` — ${21 + loan.daysToMaturity} days left before default.`}
                   </p>
+                )}
+                {loan.farmName && (
+                  <DetailRow label="Farm" value={loan.farmName} />
+                )}
+                {loan.landId != null && (
+                  <DetailRow label="Land ID" value={`#${loan.landId}`} />
                 )}
                 <DetailRow label="Address" value={`${loan.borrower.slice(0, 6)}...${loan.borrower.slice(-4)}`} />
                 <DetailRow label="Fund" value={fundMap.get(loan.fund) || loan.fund || '--'} />
@@ -599,13 +680,18 @@ export default function ActiveLoansCard({
 
       {/* Accounting check footer */}
       {accounting.length > 0 && (
-        <div className="flex flex-col gap-1.5 px-3 pt-2 border-t border-gray-200 dark:border-slate-600">
+        <div data-tour="loan-sync" className="flex flex-col gap-1.5 px-3 pt-2 border-t border-gray-200 dark:border-slate-600">
           {accounting.map((a) => (
             <div key={a.fundKey} className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 {a.match
-                  ? <CheckCircleIcon className="w-3.5 h-3.5 text-green-500 dark:text-green-400" />
-                  : <ExclamationTriangleIcon className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+                  ? (
+                      <span className="relative inline-flex w-5 h-5">
+                        <span className="absolute inset-0 rounded-full bg-green dark:bg-green_dark opacity-60 animate-ping" />
+                        <CheckCircleIcon className="relative w-5 h-5 text-green dark:text-green_dark" />
+                      </span>
+                    )
+                  : <ExclamationTriangleIcon className="w-7 h-7 text-red dark:text-amber-400 animate-icon-pulse" />
                 }
                 <span className="text-[10px] text-gray-500 dark:text-slate-400">{a.fundName}</span>
               </div>
@@ -617,7 +703,7 @@ export default function ActiveLoansCard({
                 <button
                   onClick={handleDeepSync}
                   disabled={syncing || syncStep >= SYNC_STEPS.length}
-                  className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-400 dark:bg-amber-500 text-black active:scale-95 disabled:opacity-40"
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded bg-red dark:bg-amber-400 text-white dark:text-black active:scale-95 disabled:opacity-40"
                 >
                   {syncing
                     ? 'Syncing…'

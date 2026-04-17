@@ -381,7 +381,140 @@ const DormantCard = ({ record }) => {
 };
 
 
+// ── Portfolio view (union leader views all borrower properties) ───────
+
+const PortfolioCards = () => {
+  const { db, fieldActivity, setFieldActivity } = useDataContext();
+  const { setIx } = useNavContext();
+  const { setCardView } = useViewModeContext();
+  const controls = useDragControls();
+  const startYRef = useRef(0);
+
+  const loans = fieldActivity?.portfolioLoans || [];
+  const landIds = loans.map(l => l.landId).filter(Boolean);
+  const uniqueLandIds = [...new Set(landIds)];
+  const viewFee = 1; // nIN per property (from contract)
+  const totalCost = uniqueLandIds.length * viewFee;
+
+  const [accepted, setAccepted] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const [fetched, setFetched] = useState(0);
+
+  const close = () => {
+    setFieldActivity(null);
+    setIx(null);
+    setCardView('default');
+  };
+
+  const handleAcceptAndPay = async () => {
+    setAccepted(true);
+    setFetching(true);
+    // TODO: batch getRecordHash calls (pay nIN per property)
+    // For now, fetch records directly from backend by land_id
+    for (const lid of uniqueLandIds) {
+      try {
+        const res = await fetch(`${process.env.REACT_APP_API_BASE_URL}/gis/record/${lid}`);
+        if (res.ok) {
+          setFetched(prev => prev + 1);
+          console.log(`[portfolio] fetched land_id=${lid}`);
+        }
+      } catch (e) {
+        console.warn(`[portfolio] failed land_id=${lid}`, e);
+      }
+    }
+    setFetching(false);
+  };
+
+  return (
+    <>
+    <motion.div
+      initial={{ y: -300 }}
+      animate={{ y: 0 }}
+      drag="y"
+      dragConstraints={{ top: -500, bottom: 150 }}
+      dragListener={false}
+      dragControls={controls}
+      dragElastic={0.05}
+      onDragEnd={() => {}}
+      transition={{ type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 }}
+      style={{ touchAction: 'none' }}
+      className="flex flex-col py-4 mb-96"
+    >
+      <div style={{ zIndex: 0 }} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1">
+        <div
+          onPointerDown={(e) => controls.start(e)}
+          onTouchStart={(e) => { startYRef.current = e.touches[0].clientY; }}
+          onTouchEnd={(e) => { if (e.changedTouches[0].clientY - startYRef.current > 25) close(); }}
+          className="h-10 w-full select-none cursor-grab active:cursor-grabbing flex justify-center items-center"
+        >
+          <span className="h-1 w-16 rounded-full bg-slate-300 dark:bg-slate-500" />
+        </div>
+        <div className="flex flex-col px-6 pb-6 gap-3"
+          onPointerDown={(e) => controls.start(e)}
+        >
+          <h3 className="font-bold px-4 dark:text-white">Portfolio view</h3>
+          <p className="text-[10px] px-4 dark:text-slate-500">View all borrower properties on the map</p>
+
+          {!accepted && (
+            <>
+              <div className="flex flex-col gap-1.5 px-4">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500 dark:text-slate-400">Properties</span>
+                  <span className="font-bold dark:text-white">{uniqueLandIds.length}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500 dark:text-slate-400">Cost per property</span>
+                  <span className="font-bold dark:text-white">{viewFee} nIN</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500 dark:text-slate-400">Total cost</span>
+                  <span className="font-bold dark:text-white">{totalCost} nIN</span>
+                </div>
+              </div>
+              <button
+                onClick={handleAcceptAndPay}
+                className="mx-4 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95"
+              >
+                Accept & pay {totalCost} nIN
+              </button>
+              <p className="text-[10px] px-4 dark:text-slate-500">
+                Fees go directly to each farmer
+              </p>
+            </>
+          )}
+
+          {accepted && (
+            <div className="flex flex-col gap-2 px-4">
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500 dark:text-slate-400">Loading properties</span>
+                <span className="font-bold dark:text-white">{fetched} / {uniqueLandIds.length}</span>
+              </div>
+              {fetching && (
+                <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1.5">
+                  <div
+                    className="h-1.5 rounded-full bg-green-500 transition-all"
+                    style={{ width: `${uniqueLandIds.length > 0 ? (fetched / uniqueLandIds.length) * 100 : 0}%` }}
+                  />
+                </div>
+              )}
+              {!fetching && fetched > 0 && (
+                <p className="text-xs dark:text-green-400">{fetched} properties loaded</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+    </>
+  );
+};
+
+
 export const StaticCards = ({ LAND }) => {
+  // Portfolio mode: render portfolio view instead of single property
+  const { fieldActivity: fa } = useDataContext();
+  if (fa?.portfolioMode) return <PortfolioCards />;
+
   const [ action, setAction ]                  = useState(null)
   const [ showAdvice, setShowAdvice ]          = useState(false)
   const [ loading, setLoading ]                = useState(true)
