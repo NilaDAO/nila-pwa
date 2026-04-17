@@ -8,7 +8,7 @@ const pairKey = (union, fund) => `${String(union || '').toLowerCase()}-${String(
 
 async function fetchWeightedRates(baseUrl, pairs) {
   if (!pairs?.length) return { count: 0, items: [] };
-  const body = { items: pairs };
+  const body = { items: pairs, include_history: true };
 
   let r = await fetch(`${baseUrl}/filter_events/weightedRate`, {
     method: 'POST',
@@ -47,7 +47,7 @@ export function useWeightedRates(data, sums, unionAddress) {
   }, [data, sums?.funds, unionAddress]);
 
   const query = useQuery({
-    queryKey: ['weightedRate', unionAddress, pairs.map((p) => p.fund).join('|')],
+    queryKey: ['weightedRate', 'v2', unionAddress, pairs.map((p) => p.fund).join('|')],
     enabled: Boolean(API_BASE_URL && pairs.length > 0),
     staleTime: WEEK_MS,
     gcTime: WEEK_MS,
@@ -58,16 +58,30 @@ export function useWeightedRates(data, sums, unionAddress) {
     queryFn: () => fetchWeightedRates(API_BASE_URL, pairs),
   });
 
-  const byFund = useMemo(() => {
-    const rateByPair = {};
+  const { rateByPair, historyByPair } = useMemo(() => {
+    const rates = {};
+    const history = {};
     for (const item of query.data?.items || []) {
       if (!item?.fund) continue;
+      const key = pairKey(item.union, item.fund);
       const bp = Number(item?.weighted_rate_bp);
-      if (!item?.found || !Number.isFinite(bp)) continue;
-      rateByPair[pairKey(item.union, item.fund)] = bp / 100;
+      if (item?.found && Number.isFinite(bp)) {
+        rates[key] = bp / 100;
+      }
+      if (Array.isArray(item?.history)) {
+        history[key] = item.history
+          .map((h) => ({
+            updatedAt: h.updated_at,
+            ratePct: Number(h.weighted_rate_bp) / 100,
+            loanCount: h.loan_count,
+            totalAmount: h.total_amount,
+            dormantCashAmount: h.dormant_cash_amount,
+          }))
+          .filter((h) => Number.isFinite(h.ratePct));
+      }
     }
-    return rateByPair;
+    return { rateByPair: rates, historyByPair: history };
   }, [query.data]);
 
-  return { ...query, rateByPair: byFund, pairs };
+  return { ...query, rateByPair, historyByPair, pairs };
 }

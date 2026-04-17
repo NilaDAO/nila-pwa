@@ -18,7 +18,7 @@ const Investments = ({LAND, CAP, funds, sums}) => {
     const [ loading, setLoading]                                                                    = useState(true);
     const [ tab, setTab]                                                                            = useState(navRef.current.assetTab) // ref only on remount of component
     const [ yieldUnbond, setYieldUnbond ]                                                          = useState(null)  // result of previewUnbond for yield card
-
+    
     const names          = unionFunds?.map(f => f[4] + ' ' + f[1])
     const pending        = sums?.total_rewards
     // pick the first fund that has a sums entry to drive the yield card

@@ -53,6 +53,7 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
         'getInvestorSenior',
         'getJuniorMarket',
         'bucketTresholds',
+        'rateParamsByUnion',
     ];
     const calls: [string, string][] = [
         // JUNIOR (this loanType)
@@ -70,6 +71,9 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
 
         // Junior/senior ratio threshold set by union (WAD, e.g. 0.1e18 = 10%)
         [genericFundCoreAddress,   coreIface.encodeFunctionData("bucketTresholds", [unionAddress, loanType])],
+
+        // Rate curve base rate (floor) set via setRateParams
+        [genericFundCoreAddress,   coreIface.encodeFunctionData("rateParamsByUnion", [unionAddress])],
     ];
 
     // console.log('[loadGenericFundData] calls', calls.map(([addr, data], idx) => ({ label: labels[idx], to: addr, data: data.slice(0, 10) + '…' })));
@@ -117,6 +121,8 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
     const [thresholdWad] = coreIface.decodeFunctionResult("bucketTresholds", ret[i++]);
     // WAD (1e18) → percentage: 0.1e18 → 10
     const bucketThresholdPct = Number(thresholdWad) / 1e16;
+    const rateParams = coreIface.decodeFunctionResult("rateParamsByUnion", ret[i++]);
+    const baseRateBP = Number(rateParams[0]) / 100; // bp → percent (e.g. 1200 → 12.00)
 
     const Deposits = JuniorDeposits + SeniorDeposits
     const Lent = JuniorBorrows + SeniorBorrows // Senior is 0
@@ -125,9 +131,11 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
     // shares to principal token price
     const j_principal = BigInt(j_shares) * JuniorIndex / RAY
     const s_principal = BigInt(s_shares) * SeniorIndex / RAY
-    // yield computed client-side: shares × (currentIndex - entryIndex) / RAY
-    const j_yield = JuniorIndex > j_entryIndex ? BigInt(j_shares) * (BigInt(JuniorIndex) - BigInt(j_entryIndex)) / RAY : 0n
-    const s_yield = SeniorIndex > s_entryIndex ? BigInt(s_shares) * (BigInt(SeniorIndex) - BigInt(s_entryIndex)) / RAY : 0n
+    // yield computed client-side on FREE shares only (pending/claimable shares are locked at snap value)
+    const j_freeShares = BigInt(j_shares) - BigInt(jInv.locked);
+    const s_freeShares = BigInt(s_shares) - BigInt(sInv.locked);
+    const j_yield = JuniorIndex > j_entryIndex && j_freeShares > 0n ? j_freeShares * (BigInt(JuniorIndex) - BigInt(j_entryIndex)) / RAY : 0n
+    const s_yield = SeniorIndex > s_entryIndex && s_freeShares > 0n ? s_freeShares * (BigInt(SeniorIndex) - BigInt(s_entryIndex)) / RAY : 0n
 
     const totalShares = j_shares + s_shares
     const principal = j_principal + s_principal
@@ -164,6 +172,10 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
             junior: Number(JuniorIndex),
             senior: Number(SeniorIndex),
         },
+        entryIndexes: {
+            junior: Number(j_entryIndex),
+            senior: Number(s_entryIndex),
+        },
         loanType,
         headroom: Number(ethers.formatUnits(lb.headroom, decimals)),
         requiredReserve: Number(ethers.formatUnits(lb.requiredReserve, decimals)),
@@ -173,6 +185,7 @@ export const loadGenericFundData = async (unionAddress: string,fund: string, pro
         seniorPrincipal: Number(ethers.formatUnits(SeniorDeposits, decimals)),
         claimableReserved: Number(ethers.formatUnits(lb.claimableReserved, decimals)),
         previewRateBP: Number(pr),
+        baseRateBP,
         bucketThresholdPct,
     };
 

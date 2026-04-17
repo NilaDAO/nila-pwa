@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ethers } from 'ethers';
-import BillScanner from './BillScanner';
 import BulkBillScanner from './BulkBillScanner';
 import BillList from './BillList';
 import SwapButton from './SwapButton';
@@ -66,7 +65,7 @@ function EscrowCountdown({ totalSeconds = 3 * 24 * 3600 }) {
           </span>
         </div>
       </div>
-      <p className="text-xs text-amber-600 dark:text-amber-400">3-day escrow window</p>
+      <p className="text-xs text-amber-600 dark:text-amber-400">{Math.round(totalSeconds / 86400)}-day escrow window</p>
     </div>
   );
 }
@@ -107,22 +106,21 @@ function LoanCard({ loan }) {
   );
 }
 
-// ── Treasury cap warning ──────────────────────────────────────────────────────
-function TreasuryCapBlock({ runningTotal, available }) {
-  const overBy = runningTotal - Number(available / 10n ** 18n);
+// ── Treasury cap warning (auto-clamp) ────────────────────────────────────────
+function TreasuryCapBlock({ uncounted }) {
   return (
-    <div className="w-full rounded-xl border border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20 px-4 py-3">
-      <p className="text-xs font-bold text-red-700 dark:text-red-300">Treasury at cap</p>
-      <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-        This contribution of ₹{runningTotal.toLocaleString('en-IN')} exceeds the available reserve
-        by ₹{overBy.toLocaleString('en-IN')}. Cash out must happen before more can come in.
+    <div className="w-full rounded-xl border border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3">
+      <p className="text-xs font-bold text-yellow-800 dark:text-white">Treasury at cap</p>
+      <p className="text-xs text-yellow-700 dark:text-white/80 mt-1">
+        ₹{uncounted.toLocaleString('en-IN')} is uncounted — set aside and return to member.
+        Only the remaining amount will be invested.
       </p>
     </div>
   );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-// phases: 'pre-scan' | 'scan-qr' | 'scan' | 'scanning-single' | 'scanning-bulk' | 'review' | 'confirm'
+// phases: 'pre-scan' | 'scan-qr' | 'scan' | 'scanning-bulk' | 'review' | 'confirm'
 const CashCounter = ({ handleOpenForm }) => {
   const { db, unionFunds, txdetails } = useDataContext();
   const { resolveName, hasName, addContact } = useContactBook();
@@ -144,14 +142,13 @@ const CashCounter = ({ handleOpenForm }) => {
     scannedBills,
     scanGroups,
     runningTotal,
-    addBill,
     addBulkGroup,
     removeScanGroup,
     removeBill,
     clearSession,
   } = useCashSession();
   const { executeSwap, isProcessing } = useCashSwap(clearSession, handleOpenForm);
-  const { queueCapture, pendingCount, isUploading, uploadPending } = useTrainingData();
+  const { pendingCount, isUploading, uploadPending } = useTrainingData();
 
   const prefillAddress = txdetails?.memberAddress ?? null;
   const [memberAddress, setMemberAddress] = useState(prefillAddress);
@@ -163,7 +160,7 @@ const CashCounter = ({ handleOpenForm }) => {
   const [investOverride, setInvestOverride] = useState(false);
 
   // Fetch member loans + collectDeadline as soon as we have an address
-  const { loans, collectDeadline, loading: loansLoading } = useMemberLoans(memberAddress);
+  const { loans, collectDeadline, escrowDuration, loading: loansLoading } = useMemberLoans(memberAddress);
 
   // hasLoan: member has an active or pending loan
   const hasLoan = loans.length > 0;
@@ -175,17 +172,9 @@ const CashCounter = ({ handleOpenForm }) => {
   const purpose = isRepay ? 'repay' : 'contribute';
   const matchedLoan = pickLoan(loans, purpose, collectDeadline);
 
-  const handleBillConfirmed = useCallback(
-    (bill) => {
-      addBill(bill);
-      if (bill.imageDataUrl && !bill.s3Key) queueCapture(bill);
-    },
-    [addBill, queueCapture]
-  );
-
   const handleBulkConfirmed = useCallback(
-    ({ bills, s3Key, confidence, reasoning }) => {
-      addBulkGroup({ bills, s3Key, confidence, reasoning });
+    ({ items, s3Key, confidence, reasoning }) => {
+      addBulkGroup({ items, s3Key, confidence, reasoning });
     },
     [addBulkGroup]
   );
@@ -208,17 +197,39 @@ const CashCounter = ({ handleOpenForm }) => {
     : null;
 
   const handleSwap = useCallback(async () => {
+    const loanOutstanding = matchedLoan?.outstanding ?? 0;
+    const fullRepay = isRepay && loanOutstanding > 0 && runningTotal >= Math.ceil(loanOutstanding) + 1;
+    const availableINR = available !== null ? Number(available / 10n ** 18n) : Infinity;
+    const effectiveAmount = isRepay && loanOutstanding > 0
+      ? Math.min(runningTotal, Math.ceil(loanOutstanding) + 1)
+      : purpose === 'contribute'
+        ? Math.min(runningTotal, availableINR)
+        : runningTotal;
+    const changeBack = runningTotal - effectiveAmount;
+    const uncounted = purpose === 'contribute' && runningTotal > availableINR
+      ? runningTotal - availableINR : 0;
+
     const purposeLabel = isRepay ? 'Repay loan' : 'Invest';
-    const msg = `${purposeLabel}: ₹${runningTotal.toLocaleString('en-IN')} for ${resolveName(memberAddress)}?`;
+    let msg = `${purposeLabel}: ₹${effectiveAmount.toLocaleString('en-IN')} for ${resolveName(memberAddress)}?`;
+    if (uncounted > 0) {
+      msg += `\n\n₹${uncounted.toLocaleString('en-IN')} is uncounted — set aside and return to member.`;
+    }
+    if (fullRepay && changeBack > 0) {
+      msg += `\n\nFull repay (outstanding ₹${Math.ceil(loanOutstanding).toLocaleString('en-IN')}). Give ₹${changeBack.toLocaleString('en-IN')} change back.`;
+    } else if (isRepay && loanOutstanding > 0) {
+      const remaining = Math.ceil(loanOutstanding - effectiveAmount);
+      msg += `\n\nPartial repay. ₹${remaining.toLocaleString('en-IN')} still outstanding.`;
+    }
     if (!confirm(msg)) return;
-    await executeSwap(scannedBills, runningTotal, {
+    await executeSwap(scannedBills, effectiveAmount, {
       memberAddress,
       purpose,
       loanID: matchedLoan?.loanID,
       loanType: matchedLoan?.loanType ?? contributeLoanType,
       loanPending,
+      outstanding: loanOutstanding,
     });
-  }, [isRepay, runningTotal, memberAddress, scannedBills, executeSwap, purpose, matchedLoan, loanPending, contributeLoanType]);
+  }, [isRepay, runningTotal, memberAddress, scannedBills, executeSwap, purpose, matchedLoan, loanPending, contributeLoanType, available]);
 
 
   return (
@@ -255,9 +266,8 @@ const CashCounter = ({ handleOpenForm }) => {
                 addContact(addr, name);
                 setPhase('scan');
               }}
-              onCancel={() => {
-                setMemberAddress(null);
-                setPhase('pre-scan');
+              onSkip={() => {
+                setPhase('scan');
               }}
             />
           </motion.div>
@@ -310,7 +320,7 @@ const CashCounter = ({ handleOpenForm }) => {
             {/* Fund selector — shown when contributing to the junior pool */}
             {purpose === 'contribute' && unionFunds?.length > 0 && (
               <div className="w-full">
-                <p className="text-xs text-gray-500 dark:text-slate-400 mb-1">Fund</p>
+                <p className="text-xs text-gray-500 dark:text-slate-300 mb-1">Fund</p>
                 <DropdownButton
                   options={unionFunds}
                   onSelect={(fund) => setSelectedFund(fund)}
@@ -318,7 +328,7 @@ const CashCounter = ({ handleOpenForm }) => {
                   color="white"
                 />
                 {contributeLoanType && (
-                  <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">
+                  <p className="text-xs text-gray-400 dark:text-slate-300 mt-1">
                     Shares will be credited to <span className="font-bold">{contributeLoanType}</span>
                   </p>
                 )}
@@ -326,47 +336,27 @@ const CashCounter = ({ handleOpenForm }) => {
             )}
 
             <button
-              onClick={() => setPhase('scanning-single')}
+              onClick={() => setPhase('scanning-bulk')}
               className="flex flex-col items-center justify-center gap-3 rounded-2xl active:scale-[0.98] py-8 w-full border border-gray-200 dark:border-slate-700"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 dark:text-slate-400 text-gray-400">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
               </svg>
-              <p className="text-sm font-bold dark:text-white">Scan one by one</p>
-              <p className="text-xs dark:text-slate-400 text-center px-8">Place each bill flat, Gandhi portrait facing up</p>
+              <p className="text-sm font-bold dark:text-white">Photo count</p>
+              <p className="text-xs dark:text-slate-400 text-center px-8">Lay all bills on a table and take one photo</p>
             </button>
 
             <button
-              onClick={() => setPhase('scanning-bulk')}
-              className="flex flex-col items-center justify-center gap-3 rounded-2xl active:scale-[0.98] py-8 w-full border border-gray-200 dark:border-slate-700"
+              disabled
+              className="flex flex-col items-center justify-center gap-3 rounded-2xl py-8 w-full border border-gray-200 dark:border-slate-700 opacity-40"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 dark:text-slate-400 text-gray-400">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
               </svg>
-              <p className="text-sm font-bold dark:text-white">Count all at once</p>
-              <p className="text-xs dark:text-slate-400 text-center px-8">Lay all bills on a table and take one photo</p>
+              <p className="text-sm font-bold dark:text-white">Cash teller machine</p>
+              <p className="text-xs dark:text-slate-400 text-center px-8">Coming soon</p>
             </button>
-          </motion.div>
-        )}
-
-        {/* ────────── SCANNING SINGLE ────────── */}
-        {phase === 'scanning-single' && (
-          <motion.div
-            key="scanning-single"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="flex flex-col -mx-2 -mb-10"
-            style={{ marginTop: '-2rem' }}
-          >
-            <BillScanner
-              onBillConfirmed={handleBillConfirmed}
-              billCount={scannedBills.length}
-              runningTotal={runningTotal}
-              onStop={handleStopScanning}
-            />
           </motion.div>
         )}
 
@@ -380,23 +370,30 @@ const CashCounter = ({ handleOpenForm }) => {
             transition={{ duration: 0.25 }}
             className="flex flex-col gap-2"
           >
+            {/* List rendered ABOVE the camera so X buttons aren't overlapped by
+                the <video> element's compositing layer (iOS Safari/PWA quirk:
+                video can intercept touches on DOM-flow siblings beneath it).
+                Also better UX — user sees counted bills without scrolling past
+                60dvh of camera. */}
+            {scanGroups.length > 0 && (
+              <div className="relative z-10">
+                <BillList
+                  scanGroups={scanGroups}
+                  scannedBills={scannedBills}
+                  runningTotal={runningTotal}
+                  mode="DEPOSIT"
+                  onRemoveGroup={removeScanGroup}
+                  onRemoveBill={removeBill}
+                  pendingCount={pendingCount}
+                  isUploading={isUploading}
+                  uploadPending={uploadPending}
+                />
+              </div>
+            )}
             <BulkBillScanner
               onBulkConfirmed={handleBulkConfirmed}
               onStop={handleStopScanning}
             />
-            {scanGroups.length > 0 && (
-              <BillList
-                scanGroups={scanGroups}
-                scannedBills={scannedBills}
-                runningTotal={runningTotal}
-                mode="DEPOSIT"
-                onRemoveGroup={removeScanGroup}
-                onRemoveBill={removeBill}
-                pendingCount={pendingCount}
-                isUploading={isUploading}
-                uploadPending={uploadPending}
-              />
-            )}
             {scannedBills.length > 0 && (
               <button
                 onClick={() => setPhase('confirm')}
@@ -452,11 +449,11 @@ const CashCounter = ({ handleOpenForm }) => {
 
             {/* Treasury cap block — CASH-IN INVEST only (not give/repay) */}
             {purpose === 'contribute' && available !== null && runningTotal > Number(available / 10n ** 18n) && (
-              <TreasuryCapBlock runningTotal={runningTotal} available={available} />
+              <TreasuryCapBlock uncounted={runningTotal - Number(available / 10n ** 18n)} />
             )}
 
-            {/* Escrow countdown — both REPAY and INVEST create a 3-day escrow */}
-            <EscrowCountdown totalSeconds={3 * 24 * 3600} />
+            {/* Escrow countdown — both REPAY and INVEST create an escrow */}
+            <EscrowCountdown totalSeconds={escrowDuration ?? 7 * 86400} />
 
             <button
               onClick={() => setPhase('review')}
@@ -469,13 +466,16 @@ const CashCounter = ({ handleOpenForm }) => {
               mode="DEPOSIT"
               runningTotal={runningTotal}
               scannedBills={scannedBills}
-              disabled={
-                (isRepay && !matchedLoan) ||
-                (!isRepay && available !== null && runningTotal > Number(available / 10n ** 18n))
-              }
+              disabled={isRepay && !matchedLoan}
               onSwap={handleSwap}
               isProcessing={isProcessing}
-              purposeLabel={isRepay ? `Repay ₹${runningTotal.toLocaleString('en-IN')} nIN` : 'Invest'}
+              purposeLabel={
+                isRepay
+                  ? `Repay ₹${runningTotal.toLocaleString('en-IN')} nIN`
+                  : purpose === 'contribute' && available !== null && runningTotal > Number(available / 10n ** 18n)
+                    ? `Invest ₹${Number(available / 10n ** 18n).toLocaleString('en-IN')} nIN`
+                    : 'Invest'
+              }
             />
           </motion.div>
         )}

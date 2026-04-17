@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../../utils/NavigationContext';
 import { ClaimButton } from '../../components/UI/buttons';
+import { saveLPLocal } from '../../hooks/useLPProfile';
+import { useContactBook } from '../../hooks/useContactBook';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
@@ -13,8 +15,11 @@ const WINDOWS = [
 
 function LPSignup({ lpProfile, onRegistered, onBrowse }) {
     const { db } = useDataContext();
+    const { addContact } = useContactBook();
     const [showSheet, setShowSheet] = useState(false);
     const [window_, setWindow_] = useState('1h');
+    const [unionAddr, setUnionAddr] = useState('');
+    const [unionName, setUnionName] = useState('');
     const [checked, setChecked] = useState(false);
     const [error, setError] = useState(null);
 
@@ -30,7 +35,16 @@ function LPSignup({ lpProfile, onRegistered, onBrowse }) {
             // geolocation optional — proceed without it
         }
 
-        const res = await fetch(`${API_BASE_URL}/lp/signup`, {
+        // Save locally — backend sync is best-effort
+        saveLPLocal({ isLP: true, responseWindow: window_, fillCount: 0 });
+
+        // Save union name to local contacts so LP can resolve it later
+        if (unionAddr && unionName) {
+            addContact(unionAddr, unionName);
+        }
+
+        // Fire-and-forget backend relay
+        fetch(`${API_BASE_URL}/lp/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -39,13 +53,7 @@ function LPSignup({ lpProfile, onRegistered, onBrowse }) {
                 latLng,
                 declarationTs: new Date().toISOString(),
             }),
-        });
-
-        if (!res.ok) {
-            setError('Registration failed — please try again.');
-            throw new Error('lp signup failed');
-        }
-
+        }).catch(() => {});
         setShowSheet(false);
         onRegistered?.();
     };
@@ -90,97 +98,106 @@ function LPSignup({ lpProfile, onRegistered, onBrowse }) {
     // State 2 — registered, no fills yet
     if (lpProfile?.isLP) {
         return (
-            <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl shadow-bottom my-6 px-4 py-6">
-                <div className="flex justify-between items-center px-4 mb-2">
-                    <p className="font-bold text-sm dark:text-white">Liquidity Provider</p>
-                    <span className="text-xs text-green-600 font-bold">✓ Registered</span>
+            <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500 dark:text-slate-400">Status</span>
+                    <span className="text-xs font-bold text-blue-500 dark:text-blue-400">Registered</span>
                 </div>
-                <div className="flex flex-row px-4 py-2 justify-between">
-                    <p className="text-sm dark:text-slate-400">Response window</p>
-                    <p className="text-sm font-bold dark:text-white">
+                <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500 dark:text-slate-400">Response window</span>
+                    <span className="text-xs font-bold dark:text-white">
                         {WINDOWS.find(w => w.value === lpProfile.responseWindow)?.label ?? lpProfile.responseWindow}
-                    </p>
+                    </span>
                 </div>
-                <div className="flex flex-row px-4 py-2 justify-between">
-                    <p className="text-sm dark:text-slate-400">Fills completed</p>
-                    <p className="text-sm font-bold dark:text-white">0</p>
-                </div>
-                <div className="px-4 mt-2">
-                    <ClaimButton disabled={false} handleClick={onBrowse} title="Browse Offers" />
+                <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500 dark:text-slate-400">Fills completed</span>
+                    <span className="text-xs font-bold dark:text-white">0</span>
                 </div>
             </div>
         );
     }
 
     // State 1 — not registered
-    return (
-        <>
-            <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl shadow-bottom my-6 px-4 py-6">
-                <p className="font-bold text-sm dark:text-white px-4 mb-2">Register as a Liquidity Provider</p>
-                <p className="text-sm dark:text-slate-400 px-4 mb-4">
+    if (!showSheet) {
+        return (
+            <div className="flex flex-col">
+                <p className="font-bold text-sm dark:text-white mb-2">Register as a Liquidity Provider</p>
+                <p className="text-sm dark:text-slate-400 mb-4">
                     Bring cash to unions, earn USDT + fee. Or deposit USDT and pick up cash.
                 </p>
-                <div className="px-4">
-                    <ClaimButton disabled={false} handleClick={() => setShowSheet(true)} title="Register as LP" />
-                </div>
+                <ClaimButton disabled={false} handleClick={() => setShowSheet(true)} title="Register as LP" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col">
+            <h3 className="font-bold text-sm dark:text-white mb-4">Register as Liquidity Provider</h3>
+
+            <p className="text-sm font-bold dark:text-slate-300 mb-3">How quickly can you reach a union?</p>
+            <div className="flex flex-col gap-2 mb-6">
+                {WINDOWS.map(w => (
+                    <label key={w.value} className="flex items-center gap-3 cursor-pointer">
+                        <input
+                            type="radio"
+                            name="responseWindow"
+                            value={w.value}
+                            checked={window_ === w.value}
+                            onChange={() => setWindow_(w.value)}
+                            className="w-4 h-4"
+                        />
+                        <span className="text-sm dark:text-white">{w.label}</span>
+                    </label>
+                ))}
             </div>
 
-            {showSheet && (
-                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black bg-opacity-40">
-                    <div className="bg-white dark:bg-gray-800 rounded-t-3xl w-full max-w-lg p-8 pb-12">
-                        <h3 className="font-bold text-lg dark:text-white mb-6">Register as Liquidity Provider</h3>
+            <p className="text-sm font-bold dark:text-slate-300 mb-2">Which union will you serve?</p>
+            <input
+                type="text"
+                placeholder="Union name"
+                value={unionName}
+                onChange={e => setUnionName(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm dark:text-white mb-2"
+            />
+            <input
+                type="text"
+                placeholder="Union address (0x…)"
+                value={unionAddr}
+                onChange={e => setUnionAddr(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm dark:text-white font-mono mb-6"
+            />
 
-                        <p className="text-sm font-bold dark:text-slate-300 mb-3">How quickly can you reach a union?</p>
-                        <div className="flex flex-col gap-2 mb-6">
-                            {WINDOWS.map(w => (
-                                <label key={w.value} className="flex items-center gap-3 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="responseWindow"
-                                        value={w.value}
-                                        checked={window_ === w.value}
-                                        onChange={() => setWindow_(w.value)}
-                                        className="w-4 h-4"
-                                    />
-                                    <span className="text-sm dark:text-white">{w.label}</span>
-                                </label>
-                            ))}
-                        </div>
+            <label className="flex items-start gap-3 cursor-pointer mb-6">
+                <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={e => setChecked(e.target.checked)}
+                    className="w-4 h-4 mt-1 flex-shrink-0"
+                />
+                <span className="text-sm dark:text-slate-300">
+                    I can bring at least ₹10,000 cash to a union when called.
+                </span>
+            </label>
 
-                        <label className="flex items-start gap-3 cursor-pointer mb-6">
-                            <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={e => setChecked(e.target.checked)}
-                                className="w-4 h-4 mt-1 flex-shrink-0"
-                            />
-                            <span className="text-sm dark:text-slate-300">
-                                I can bring at least ₹10,000 cash to a union when called.
-                            </span>
-                        </label>
+            {error && <p className="text-red-500 text-xs mb-4">{error}</p>}
 
-                        {error && <p className="text-red-500 text-xs mb-4">{error}</p>}
-
-                        <div className="flex gap-4">
-                            <ClaimButton
-                                disabled={!checked}
-                                handleClick={handleRegister}
-                                title="Confirm"
-                                pendingTitle="Registering..."
-                                successTitle="Registered!"
-                                successDurationMs={1500}
-                            />
-                            <ClaimButton
-                                disabled={false}
-                                handleClick={() => { setShowSheet(false); setError(null); }}
-                                title="Cancel"
-                                color="white"
-                            />
-                        </div>
-                    </div>
-                </div>
-            )}
-        </>
+            <div className="flex gap-4">
+                <ClaimButton
+                    disabled={!checked}
+                    handleClick={handleRegister}
+                    title="Confirm"
+                    pendingTitle="Registering..."
+                    successTitle="Registered!"
+                    successDurationMs={1500}
+                />
+                <ClaimButton
+                    disabled={false}
+                    handleClick={() => { setShowSheet(false); setError(null); }}
+                    title="Cancel"
+                    color="white"
+                />
+            </div>
+        </div>
     );
 }
 

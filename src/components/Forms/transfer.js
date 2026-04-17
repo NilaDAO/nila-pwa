@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useDataContext } from '../../utils/NavigationContext.js';
-import { useTransfer } from "../../hooks/useLoadFunds.ts";
+import { useTransfer, useLoadFundsData } from "../../hooks/useLoadFunds.ts";
 import { useActiveLoans } from "../../hooks/useActiveLoans";
 import { useContactBook } from "../../hooks/useContactBook";
 import useLendingFlow from '../../hooks/useDirectLendingFlow.js'
@@ -13,6 +13,7 @@ import { calculateMINCAP,LoanConditions } from '../../misc/fund_loan_conditions.
 
 const Transfer = ({handleOpenForm }) => {
   const { unionFunds,db }                      = useDataContext()
+  const { data: fundsData = [] }               = useLoadFundsData(db?.union?.address, unionFunds ?? [], db?.address)
   const { data: loansData }                     = useActiveLoans(db?.union?.address, db?.union?.leader);
   const { resolveName, hasName, addContact }    = useContactBook();
   const { handleIssueVoucher }                 = useLendingFlow()
@@ -36,10 +37,16 @@ const Transfer = ({handleOpenForm }) => {
   const FIXED_APR_TO_PERIODICALLY              = 3.2072 // when we use foodtokens, we can use a crop type specific constant
   const unionLoans                             = loansData?.allItems;
 
+  const bucketThresholdPct = useMemo(() => {
+        if (!selected?.fund) return 10;
+        const token = fundsData.flatMap(f => f.tokens ?? []).find(t => t.loanType === selected.fund);
+        return token?.bucketThresholdPct ?? 10;
+  }, [fundsData, selected?.fund]);
+
   const FUNDCONDITIONS = useMemo(() => {
         const MINCAP = calculateMINCAP(1)
-        return LoanConditions(Number(MINCAP));
-  }, []);
+        return LoanConditions(Number(MINCAP), 2000, bucketThresholdPct);
+  }, [bucketThresholdPct]);
 
   const FUNDINFO = {
       "GroundUp Fund":`The loan you selected is part of the ${selected.displayName}. Your new borrower has to meet the same conditions. Select a borrower or rollover the loan (extend the loan to the same borrower).`
@@ -187,9 +194,9 @@ const Transfer = ({handleOpenForm }) => {
             setNameGate(false);
             setConfirm(true);
           }}
-          onCancel={() => {
-            setCandidate(false);
+          onSkip={() => {
             setNameGate(false);
+            setConfirm(true);
           }}
         />
       )}

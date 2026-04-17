@@ -36,6 +36,7 @@ const Header = ({version, cardShrink}) => {
         3: 'Loan Restructuring',
         4: 'Settings',
         5: TITLES[txIndex],
+        6: 'Cash & Liquidity',
     }
 
     const handleBack = () => {

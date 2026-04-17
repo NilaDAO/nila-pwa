@@ -4,19 +4,22 @@ import { useProvider } from './useWallet.ts';
 import { useDataContext } from '../utils/NavigationContext.js';
 import genericFundViewerArtifact from '../components/ABI/genericFundViewer.json';
 import genericFundCoreArtifact from '../components/ABI/genericFundCore.json';
+import nilaFxPoolArtifact from '../components/ABI/NilaFxPool.json';
 import MulticallAbi from '../components/ABI/MultiCall3.json';
 
 const genericFundViewerAbi = genericFundViewerArtifact.abi;
 const genericFundCoreAbi = genericFundCoreArtifact.abi;
+const nilaFxPoolAbi = nilaFxPoolArtifact.abi ?? nilaFxPoolArtifact;
 const genericFundViewerAddress = process.env.REACT_APP_VIEWER_MAIN;
 const genericFundCoreAddress = process.env.REACT_APP_CORE_MAIN;
+const fxPoolAddress = process.env.REACT_APP_FX_POOL_MAIN;
 const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
 const decimals = 18;
 
 /**
  * Fetch all open loans for a given member address in the user's union.
- * Also fetches collectDeadline (seconds) from the union's ReserveCfg.
- * Returns { loans, collectDeadline, loading, error }
+ * Also fetches collectDeadline and escrowDuration (seconds) from the union's ReserveCfg.
+ * Returns { loans, collectDeadline, escrowDuration, loading, error }
  * Each loan: { loanID, loanType, principal, outstanding, rateBP, drawdownTs, union }
  */
 export function useMemberLoans(memberAddress) {
@@ -24,6 +27,7 @@ export function useMemberLoans(memberAddress) {
   const { db } = useDataContext();
   const [loans, setLoans] = useState([]);
   const [collectDeadline, setCollectDeadline] = useState(null); // seconds (uint32), null until loaded
+  const [escrowDuration, setEscrowDuration] = useState(null);   // seconds — effective escrow window
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -33,6 +37,7 @@ export function useMemberLoans(memberAddress) {
     if (!memberAddress || !unionAddress || !provider) {
       setLoans([]);
       setCollectDeadline(null);
+      setEscrowDuration(null);
       return;
     }
 
@@ -44,16 +49,22 @@ export function useMemberLoans(memberAddress) {
       try {
         const viewer = new ethers.Contract(genericFundViewerAddress, genericFundViewerAbi, provider);
         const core = new ethers.Contract(genericFundCoreAddress, genericFundCoreAbi, provider);
+        const fxPool = new ethers.Contract(fxPoolAddress, nilaFxPoolAbi, provider);
         const mc = new ethers.Contract(MULTICALL3, MulticallAbi, provider);
         const viewerIface = new ethers.Interface(genericFundViewerAbi);
 
-        // Fetch loan IDs and collectDeadline in parallel
-        const [ids, reserveCfg] = await Promise.all([
+        // Fetch loan IDs, reserveCfg, and FxPool global escrow duration in parallel
+        const [ids, reserveCfg, globalEscrow] = await Promise.all([
           viewer.getLoansByBorrower(unionAddress, memberAddress),
           core.reserveCfgByUnion(unionAddress),
+          fxPool.escrowDuration(),
         ]);
 
-        if (!cancelled) setCollectDeadline(Number(reserveCfg.collectDeadline));
+        if (!cancelled) {
+          setCollectDeadline(Number(reserveCfg.collectDeadline));
+          const perUnion = Number(reserveCfg.escrowDuration);
+          setEscrowDuration(perUnion > 0 ? perUnion : Number(globalEscrow));
+        }
 
         if (!ids || ids.length === 0) {
           if (!cancelled) { setLoans([]); setLoading(false); }
@@ -115,7 +126,7 @@ export function useMemberLoans(memberAddress) {
     return () => { cancelled = true; };
   }, [memberAddress, unionAddress, provider]);
 
-  return { loans, collectDeadline, loading, error };
+  return { loans, collectDeadline, escrowDuration, loading, error };
 }
 
 /**

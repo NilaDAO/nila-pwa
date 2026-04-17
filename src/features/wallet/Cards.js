@@ -129,12 +129,14 @@ export const InvestmentCard = ({CAP, sums, cardShrink, inArrays }) => {
         const weighted = funds.reduce((acc, fund) => {
             const invested = Number(fund?.principal || 0);
             const fundId = String(fund?.fund_id || '').toLowerCase();
-            const ratePercent = Number(rateByPair?.[`${union}-${fundId}`]);
+            const apiRate = Number(rateByPair?.[`${union}-${fundId}`]);
+            const floor = Number(fund?.baseRateBP || 0);
+            const ratePercent = Number.isFinite(apiRate) && apiRate >= floor ? apiRate : floor;
             if (!Number.isFinite(invested) || invested <= 0) return acc;
-            if (!Number.isFinite(ratePercent)) return acc;
+            if (!Number.isFinite(ratePercent) || ratePercent <= 0) return acc;
 
             acc.invested += invested;
-            acc.rate += invested * (Math.max(0, ratePercent) / 100);
+            acc.rate += invested * (ratePercent / 100);
             return acc;
         }, { invested: 0, rate: 0 });
 
@@ -408,7 +410,7 @@ export const CashLiquidityCard = ({ treasury = 0n, available = 0n, lpPending = 0
                 <table className="w-full flex flex-row justify-between">
                     <tbody>
                         <tr className="flex flex-col flex-grow">
-                            <td className="text-left text-xs dark:text-slate-300">Available to scan</td>
+                            <td className="text-left text-xs dark:text-slate-300">Available to cash-in</td>
                             <td className="text-left font-bold text-lg mb-3 dark:text-white">₹{availableInr}</td>
                         </tr>
                     </tbody>
@@ -417,7 +419,7 @@ export const CashLiquidityCard = ({ treasury = 0n, available = 0n, lpPending = 0
                             <td>Treasury ₹{treasuryInr}</td>
                         </tr>
                         <tr className="text-xs dark:text-slate-300">
-                            <td className={ pct < 0.2 ? 'text-green dark:text-green_dark' : pct < 0.5 ? 'text-amber dark:text-amber-300' : undefined }>
+                            <td className={ pct < 0.2 ? 'text-green dark:text-amber-400' : pct < 0.5 ? 'text-amber dark:text-amber-300' : undefined }>
                                 {Math.round(pct * 100)}% headroom
                             </td>
                         </tr>
@@ -447,7 +449,6 @@ export const Card = ({
     onTouchStart,
     onTouchMove,
     onTouchEnd,
-    pullY,
     isDragging,
 }) => {
     const { tokenview } = useViewModeContext();
@@ -474,14 +475,13 @@ export const Card = ({
         MAP: 'bg-darkgrey',
         CASH_LIQUIDITY: 'bg-indigo-50 dark:bg-slate-800',
     }
-    const assetPull = type === 'ASSETS' && typeof pullY === 'number' ? pullY : 0;
     const variants = {
         stacked: (custom) => ({
-          y: custom.index * 190 + custom.pullY,
+          y: custom.index * 190,
           zIndex: custom.index,
         }),
         unstacked: (custom) => ({
-          y: custom.index * stackAmount + custom.pullY,
+          y: custom.index * stackAmount,
           zIndex: listLength - custom.index,
         }),
       };
@@ -518,7 +518,7 @@ export const Card = ({
         onClick={onClick}
         initial="stacked"
         variants={variants}
-        custom={{ index: i, pullY: assetPull }}
+        custom={{ index: i }}
         animate={isCollapsed ? 'unstacked' : 'stacked'}
         transition={isDragging && type === 'ASSETS' ? { type: 'tween', duration: 0 } : { type: 'spring', stiffness: 300, damping: 30 }}
         style={{

@@ -7,9 +7,9 @@ import { useState } from 'react';
  * Props:
  *   address     — the scanned address
  *   onConfirm   — (address, name) => void — called when name is entered
- *   onCancel    — () => void — go back to scanner
+ *   onSkip      — (address) => void — skip saving and proceed
  */
-export default function NameGate({ address, onConfirm, onCancel }) {
+export default function NameGate({ address, onConfirm, onSkip }) {
   const [name, setName] = useState('');
 
   const handleSubmit = () => {
@@ -25,7 +25,7 @@ export default function NameGate({ address, onConfirm, onCancel }) {
         {address.slice(0, 6)}...{address.slice(-4)}
       </p>
       <p className="text-xs text-gray-500 dark:text-slate-400 text-center">
-        Add a name for this contact to continue.
+        Add a name for this contact, or skip.
       </p>
       <input
         type="text"
@@ -38,17 +38,17 @@ export default function NameGate({ address, onConfirm, onCancel }) {
       />
       <div className="flex gap-3 w-full">
         <button
-          onClick={handleSubmit}
-          disabled={!name.trim()}
+          onClick={() => onSkip(address)}
           className="flex-1 py-3 text-sm font-bold rounded-xl bg-green-600 text-white disabled:opacity-40"
         >
-          Save & Continue
+          Skip
         </button>
         <button
-          onClick={onCancel}
+          onClick={handleSubmit}
+          disabled={!name.trim()}
           className="flex-1 py-3 text-sm font-bold rounded-xl bg-gray-200 dark:bg-slate-600 dark:text-white"
         >
-          Rescan
+          Save
         </button>
       </div>
     </div>

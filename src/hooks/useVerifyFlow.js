@@ -209,6 +209,16 @@ const useVerifyFlow = (LAND = null) => {
               const mintStatus = response.data.mint_status
               const mintQueued = action === 'generate' &&
                 (mintStatus === 'pending' || response.data?.queued === true || response.data?.queue_status === 'pending')
+
+              // CRITICAL: if user clicked "generate" but mint was NOT queued, alert and bail.
+              // Never silently drop a land title submission.
+              if (action === 'generate' && !mintQueued) {
+                console.error('[verify] mint NOT queued!', { mintStatus, data: response.data });
+                alert('Error: your land title was NOT queued for minting. Please try again or contact support.');
+                updateFieldReg({ messages: 12 });
+                return;
+              }
+
               // set cookie just in case user doesnt progress
               const date = new Date();
               date.setTime(date.getTime() + (11 * 24 * 60 * 60 * 1000));

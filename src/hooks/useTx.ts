@@ -82,6 +82,12 @@ const erc20Err = new Interface([
   "error UUPSUnauthorizedCallContext()",
   "error UUPSUnsupportedProxiableUUID(bytes32 slot)",
   "error VoucherAmountTooHigh()",
+  "error BadNonce()",
+  "error BadRatio()",
+  "error MaxLoanAmount()",
+  // ERC20Permit ERRORS (from NilaNINV2 — bubble up through drawLoanWithVoucher)
+  "error ERC2612InvalidSigner(address signer, address owner)",
+  "error ERC2612ExpiredSignature(uint256 deadline)",
   // VIEWER ERRORS
   "error AddressEmptyCode(address target)",
   "error ECDSAInvalidSignature()",
@@ -240,6 +246,7 @@ export function useTx() {
             }
 
             if (parsed?.name) {
+              console.error("Parsed revert error:", parsed.name, parsed.args);
               setTxMessage(`Sorry, the transaction failed because of ${parsed.name}.`);
             } else if (e?.reason) {
               setTxMessage(`Sorry, the transaction failed: ${e.reason}`);

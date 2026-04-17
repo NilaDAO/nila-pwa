@@ -34,36 +34,65 @@ export function useContactBook() {
   }, [unionAddress, db?.union?.rep]);
 
   const query = useQuery({
-    queryKey: ['contactBook'],
+    queryKey: ['contactBook', unionAddress ?? '_local_'],
+    enabled: true,
     queryFn: async () => {
-      // Read user contacts from IndexedDB
-      let stored = {};
-      try {
-        stored = await readAllItems('Contacts') ?? {};
-      } catch (_) { /* first run */ }
+      console.log('[ContactSync] START union=%s', unionAddress);
 
-      // Pull from backend (non-blocking merge)
+      // Read local contacts from IndexedDB
+      let local = {};
+      try {
+        local = await readAllItems('Contacts') ?? {};
+      } catch (_) { /* first run */ }
+      console.log('[ContactSync] local IDB: %d contacts', Object.keys(local).length);
+
+      // Backend sync only when user belongs to a union
       if (unionAddress) {
+        // --- PULL: merge remote into local (local names win on dup) ---
+        let added = 0;
         try {
-          const res = await fetch(`${API}/contacts/sync?union=${unionAddress}`);
+          const url = `${API}/contacts/sync?union=${unionAddress}`;
+          console.log('[ContactSync] GET %s', url);
+          const res = await fetch(url);
+          console.log('[ContactSync] GET status=%d', res.status);
           if (res.ok) {
-            const remote = await res.json();
-            if (Array.isArray(remote.contacts)) {
-              for (const c of remote.contacts) {
-                const key = c.address?.toLowerCase();
-                if (key && !stored[key]) {
-                  await setDBitem(key, c.name, 'Contacts');
-                  stored[key] = c.name;
-                }
+            const body = await res.json();
+            const remote = Array.isArray(body.contacts) ? body.contacts : [];
+            console.log('[ContactSync] remote returned %d contacts', remote.length);
+            for (const c of remote) {
+              const key = c.address?.toLowerCase();
+              if (key && c.name && !local[key]) {
+                await setDBitem(key, c.name, 'Contacts');
+                local[key] = c.name;
+                added++;
               }
             }
           }
-        } catch (_) { /* backend offline — use local only */ }
+        } catch (err) {
+          console.warn('[ContactSync] GET failed:', err.message);
+        }
+        console.log('[ContactSync] merged %d new from remote → %d total', added, Object.keys(local).length);
+
+        // --- PUSH: send local contacts so other leaders get them ---
+        try {
+          const list = Object.entries(local).map(([address, name]) => ({ address, name }));
+          if (list.length) {
+            const res = await fetch(`${API}/contacts/sync`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ union: unionAddress, contacts: list }),
+            });
+            console.log('[ContactSync] POST %d contacts → status=%d', list.length, res.status);
+          }
+        } catch (err) {
+          console.warn('[ContactSync] POST failed:', err.message);
+        }
       }
 
-      return stored; // { [lowercaseAddr]: name, ... }
+      return local;
     },
-    staleTime: Infinity,
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const userContacts = query.data ?? {};
@@ -104,13 +133,15 @@ export function useContactBook() {
     } catch (_) { /* non-critical — will sync next time */ }
   }, [unionAddress]);
 
+  const cacheKey = unionAddress ?? '_local_';
+
   const addContact = useCallback(async (address, name) => {
     const key = address.toLowerCase();
     await setDBitem(key, name, 'Contacts');
     const updated = { ...userContacts, [key]: name };
-    queryClient.setQueryData(['contactBook'], updated);
+    queryClient.setQueryData(['contactBook', cacheKey], updated);
     pushToBackend(updated);
-  }, [userContacts, queryClient, pushToBackend]);
+  }, [userContacts, cacheKey, queryClient, pushToBackend]);
 
   const removeContact = useCallback(async (address) => {
     const key = address.toLowerCase();
@@ -119,9 +150,9 @@ export function useContactBook() {
     await deleteItem(key, 'Contacts');
     const updated = { ...userContacts };
     delete updated[key];
-    queryClient.setQueryData(['contactBook'], updated);
+    queryClient.setQueryData(['contactBook', cacheKey], updated);
     pushToBackend(updated);
-  }, [userContacts, systemContacts, queryClient, pushToBackend]);
+  }, [userContacts, cacheKey, systemContacts, queryClient, pushToBackend]);
 
   // Flat list for picker UIs
   const contactList = useMemo(() => {

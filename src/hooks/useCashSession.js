@@ -7,7 +7,6 @@ import {
   clearSessionStorage,
 } from '../utils/cashCounterHelpers';
 
-const MAX_BILLS = 20;
 const EXPIRY_MS = 30 * 60 * 1000;
 
 /**
@@ -74,8 +73,6 @@ const useCashSession = () => {
   // ── add a single bill (creates or appends to a 'single' group) ─────────
   const addBill = useCallback((bill) => {
     setScanGroups((prev) => {
-      if (scannedBills.length >= MAX_BILLS) return prev;
-
       // Dedup by serialNumber across all groups
       const allSerials = prev.flatMap(g => g.bills.map(b => b.serialNumber));
       if (allSerials.includes(bill.serialNumber)) return prev;
@@ -109,19 +106,18 @@ const useCashSession = () => {
       persist(next);
       return next;
     });
-  }, [scannedBills.length, persist]);
+  }, [persist]);
 
   // ── add a bulk scan result as its own group ────────────────────────────
-  const addBulkGroup = useCallback(({ bills: rawBills, s3Key, confidence, reasoning }) => {
+  const addBulkGroup = useCallback(({ items: rawItems, s3Key, confidence, reasoning }) => {
     setScanGroups((prev) => {
-      const currentCount = prev.flatMap(g => g.bills).length;
       const entries = [];
-      for (const { denomination, count } of rawBills) {
+      for (const { denomination, type, count } of rawItems) {
         for (let i = 0; i < count; i++) {
-          if (currentCount + entries.length >= MAX_BILLS) break;
           entries.push({
-            serialNumber: `bulk_${denomination}_${Date.now()}_${i}`,
+            serialNumber: `bulk_${denomination}_${type || 'note'}_${Date.now()}_${i}`,
             denomination,
+            type: type || 'note',
             side: 'front',
             timestamp: Date.now(),
             inventoryStatus: 'unchecked',
@@ -187,9 +183,9 @@ const useCashSession = () => {
     clearSessionStorage();
   }, []);
 
-  // ── legacy addBulkResult (kept so BulkBillScanner still works) ─────────
-  const addBulkResult = useCallback((bills) => {
-    addBulkGroup({ bills });
+  // ── legacy addBulkResult (kept for backwards compat) ───────────────────
+  const addBulkResult = useCallback((items) => {
+    addBulkGroup({ items });
   }, [addBulkGroup]);
 
   return {

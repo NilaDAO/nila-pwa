@@ -42,13 +42,15 @@ export function useOpenCashOffers(unionAddr?: string, depth = 50) {
     queryFn: async () => {
       const nextId: bigint = await fxPool!.nextCashOfferId();
       const start = nextId > BigInt(depth) ? nextId - BigInt(depth) : 0n;
+      const now = Math.floor(Date.now() / 1000);
       let count = 0;
       for (let id = nextId - 1n; id >= start; id--) {
         try {
           const offer = await fxPool!.cashOffers(id);
           if (
             offer.union?.toLowerCase() === unionAddr!.toLowerCase() &&
-            Number(offer.status) === 0
+            Number(offer.status) === 0 &&
+            Number(offer.deadline) > now
           ) count++;
         } catch {}
       }
@@ -167,7 +169,7 @@ export function usePendingCashDeliveries(unionAddr?: string, depth = 50) {
     queryFn: async () => {
       const nextId: bigint = await fxPool!.nextRedeemOrderId();
       const start = nextId > BigInt(depth) ? nextId - BigInt(depth) : 0n;
-      const pending: { id: bigint; inrValue: bigint; usdtLocked: bigint; lp: string; deadline: number }[] = [];
+      const pending: { id: bigint; inrValue: bigint; usdtLocked: bigint; feeBP: number; lp: string; deadline: number }[] = [];
       for (let id = nextId - 1n; id >= start; id--) {
         try {
           const o = await fxPool!.redeemOrders(id);
@@ -179,6 +181,7 @@ export function usePendingCashDeliveries(unionAddr?: string, depth = 50) {
               id,
               inrValue:   o.inrValue   as bigint,
               usdtLocked: o.usdtLocked as bigint,
+              feeBP:      Number(o.feeBP),
               lp:         o.lp         as string,
               deadline:   Number(o.deadline),
             });
@@ -222,6 +225,83 @@ export function usePendingFilledCashOffers(unionAddr?: string, depth = 50) {
         } catch {}
       }
       return pending;
+    },
+  });
+}
+
+/** Union leader: list open CashOffers (status=0, not expired) posted by this union — full details for the LP requests card. */
+export function useUnionOpenCashOffersList(unionAddr?: string, depth = 50) {
+  const { wallet } = useWallet();
+  const fxAddress  = process.env.REACT_APP_FX_POOL_MAIN;
+  const fxPool     = useContract(fxAddress, nilaFxPoolAbi, wallet);
+
+  return useQuery({
+    queryKey: ['unionOpenCashOffersList', unionAddr],
+    enabled: !!unionAddr && !!fxPool,
+    refetchInterval: 15_000,
+    queryFn: async () => {
+      const nextId: bigint = await fxPool!.nextCashOfferId();
+      const start = nextId > BigInt(depth) ? nextId - BigInt(depth) : 0n;
+      const now = Math.floor(Date.now() / 1000);
+      const open: { id: bigint; escrowId: bigint; inrValue: bigint; feeBP: number; deadline: number }[] = [];
+      for (let id = nextId - 1n; id >= start; id--) {
+        try {
+          const o = await fxPool!.cashOffers(id);
+          if (
+            (o.union as string).toLowerCase() === unionAddr!.toLowerCase() &&
+            Number(o.status) === 0 &&
+            Number(o.deadline) > now
+          ) {
+            open.push({
+              id,
+              escrowId: o.escrowId as bigint,
+              inrValue: o.inrValue as bigint,
+              feeBP:    Number(o.feeBP),
+              deadline: Number(o.deadline),
+            });
+          }
+        } catch {}
+      }
+      return open;
+    },
+  });
+}
+
+/** Union leader: list open RedeemOrders (status=0, not expired) posted by this union — full details for the LP requests card. */
+export function useUnionOpenRedeemOrdersList(unionAddr?: string, depth = 50) {
+  const { wallet } = useWallet();
+  const fxAddress  = process.env.REACT_APP_FX_POOL_MAIN;
+  const fxPool     = useContract(fxAddress, nilaFxPoolAbi, wallet);
+
+  return useQuery({
+    queryKey: ['unionOpenRedeemOrdersList', unionAddr],
+    enabled: !!unionAddr && !!fxPool,
+    refetchInterval: 15_000,
+    queryFn: async () => {
+      const nextId: bigint = await fxPool!.nextRedeemOrderId();
+      const start = nextId > BigInt(depth) ? nextId - BigInt(depth) : 0n;
+      const now = Math.floor(Date.now() / 1000);
+      const open: { id: bigint; farmer: string; inrValue: bigint; usdtLocked: bigint; feeBP: number; deadline: number }[] = [];
+      for (let id = nextId - 1n; id >= start; id--) {
+        try {
+          const o = await fxPool!.redeemOrders(id);
+          if (
+            (o.union as string).toLowerCase() === unionAddr!.toLowerCase() &&
+            Number(o.status) === 0 &&
+            Number(o.deadline) > now
+          ) {
+            open.push({
+              id,
+              farmer:     o.farmer     as string,
+              inrValue:   o.inrValue   as bigint,
+              usdtLocked: o.usdtLocked as bigint,
+              feeBP:      Number(o.feeBP),
+              deadline:   Number(o.deadline),
+            });
+          }
+        } catch {}
+      }
+      return open;
     },
   });
 }

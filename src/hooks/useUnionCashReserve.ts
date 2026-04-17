@@ -44,13 +44,15 @@ export function useUnionCashReserve(unionAddr?: string) {
     enabled: !!unionAddr && !!fxPool && !!core,
     refetchInterval: 30_000,
     queryFn: async () => {
-      const [treasury, rainyDay, activeEscrowNin, usdtTokenAddr, usdtDec] = await Promise.all([
+      const [treasury, rainyDay, activeEscrowNin, usdtTokenAddr, usdtDec, escrowDurationRaw] = await Promise.all([
         core!.unionTreasury(unionAddr!),
         core!.unionRainyDay(unionAddr!),
         fxPool!.unionActiveEscrowNin(unionAddr!),
         fxPool!.usdt(),
         fxPool!.usdtDecimals(),
+        fxPool!.escrowDuration(),
       ]);
+      const escrowDuration = Number(escrowDurationRaw);
 
       // USDT balance held by the FxPool contract
       let usdtBalance: bigint = 0n;
@@ -143,6 +145,7 @@ export function useUnionCashReserve(unionAddr?: string) {
         pendingDisburse,
         scheduledExits,
         hasNoEscrow: pendingDisburse.length === 0,
+        escrowDuration,
         usdtBalance,
         usdtDecimals,
       };
