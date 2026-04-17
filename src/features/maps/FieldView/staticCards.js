@@ -383,6 +383,7 @@ const DormantCard = ({ record }) => {
 
 export const StaticCards = ({ LAND }) => {
   const [ action, setAction ]                  = useState(null)
+  const [ showAdvice, setShowAdvice ]          = useState(false)
   const [ loading, setLoading ]                = useState(true)
   const { db, fieldActivity,setFieldActivity } = useDataContext();
   const { setIx }                              = useNavContext();
@@ -430,6 +431,7 @@ export const StaticCards = ({ LAND }) => {
         dormant: false,
         historical: true,
         historicalCycle: cycle,
+        activeCycle: null,
       } : prev);
       return;
     }
@@ -454,25 +456,48 @@ export const StaticCards = ({ LAND }) => {
       dormant: false,
       historical: true,
       historicalCycle: cycle,
+      activeCycle: null,
       meta: { ...prev?.meta, last_scene_date: record?.meta?.last_scene_date },
     }));
   }, [setFieldActivity, record]);
 
   // Restore current (live) state when navigating back to "Current"
   const handleCurrentRestore = useCallback(() => {
-    const status = record ? deriveDormantStatus(record) : null;
-    const isDormant = record && !record.current_cycle && record.clusters?.features?.length === 0;
-    setFieldActivity(prev => ({
-      ...prev,
-      features: record?.clusters?.features || [],
-      geojson: record?.clusters || { type: 'FeatureCollection', features: [] },
-      featurelength: record?.clusters?.features?.length || 0,
-      historical: false,
-      historicalCycle: null,
-      dormant: isDormant,
-      dormantColor: isDormant && status ? dormantColor(status.ndvi) : null,
-      dormantStatus: isDormant ? status : null,
-    }));
+    const hasActiveCycle = record?.current_cycle?.length > 0;
+    if (hasActiveCycle) {
+      const openCycleKey = Object.keys(record.cycles || {}).find(k => record.cycles[k].is_open);
+      const pcc = openCycleKey ? record.per_cycle_clusters?.[openCycleKey] : null;
+      const cc = record.current_cycle;
+      const enriched = (pcc?.features || []).map(f => ({
+        ...f,
+        properties: { ...f.properties, crop_type: cc[0]?.crop_type, activity: 'active' }
+      }));
+      setFieldActivity(prev => ({
+        ...prev,
+        features: enriched,
+        geojson: { type: 'FeatureCollection', features: enriched },
+        featurelength: enriched.length,
+        dormant: false,
+        historical: false,
+        historicalCycle: null,
+        activeCycle: cc,
+      }));
+    } else {
+      const status = record ? deriveDormantStatus(record) : null;
+      const isDormant = record && !record.current_cycle && record.clusters?.features?.length === 0;
+      setFieldActivity(prev => ({
+        ...prev,
+        features: [],
+        geojson: { type: 'FeatureCollection', features: [] },
+        featurelength: 0,
+        historical: false,
+        historicalCycle: null,
+        activeCycle: null,
+        dormant: isDormant,
+        dormantColor: isDormant && status ? dormantColor(status.ndvi) : null,
+        dormantStatus: isDormant ? status : null,
+      }));
+    }
   }, [setFieldActivity, record]);
 
   // Sync selected clusters from map into form (select mode)
@@ -534,12 +559,38 @@ export const StaticCards = ({ LAND }) => {
     }
   }, [features.length]);
 
-  // stop loading when record arrives (even if no active features)
-  // set dormant outline color if no active cycle
+  // When record arrives: set dormant or active state
   useEffect(() => {
     if (!record) return;
     setLoading(false);
-    if (!record.current_cycle && record.clusters?.features?.length === 0) {
+
+    const hasActiveCycle = record.current_cycle && record.current_cycle.length > 0;
+
+    if (hasActiveCycle) {
+      // Active: find the open cycle's clusters and push to map
+      const openCycleKey = Object.keys(record.cycles || {}).find(k => record.cycles[k].is_open);
+      const pcc = openCycleKey ? record.per_cycle_clusters?.[openCycleKey] : null;
+      const cc = record.current_cycle;
+      const enriched = (pcc?.features || []).map(f => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          crop_type: cc[0]?.crop_type,
+          activity: 'active',
+        }
+      }));
+      setFieldActivity(prev => ({
+        ...prev,
+        features: enriched,
+        geojson: { type: 'FeatureCollection', features: enriched },
+        featurelength: enriched.length,
+        dormant: false,
+        historical: false,
+        activeCycle: cc,
+        meta: { ...prev?.meta, last_scene_date: record.meta?.last_scene_date },
+      }));
+    } else if (record.clusters?.features?.length === 0) {
+      // Dormant
       const status = deriveDormantStatus(record);
       if (status) {
         setFieldActivity(prev => ({
@@ -641,6 +692,55 @@ export const StaticCards = ({ LAND }) => {
                   <p className='text-[10px] px-4 dark:text-slate-500'>&#9888; Beta — data may be inaccurate</p>
 
                   { loading && <Spinner size='small' stages={'loading latest records'} />}
+
+                  {/* Active crop status */}
+                  {fieldActivity?.activeCycle?.length > 0 && (() => {
+                    const ac = fieldActivity.activeCycle[0];
+                    const eos = ac.predicted_eos;
+                    const harvestText = eos?.length ? `${eos[0]} – ${eos[1] || eos[0]}` : null;
+                    const daysToHarvest = eos?.[0] ? Math.round((new Date(eos[0]) - new Date()) / 86400000) : null;
+                    const healthColor = ac.health === 'stressed' ? 'text-amber-500' : ac.health === 'poor' ? 'text-red-500' : 'text-green-500';
+                    const w = ac.weather_summary || {};
+                    return (
+                    <div className="flex flex-col gap-1.5 px-4 pt-3">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: cropColor(ac.crop_type) }} />
+                        <span className="text-sm font-semibold dark:text-white">{ac.crop_type}</span>
+                        <span className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full">{ac.stage}</span>
+                        <span className={`text-[10px] font-semibold ${healthColor}`}>{ac.health}</span>
+                      </div>
+                      <div className="flex flex-col gap-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Harvest</span>
+                          <span className="font-bold dark:text-white">
+                            {daysToHarvest != null && daysToHarvest > 0 ? `${daysToHarvest}d` : harvestText || '—'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Est. yield</span>
+                          <span className="font-bold dark:text-white">{ac.expected_yield_kg_acre ? `${ac.expected_yield_kg_acre} kg/acre` : '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Rain</span>
+                          <span className="font-bold dark:text-white">{w.total_rain_mm != null ? `${w.total_rain_mm} mm` : '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Soil moisture</span>
+                          <span className="font-bold dark:text-white">{w.mean_soil_moisture != null ? `${Math.round(w.mean_soil_moisture)} kg/m²` : '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Day</span>
+                          <span className="font-bold dark:text-white">{ac.days_since_sos ? `${ac.days_since_sos} since sowing` : '—'}</span>
+                        </div>
+                      </div>
+                      {ac.crop_confidence > 0 && (
+                        <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1 mt-1">
+                          <div className="h-1 rounded-full" style={{ width: `${Math.round(ac.crop_confidence * 100)}%`, backgroundColor: cropColor(ac.crop_type) }} />
+                        </div>
+                      )}
+                    </div>
+                    );
+                  })()}
 
                   {/* Cumulative stats table */}
                   {record && (() => {
@@ -749,23 +849,47 @@ export const StaticCards = ({ LAND }) => {
           >
             <div className="flex justify-between items-center">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Actions</p>
-              {action === 'season' && (
+              {(action === 'season' || showAdvice) && (
                 <button
-                  onClick={() => setAction(null)}
+                  onClick={() => { setAction(null); setShowAdvice(false); }}
                   className="text-gray-400 dark:text-slate-400 text-sm px-1 active:scale-95"
                 >✕</button>
               )}
             </div>
 
-            {action !== 'season' && (
+            {!action && !showAdvice && (() => {
+              const ac = fieldActivity?.activeCycle?.[0];
+              return (
               <div className="flex flex-wrap gap-2">
                 <button className={btn} onClick={() => setAction('season')}>
-                  {primaryLabel}
+                  {isFallow ? 'New season' : 'Crop passport'}
                 </button>
+                {ac?.reasoning && (
+                  <button className="px-4 py-2 rounded-lg text-xs font-bold active:scale-95 border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800" onClick={() => setShowAdvice(true)}>
+                    Read the crop advice
+                  </button>
+                )}
                 <button className={btnOff} disabled>Pre-sale</button>
                 <button className={btnOff} disabled>Shared cropping</button>
               </div>
-            )}
+              );
+            })()}
+
+            {showAdvice && (() => {
+              const ac = fieldActivity?.activeCycle?.[0];
+              if (!ac?.reasoning) return null;
+              return (
+              <div className="flex flex-col gap-2 pt-1">
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-600/50">
+                  <p className="text-[10px] dark:text-slate-300 leading-relaxed">{ac.reasoning}</p>
+                </div>
+                <button
+                  className="w-full py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95 opacity-40"
+                  disabled
+                >Ask a local expert</button>
+              </div>
+              );
+            })()}
 
             {action === 'season' && (
               <div className="flex flex-col gap-3 pt-1">

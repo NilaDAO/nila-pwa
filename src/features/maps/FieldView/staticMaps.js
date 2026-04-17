@@ -176,6 +176,30 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
         map, position: center, content: el,
       }));
 
+    } else if (fieldActivity?.activeCycle?.length > 0 && features.length) {
+      // Active crop: label per cluster with health + stage
+      const ac = fieldActivity.activeCycle[0];
+      const healthIcon = ac.health === 'stressed' ? '⚠️' : ac.health === 'poor' ? '🔴' : '✅';
+      const eos = ac.predicted_eos;
+      const daysToHarvest = eos?.[0] ? Math.round((new Date(eos[0]) - new Date()) / 86400000) : null;
+
+      features.forEach(f => {
+        const p = f.properties || {};
+        if (p.cluster_id === 0 || p.activity === 'border_area') return;
+
+        const el = document.createElement('div');
+        el.style.cssText = labelStyle;
+        el.innerHTML = [
+          `${healthIcon} <b>${ac.crop_type}</b> · ${ac.stage}`,
+          daysToHarvest != null && daysToHarvest > 0 ? `Harvest: ${daysToHarvest}d` : '',
+          ac.expected_yield_kg_acre ? `${ac.expected_yield_kg_acre} kg/acre` : '',
+        ].filter(Boolean).join('<br>');
+
+        markers.push(new window.google.maps.marker.AdvancedMarkerElement({
+          map, position: centroidOf(f), content: el,
+        }));
+      });
+
     } else if (fieldActivity?.historical && features.length) {
       // Historical state: one label per cluster at its centroid
       const cycle = fieldActivity.historicalCycle || {};
@@ -199,7 +223,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     }
 
     return () => markers.forEach(m => { m.map = null; });
-  }, [map, fieldActivity?.dormant, fieldActivity?.historical, fieldActivity?.historicalCycle, features, outline]);
+  }, [map, fieldActivity?.dormant, fieldActivity?.activeCycle, fieldActivity?.historical, fieldActivity?.historicalCycle, features, outline]);
 
   return isLoaded ? (
       <GoogleMap
