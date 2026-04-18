@@ -7,6 +7,20 @@ import {
   ExclamationTriangleIcon,
   XCircleIcon,
 } from '@heroicons/react/20/solid';
+import { ClaimButton } from '../../components/UI/buttons';
+import { useWallet, useContract } from '../../hooks/useWallet.ts';
+import { runTx } from '../../utils/runTx.ts';
+import { setDBitem } from '../../utils/db.js';
+import { ethers } from 'ethers';
+import landTitleArtifact from '../../components/ABI/NilaLandTitleWithName.json';
+
+const _ltAbi = (landTitleArtifact).abi ?? landTitleArtifact;
+const _ltAddr = process.env.REACT_APP_LAND_TITLE_MAIN;
+const _ninAddr = process.env.REACT_APP_NIN_MAIN;
+const _erc20Abi = [
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+];
 
 const DAY_MS = 86_400_000;
 const SWIPE_REVEAL  = 60;
@@ -154,7 +168,11 @@ export default function ActiveLoansCard({
   const [syncStep, setSyncStep] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [gisData, setGisData] = useState({});     // { loanId: { ...summary } }
-  const [keyMode, setKeyMode] = useState(null);   // null | 'confirm' | 'signing' | 'done'
+  const [keyMode, setKeyMode] = useState(null);   // null | 'confirm'
+  const [keysPurchased, setKeysPurchased] = useState(false);
+  const { wallet } = useWallet();
+  const landTitle = useContract(_ltAddr, _ltAbi, wallet);
+  const nin = useContract(_ninAddr, _erc20Abi, wallet);
   const [gisLoading, setGisLoading] = useState({}); // { loanId: bool }
 
   // Per-loan collect-deadline window check.
@@ -300,6 +318,18 @@ export default function ActiveLoansCard({
     }),
     [active, flagged, resolveName, eosMap]
   );
+
+  // Check IndexedDB on mount — if any viewing keys cached, show "View on map"
+  useEffect(() => {
+    if (!active.length) return;
+    import('../../utils/db').then(({ readItem }) => {
+      Promise.all(active.slice(0, 3).map(l =>
+        readItem(`recordHash_${l.landId}`, 'FarmData').catch(() => null)
+      )).then(results => {
+        if (results.some(r => r?.record)) setKeysPurchased(true);
+      });
+    }).catch(() => {});
+  }, [active.length]);
 
   const sorted = useMemo(() => {
     const mul = sortDir === 'asc' ? 1 : -1;
@@ -452,69 +482,77 @@ export default function ActiveLoansCard({
             </div>
           )}
         </div>
-        <button
-          onClick={() => setKeyMode('confirm')}
-          disabled={!enriched.some(l => l.landId)}
-          className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
-        >{Object.keys(gisData).length > 0 ? 'Update viewing keys' : 'Buy viewing keys'}</button>
+        {keysPurchased ? (
+          <button
+            onClick={() => onViewMap?.(enriched)}
+            className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 whitespace-nowrap"
+          >View on map</button>
+        ) : (
+          <button
+            onClick={() => setKeyMode('confirm')}
+            disabled={!active.length}
+            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
+          >Buy viewing keys</button>
+        )}
         </div>
       )}
 
-      {/* Expanded: buy/update viewing keys */}
-      {keyMode === 'confirm' && (() => {
-        // Count loans that already have cached keys (any age)
-        const withKeys = active.filter(l => gisData[l.id]?.keyTs);
-        const hasAnyKeys = withKeys.length > 0;
-        const needPay = active.length - withKeys.length;
-        // TODO: check commitments on-chain to find which actually changed
-        const payCount = needPay > 0 ? needPay : active.length;
-
-        return (
-        <div data-tour="viewing-keys" className="flex flex-col gap-2 py-3">
-          <div className="flex justify-between items-center">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">
-              {hasAnyKeys ? 'Update viewing keys' : 'Buy viewing keys'}
-            </p>
-            <button onClick={() => setKeyMode(null)} className="text-gray-400 dark:text-slate-400 text-sm px-1 active:scale-95">✕</button>
-          </div>
-          {hasAnyKeys && needPay > 0 && (
-            <p className="text-[10px] dark:text-slate-500">{withKeys.length} keys cached · {needPay} new</p>
-          )}
-          <div className="flex gap-2">
+      {/* Buy viewing keys — inline confirm */}
+      {keyMode === 'confirm' && (
+        <div data-tour="viewing-keys" className="flex flex-col gap-2 py-2">
+          <div className="flex justify-end">
             <button
-              onClick={async () => {
-                setKeyMode('signing');
-                // TODO: batch approve + getRecordHash for payCount loans
-                setTimeout(() => {
-                  setKeyMode('done');
-                  setTimeout(() => {
-                    setKeyMode(null);
-                    onViewMap?.(enriched);
-                  }, 500);
-                }, 1000);
-              }}
-              className="flex-1 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95"
-            >Pay {payCount} nIN</button>
-            <button
-              onClick={() => { setKeyMode(null); onViewMap?.(enriched); }}
-              disabled={!hasAnyKeys}
-              className="flex-1 py-3 rounded-xl bg-gray-100 dark:bg-slate-600 dark:text-white text-sm font-bold active:scale-95 disabled:opacity-30"
-            >Skip</button>
+              onClick={() => setKeyMode(null)}
+              className="text-gray-400 dark:text-slate-400 text-sm px-1 active:scale-95"
+            >✕</button>
           </div>
-          <p className="text-[10px] dark:text-slate-500 pt-1">View real-time cycle data — 80% goes directly to the farmer</p>
-        </div>
-        );
-      })()}
+          <p className="text-[10px] dark:text-slate-300">
+            Pay <span className="font-bold dark:text-white">{active.length} nIN</span> to view harvest timing, yield and crop health for {active.length} members. Nila maintains 8 years of farm data for each member — we charge a small viewing cost so no corporation can use it without consent or contribution. 80% of the revenue goes directly to the farmer. You can update later in the portfolio view.
+          </p>
+          <ClaimButton
+            title={`Pay ${active.length} nIN`}
+            pendingTitle="Signing..."
+            successTitle="Keys acquired"
+            handleClick={async () => {
+              if (!landTitle || !wallet || !nin) throw new Error('Wallet not ready');
 
-      {keyMode === 'signing' && (
-        <div className="flex items-center gap-2 py-2">
-          <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs dark:text-slate-400">Signing transaction...</p>
-        </div>
-      )}
+              // 1. Read viewFeeNin from contract
+              const fee = await landTitle.viewFeeNin();
+              const landIds = [...new Set(active.map(l => l.landId).filter(Boolean))];
+              const totalWei = fee * BigInt(landIds.length);
 
-      {keyMode === 'done' && (
-        <p className="text-xs dark:text-green-400 py-2">Keys acquired</p>
+              // 2. Approve nIN if needed
+              if (totalWei > 0n) {
+                const allowance = await nin.allowance(wallet.address, _ltAddr);
+                if (allowance < totalWei) {
+                  await runTx(() => nin.approve(_ltAddr, totalWei));
+                }
+              }
+
+              // 3. For each land_id: pay fee + get hash + store in IndexedDB
+              for (const lid of landIds) {
+                try {
+                  // Read hash (pays nIN fee for non-owners)
+                  const hash = await landTitle.getRecordHash.staticCall(lid);
+                  if (hash && hash !== ethers.ZeroHash) {
+                    await runTx(() => landTitle.getRecordHash(lid));
+                    // Cache the hash in IndexedDB
+                    await setDBitem(`recordHash_${lid}`, {
+                      recordHash: hash,
+                      commitment: 'purchased',
+                      ts: Date.now(),
+                    }, 'FarmData');
+                  }
+                } catch (e) {
+                  console.warn(`[viewingKeys] failed land_id=${lid}:`, e.message);
+                }
+              }
+
+              setKeysPurchased(true);
+              setKeyMode(null);
+            }}
+          />
+        </div>
       )}
 
       {/* Column headers */}
