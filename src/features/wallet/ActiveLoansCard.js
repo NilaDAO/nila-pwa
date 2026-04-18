@@ -456,34 +456,29 @@ export default function ActiveLoansCard({
           onClick={() => setKeyMode('confirm')}
           disabled={!enriched.some(l => l.landId)}
           className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
-        >Buy viewing keys</button>
+        >{Object.keys(gisData).length > 0 ? 'Update viewing keys' : 'Buy viewing keys'}</button>
         </div>
       )}
 
       {/* Expanded: buy/update viewing keys */}
       {keyMode === 'confirm' && (() => {
-        const STALE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
-        const now = Date.now();
-        // Check which loans already have fresh keys (from gisData cache)
-        const cached = active.filter(l => gisData[l.id]?.keyTs && (now - gisData[l.id].keyTs) < STALE_MS);
-        const stale = active.filter(l => gisData[l.id]?.keyTs && (now - gisData[l.id].keyTs) >= STALE_MS);
-        const fresh = cached.length;
-        const needPay = active.length - fresh;
-        const hasAnyKeys = fresh > 0 || stale.length > 0;
-        // If majority are stale, treat as full refresh
-        const isFullRefresh = stale.length > active.length / 2;
-        const payCount = isFullRefresh ? active.length : needPay;
+        // Count loans that already have cached keys (any age)
+        const withKeys = active.filter(l => gisData[l.id]?.keyTs);
+        const hasAnyKeys = withKeys.length > 0;
+        const needPay = active.length - withKeys.length;
+        // TODO: check commitments on-chain to find which actually changed
+        const payCount = needPay > 0 ? needPay : active.length;
 
         return (
         <div data-tour="viewing-keys" className="flex flex-col gap-2 py-3">
           <div className="flex justify-between items-center">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">
-              {hasAnyKeys && !isFullRefresh ? 'Update viewing keys' : 'Buy viewing keys'}
+              {hasAnyKeys ? 'Update viewing keys' : 'Buy viewing keys'}
             </p>
             <button onClick={() => setKeyMode(null)} className="text-gray-400 dark:text-slate-400 text-sm px-1 active:scale-95">✕</button>
           </div>
-          {hasAnyKeys && !isFullRefresh && (
-            <p className="text-[10px] dark:text-slate-500">{fresh} of {active.length} keys are fresh · {needPay} new</p>
+          {hasAnyKeys && needPay > 0 && (
+            <p className="text-[10px] dark:text-slate-500">{withKeys.length} keys cached · {needPay} new</p>
           )}
           <div className="flex gap-2">
             <button
@@ -506,7 +501,7 @@ export default function ActiveLoansCard({
               className="flex-1 py-3 rounded-xl bg-gray-100 dark:bg-slate-600 dark:text-white text-sm font-bold active:scale-95 disabled:opacity-30"
             >Skip</button>
           </div>
-          <p className="text-[10px] dark:text-slate-500 pt-1">Fees go directly to each farmer</p>
+          <p className="text-[10px] dark:text-slate-500 pt-1">View real-time cycle data — 80% goes directly to the farmer</p>
         </div>
         );
       })()}
