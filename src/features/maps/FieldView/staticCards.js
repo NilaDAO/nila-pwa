@@ -521,6 +521,16 @@ export const StaticCards = ({ LAND }) => {
   const startYRef                              = useRef(0);
 
   const close = () => { setIx(null); setTokenview(false); setCardView('default'); };
+
+  // Clear portfolioMode on unmount so user's map works next time
+  useEffect(() => {
+    return () => {
+      if (fieldActivity?.portfolioMode) {
+        setFieldActivity(prev => prev?.portfolioMode ? null : prev);
+      }
+    };
+  }, []);
+
   const [ selected, setSelected ]              = useState([])
   const [ form, setForm ]                      = useState({ crop: '', var: '', coverage: 'full' })
   const [ cropOpen, setCropOpen ]              = useState(false)
