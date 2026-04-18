@@ -516,9 +516,31 @@ export default function ActiveLoansCard({
             handleClick={async () => {
               if (!landTitle || !wallet || !nin) throw new Error('Wallet not ready');
 
-              // 1. Read viewFeeNin from contract
+              // 1. Resolve land_ids from loan data (backend /loans/sync)
+              //    Chain fallback for loans without land_id
+              const landIds = [];
+              const seen = new Set();
+              for (const l of active) {
+                if (l.landId && !seen.has(l.landId)) {
+                  seen.add(l.landId);
+                  landIds.push(l.landId);
+                } else if (!l.landId && l.borrower && !seen.has(l.borrower)) {
+                  seen.add(l.borrower);
+                  try {
+                    const bal = await landTitle.balanceOf(l.borrower);
+                    if (bal > 0n) {
+                      const tid = Number(await landTitle.tokenOfOwnerByIndex(l.borrower, 0));
+                      if (!seen.has(tid)) { seen.add(tid); landIds.push(tid); }
+                      console.log(`[viewingKeys] chain: ${l.borrower.slice(0,8)}... → ${tid}`);
+                    }
+                  } catch (e) {
+                    console.warn(`[viewingKeys] resolve failed ${l.borrower.slice(0,8)}...`);
+                  }
+                }
+              }
+
+              // 2. Read viewFeeNin from contract
               const fee = await landTitle.viewFeeNin();
-              const landIds = [...new Set(active.map(l => l.landId).filter(Boolean))];
               const totalWei = fee * BigInt(landIds.length);
 
               // 2. Approve nIN if needed
@@ -530,10 +552,12 @@ export default function ActiveLoansCard({
               }
 
               // 3. For each land_id: pay fee + get hash + store in IndexedDB
+              console.log('[viewingKeys] landIds:', landIds, 'fee:', fee.toString(), 'total:', totalWei.toString());
               for (const lid of landIds) {
                 try {
                   // Read hash (pays nIN fee for non-owners)
                   const hash = await landTitle.getRecordHash.staticCall(lid);
+                  console.log(`[viewingKeys] land_id=${lid} hash=${hash}`);
                   if (hash && hash !== ethers.ZeroHash) {
                     await runTx(() => landTitle.getRecordHash(lid));
                     // Cache the hash in IndexedDB
