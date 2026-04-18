@@ -466,7 +466,7 @@ const UnionReserve = ({ handleOpenForm }) => {
         element: '[data-tour="viewing-keys"]',
         popover: {
           title: 'Viewing keys',
-          description: 'Buy viewing keys to see harvest timing, yield, crop health and tailored advice for each member. Each key costs 1 nIN — 80% goes directly to the farmer. Once purchased, tap Skip to load cached data. Update when new data is available.',
+          description: 'View harvest timing, yield, crop health and tailored advice for each member. 80% of the revenue goes directly to the farmer.',
         },
       },
       {
