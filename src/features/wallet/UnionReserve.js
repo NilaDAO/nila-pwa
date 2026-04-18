@@ -463,6 +463,13 @@ const UnionReserve = ({ handleOpenForm }) => {
         },
       },
       {
+        element: '[data-tour="viewing-keys"]',
+        popover: {
+          title: 'Viewing keys',
+          description: 'Buy viewing keys to see satellite crop data for each borrower\'s property. Each key costs 1 nIN and the fee goes directly to the farmer. Keys are valid for 5 days — after that you\'ll need to refresh. If you\'ve already bought keys, tap Skip to load cached data.',
+        },
+      },
+      {
         element: '[data-tour="loan-sync"]',
         popover: {
           title: 'Fund balance check',
@@ -596,6 +603,16 @@ const UnionReserve = ({ handleOpenForm }) => {
   const pct             = treasury > 0n ? Number(available) / Number(treasury) : 1;
   const withdrawCap     = treasuryDir === 'withdraw' ? available : null;
 
+  const cumulativeInterest = useMemo(() => {
+    const loans = loansData?.activeLoans;
+    if (!loans?.length) return 0;
+    return loans.reduce((sum, l) => {
+      const outstanding = l.amount ?? 0;
+      const principal   = l.principal ?? outstanding;
+      return sum + Math.max(0, outstanding - principal);
+    }, 0);
+  }, [loansData?.activeLoans]);
+
   const now = Math.floor(Date.now() / 1000);
 
   return (
@@ -713,6 +730,12 @@ const UnionReserve = ({ handleOpenForm }) => {
                       ({Math.round((Number(activeEscrow) / Number(treasury)) * 100)}%)
                     </span>
                   )}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-xs text-gray-500 dark:text-slate-400">Interest pending</span>
+                <span className="text-xs font-bold dark:text-white">
+                  ₹{cumulativeInterest.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </span>
               </div>
               <div className="flex justify-between items-center">
