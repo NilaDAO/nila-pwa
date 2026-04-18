@@ -154,6 +154,7 @@ export default function ActiveLoansCard({
   const [syncStep, setSyncStep] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [gisData, setGisData] = useState({});     // { loanId: { ...summary } }
+  const [keyMode, setKeyMode] = useState(null);   // null | 'confirm' | 'signing' | 'done'
   const [gisLoading, setGisLoading] = useState({}); // { loanId: bool }
 
   // Per-loan collect-deadline window check.
@@ -422,8 +423,8 @@ export default function ActiveLoansCard({
         </button>
       </div>
 
-      {/* Fund filter dropdown + view on map */}
-      {fundKeys.length > 0 && (
+      {/* Fund filter dropdown + viewing keys */}
+      {fundKeys.length > 0 && !keyMode && (
         <div className="flex gap-2">
         <div ref={fundRef} className="relative flex-1">
           <button
@@ -452,11 +453,73 @@ export default function ActiveLoansCard({
           )}
         </div>
         <button
-          onClick={() => onViewMap?.(enriched.filter(l => l.landId))}
+          onClick={() => setKeyMode('confirm')}
           disabled={!enriched.some(l => l.landId)}
           className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
-        >View on map</button>
+        >Buy viewing keys</button>
         </div>
+      )}
+
+      {/* Expanded: buy/update viewing keys */}
+      {keyMode === 'confirm' && (() => {
+        const STALE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
+        const now = Date.now();
+        // Check which loans already have fresh keys (from gisData cache)
+        const cached = active.filter(l => gisData[l.id]?.keyTs && (now - gisData[l.id].keyTs) < STALE_MS);
+        const stale = active.filter(l => gisData[l.id]?.keyTs && (now - gisData[l.id].keyTs) >= STALE_MS);
+        const fresh = cached.length;
+        const needPay = active.length - fresh;
+        const hasAnyKeys = fresh > 0 || stale.length > 0;
+        // If majority are stale, treat as full refresh
+        const isFullRefresh = stale.length > active.length / 2;
+        const payCount = isFullRefresh ? active.length : needPay;
+
+        return (
+        <div data-tour="viewing-keys" className="flex flex-col gap-2 py-3">
+          <div className="flex justify-between items-center">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">
+              {hasAnyKeys && !isFullRefresh ? 'Update viewing keys' : 'Buy viewing keys'}
+            </p>
+            <button onClick={() => setKeyMode(null)} className="text-gray-400 dark:text-slate-400 text-sm px-1 active:scale-95">✕</button>
+          </div>
+          {hasAnyKeys && !isFullRefresh && (
+            <p className="text-[10px] dark:text-slate-500">{fresh} of {active.length} keys are fresh · {needPay} new</p>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                setKeyMode('signing');
+                // TODO: batch approve + getRecordHash for payCount loans
+                setTimeout(() => {
+                  setKeyMode('done');
+                  setTimeout(() => {
+                    setKeyMode(null);
+                    onViewMap?.(enriched);
+                  }, 500);
+                }, 1000);
+              }}
+              className="flex-1 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95"
+            >Pay {payCount} nIN</button>
+            <button
+              onClick={() => { setKeyMode(null); onViewMap?.(enriched); }}
+              disabled={!hasAnyKeys}
+              className="flex-1 py-3 rounded-xl bg-gray-100 dark:bg-slate-600 dark:text-white text-sm font-bold active:scale-95 disabled:opacity-30"
+            >Skip</button>
+          </div>
+          <p className="text-[10px] dark:text-slate-500 pt-1">Fees go directly to each farmer</p>
+        </div>
+        );
+      })()}
+
+      {keyMode === 'signing' && (
+        <div className="flex items-center gap-2 py-2">
+          <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs dark:text-slate-400">Signing transaction...</p>
+        </div>
+      )}
+
+      {keyMode === 'done' && (
+        <p className="text-xs dark:text-green-400 py-2">Keys acquired</p>
       )}
 
       {/* Column headers */}
