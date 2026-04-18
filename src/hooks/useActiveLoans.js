@@ -39,6 +39,7 @@ const mapBackendItem = (i, union) => ({
   txHash: i.tx_hash,
   union: i.union_addr ?? union,
   fastDraw: Boolean(i.fast_draw ?? i.fastDraw ?? false),
+  landId: i.land_id ?? null,
   // chain sync metadata — not yet verified
   chainVerified: false,
   chainClosed: false,
