@@ -46,7 +46,6 @@ export function useBurnLandTitle(
           onSuccess: () => {
             deleteItem('reload','Init')
             deleteItem('thumb','FarmData')
-            deleteItem('reloadActivity','FarmData')
             qc.invalidateQueries({ queryKey: ["balances", wallet?.address] })
             qc.invalidateQueries({ queryKey: ["land", chainId, wallet?.address] })
             window.location.reload();

@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useDataContext, useNavContext, useViewModeContext } from '../../../utils/NavigationContext';
-import useActivityMapping from '../../../hooks/useActivityMapping'
 import { cropColor } from '../../../utils/cropColors.js';
 import { motion, useDragControls, AnimatePresence } from 'framer-motion';
 import { RateSlider, ClaimButton, DropdownButton } from '../../../components/UI/buttons';
-import { ChevronDownIcon } from '@heroicons/react/24/solid';
+import { ChevronDownIcon, TagIcon } from '@heroicons/react/24/solid';
 import Spinner from '../../../components/UI/spinner.js';
 import useLendingFlow from '../../../hooks/useDirectLendingFlow.js'
 import { useMintFoodToken, useBurnLandTitle } from '../../../hooks/useMintLandTitle.ts'
 import { useRecordHash } from '../../../hooks/useRecordHash.ts'
+import { readItem } from '../../../utils/db.js'
+import { decodeMetadataUri } from '../../../utils/decodeMetadataUri.ts'
+import { useWallet, useContract } from '../../../hooks/useWallet.ts'
+import landTitleArtifact from '../../../components/ABI/NilaLandTitleWithName.json'
+
+const _ltAbi = (landTitleArtifact).abi ?? landTitleArtifact;
+const _ltAddr = process.env.REACT_APP_LAND_TITLE_MAIN;
 
 const clusterKeyOf = (feature, idx) => {
   const clusterId = feature?.properties?.cluster_id;
@@ -383,22 +389,49 @@ const DormantCard = ({ record }) => {
 
 // ── Portfolio view (union leader views all borrower properties) ───────
 
+// Decode base64 tokenURI → metadata JSON
+function decodeTokenURI(uri) {
+  if (!uri || !uri.includes(',')) return null;
+  try {
+    const b64 = uri.split(',')[1];
+    const json = atob(b64);
+    return JSON.parse(json);
+  } catch { return null; }
+}
+
+// Decode delta-encoded ring back to [lat, lng] pairs
+function decodeRing(encoded, scale) {
+  if (!encoded?.length || !scale) return [];
+  const coords = [];
+  let lat = 0, lng = 0;
+  for (let i = 0; i < encoded.length; i += 2) {
+    lat += encoded[i];
+    lng += encoded[i + 1];
+    coords.push([lat / scale, lng / scale]);
+  }
+  return coords;
+}
+
 const PortfolioCards = () => {
   const { db, fieldActivity, setFieldActivity } = useDataContext();
   const { setIx } = useNavContext();
   const { setCardView } = useViewModeContext();
   const controls = useDragControls();
   const startYRef = useRef(0);
+  const { provider } = useWallet();
+
+  // Push card to bottom of screen so map is exposed above
+  useEffect(() => {
+    setCardView('mapview');
+    return () => setCardView('default');
+  }, []);
+  const landTitle = useContract(_ltAddr, _ltAbi, provider);
 
   const loans = fieldActivity?.portfolioLoans || [];
-  const landIds = loans.map(l => l.landId).filter(Boolean);
-  const uniqueLandIds = [...new Set(landIds)];
-  const viewFee = 1; // nIN per property (from contract)
-  const totalCost = uniqueLandIds.length * viewFee;
 
-  const [accepted, setAccepted] = useState(false);
-  const [fetching, setFetching] = useState(false);
-  const [fetched, setFetched] = useState(0);
+  const [resolvedIds, setResolvedIds] = useState([]);
+  const [cachedHashes, setCachedHashes] = useState(null);
+  const [metadata, setMetadata] = useState(null); // { landId: { farm, outline, centroid, bounds } }
 
   const close = () => {
     setFieldActivity(null);
@@ -406,106 +439,177 @@ const PortfolioCards = () => {
     setCardView('default');
   };
 
-  const handleAcceptAndPay = async () => {
-    setAccepted(true);
-    setFetching(true);
-    // TODO: batch getRecordHash calls (pay nIN per property)
-    // For now, fetch records directly from backend by land_id
-    for (const lid of uniqueLandIds) {
-      try {
-        const res = await fetch(`${process.env.REACT_APP_API_BASE_URL}/gis/record/${lid}`);
-        if (res.ok) {
-          setFetched(prev => prev + 1);
-          console.log(`[portfolio] fetched land_id=${lid}`);
+  // Resolve land IDs from loans — chain fallback for loans without landId
+  useEffect(() => {
+    if (!landTitle || !loans.length) return;
+    let cancelled = false;
+    (async () => {
+      const ids = [];
+      const seen = new Set();
+      for (const l of loans) {
+        if (l.landId && !seen.has(l.landId)) {
+          seen.add(l.landId);
+          ids.push(l.landId);
+        } else if (!l.landId && l.borrower && !seen.has(l.borrower)) {
+          seen.add(l.borrower);
+          try {
+            const bal = await landTitle.balanceOf(l.borrower);
+            if (bal > 0n) {
+              const tid = Number(await landTitle.tokenOfOwnerByIndex(l.borrower, 0));
+              if (!seen.has(tid)) { seen.add(tid); ids.push(tid); }
+              console.log(`[portfolio] chain: ${l.borrower.slice(0,8)}… → ${tid}`);
+            }
+          } catch (e) {
+            console.warn(`[portfolio] resolve failed ${l.borrower?.slice(0,8)}…`);
+          }
         }
-      } catch (e) {
-        console.warn(`[portfolio] failed land_id=${lid}`, e);
       }
-    }
-    setFetching(false);
-  };
+      if (!cancelled) {
+        console.log(`[portfolio] resolved ${ids.length} land IDs from ${loans.length} loans`);
+        setResolvedIds(ids);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [landTitle, loans.length]);
+
+  // Fetch tokenURI metadata for ALL resolved land IDs — this is a free
+  // view call and gives us outlines, farm names, fields instantly.
+  useEffect(() => {
+    if (!landTitle || !resolvedIds.length) return;
+    let cancelled = false;
+    (async () => {
+      const meta = {};
+      for (const lid of resolvedIds) {
+        try {
+          const uri = await landTitle.tokenURI(lid);
+          // decodeMetadataUri handles both raw base64 and zlib-compressed URIs
+          const decoded = await decodeMetadataUri(uri);
+          if (decoded) {
+            const s = decoded.s || 1e5;
+            meta[lid] = {
+              farm: decoded.farm || `Property ${lid}`,
+              outline: (decoded.out || []).map(ring => decodeRing(ring, s)),
+              fields: (decoded.fields || []).map(ring => decodeRing(ring, s)),
+              fieldNames: decoded.names || [],
+              centroid: decoded.c ? [decoded.c[0] / s, decoded.c[1] / s] : null,
+              bounds: decoded.b ? {
+                south: decoded.b[0] / s, west: decoded.b[1] / s,
+                north: decoded.b[2] / s, east: decoded.b[3] / s,
+              } : null,
+            };
+          }
+        } catch (e) {
+          console.warn(`[portfolio] tokenURI failed for ${lid}:`, e.message);
+        }
+      }
+      if (cancelled) return;
+      console.log('[portfolio] ── Land title metadata ──');
+      console.table(Object.entries(meta).map(([lid, m]) => ({
+        landId: lid, farm: m.farm, centroid: m.centroid?.join(', '),
+        fields: m.fieldNames.length,
+      })));
+      setMetadata(meta);
+    })();
+    return () => { cancelled = true; };
+  }, [landTitle, resolvedIds]);
+
+  // Push metadata into fieldActivity so staticMaps renders outlines immediately
+  useEffect(() => {
+    if (!metadata || !Object.keys(metadata).length) return;
+    setFieldActivity(prev => {
+      if (!prev?.portfolioMode) return prev;
+      return { ...prev, portfolioProperties: metadata };
+    });
+  }, [metadata, setFieldActivity]);
+
+  // Lazy: read purchased hashes from IndexedDB (for later record.json enrichment)
+  useEffect(() => {
+    if (!resolvedIds.length) return;
+    readItem('viewingKeys', 'FarmData').then(cached => {
+      const hashes = cached?.value?.hashes || cached?.hashes || {};
+      const results = resolvedIds.map(lid => ({
+        landId: lid,
+        hash: hashes[lid] || '(none)',
+        stored: !!hashes[lid],
+      }));
+      console.log('[portfolio] ── Cached hashes ──');
+      console.table(results);
+      setCachedHashes(results);
+    }).catch(() => setCachedHashes([]));
+  }, [resolvedIds]);
 
   return (
-    <>
     <motion.div
       initial={{ y: -300 }}
       animate={{ y: 0 }}
       drag="y"
-      dragConstraints={{ top: -500, bottom: 150 }}
+      dragConstraints={{ top: -300, bottom: 150 }}
       dragListener={false}
       dragControls={controls}
       dragElastic={0.05}
-      onDragEnd={() => {}}
+      onDragEnd={(_, info) => { if (info.offset.y > 100) close(); }}
       transition={{ type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 }}
-      style={{ touchAction: 'none' }}
-      className="flex flex-col py-4 mb-96"
+      className="flex flex-col py-4"
     >
-      <div style={{ zIndex: 0 }} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1">
+      <div className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1">
         <div
           onPointerDown={(e) => controls.start(e)}
-          onTouchStart={(e) => { startYRef.current = e.touches[0].clientY; }}
-          onTouchEnd={(e) => { if (e.changedTouches[0].clientY - startYRef.current > 25) close(); }}
+          style={{ touchAction: 'none' }}
           className="h-10 w-full select-none cursor-grab active:cursor-grabbing flex justify-center items-center"
         >
           <span className="h-1 w-16 rounded-full bg-slate-300 dark:bg-slate-500" />
         </div>
-        <div className="flex flex-col px-6 pb-6 gap-3"
-          onPointerDown={(e) => controls.start(e)}
-        >
-          <h3 className="font-bold px-4 dark:text-white">Portfolio view</h3>
-          <p className="text-[10px] px-4 dark:text-slate-500">View all borrower properties on the map</p>
+        <div className="flex flex-col px-6 pb-6 gap-3">
+          <div className="flex items-center justify-between px-4">
+            <div>
+              <h3 className="font-bold dark:text-white">Portfolio view</h3>
+              <p className="text-[10px] dark:text-slate-500">{resolvedIds.length} properties</p>
+            </div>
+            <button
+              onClick={() => setFieldActivity(prev => prev ? { ...prev, portfolioLabels: !prev.portfolioLabels } : prev)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-medium transition-colors ${
+                fieldActivity?.portfolioLabels !== false
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                  : 'bg-slate-100 text-slate-400 dark:bg-slate-600 dark:text-slate-400'
+              }`}
+            >
+              <TagIcon className="h-3 w-3" />
+              Labels
+            </button>
+          </div>
 
-          {!accepted && (
-            <>
-              <div className="flex flex-col gap-1.5 px-4">
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 dark:text-slate-400">Properties</span>
-                  <span className="font-bold dark:text-white">{uniqueLandIds.length}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 dark:text-slate-400">Cost per property</span>
-                  <span className="font-bold dark:text-white">{viewFee} nIN</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 dark:text-slate-400">Total cost</span>
-                  <span className="font-bold dark:text-white">{totalCost} nIN</span>
-                </div>
-              </div>
-              <button
-                onClick={handleAcceptAndPay}
-                className="mx-4 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95"
-              >
-                Accept & pay {totalCost} nIN
-              </button>
-              <p className="text-[10px] px-4 dark:text-slate-500">
-                Fees go directly to each farmer
-              </p>
-            </>
+          {!metadata && (
+            <div className="flex justify-center py-4">
+              <Spinner />
+            </div>
           )}
 
-          {accepted && (
+          {metadata && (
             <div className="flex flex-col gap-2 px-4">
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500 dark:text-slate-400">Loading properties</span>
-                <span className="font-bold dark:text-white">{fetched} / {uniqueLandIds.length}</span>
-              </div>
-              {fetching && (
-                <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1.5">
-                  <div
-                    className="h-1.5 rounded-full bg-green-500 transition-all"
-                    style={{ width: `${uniqueLandIds.length > 0 ? (fetched / uniqueLandIds.length) * 100 : 0}%` }}
-                  />
-                </div>
-              )}
-              {!fetching && fetched > 0 && (
-                <p className="text-xs dark:text-green-400">{fetched} properties loaded</p>
-              )}
+              {Object.entries(metadata).map(([lid, m]) => {
+                const h = cachedHashes?.find(r => String(r.landId) === String(lid));
+                return (
+                  <div key={lid} className="flex flex-col gap-0.5 py-1.5 border-b border-slate-100 dark:border-slate-600 last:border-0">
+                    <div className="flex justify-between text-xs">
+                      <span className="font-semibold dark:text-white">{m.farm}</span>
+                      <span className="text-gray-400 dark:text-slate-500 text-[10px]">#{lid}</span>
+                    </div>
+                    {m.fieldNames?.length > 0 && (
+                      <p className="text-[10px] text-gray-500 dark:text-slate-400">
+                        {m.fieldNames.length} field{m.fieldNames.length > 1 ? 's' : ''}: {m.fieldNames.join(', ')}
+                      </p>
+                    )}
+                    {h && !h.stored && (
+                      <p className="text-[10px] text-amber-500">no viewing key</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
     </motion.div>
-    </>
   );
 };
 
@@ -537,7 +641,6 @@ export const StaticCards = ({ LAND }) => {
   const [ varOpen, setVarOpen ]                = useState(false)
   const cropRef                                = useRef(null)
   const varRef                                 = useRef(null)
-  const { handleFieldActivity }                = useActivityMapping()
   const { burnLandTitle }                      = useBurnLandTitle(Number(process.env.REACT_APP_CHAIN_ID) || 137);
 
   // CS023: gated property data — log record hash flow for verification
@@ -607,15 +710,16 @@ export const StaticCards = ({ LAND }) => {
       const openCycleKey = Object.keys(record.cycles || {}).find(k => record.cycles[k].is_open);
       const pcc = openCycleKey ? record.per_cycle_clusters?.[openCycleKey] : null;
       const cc = record.current_cycle;
-      const enriched = (pcc?.features || []).map(f => ({
+      const rawFeatures = pcc?.features || record?.clusters?.features || [];
+      const enriched = rawFeatures.map(f => ({
         ...f,
         properties: { ...f.properties, crop_type: cc[0]?.crop_type, activity: 'active' }
       }));
       setFieldActivity(prev => ({
         ...prev,
-        features: enriched,
-        geojson: { type: 'FeatureCollection', features: enriched },
-        featurelength: enriched.length,
+        ...(enriched.length > 0
+          ? { features: enriched, geojson: { type: 'FeatureCollection', features: enriched }, featurelength: enriched.length }
+          : {}),
         dormant: false,
         historical: false,
         historicalCycle: null,
@@ -684,13 +788,6 @@ export const StaticCards = ({ LAND }) => {
   const featureLength = fieldActivity?.featurelength || features.length
   const land_v2 = LAND.current.LAND?.metadata?.v ? true : false
 
-  // fetch once on mount — skip in portfolio mode to preserve portfolioLoans
-  useEffect(() => {
-    if (fieldActivity?.portfolioMode) return;
-    console.log('activity in staticCards effect', LAND)
-    handleFieldActivity(LAND);
-  }, []);
-
   // update selection state when features arrive
   useEffect(() => {
     if (features.length) {
@@ -699,43 +796,16 @@ export const StaticCards = ({ LAND }) => {
     }
   }, [features.length]);
 
-  // When record arrives: set dormant or active state
+  // When record arrives, stop loading spinner (fieldActivity is set by Wallet.js)
   useEffect(() => {
     if (!record) return;
     setLoading(false);
-
-    const hasActiveCycle = record.current_cycle && record.current_cycle.length > 0;
-
-    if (hasActiveCycle) {
-      // Active: find the open cycle's clusters and push to map
-      const openCycleKey = Object.keys(record.cycles || {}).find(k => record.cycles[k].is_open);
-      const pcc = openCycleKey ? record.per_cycle_clusters?.[openCycleKey] : null;
-      const cc = record.current_cycle;
-      const enriched = (pcc?.features || []).map(f => ({
-        ...f,
-        properties: {
-          ...f.properties,
-          crop_type: cc[0]?.crop_type,
-          activity: 'active',
-        }
-      }));
-      setFieldActivity(prev => ({
-        ...prev,
-        features: enriched,
-        geojson: { type: 'FeatureCollection', features: enriched },
-        featurelength: enriched.length,
-        dormant: false,
-        historical: false,
-        activeCycle: cc,
-        meta: { ...prev?.meta, last_scene_date: record.meta?.last_scene_date },
-      }));
-    } else if (record.clusters?.features?.length === 0) {
-      // Dormant
+    // Enrich dormant status if needed (Wallet.js sets dormant flag but not the color/status)
+    if (!record.current_cycle && record.clusters?.features?.length === 0) {
       const status = deriveDormantStatus(record);
       if (status) {
         setFieldActivity(prev => ({
           ...prev,
-          dormant: true,
           dormantColor: dormantColor(status.ndvi),
           dormantStatus: status,
         }));

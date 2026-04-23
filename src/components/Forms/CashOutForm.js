@@ -6,7 +6,7 @@ import { useDataContext } from '../../utils/NavigationContext';
 import { readItem, setDBitem } from '../../utils/db';
 import { useContactBook } from '../../hooks/useContactBook';
 import { useFxPool } from '../../hooks/useWallet.ts';
-import { useCashOffer } from '../../hooks/useCashOffer.ts';
+import { useCashOffer, useUnionOpenCashOffersList } from '../../hooks/useCashOffer.ts';
 import { useRedeemOrder } from '../../hooks/useRedeemOrder.ts';
 import { useMemberLoans } from '../../hooks/useMemberLoans';
 import { useUnionCashReserve } from '../../hooks/useUnionCashReserve.ts';
@@ -41,9 +41,11 @@ export function CashOutForm({ handleOpenForm }) {
   const unionAddr = db?.union?.address;
 
   const qc = useQueryClient();
-  const { postCashOffer, confirmCashOfferDelivered, burnFarmerNin, burnAndDrainEscrows, redeemFarmerNin, postRedeemOrder, confirmCashDelivery, cashScanMint, acceptLoan, getNinBalance } = useFxPool();
+  const { postCashOffer, confirmCashOfferDelivered, burnFarmerNin, burnAndDrainEscrows, redeemFarmerNin, postRedeemOrder, confirmCashDelivery, cashScanMint, acceptLoan, getNinBalance, systemHealth, fillCashOfferWithNin } = useFxPool();
+  const isJuniorCashOut = txdetails?.juniorCashOut === true;
   const { scanGroups, scannedBills, runningTotal, addBulkGroup, clearSession } = useCashSession();
   const { addCash: addLPCash, consumeCash: consumeLPCash } = useLPCashOnHand(unionAddr);
+  const { data: openCashOffersList = [] } = useUnionOpenCashOffersList(unionAddr);
 
   const prefillAddress = txdetails?.memberAddress ?? null;
   const [step,           setStep]          = useState(
@@ -133,6 +135,19 @@ export function CashOutForm({ handleOpenForm }) {
     if (ninBalanceRaw !== 0n) return;
     setStep('fully-cashed-out');
   }, [ninBalanceFetched, ninBalanceRaw, activeLoan, pendingLoan, step]);
+
+  // --- LP withdrawal gate: check if USDT is short for pending LP withdrawals ---
+  const [settlementNeeded, setSettlementNeeded] = useState(null); // null=loading, 0=healthy, >0=shortfall USDT
+  useEffect(() => {
+    if (!unionAddr || !systemHealth) { setSettlementNeeded(null); return; }
+    let stale = false;
+    const loanType = currentLoan?.loanType || ethers.encodeBytes32String('GENERIC');
+    systemHealth(unionAddr, loanType).then((h) => {
+      if (!stale) setSettlementNeeded(h.usdtPromised > h.usdtDeposited ? h.usdtPromised - h.usdtDeposited : 0n);
+    }).catch(() => { if (!stale) setSettlementNeeded(0n); }); // on error, don't block
+    return () => { stale = true; };
+  }, [unionAddr, systemHealth, currentLoan?.loanType]);
+  const acceptGated = settlementNeeded != null && settlementNeeded > 0n;
 
   const { data: reserveData } = useUnionCashReserve(unionAddr);
   // Accumulate active escrows (sorted by deadline asc) until they cover the principal.
@@ -279,6 +294,28 @@ export function CashOutForm({ handleOpenForm }) {
     }
   };
 
+  // Junior cash-out: investor surrenders nIN → burn against auto-posted CashOffer → union hands cash.
+  const handleJuniorCashOut = async () => {
+    if (!unionAddr || !memberAddress) return;
+    setError(null);
+    setStep('posting');
+    try {
+      // Find earliest open CashOffer for this union (auto-posted by cashScanMint)
+      const openOffers = openCashOffersList.filter(o => o.status === 0 && o.lp === ethers.ZeroAddress);
+      if (!openOffers.length) throw new Error('No open cash offers — union needs to scan cash first');
+      const offer = openOffers[0]; // FIFO: oldest first
+      await fillCashOfferWithNin(offer.offerId, payoutRaw);
+      await confirmCashOfferDelivered(offer.offerId);
+      qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] });
+      qc.invalidateQueries({ queryKey: ['unionOpenCashOffersList'] });
+      qc.invalidateQueries({ queryKey: ['balances'] });
+      setStep('done');
+    } catch (err) {
+      setError(err?.reason || err?.message || 'Junior cash-out failed');
+      setStep('review-loan');
+    }
+  };
+
   // No-escrow path: swap farmer's nIN for USDT (using existing allowance), then post RedeemOrder.
   const handlePostRedeemRequest = async () => {
     if (!unionAddr || !memberAddress || !activeLoan) return;
@@ -357,7 +394,7 @@ export function CashOutForm({ handleOpenForm }) {
         {/* ── Step 1b: Scan bills ── */}
         {step === 'scan-bills' && (pendingLoan || activeLoan) && (() => {
           const scanTarget  = activeLoan ? fromEscrow : (pendingLoan?.principal ?? 0);
-          const onConfirm   = activeLoan ? handlePostOffer : handleDisburse;
+          const onConfirm   = isJuniorCashOut ? handleJuniorCashOut : (activeLoan ? handlePostOffer : handleDisburse);
           const loanLabel    = activeLoan ? activeLoan.loanType : pendingLoan?.loanType;
           const statusLabel  = activeLoan ? 'Active' : 'Pending';
           const statusColor  = activeLoan
@@ -430,9 +467,15 @@ export function CashOutForm({ handleOpenForm }) {
                       <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">Ready</span>
                     </div>
                   ) : null}
+                  {acceptGated && (
+                    <div className="rounded-xl border border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20 px-4 py-3">
+                      <p className="text-xs font-bold text-red-700 dark:text-red-300">LP withdrawal pending</p>
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">Settle ₹{Number(settlementNeeded / 10n ** 12n).toLocaleString('en-IN')} in cash offers before accepting new loans.</p>
+                    </div>
+                  )}
                   <button
                     onClick={handleAcceptLoan}
-                    disabled={escrowLoading}
+                    disabled={escrowLoading || acceptGated}
                     className="w-full py-3.5 rounded-2xl bg-black dark:bg-white text-white dark:text-black font-bold text-sm active:scale-[0.98] disabled:opacity-40"
                   >
                     Accept loan{escrowId != null ? ` + hand out ₹${fromEscrow.toLocaleString('en-IN')}` : ''}

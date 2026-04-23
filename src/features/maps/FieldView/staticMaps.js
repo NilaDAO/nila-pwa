@@ -1,4 +1,4 @@
-import { useState,useCallback, useEffect, memo } from 'react'
+import { useState, useCallback, useEffect, useRef, memo } from 'react'
 import { GoogleMap, useJsApiLoader, Polygon } from '@react-google-maps/api';
 import { useNavContext } from '../../../utils/NavigationContext';
 import { cropColor } from '../../../utils/cropColors.js';
@@ -40,10 +40,12 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
   const [map, setMap]                       = useState(null)
   const [selectFeatures]                    = useState(false)
   const [outline, setOutline]               = useState([])
+  const [portfolioOutlines, setPortfolioOutlines] = useState([])
+  const portfolioMarkersRef                 = useRef([])
   const { cardIx }                          = useNavContext()
   const features                            = fieldActivity?.geojson?.features || fieldActivity?.features || []
   const dominant                            = fieldActivity?.dominant
-  const featureIds                          = cardIx !== null ? dominant?.[cardIx]?.geometry_indices : Array.from({length: features.length}, (_, i) => i)
+  const featureIds                          = cardIx !== null ? (dominant?.[cardIx]?.geometry_indices ?? Array.from({length: features.length}, (_, i) => i)) : Array.from({length: features.length}, (_, i) => i)
 
   const { isLoaded } = useJsApiLoader({
     id: 'script-loader',
@@ -176,29 +178,47 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
         map, position: center, content: el,
       }));
 
-    } else if (fieldActivity?.activeCycle?.length > 0 && features.length) {
+    } else if (fieldActivity?.activeCycle?.length > 0) {
       // Active crop: label per cluster with health + stage
       const ac = fieldActivity.activeCycle[0];
       const healthIcon = ac.health === 'stressed' ? '⚠️' : ac.health === 'poor' ? '🔴' : '✅';
       const eos = ac.predicted_eos;
       const daysToHarvest = eos?.[0] ? Math.round((new Date(eos[0]) - new Date()) / 86400000) : null;
 
-      features.forEach(f => {
-        const p = f.properties || {};
-        if (p.cluster_id === 0 || p.activity === 'border_area') return;
+      const labelHtml = [
+        `${healthIcon} <b>${ac.crop_type}</b> · ${ac.stage}`,
+        daysToHarvest != null && daysToHarvest > 0 ? `Harvest: ${daysToHarvest}d` : '',
+        ac.expected_yield_kg_acre ? `${ac.expected_yield_kg_acre} kg/acre` : '',
+      ].filter(Boolean).join('<br>');
 
+      if (features.length) {
+        // Label each cluster at its centroid
+        features.forEach(f => {
+          const p = f.properties || {};
+          if (p.cluster_id === 0 || p.activity === 'border_area') return;
+          const el = document.createElement('div');
+          el.style.cssText = labelStyle;
+          el.innerHTML = labelHtml;
+          markers.push(new window.google.maps.marker.AdvancedMarkerElement({
+            map, position: centroidOf(f), content: el,
+          }));
+        });
+      } else if (outline.length) {
+        // No cluster features — place label at outline centroid
+        const poly = outline[0];
+        const center = poly.latLngs.reduce(
+          (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
+          { lat: 0, lng: 0 }
+        );
+        center.lat /= poly.latLngs.length;
+        center.lng /= poly.latLngs.length;
         const el = document.createElement('div');
         el.style.cssText = labelStyle;
-        el.innerHTML = [
-          `${healthIcon} <b>${ac.crop_type}</b> · ${ac.stage}`,
-          daysToHarvest != null && daysToHarvest > 0 ? `Harvest: ${daysToHarvest}d` : '',
-          ac.expected_yield_kg_acre ? `${ac.expected_yield_kg_acre} kg/acre` : '',
-        ].filter(Boolean).join('<br>');
-
+        el.innerHTML = labelHtml;
         markers.push(new window.google.maps.marker.AdvancedMarkerElement({
-          map, position: centroidOf(f), content: el,
+          map, position: center, content: el,
         }));
-      });
+      }
 
     } else if (fieldActivity?.historical && features.length) {
       // Historical state: one label per cluster at its centroid
@@ -225,6 +245,83 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     return () => markers.forEach(m => { m.map = null; });
   }, [map, fieldActivity?.dormant, fieldActivity?.activeCycle, fieldActivity?.historical, fieldActivity?.historicalCycle, features, outline]);
 
+  // ------------------ portfolio outlines + labels -------------------------
+  useEffect(() => {
+    if (!map || !fieldActivity?.portfolioMode || !fieldActivity?.portfolioProperties) {
+      // Clean up if leaving portfolio mode
+      if (portfolioOutlines.length) setPortfolioOutlines([]);
+      portfolioMarkersRef.current.forEach(m => { m.map = null; });
+      portfolioMarkersRef.current = [];
+      return;
+    }
+
+    const props = fieldActivity.portfolioProperties;
+    const bounds = new window.google.maps.LatLngBounds();
+    const polys = [];
+    const labelStyle = 'background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);color:white;padding:6px 10px;border-radius:10px;font-size:10px;line-height:1.5;white-space:nowrap;';
+
+    const markers = [];
+
+    for (const [lid, meta] of Object.entries(props)) {
+      if (!meta.outline?.length) continue;
+
+      // Build outline polygons
+      for (const ring of meta.outline) {
+        const latLngs = ring.map(([lat, lng]) => ({ lat, lng }));
+        latLngs.forEach(p => bounds.extend(p));
+        polys.push({ latLngs, lid });
+      }
+
+      // Label at centroid
+      if (meta.centroid) {
+        const pos = { lat: meta.centroid[0], lng: meta.centroid[1] };
+        bounds.extend(pos);
+
+        const el = document.createElement('div');
+        el.style.cssText = labelStyle;
+        const fieldCount = meta.fieldNames?.length || 0;
+        el.innerHTML = [
+          `<b>${meta.farm}</b>`,
+          fieldCount > 0 ? `${fieldCount} field${fieldCount > 1 ? 's' : ''}` : '',
+        ].filter(Boolean).join('<br>');
+
+        markers.push(new window.google.maps.marker.AdvancedMarkerElement({
+          map, position: pos, content: el,
+        }));
+      }
+    }
+
+    setPortfolioOutlines(polys);
+
+    // Clean up previous markers, store new ones
+    portfolioMarkersRef.current.forEach(m => { m.map = null; });
+    portfolioMarkersRef.current = markers;
+
+    // Fit bounds to all portfolio properties
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, 40);
+      // Nudge center up so outlines aren't hidden behind the bottom card
+      const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+        const center = map.getCenter();
+        const span = map.getBounds()?.toSpan();
+        if (span) map.panTo({ lat: center.lat() - span.lat() * 0.15, lng: center.lng() });
+      });
+      return () => {
+        window.google.maps.event.removeListener(listener);
+        markers.forEach(m => { m.map = null; });
+      };
+    }
+
+    return () => markers.forEach(m => { m.map = null; });
+  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioProperties]);
+
+  // ------------------ portfolio label visibility (no refit) ----------------
+  useEffect(() => {
+    if (!map || !portfolioMarkersRef.current.length) return;
+    const show = fieldActivity?.portfolioLabels !== false;
+    portfolioMarkersRef.current.forEach(m => { m.map = show ? map : null; });
+  }, [map, fieldActivity?.portfolioLabels]);
+
   return isLoaded ? (
       <GoogleMap
         mapContainerStyle={containerStyle}
@@ -245,6 +342,22 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
               strokeWeight: (fieldActivity?.dormant && !fieldActivity?.historical) ? 1.5 : 0.5,
               clickable: false,
               zIndex: 1,
+            }}
+          />
+        ))}
+        {/* Portfolio outlines — multi-property view for union leaders */}
+        {portfolioOutlines.map((poly, i) => (
+          <Polygon
+            key={`pf-${poly.lid}-${i}`}
+            paths={poly.latLngs}
+            options={{
+              fillColor: "rgba(59, 130, 246, 0.25)",
+              fillOpacity: 0.3,
+              strokeColor: "#3B82F6",
+              strokeOpacity: 0.9,
+              strokeWeight: 1.5,
+              clickable: false,
+              zIndex: 2,
             }}
           />
         ))}
