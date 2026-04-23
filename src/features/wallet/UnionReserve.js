@@ -149,8 +149,8 @@ function Countdown({ deadline, escrowDuration, amount, count, onSettleRequest, o
 // ₹100 step for treasury adjustments
 const STEP = 100n * 10n ** 18n;
 
-const UnionReserve = ({ handleOpenForm }) => {
-  const { db, unionFunds, setFieldActivity } = useDataContext();
+const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
+  const { db, unionFunds, fieldActivity, setFieldActivity } = useDataContext();
   const { setIx } = useNavContext();
   const unionAddr = db?.union?.address;
   const chain = process.env.REACT_APP_CHAIN_ID || '137';
@@ -161,7 +161,7 @@ const UnionReserve = ({ handleOpenForm }) => {
   const { data: pendingDeliveries = [] } = usePendingCashDeliveries(unionAddr);
   const { data: openCashOffersList = [] } = useUnionOpenCashOffersList(unionAddr);
   const { data: openRedeemOrdersList = [] } = useUnionOpenRedeemOrdersList(unionAddr);
-  const { cancelRedeemOrder, cancelCashOffer, confirmCashDelivery, postCashOffer } = useFxPool();
+  const { cancelRedeemOrder, cancelCashOffer, confirmCashDelivery, postCashOffer, systemHealth, depositUsdtFifo } = useFxPool();
   const { total: lpCashOnHand, addCash: addLPCash, consumeCash: consumeLPCash } = useLPCashOnHand(unionAddr);
   const { deposit, withdraw } = useUnionTreasury();
   const { data: loansData } = useActiveLoans(unionAddr, !!db?.union?.leader);
@@ -187,6 +187,20 @@ const UnionReserve = ({ handleOpenForm }) => {
   const { resolveName, hasName, addContact } = useContactBook();
   const { data: fundsData = [] } = useLoadFundsData(unionAddr, unionFunds ?? [], db?.address);
   const qc = useQueryClient();
+
+  // ── Three-layer system health (LP obligation gate) ──
+  const [health, setHealth] = useState(null);
+  useEffect(() => {
+    if (!unionAddr || !systemHealth) return;
+    let stale = false;
+    const loanType = ethers.encodeBytes32String('GENERIC');
+    systemHealth(unionAddr, loanType).then((h) => {
+      if (!stale) setHealth(h);
+    }).catch(() => {});
+    return () => { stale = true; };
+  }, [unionAddr, systemHealth]);
+  const settlementShortfall = health && health.usdtPromised > health.usdtDeposited
+    ? health.usdtPromised - health.usdtDeposited : 0n;
 
   // ── EOS / harvest cache helpers (4-hour localStorage TTL) ──
   const EOS_CACHE_KEY = `eos_cache_${unionAddr}`;
@@ -492,20 +506,26 @@ const UnionReserve = ({ handleOpenForm }) => {
     }).drive();
   }, []);
 
-  // Settle = post a CashOffer (1% LP fee) against the earliest-expiring escrow.
-  // Two-step: click Settle → confirm row appears → click Confirm → tx fires.
-  // Each settled escrow handles ONE escrow; leader clicks again for the next.
+  // Settle = deposit USDT via FIFO (protocol routes to oldest active escrows).
+  // CashOffers are now auto-posted by the contract — no manual postCashOffer needed.
+  // The leader enters a USDT amount; protocol resolves the oldest escrows first.
+  const [settleUsdtInput, setSettleUsdtInput] = useState('');
   const handleSettle = async () => {
-    const earliest = (data?.pendingDisburse ?? [])[0]; // already sorted by deadline asc
-    if (!earliest || !unionAddr) return;
+    if (!unionAddr) return;
+    const amt = settleUsdtInput ? BigInt(Math.round(parseFloat(settleUsdtInput) * 1e6)) : 0n;
+    if (amt <= 0n) return;
     setSettling(true);
     try {
-      await postCashOffer(unionAddr, earliest.escrowId, 100); // 100 BP = 1%
+      await depositUsdtFifo(unionAddr, amt);
       qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] });
       qc.invalidateQueries({ queryKey: ['unionOpenCashOffersList'] });
       setConfirmingSettle(false);
+      setSettleUsdtInput('');
+      // Refresh health
+      const loanType = ethers.encodeBytes32String('GENERIC');
+      systemHealth(unionAddr, loanType).then(setHealth).catch(() => {});
     } catch (err) {
-      console.error('Settle (postCashOffer) failed:', err);
+      console.error('Settle (depositUsdt) failed:', err);
     } finally {
       setSettling(false);
     }
@@ -754,6 +774,17 @@ const UnionReserve = ({ handleOpenForm }) => {
               </div>
             </div>
 
+            {/* ── Fund lending status (part of treasury summary) ── */}
+            {health && (<>
+              <hr className="border-gray-200 dark:border-slate-600 my-1" />
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500 dark:text-slate-400">Lending</span>
+                <span className="text-xs font-bold dark:text-white">
+                  <span className={settlementShortfall > 0n ? 'text-red' : 'text-green'}>●</span> {settlementShortfall > 0n ? 'Settling' : 'Active'}
+                </span>
+              </div>
+            </>)}
+
             {/* ── Primary actions ── */}
             <div className="flex gap-2 mt-1">
               <button
@@ -833,10 +864,13 @@ const UnionReserve = ({ handleOpenForm }) => {
                           </span>
                         </div>
                         <button
-                          onClick={() => handleOpenForm(actionForm, { investor: e.investor, loanType: e.loanType })}
+                          onClick={() => handleOpenForm(
+                            e.tranche === 'senior' ? 'cashOut' : 'cashOut',
+                            { investor: e.investor, loanType: e.loanType, juniorCashOut: e.tranche !== 'senior' }
+                          )}
                           className="text-xs font-bold text-black dark:text-white border border-gray-300 dark:border-slate-500 rounded-lg px-3 py-1 active:scale-95"
                         >
-                          {e.tranche === 'senior' ? 'Cash Offer' : 'Redeem'}
+                          {e.tranche === 'senior' ? 'Cash Offer' : 'Get Cash'}
                         </button>
                       </div>
                       {!canFund && !e.pastMin && (
@@ -1085,6 +1119,7 @@ const UnionReserve = ({ handleOpenForm }) => {
           onCashIn={(loan) => handleOpenForm('cashIn', { memberAddress: loan.borrower })}
           onCashOut={(loan) => handleOpenForm('cashOut', { memberAddress: loan.borrower })}
           onViewMap={(loansWithLand) => {
+            if (savedFieldActivity) savedFieldActivity.current = fieldActivity;
             setFieldActivity({
               portfolioMode: true,
               portfolioLoans: loansWithLand,
