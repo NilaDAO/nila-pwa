@@ -23,9 +23,10 @@ import { useOpenCashOffers } from '../../hooks/useCashOffer.ts';
 import Spinner from "../../components/UI/spinner";
 import { ClaimButton, CollapseButton } from "../../components/UI/buttons";
 import { useSummary } from "../../hooks/useSummary";
+import { useRecordHash } from "../../hooks/useRecordHash.ts";
 import { setMetaThemeColor } from '../../utils/metaTheme';
 
-const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums }) => {
+const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, savedFieldActivity }) => {
     const [scrolling, setScrolled] = useState(0); // true ⇒ user pulled up
     const { cardView }             = useViewModeContext();
     const { ix, cardIx }           = useNavContext();
@@ -109,7 +110,7 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums }) =>
             : ix === 3 ? <DebtsActive debt={debts[cardIx]} />
             : ix === 4 ? <Settings handleOpenForm={handleOpenForm} LAND={LAND} />
             : ix === 5 ? <Forms LAND={LAND} CAP={CAP} handleOpenForm={handleOpenForm} />
-            : ix === 6 && <UnionReserve handleOpenForm={handleOpenForm} />
+            : ix === 6 && <UnionReserve handleOpenForm={handleOpenForm} savedFieldActivity={savedFieldActivity} />
             }
         </motion.div>
         </div> 
@@ -221,6 +222,70 @@ function Wallet({LAND}) {
         isCollapsed,
         isDragging,
     } = useTouch()
+    // Fetch record early so cultivation cards render before FieldView opens
+    const tokenId = LAND.current?.LAND?.id;
+    const { record, isOwner, isApproved, fee, fetchRecord, loading: recordLoading, error: recordError } = useRecordHash(tokenId);
+
+    useEffect(() => {
+      if (!tokenId || (!isOwner && !isApproved && fee === null)) return;
+      fetchRecord();
+    }, [tokenId, isOwner, isApproved, fee]);
+
+    // When record arrives, populate fieldActivity with dominant + activeCycle
+    useEffect(() => {
+      if (!record) return;
+      const cc = record.current_cycle;
+      const hasActive = cc && cc.length > 0;
+
+      if (hasActive) {
+        // Build one dominant entry from the primary prediction (for CultivationCard)
+        const primary = cc[0];
+        const parcelArea = Number(record.meta?.parcel_area_m2) || 0;
+        const dominant = [{
+          cluster_id: `active-${tokenId}`,
+          crop_type: primary.crop_type,
+          stage: primary.stage,
+          activity: 'active',
+          signals: { status: primary.health === 'stressed' ? 'POSSIBLE_STRESS' : 'ACTIVE_GOOD' },
+          yield_kg_per_acre: primary.expected_yield_kg_acre || 0,
+          yield_index: primary.crop_confidence || 0,
+          area_m2: parcelArea,
+          harvest_window: primary.predicted_eos ? { earliest: primary.predicted_eos[0], latest: primary.predicted_eos[1] } : null,
+        }];
+
+        // Find cluster features for the open cycle
+        const openCycleKey = Object.keys(record.cycles || {}).find(k => record.cycles[k].is_open);
+        const pcc = openCycleKey ? record.per_cycle_clusters?.[openCycleKey] : null;
+        const features = (pcc?.features || record.clusters?.features || []).map(f => ({
+          ...f,
+          properties: { ...f.properties, crop_type: cc[0]?.crop_type, activity: 'active' },
+        }));
+
+        setFieldActivity(prev => ({
+          ...prev,
+          dominant,
+          activeCycle: cc,
+          dormant: false,
+          ...(features.length > 0
+            ? { features, geojson: { type: 'FeatureCollection', features }, featurelength: features.length }
+            : {}),
+          meta: { ...prev?.meta, last_scene_date: record.meta?.last_scene_date },
+        }));
+      } else {
+        // Dormant / fallow
+        setFieldActivity(prev => ({
+          ...prev,
+          dominant: [],
+          activeCycle: null,
+          dormant: record.clusters?.features?.length === 0,
+          meta: { ...prev?.meta, last_scene_date: record.meta?.last_scene_date },
+        }));
+      }
+    }, [record]);
+
+    // Wait for record before deciding MapCard vs CultivationCard
+    // If no tokenId (no land title), skip waiting — show MapCard immediately
+    const recordReady = !tokenId || record != null || recordError != null;
     const dominantClusters                                                                = Array.isArray(fieldActivity?.dominant)
       ? fieldActivity.dominant
       : fieldActivity?.dominant ? [fieldActivity.dominant] : []
@@ -254,8 +319,17 @@ function Wallet({LAND}) {
         })
     }
 
+    // Restore fieldActivity when leaving portfolio map view
+    const savedFieldActivity = useRef(null);
     useEffect(() => {
-        if (ix) return 
+        if (ix !== 2 && savedFieldActivity.current) {
+            setFieldActivity(savedFieldActivity.current);
+            savedFieldActivity.current = null;
+        }
+    }, [ix, setFieldActivity]);
+
+    useEffect(() => {
+        if (ix) return
         // reset scroll when back to ix == null
         setShrinkProgress(0);
         }, [ix]);
@@ -370,8 +444,8 @@ function Wallet({LAND}) {
             onClick: () => handleToggleView({ ix: 3, i: i }),
             content: <DebtCard d={d} cardShrink={cardShrink} />
           })) || []),          
-        // Generate MAP cards
-        ...(hasDominantCultivations ? [] : (LAND.current?.length ? landTitles : [null]).map((land, i) => ({
+        // Generate MAP cards (wait for record before showing)
+        ...((!recordReady || hasDominantCultivations) ? [] : (LAND.current?.length ? landTitles : [null]).map((land, i) => ({
           key: `map-${i}`,
           type: 'MAP',
           show: ix === null,
@@ -388,7 +462,7 @@ function Wallet({LAND}) {
               ? label
               : (d?.field_name || 'Cultivation');
             return {
-              key: `tokenized-${d?.cluster_id ?? i}`,
+              key: `tokenized-${i}-${d?.cluster_id ?? ''}`,
               type: 'MAP',
               show: ix === null,
               title: cardTitle,
@@ -466,6 +540,7 @@ function Wallet({LAND}) {
                             CAP={CAP}
                             funds={funds}
                             sums={sums}
+                            savedFieldActivity={savedFieldActivity}
                         />
                     )}
                 </motion.div>

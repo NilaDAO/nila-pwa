@@ -27,13 +27,13 @@ export function usePolBalance(address, provider) {
 }
 
 export function useFilterTasks(LAND, CAP) {
-  const { db, tokenData, unionFunds } = useDataContext();
+  const { db, tokenData, unionFunds, fieldActivity } = useDataContext();
   const { provider }                 = useProvider();
   const queryClient                  = useQueryClient();
   const isLeader                     = Boolean(db?.union?.leader);
-  const { resolveName }              = useContactBook();
+  const { resolveName }              = useContactBook({ enabled: false });
   const { data: polBalance }         = usePolBalance(db?.address, provider);
-  const { data: loansData, isFetched: loansFetched } = useActiveLoans(db?.union?.address, isLeader);
+  const { data: loansData, isFetched: loansFetched } = useActiveLoans(db?.union?.address, false);
   const { data: reserveData, isPending: reservePending } = useUnionCashReserve(isLeader ? db?.union?.address : undefined);
   const { profile: lpProfile, isPending: lpProfilePending } = useLPProfile();
   const isLP = Boolean(lpProfile?.isLP);
@@ -78,7 +78,7 @@ export function useFilterTasks(LAND, CAP) {
   const landReady = Boolean(LAND?.current) && typeof LAND.current?.hasLand === 'boolean';
   const capReady = typeof CAP?.current === 'number' && Number.isFinite(CAP.current);
   const accountReady = Boolean(db?.address);
-  const loansReady = !isLeader || loansFetched;
+  const loansReady = true; // loans deferred to Cash & Liquidity tab — don't block task list
 
   const ready =
     tokenDataReady &&
@@ -212,13 +212,13 @@ export function useFilterTasks(LAND, CAP) {
   const treasuryLow     = treasury > 0n && Number(available) / Number(treasury) < 0.2;
 
   // Total available-to-borrow across all union funds. Mirrors the per-fund
-  // "Available" line on the Investment card (investmentsList.js:406):
-  //   Math.max(0, idleCash - claimableReserved)
-  // This is the cash a new borrower could actually draw against right now.
+  // "Available" line on the Investment card (investmentsList.js):
+  //   Math.max(0, idleCash - requiredReserve)
+  // requiredReserve includes claimable + safety bump (10%), so this is the real lendable cash.
   const totalAvailable = (fundsData ?? []).reduce(
     (s, f) => s + Math.max(
       0,
-      Number(f?.tokens?.[0]?.idleCash ?? 0) - Number(f?.tokens?.[0]?.claimableReserved ?? 0)
+      Number(f?.tokens?.[0]?.idleCash ?? 0) - Number(f?.tokens?.[0]?.requiredReserve ?? 0)
     ),
     0
   );
@@ -265,12 +265,7 @@ export function useFilterTasks(LAND, CAP) {
       if (!ready) return [];
       const MINCAP       = Number(process.env.REACT_APP_MIN_CAP ?? 100);
       const chainSync    = (Number(process.env.REACT_APP_CHAIN_ID) || 137) == Number(db?.union?.chain);
-      const fallowFields = !!db?.reloadActivity?.act?.features?.some(f => {
-        const activity = f?.properties?.activity;
-        if (typeof activity === 'string') return activity === 'fallow';
-        const cls = f?.properties?.class;
-        return cls === 0 || cls === 1;
-      });
+      const fallowFields = !!fieldActivity?.dormant;
       const topUpGasFlag = Boolean(localStorage.getItem('TopUpGas'));
       const hasLandToken = tokenData?.some(t => t?.sym === 'LAND' && Number(t?.bal || 0) > 0);
       const pendingLandMeta = db?.reload?.land?.metadata;
