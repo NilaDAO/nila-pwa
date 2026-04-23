@@ -93,12 +93,8 @@ export function useRecordHash(tokenId: number | string | null) {
       const owner: string = await landTitle.ownerOf(tid);
       const isOwner = owner.toLowerCase() === wallet.address.toLowerCase();
       const isApproved = isOwner || (await landTitle.viewerApproved(wallet.address));
-      let fee: bigint | null = null;
-      if (isOwner) {
-        fee = 0n;
-      } else if (isApproved) {
-        fee = await landTitle.quoteViewFee(tid, wallet.address);
-      }
+      // Anyone can view — quoteViewFee returns 0 (owner), 1 nIN (whitelisted), or viewFeeNin (public)
+      const fee: bigint = await landTitle.quoteViewFee(tid, wallet.address);
       // Read claimable fees — cache for 2 weeks
       let claimableFees: bigint | null = null;
       if (isOwner) {

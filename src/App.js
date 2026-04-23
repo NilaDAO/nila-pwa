@@ -21,7 +21,6 @@ import Spinner from './components/UI/spinner.js';
 import { readAllItems, setDBitem, deleteItem } from './utils/db';
 import { getUserAttributes } from './utils/cognito_helpers.js'
 import { useErc20Balances, useGrantInfo, useLandTitle } from './hooks/useLoadETH.ts';
-import useActivityMapping from './hooks/useActivityMapping'
 import { useUnionGenericFunds } from './hooks/useLoadFunds.ts';
 import { useDataContext } from './utils/NavigationContext.js';
 import { deleteAllItems } from "./utils/db.js";
@@ -38,7 +37,6 @@ function App({installAvailable}) {
   const [ installCheckDone, setInstallCheckDone]                                        = useState(false);
   const [ loadStage, setLoadStages]                                                     = useState('loading data')
   const [ installPromptEvent, setInstallPromptEvent]                                    = useState(null);
-  const { handleFieldActivity }                                                         = useActivityMapping()
   const LAND                                                                            = useRef(null);
 
   // Fetch General hooks: ERC20 always hot
@@ -213,9 +211,6 @@ function App({installAvailable}) {
       merged.chain = '31337';
     }
     setDb(merged);
-    if (merged?.reloadActivity?.act) {
-      setFieldActivity(merged.reloadActivity.act);
-    }
       
     // 5️⃣ Set any Debt the user has from indexedDB, if no attribute, call getLoansByBorrower with address to reset
     if (initDb.debts){ 

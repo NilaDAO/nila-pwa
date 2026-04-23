@@ -436,7 +436,7 @@ export function useWithdrawGeneric(
     const core             = useContract(genericFundCoreAddress, genericFundCoreAbi, wallet)
     const qc               = useQueryClient()
   
-    const withdrawgeneric = (rawAmount: string, seniority: number ) =>
+    const withdrawgeneric = (rawAmount: string, seniority: number, getCash: boolean = false ) =>
       runTx(
         async () => {
           console.log('wallet', wallet)
@@ -484,11 +484,22 @@ export function useWithdrawGeneric(
           }
         },
         {
-          onSuccess: () => {
-            // update the fund summary
+          onSuccess: async () => {
+            // Store cash preference in IndexedDB for the union to see
+            if (getCash && !seniority) {
+              try {
+                const { setDBitem } = await import('../utils/db');
+                await setDBitem({
+                  id: `unbond_${wallet!.address}`,
+                  investor: wallet!.address,
+                  union: unionAddress,
+                  getCash: true,
+                  ts: Math.floor(Date.now() / 1000),
+                }, 'UnbondPreferences');
+              } catch (_) { /* non-blocking */ }
+            }
             setTokenview(false)
             setCardView('default')
-            // refresh your fund data
             qc.invalidateQueries({ queryKey: ['balances'] })
             qc.invalidateQueries({ queryKey: ['fundsData'] })
           }
@@ -513,7 +524,7 @@ export function useWithdrawClaimGeneric(
       runTx(
         async () => {
           if (!core || !wallet) throw new Error('Wallet or contract not ready')
-          
+
           console.log('tokens', shares)
           const _raw = Number(shares) * 100
           console.log('seniority', seniority)
@@ -523,11 +534,25 @@ export function useWithdrawClaimGeneric(
           if (seniority){
             return core.claimSenior(unionAddress, 0) // 0 = claim all claimable shares
           } else {
+            // If investor flagged "get cash", approve FxPool BEFORE claiming.
+            // Approve first — if it fails, claim doesn't proceed.
+            const { readItem } = await import('../utils/db');
+            const prefs = await readItem(`unbond_${wallet.address}`, 'UnbondPreferences').catch(() => null);
+            if (prefs?.getCash) {
+              const fxPoolAddr = process.env.REACT_APP_FX_POOL_MAIN;
+              if (fxPoolAddr) {
+                const ninAddr = process.env.REACT_APP_NIN_MAIN!;
+                const nin = new ethers.Contract(ninAddr, ['function approve(address,uint256) returns (bool)'], wallet);
+                const claimAmount = amt * BigInt(s.indexes.junior) / RAY; // shares → nIN
+                console.log('Pre-approving FxPool for cash withdrawal:', ethers.formatEther(claimAmount));
+                await (await nin.approve(fxPoolAddr, claimAmount)).wait();
+                console.log('FxPool approved ✅');
+              }
+            }
+
             console.log('amt', amt,  BigInt(s.indexes.junior))
             const to_shares = amt * RAY / BigInt(s.indexes.junior)
             console.log('shares', to_shares)
-            // always first claimYield. 
-            ///rewards = core.claimYield()
             const fund_id = s.fund_id
             return core.claimJunior(unionAddress,fund_id, to_shares)
           }

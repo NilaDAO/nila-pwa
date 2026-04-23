@@ -46,6 +46,7 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
     const SENIORITY                                     = s?.junior > 1 ? 0 : 1  // allow for some dust to be left in the junior bucket
     const investInJunior                                = isUnionLeader ? investPool === 'junior' : hasLandTitle
     const activeWithdrawal                              = Boolean(Number(hasMaturing?.requestTs)) && hasMaturing?.pendingPrincipalSnap > 0
+    const [ preferCash, setPreferCash ]                   = useState(true)  // junior default: get cash (INR)
     const { preview }                                   = usePreviewUnbond(db?.union?.address)
     const { investgeneric }                             = useInvestGeneric(db?.union?.address,initialBalance,fund_type)
     const { withdrawgeneric }                           = useWithdrawGeneric(db?.union?.address,s, token_address)
@@ -165,12 +166,13 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
         );
     }
 
+    const fundAvailable = Math.max(0, (s?.idleCash ?? 0) - (s?.requiredReserve ?? 0));
     const attr = tokenview && {
         frozen: sums.isFrozen,
         type: s.fund_type,
         disabled: false,
         rate: getRatePercent(d, fundSelected),
-        invested: s.principal - (hasMaturing ? hasMaturing?.pendingPrincipalSnap : 0),
+        invested: Math.min(s.principal - (hasMaturing ? hasMaturing?.pendingPrincipalSnap : 0), fundAvailable),
         junior_raw: s.junior,
         senior_raw: s.senior,
         funds: s.totals,
@@ -312,6 +314,12 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                                    <p className={`flex text-sm items-end px-1 dark:text-white ${attr.invested <= 0 && 'opacity-40'}`} onClick={() => setMax(attr.invested)}>max</p>
                                 </div>
                             </div>
+                            {SENIORITY === 0 && (
+                            <label className='flex text-xs py-3 dark:text-slate-400 items-center gap-2'>
+                                <input checked={preferCash} onChange={() => setPreferCash(!preferCash)} type="checkbox" className="w-4 h-4 accent-black dark:accent-green_dark border-gray-300 rounded" />
+                                Get cash instead of USDT
+                            </label>
+                            )}
                             <p className='flex text-xs py-3 dark:text-slate-400'>⚠️ Withdrawal from this fund will take {handleWithdrawalPeriodWarning(amount)}.</p>
                             <p className='flex text-xs dark:text-slate-400'>⚠️ Earnings are always withdrawn first — they are included in your withdrawal amount.</p>
                         </div>
@@ -376,7 +384,7 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                 } 
                 { !tab &&
                 <div className='flex flex-col justify-evenly text-center'>
-                <ClaimButton disabled={attr.invested > 0 && !isFrozen ? false : true } handleClick={() => withdrawgeneric(amount,SENIORITY)} title='Withdraw' /> 
+                <ClaimButton disabled={attr.invested > 0 && !isFrozen ? false : true } handleClick={() => withdrawgeneric(amount, SENIORITY, preferCash)} title='Withdraw' />
                 </div>                } 
                 <div key="info" className='flex flex-col p-4'>
                     <h3 className="font-bold text-sm py-4 dark:text-white">Info</h3>
@@ -398,7 +406,7 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                                     <p className={`font-bold text-black dark:text-white`}>{names[index]}</p>
                                     <p className="text-gray-400 mb-3 dark:text-white">{subtitle[d.type] || subtitle.GENERIC}</p>
                                     <p className="text-gray-400 dark:text-slate-400">Total: {sums.funds[index].totals.toLocaleString('en-IN', { maximumFractionDigits: 0 })} nIN</p>
-                                    <p className="text-gray-400 dark:text-slate-400">Available: {Math.max(0, sums.funds[index].idleCash - sums.funds[index].claimableReserved).toLocaleString('en-IN', { maximumFractionDigits: 0 })} nIN</p>
+                                    <p className="text-gray-400 dark:text-slate-400">Available: {Math.max(0, sums.funds[index].idleCash - sums.funds[index].requiredReserve).toLocaleString('en-IN', { maximumFractionDigits: 0 })} nIN</p>
                                 </div>
                             </div>
                             <div className="flex flex-row justify-end p-4">

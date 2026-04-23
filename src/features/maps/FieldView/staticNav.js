@@ -5,7 +5,7 @@ import { XCircleIcon } from '@heroicons/react/24/solid';
 import { setMetaThemeColor } from '../../../utils/metaTheme';
 
 const StaticMapNav = ({LAND, onFeatureClick}) => {
-  const { fieldActivity, setFieldActivity, db } = useDataContext();
+  const { fieldActivity, setFieldActivity } = useDataContext();
   const metadata = LAND?.current?.LAND?.metadata || LAND?.current?.metadata;
 
   useEffect(() => {
@@ -14,13 +14,8 @@ const StaticMapNav = ({LAND, onFeatureClick}) => {
     }, []);
 
   const handleClose = useCallback(() => {
-    const cached = db?.reloadActivity?.act;
-    if (cached) {
-      setFieldActivity({ ...cached, viewmode: false });
-    } else {
-      setFieldActivity(prev => prev ? { ...prev, viewmode: false } : prev);
-    }
-  }, [db, setFieldActivity]);
+    setFieldActivity(prev => prev ? { ...prev, viewmode: false } : prev);
+  }, [setFieldActivity]);
 
   const hasSelection = fieldActivity?.selectMode &&
     (fieldActivity.features || []).some(f => f.properties?.selected);
