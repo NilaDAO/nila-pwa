@@ -170,6 +170,7 @@ export default function ActiveLoansCard({
   const [gisData, setGisData] = useState({});     // { loanId: { ...summary } }
   const [keyMode, setKeyMode] = useState(null);   // null | 'confirm'
   const [keysPurchased, setKeysPurchased] = useState(false);
+  const [quotedFee, setQuotedFee] = useState(null); // per-token fee in wei, null = not yet quoted
   const { wallet } = useWallet();
   const landTitle = useContract(_ltAddr, _ltAbi, wallet);
   const nin = useContract(_ninAddr, _erc20Abi, wallet);
@@ -289,11 +290,11 @@ export default function ActiveLoansCard({
       const eosDate = satelliteEos || maturityDate;
       const daysEos = daysToDate(eosDate) ?? daysToDate(predictedEarliest);
       const daysToMaturity = daysToDate(maturityDate); // null if no contract deadline
-      // Display priority: contact name → farm name (from /gis/batch-eos record.json) → 0xABCD…
+      // Display priority: contact name → on-chain farm name (tokenURI, cached in IDB) → 0xABCD…
       const hasContact = hasName(l.borrower);
       const contactName = resolveName(l.borrower); // already returns truncated addr if no contact
-      const farmName = eos?.farm_name || null;
-      const landId = eos?.land_id ?? null;
+      const landId = l.landId ?? eos?.land_id ?? null;
+      const farmName = l.farmName || eos?.farm_name || null;
       const displayName = hasContact ? contactName : (farmName || contactName);
       return {
         ...l,
@@ -319,17 +320,24 @@ export default function ActiveLoansCard({
     [active, flagged, resolveName, eosMap]
   );
 
-  // Check IndexedDB on mount — if any viewing keys cached, show "View on map"
+  // Check IndexedDB on mount — if viewing keys cached, show "View on map"
   useEffect(() => {
-    if (!active.length) return;
     import('../../utils/db').then(({ readItem }) => {
-      Promise.all(active.slice(0, 3).map(l =>
-        readItem(`recordHash_${l.landId}`, 'FarmData').catch(() => null)
-      )).then(results => {
-        if (results.some(r => r?.record)) setKeysPurchased(true);
-      });
+      readItem('viewingKeys', 'FarmData').then(cached => {
+        const hashes = cached?.value?.hashes || cached?.hashes;
+        if (hashes && Object.keys(hashes).length > 0) setKeysPurchased(true);
+      }).catch(() => {});
     }).catch(() => {});
-  }, [active.length]);
+  }, []);
+
+  // Read view fee from contract when user opens the confirm panel
+  useEffect(() => {
+    if (keyMode !== 'confirm' || !landTitle) return;
+    landTitle.viewFeeNin().then(fee => {
+      setQuotedFee(fee);
+      console.log(`[viewingKeys] fee: ${ethers.formatEther(fee)} nIN/property`);
+    }).catch(e => console.warn('[viewingKeys] fee read failed:', e.message));
+  }, [keyMode, landTitle]);
 
   const sorted = useMemo(() => {
     const mul = sortDir === 'asc' ? 1 : -1;
@@ -507,10 +515,10 @@ export default function ActiveLoansCard({
             >✕</button>
           </div>
           <p className="text-[10px] dark:text-slate-300">
-            Pay <span className="font-bold dark:text-white">{active.length} nIN</span> to view harvest timing, yield and crop health for {active.length} members. Nila maintains 8 years of farm data for each member — we charge a small viewing cost so no corporation can use it without consent or contribution. 80% of the revenue goes directly to the farmer. You can update later in the portfolio view.
+            Pay up to <span className="font-bold dark:text-white">{quotedFee != null ? `${ethers.formatEther(quotedFee * BigInt(active.length))} nIN` : '...'}</span> to view harvest timing, yield and crop health for {active.length} members ({quotedFee != null ? `${ethers.formatEther(quotedFee)}/property` : 'quoting...'}). Properties without farm data on-chain are skipped automatically. 80% of the revenue goes directly to the farmer.
           </p>
           <ClaimButton
-            title={`Pay ${active.length} nIN`}
+            title={quotedFee != null ? `Pay up to ${ethers.formatEther(quotedFee * BigInt(active.length))} nIN` : 'Quoting...'}
             pendingTitle="Signing..."
             successTitle="Keys acquired"
             handleClick={async () => {
@@ -539,38 +547,46 @@ export default function ActiveLoansCard({
                 }
               }
 
-              // 2. Read viewFeeNin from contract
-              const fee = await landTitle.viewFeeNin();
-              const totalWei = fee * BigInt(landIds.length);
+              // 2. Use quoted fee (already fetched on panel open)
+              const fee = quotedFee ?? await landTitle.quoteViewFee(landIds[0], wallet.address);
+              const maxWei = fee * BigInt(landIds.length);
+              console.log('[viewingKeys] landIds:', landIds, 'fee:', fee.toString(), 'max:', maxWei.toString());
 
-              // 2. Approve nIN if needed
-              if (totalWei > 0n) {
+              // 3. Approve max — needed for staticCall simulation
+              if (maxWei > 0n) {
                 const allowance = await nin.allowance(wallet.address, _ltAddr);
-                if (allowance < totalWei) {
-                  await runTx(() => nin.approve(_ltAddr, totalWei));
+                if (allowance < maxWei) {
+                  await runTx(() => nin.approve(_ltAddr, maxWei));
                 }
               }
 
-              // 3. For each land_id: pay fee + get hash + store in IndexedDB
-              console.log('[viewingKeys] landIds:', landIds, 'fee:', fee.toString(), 'total:', totalWei.toString());
-              for (const lid of landIds) {
-                try {
-                  // Read hash (pays nIN fee for non-owners)
-                  const hash = await landTitle.getRecordHash.staticCall(lid);
-                  console.log(`[viewingKeys] land_id=${lid} hash=${hash}`);
-                  if (hash && hash !== ethers.ZeroHash) {
-                    await runTx(() => landTitle.getRecordHash(lid));
-                    // Cache the hash in IndexedDB
-                    await setDBitem(`recordHash_${lid}`, {
-                      recordHash: hash,
-                      commitment: 'purchased',
-                      ts: Date.now(),
-                    }, 'FarmData');
-                  }
-                } catch (e) {
-                  console.warn(`[viewingKeys] failed land_id=${lid}:`, e.message);
+              // 4. Free staticCall to discover which IDs have hashes
+              const hashes = await landTitle.getRecordHashBatch.staticCall(landIds);
+              const validIds = [];
+              const hashMap = {};
+              for (let i = 0; i < landIds.length; i++) {
+                const hash = hashes[i];
+                if (hash && hash !== ethers.ZeroHash) {
+                  validIds.push(landIds[i]);
+                  hashMap[landIds[i]] = hash;
                 }
               }
+
+              // 5. Only pay for properties that actually have data
+              if (validIds.length > 0) {
+                const paidWei = fee * BigInt(validIds.length);
+                console.log(`[viewingKeys] paying for ${validIds.length}/${landIds.length} (${ethers.formatEther(paidWei)} nIN, skipped ${landIds.length - validIds.length} empty)`);
+                await runTx(() => landTitle.getRecordHashBatch(validIds));
+              } else {
+                console.warn('[viewingKeys] no properties have hashes — nothing to pay for');
+              }
+
+              await setDBitem('viewingKeys', { hashes: hashMap, ts: Date.now() }, 'FarmData');
+
+              // Log for visual verification
+              console.log('[viewingKeys] ── Hashes ──');
+              console.table(hashMap);
+              console.log(`[viewingKeys] ${validIds.length}/${landIds.length} stored`);
 
               setKeysPurchased(true);
               setKeyMode(null);

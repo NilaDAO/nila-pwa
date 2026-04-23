@@ -558,11 +558,11 @@ export function useFxPool(opts: FxOptions = {}) {
   }, [fxPool, wallet, runTx, qc]);
 
   // Partially or fully resolve an active escrow (direct cash-out path for union operators).
-  const resolveEscrowCash = useCallback(async (escrowId: bigint, amount: bigint) => {
+  const resolveEscrowCash = useCallback(async (escrowId: bigint, amount: bigint, unionAddr: string) => {
     if (!fxPool || !wallet) throw new Error("FX pool or wallet not ready");
     const receipt = await runTx(async () => {
       const nonce = await (wallet.provider as ethers.JsonRpcProvider).send("eth_getTransactionCount", [wallet.address, "pending"]);
-      return fxPool.resolveEscrowCash(escrowId, amount, { nonce });
+      return fxPool.resolveEscrowCash(escrowId, amount, unionAddr, { nonce });
     }, {
       onSuccess: () => { qc.invalidateQueries({ queryKey: ["unionCashReserve"] }); },
       onError: (err: any) => { console.error("resolveEscrowCash failed:", err); },
@@ -613,6 +613,52 @@ export function useFxPool(opts: FxOptions = {}) {
     return receipt;
   }, [fxPool, wallet, runTx, qc]);
 
+  // --- Three-layer reactive accounting ---
+
+  // Read three-layer health for a union: usdtDeposited, usdtPromised, cashEscrowNin, healthRatio.
+  const systemHealth = useCallback(async (unionAddr: string, loanType: string) => {
+    if (!fxPool) throw new Error("FX pool not ready");
+    const [usdtDeposited, usdtPromised, cashEscrowNin, healthRatio] =
+      await fxPool.systemHealth(unionAddr, loanType);
+    return { usdtDeposited, usdtPromised, cashEscrowNin, healthRatio };
+  }, [fxPool]);
+
+  // FIFO deposit: union deposits USDT, protocol routes to oldest active escrows.
+  const depositUsdtFifo = useCallback(async (unionAddr: string, usdtAmount: bigint) => {
+    if (!fxPool || !wallet) throw new Error("FX pool or wallet not ready");
+    await ensureUsdtAllowance(usdtAmount);
+    const receipt = await runTx(async () => {
+      const nonce = await (wallet.provider as ethers.JsonRpcProvider).send("eth_getTransactionCount", [wallet.address, "pending"]);
+      return fxPool.depositUsdt(unionAddr, usdtAmount, { nonce });
+    }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ["unionCashReserve"] });
+        qc.invalidateQueries({ queryKey: ["balances"] });
+      },
+      onError: (err: any) => { console.error("depositUsdt failed:", err); },
+    });
+    if (!receipt) throw new Error("depositUsdt did not confirm");
+    return receipt;
+  }, [fxPool, wallet, runTx, qc, ensureUsdtAllowance]);
+
+  // Junior cash withdrawal: investor fills a CashOffer with nIN (consent = approve + call).
+  const fillCashOfferWithNin = useCallback(async (offerId: bigint, ninAmount: bigint) => {
+    if (!fxPool || !wallet) throw new Error("FX pool or wallet not ready");
+    await ensureNinAllowance(ninAmount);
+    const receipt = await runTx(async () => {
+      const nonce = await (wallet.provider as ethers.JsonRpcProvider).send("eth_getTransactionCount", [wallet.address, "pending"]);
+      return fxPool.fillCashOfferWithNin(offerId, { nonce });
+    }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ["balances"] });
+        qc.invalidateQueries({ queryKey: ["unionCashReserve"] });
+      },
+      onError: (err: any) => { console.error("fillCashOfferWithNin failed:", err); },
+    });
+    if (!receipt) throw new Error("fillCashOfferWithNin did not confirm");
+    return receipt;
+  }, [fxPool, wallet, runTx, qc, ensureNinAllowance]);
+
   return {
     fxPool,
     mintNin,
@@ -636,6 +682,9 @@ export function useFxPool(opts: FxOptions = {}) {
     lpReclaimRedeemOrder,
     cancelRedeemOrder,
     cancelCashOffer,
+    systemHealth,
+    depositUsdtFifo,
+    fillCashOfferWithNin,
   } as const;
   
 }
