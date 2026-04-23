@@ -17,7 +17,7 @@ const API = process.env.REACT_APP_API_BASE_URL;
  * System contacts (nIN mint, Nila Funds, USD Exchange, union, union rep)
  * are always available and cannot be deleted.
  */
-export function useContactBook() {
+export function useContactBook({ enabled: enableSync = true } = {}) {
   const { db } = useDataContext();
   const queryClient = useQueryClient();
   const unionAddress = db?.union?.address;
@@ -35,7 +35,7 @@ export function useContactBook() {
 
   const query = useQuery({
     queryKey: ['contactBook', unionAddress ?? '_local_'],
-    enabled: true,
+    enabled: enableSync,
     queryFn: async () => {
       console.log('[ContactSync] START union=%s', unionAddress);
 
