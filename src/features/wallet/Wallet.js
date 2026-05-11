@@ -8,7 +8,9 @@ import { cropColor } from '../../utils/cropColors.js';
 import Assets from '../assets/assets'
 import DebtsActive from '../lending/debtsActive';
 import Investments from '../lending/investments';
-import { InvestmentCard, DebtCard, Card, AssetCard,CultivationCard,MapCard, CashLiquidityCard } from "./Cards";
+import { InvestmentCard, DebtCard, Card, AssetCard,CultivationCard,MapCard, CashLiquidityCard, OrdersSummaryCard } from "./Cards";
+import OrdersCard from './OrdersCard';
+import { useFoodTokenBatches, CROP_CODE_NAMES } from '../../hooks/useFoodTokenBatches.ts';
 import MapNav from '../maps/mapsNav';
 import { StaticCards } from '../maps/FieldView/staticCards';
 import FieldReg_cards from '../maps/FieldRegistration/fieldRegCards';
@@ -30,7 +32,7 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, save
     const [scrolling, setScrolled] = useState(0); // true ⇒ user pulled up
     const { cardView }             = useViewModeContext();
     const { ix, cardIx }           = useNavContext();
-    const { debts }                = useDataContext();
+    const { debts, db, fieldActivity } = useDataContext();
     const controls                 = useAnimation();
     const scrollRef                = useRef(null);
     const rafRef                   = useRef(0);
@@ -99,7 +101,7 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, save
             >
             { ix === 0 ? <Assets LAND={LAND} handleOpenForm={handleOpenForm} /> 
             : ix === 1 ? <Investments LAND={LAND} funds={funds} CAP={CAP} sums={sums} /> 
-            : ix === 2 ? LAND.current.hasLand ? <StaticCards LAND={LAND} />
+            : ix === 2 ? (LAND.current.hasLand || fieldActivity?.portfolioMode) ? <StaticCards LAND={LAND} />
               : LAND.current?.pendingMint ? (
                 <div className="pointer-events-auto flex flex-col bg-white dark:bg-gray-700 dark:text-white rounded-3xl w-full mb-[220px] py-8 my-6 shadow-bottom">
                   <h3 className="font-bold px-8">Pending land title mint.</h3>
@@ -110,7 +112,8 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, save
             : ix === 3 ? <DebtsActive debt={debts[cardIx]} />
             : ix === 4 ? <Settings handleOpenForm={handleOpenForm} LAND={LAND} />
             : ix === 5 ? <Forms LAND={LAND} CAP={CAP} handleOpenForm={handleOpenForm} />
-            : ix === 6 && <UnionReserve handleOpenForm={handleOpenForm} savedFieldActivity={savedFieldActivity} />
+            : ix === 6 ? <UnionReserve handleOpenForm={handleOpenForm} savedFieldActivity={savedFieldActivity} />
+            : ix === 7 && <OrdersCard unionAddr={db?.union?.leader ? db?.address : undefined} />
             }
         </motion.div>
         </div> 
@@ -210,7 +213,7 @@ function Wallet({LAND}) {
     const funds                                                                           = !unionFunds ? [] : unionFunds //?.map(f => f[0])
     const { stage }                                                                       = useTxContext()
     const [ cardShrink, setShrinkProgress]                                                = useState(0); 
-    const { data , isLoading, error}                                                      = useSummary(process.env.REACT_APP_CHAIN_ID || '137',db.address,funds);
+    const { data , isLoading, error}                                                      = useSummary(db?.chain || process.env.REACT_APP_CHAIN_ID || '137',db.address,funds);
     const { ix,setIx,cardIx,prevIx }                                                      = useNavContext()
     const { tokenview, cardView, setCardView }                                            = useViewModeContext();
     const {
@@ -305,12 +308,33 @@ function Wallet({LAND}) {
     const { data: reserveData } = useUnionCashReserve(db?.union?.leader ? db?.union?.address : undefined);
     const { data: openOffers = 0 } = useOpenCashOffers(db?.union?.leader ? db?.union?.address : undefined);
 
+    const cashOutDisabled = (reserveData?.settlementShortfall ?? 0n) > 0n;
+
+    // Orders & Pricing — leaders only
+    const { data: batchSummary } = useFoodTokenBatches(db?.union?.leader ? db?.address : db?.union?.address);
+    const activeBatches      = batchSummary?.active          ?? [];
+    const totalClaimedQt     = batchSummary?.totalClaimedQt  ?? 0;
+    const totalClaimedUsdt   = batchSummary?.totalClaimedUsdt ?? 0;
+    const cropBreakdown      = batchSummary?.cropBreakdown   ?? '';
+
+    // Derive suggestedBatch: first active batch whose cropCode matches the active cycle's crop_type
+    useEffect(() => {
+      const cc = fieldActivity?.activeCycle;
+      const cropType = cc?.length ? (cc[0]?.crop_type ?? '').toLowerCase() : null;
+      const match = cropType && activeBatches.length
+        ? activeBatches.find(b => (CROP_CODE_NAMES[b.cropCode] ?? '').toLowerCase() === cropType) ?? null
+        : null;
+      if ((match?.id ?? null) === (fieldActivity?.suggestedBatch?.id ?? null)) return;
+      setFieldActivity(prev => prev ? { ...prev, suggestedBatch: match } : prev);
+    }, [fieldActivity?.activeCycle, activeBatches]);
+
     const handleOpenForm = (e, params) => {
         if (e === 'cashDesk') {
             // Navigate directly to the Union Reserve card (ix=6) rather than the form sheet
             setIx((prev) => { prevIx.current = prev; return 6; });
             return;
         }
+        if (e === 'cashOut' && cashOutDisabled) return;
         setTxDetails(params ?? null);
         setTxIndex(e)
         setIx((prev) => {
@@ -435,6 +459,19 @@ function Wallet({LAND}) {
             cardShrink={cardShrink}
           />,
         }] : []),
+        ...(db?.union?.leader ? [{
+          key: 'food-orders',
+          type: 'ORDERS',
+          show: ix === 7 || ix === null,
+          title: "Orders and Post-harvest",
+          onClick: () => handleToggleView({ ix: 7 }),
+          content: <OrdersSummaryCard
+            totalQt={totalClaimedQt}
+            totalUsdt={totalClaimedUsdt}
+            cropBreakdown={cropBreakdown}
+            cardShrink={cardShrink}
+          />,
+        }] : []),
         // Generate Active Debt cards
         ...(debts.map((d, i) => ({
             key: `debts-${i}`,
@@ -476,11 +513,14 @@ function Wallet({LAND}) {
     // reshuffle the cards to have the defaulted card on top in case of defaulted debt
     cards = cards.sort((a, b) => a.type === 'DEFAULTED' && b.type !== 'DEFAULTED' ? -1 : 1);
        
-    const showFieldReg = ix === 2 && LAND.current && !LAND.current.hasLand && !LAND.current?.pendingMint;
+    const showFieldReg = ix === 2 && LAND.current && !LAND.current.hasLand && !LAND.current?.pendingMint && !fieldActivity?.portfolioMode;
+
+    const visibleCards = cards.filter(c => c.show);
+    const collapsedStackHeight = (visibleCards.length - 1) * (visibleCards.length > 5 ? 56 : 60) + 178 + 40;
 
     const content = (
         <div className="flex flex-col h-[var(--app-height)] bg-gradient-to-b dark:from-darkgrey dark:to-slate-800 from-white to-slate-100 pb-[calc(48px+env(safe-area-inset-bottom))]">
-            { ix === 2 && LAND.current && <MapNav LAND={LAND} onFeatureClick={handleFeatureClick} cardView={cardView} />}
+            { ix === 2 && LAND.current && <MapNav LAND={LAND} onFeatureClick={handleFeatureClick} cardView={cardView} portfolioMode={fieldActivity?.portfolioMode} />}
             <Header version={0} className="flex-shrink-0 sticky" cardShrink={cardShrink} />
             { stage ? // pending onchain transaction
                 <TxProgress />
@@ -512,7 +552,7 @@ function Wallet({LAND}) {
                         onTouchEnd={handleTouchEnd}
                         >
                         <AnimatePresence >
-                            {cards.filter(c => c.show).map(({ key, type, title, titleDot, onClick, content, props = {} }, index) => (
+                            {visibleCards.map(({ key, type, title, titleDot, onClick, content, props = {} }, index) => (
                                 <Card
                                     key={key}
                                     i={index}
@@ -523,7 +563,7 @@ function Wallet({LAND}) {
                                     inArrays={inArrays}
                                     isCollapsed={isCollapsed}
                                     listLength={cards.length}
-                                    cardShrink={cardShrink} 
+                                    cardShrink={cardShrink}
                                     CAP={CAP}
                                     {...props}
                                 >
@@ -531,6 +571,7 @@ function Wallet({LAND}) {
                                 </Card>
                             ))}
                         </AnimatePresence>
+                        {ix === null && <div aria-hidden="true" style={{ height: collapsedStackHeight }} />}
                     </div>
                     {(ix != null) && (
                         <Topic
@@ -549,7 +590,9 @@ function Wallet({LAND}) {
                 db={db}
                 cardLength={cards.length}
                 handleOpenForm={handleOpenForm}
+                cashOutDisabled={cashOutDisabled}
                 toggleScreen={(idx) => handleToggleView(idx)}
+                isCollapsed={isCollapsed}
             />
         </div>
     );

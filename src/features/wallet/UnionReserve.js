@@ -11,10 +11,12 @@ import { useFxPool, useProvider } from '../../hooks/useWallet.ts';
 import { ethers } from 'ethers';
 import genericFundViewerArtifact from '../../components/ABI/genericFundViewer.json';
 import { useErc20Balances } from '../../hooks/useLoadETH.ts';
+import { ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { IndividualExchangeButton, ClaimButton } from '../../components/UI/buttons.js';
 import { useActiveLoans, useActiveLoansChainSync } from '../../hooks/useActiveLoans';
 import { useContactBook } from '../../hooks/useContactBook';
 import ActiveLoansCard from './ActiveLoansCard';
+import { setDBitem } from '../../utils/db';
 import { useLPCashOnHand } from '../../hooks/useLPCashOnHand';
 
 function inrDisplay(nin) {
@@ -35,7 +37,7 @@ function tsLabel(ts) {
   return d > 0 ? `${d}d ${h}h` : `${h}h`;
 }
 
-function Countdown({ deadline, escrowDuration, amount, count, onSettleRequest, onSettleCancel, onSettleConfirm, confirmingSettle, settling }) {
+function Countdown({ deadline, escrowDuration, amount, count, onSettleRequest, onSettleCancel, onSettleConfirm, confirmingSettle, settling, cashOfferPending }) {
   const [now, setNow] = useState(Math.floor(Date.now() / 1000));
   useEffect(() => {
     const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
@@ -128,7 +130,7 @@ function Countdown({ deadline, escrowDuration, amount, count, onSettleRequest, o
           </div>
         )}
       </div>
-      {!confirmingSettle && (
+      {!confirmingSettle && !cashOfferPending && (
         <button
           data-tour="settle"
           onClick={onSettleRequest}
@@ -151,17 +153,16 @@ const STEP = 100n * 10n ** 18n;
 
 const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
   const { db, unionFunds, fieldActivity, setFieldActivity } = useDataContext();
-  const { setIx } = useNavContext();
+  const { setIx, prevIx } = useNavContext();
   const unionAddr = db?.union?.address;
-  const chain = process.env.REACT_APP_CHAIN_ID || '137';
+  const chain = db?.chain || process.env.REACT_APP_CHAIN_ID || '137';
 
-  const { data, isLoading } = useUnionCashReserve(unionAddr);
   const { data: tokenData = [] } = useErc20Balances(chain, db?.address, { enabled: !!db?.address });
   const ninInitialBalance = Number(tokenData.find(t => t.sym === 'nIN')?.bal ?? 0);
   const { data: pendingDeliveries = [] } = usePendingCashDeliveries(unionAddr);
   const { data: openCashOffersList = [] } = useUnionOpenCashOffersList(unionAddr);
   const { data: openRedeemOrdersList = [] } = useUnionOpenRedeemOrdersList(unionAddr);
-  const { cancelRedeemOrder, cancelCashOffer, confirmCashDelivery, postCashOffer, systemHealth, depositUsdtFifo } = useFxPool();
+  const { cancelRedeemOrder, cancelCashOffer, confirmCashDelivery, postCashOffer, depositUsdtFifo } = useFxPool();
   const { total: lpCashOnHand, addCash: addLPCash, consumeCash: consumeLPCash } = useLPCashOnHand(unionAddr);
   const { deposit, withdraw } = useUnionTreasury();
   const { data: loansData } = useActiveLoans(unionAddr, !!db?.union?.leader);
@@ -188,19 +189,23 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
   const { data: fundsData = [] } = useLoadFundsData(unionAddr, unionFunds ?? [], db?.address);
   const qc = useQueryClient();
 
-  // ── Three-layer system health (LP obligation gate) ──
-  const [health, setHealth] = useState(null);
-  useEffect(() => {
-    if (!unionAddr || !systemHealth) return;
-    let stale = false;
-    const loanType = ethers.encodeBytes32String('GENERIC');
-    systemHealth(unionAddr, loanType).then((h) => {
-      if (!stale) setHealth(h);
-    }).catch(() => {});
-    return () => { stale = true; };
-  }, [unionAddr, systemHealth]);
-  const settlementShortfall = health && health.usdtPromised > health.usdtDeposited
-    ? health.usdtPromised - health.usdtDeposited : 0n;
+  // Map fund bytes32 loanType → human name
+  const fundMap = useMemo(() => {
+    const m = new Map();
+    if (Array.isArray(unionFunds)) {
+      for (const f of unionFunds) m.set(f[2], f[1]); // f[2]=loanType, f[1]=name
+    }
+    return m;
+  }, [unionFunds]);
+
+  const primaryLoanType = useMemo(
+    () => [...fundMap.keys()][0] ?? ethers.encodeBytes32String('GENERIC'),
+    [fundMap]
+  );
+  const { data, isLoading } = useUnionCashReserve(unionAddr, primaryLoanType);
+
+  // settlementShortfall — sourced from useUnionCashReserve (systemHealth embedded there)
+  const settlementShortfall = data?.settlementShortfall ?? 0n;
 
   // ── EOS / harvest cache helpers (4-hour localStorage TTL) ──
   const EOS_CACHE_KEY = `eos_cache_${unionAddr}`;
@@ -324,15 +329,6 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
       .catch(console.error);
   }, [loansData?.activeLoans, eosMap, unionAddr, qc, readEosCache, writeEosCache]);
 
-  // Map fund bytes32 loanType → human name from unionFunds context
-  const fundMap = useMemo(() => {
-    const m = new Map();
-    if (Array.isArray(unionFunds)) {
-      for (const f of unionFunds) m.set(f[2], f[1]); // f[2]=loanType, f[1]=name
-    }
-    return m;
-  }, [unionFunds]);
-
   // Map fund loanType → total lent (from chain via getFundTotalsByTranche)
   const fundLentMap = useMemo(() => {
     const m = new Map();
@@ -370,12 +366,27 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
         console.log(`  [DeepSync] CLOSED loan ${id?.slice(0,10)}…`);
       }
     }
+
+    // Bootstrap IndexedDB from the full active list when there are no diff changes.
+    // Covers the case where loans are already in the backend DB but not yet in the
+    // PWA's IndexedDB (e.g. fresh inject with no prior /loans/sync round-trip).
     if (!data.found?.length && !data.closed?.length) {
-      console.warn('[DeepSync] no changes found — gap is outside the lookback window or not event-based');
+      if (data.active?.length) {
+        console.log(`[DeepSync] no diff — seeding IndexedDB from ${data.active.length} active loans`);
+        for (const l of data.active) {
+          const id = l.loan_id ?? l.id;
+          if (id) {
+            try { await setDBitem(id, l, 'ActiveLoans'); } catch (_) {}
+          }
+        }
+        qc.invalidateQueries({ queryKey: ['activeLoans', unionAddr] });
+      } else {
+        console.warn('[DeepSync] no changes found — gap is outside the lookback window or not event-based');
+      }
     }
 
     return data;
-  }, [unionAddr]);
+  }, [unionAddr, qc]);
 
   // LP request card state
   const [confirmCancelId, setConfirmCancelId] = useState(null); // orderId awaiting cancel confirm
@@ -521,9 +532,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
       qc.invalidateQueries({ queryKey: ['unionOpenCashOffersList'] });
       setConfirmingSettle(false);
       setSettleUsdtInput('');
-      // Refresh health
-      const loanType = ethers.encodeBytes32String('GENERIC');
-      systemHealth(unionAddr, loanType).then(setHealth).catch(() => {});
+      qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] });
     } catch (err) {
       console.error('Settle (depositUsdt) failed:', err);
     } finally {
@@ -568,9 +577,29 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
       await confirmCashDelivery(order.id);
       const inr = Number(order.inrValue);
       addLPCash(order.id, inr);
+
+      // Mark this farmer's loan as fully cashed out in IDB so the ActiveLoansCard
+      // disables the cash-out button immediately — without waiting for CashOutForm
+      // to re-open and re-fetch the on-chain balance.
+      if (order.farmer) {
+        const farmerLoan = (loansData?.activeLoans ?? []).find(
+          (l) => l.borrower?.toLowerCase() === order.farmer.toLowerCase()
+        );
+        if (farmerLoan?.id) {
+          try {
+            await setDBitem(farmerLoan.id, {
+              ...farmerLoan,
+              borrowerNinBal: 0,
+              borrowerNinBalCheckedAt: Date.now(),
+            }, 'ActiveLoans');
+          } catch (_) { /* non-blocking */ }
+        }
+      }
+
       qc.invalidateQueries({ queryKey: ['pendingCashDeliveries'] });
       qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] });
       qc.invalidateQueries({ queryKey: ['balances'] });
+      qc.invalidateQueries({ queryKey: ['activeLoans', unionAddr] });
     } catch (err) {
       console.error('Accept delivery failed:', err);
     } finally {
@@ -614,12 +643,12 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
 
   const treasury        = data?.treasury        ?? 0n;
   const rainyDay        = data?.rainyDay         ?? 0n;
-  const activeEscrow    = data?.activeEscrowNin  ?? 0n;
-  const available       = data?.available        ?? 0n;
-  const pendingDisburse = data?.pendingDisburse  ?? [];
-  const scheduledExits  = data?.scheduledExits   ?? [];
-  const hasNoEscrow     = data?.hasNoEscrow      ?? true;
-  const escrowDuration  = data?.escrowDuration   ?? 0;
+  const activeEscrow     = data?.activeEscrowNin  ?? 0n;
+  const available        = data?.available        ?? 0n;
+  const pendingDisburse  = data?.pendingDisburse  ?? [];
+  const hasNoEscrow      = data?.hasNoEscrow      ?? true;
+  const escrowDuration   = data?.escrowDuration   ?? 0;
+  const juniorPendingNin = data?.juniorPendingNin ?? 0n;
   const pct             = treasury > 0n ? Number(available) / Number(treasury) : 1;
   const withdrawCap     = treasuryDir === 'withdraw' ? available : null;
 
@@ -775,7 +804,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
             </div>
 
             {/* ── Fund lending status (part of treasury summary) ── */}
-            {health && (<>
+            {data && (<>
               <hr className="border-gray-200 dark:border-slate-600 my-1" />
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-500 dark:text-slate-400">Lending</span>
@@ -784,6 +813,20 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
                 </span>
               </div>
             </>)}
+
+            {/* ── Settling warning ── */}
+            {settlementShortfall > 0n && (() => {
+              const juniorInr  = Number(juniorPendingNin / 10n ** 18n);
+              const settleInr  = Number((data?.settlementShortfallInr ?? 0n) / 10n ** 18n);
+              return (
+                <p className="flex items-center gap-3 text-xs text-white mt-1">
+                  <ExclamationTriangleIcon className="w-7 h-7 text-red dark:text-amber-400 animate-icon-pulse" />
+                  Cash-out is disabled. 
+                  Collect ₹{juniorInr.toLocaleString('en-IN')} cash from borrowers,
+                  and settle ₹{settleInr.toLocaleString('en-IN')}.
+                </p>
+              );
+            })()}
 
             {/* ── Primary actions ── */}
             <div className="flex gap-2 mt-1">
@@ -797,7 +840,9 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
               <button
                 data-tour="cash-out"
                 onClick={() => handleOpenForm('cashOut')}
-                className="flex-1 py-3 rounded-xl bg-gray-100 dark:bg-slate-600 dark:text-white text-sm font-bold active:scale-95"
+                disabled={settlementShortfall > 0n}
+                title={settlementShortfall > 0n ? 'Blocked during settlement — LP funds are reserved for investor exits' : undefined}
+                className="flex-1 py-3 rounded-xl bg-gray-100 dark:bg-slate-600 dark:text-white text-sm font-bold active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Cash Out
               </button>
@@ -815,6 +860,14 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
               const anchor = pendingDisburse[0].deadline;
               const bucket = pendingDisburse.filter(e => e.deadline - anchor < BUCKET_WINDOW);
               const amount = bucket.reduce((s, e) => s + e.ninAmount, 0n);
+              // If any escrow in the bucket already has an open CashOffer (auto-posted
+              // by the contract in settling mode), block the manual Settle button.
+              // depositUsdtFifo would resolve the escrow and orphan that CashOffer —
+              // an LP could still fill it and get stuck with no way to confirm.
+              const bucketEscrowIds = new Set(bucket.map(e => String(e.escrowId)));
+              const cashOfferPending = openCashOffersList.some(
+                o => bucketEscrowIds.has(String(o.escrowId))
+              );
               return (
                 <Countdown
                   deadline={anchor}
@@ -826,6 +879,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
                   onSettleConfirm={handleSettle}
                   confirmingSettle={confirmingSettle}
                   settling={settling}
+                  cashOfferPending={cashOfferPending}
                 />
               );
             })()}
@@ -844,66 +898,6 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
               </div>
             )}
 
-            {/* ── Scheduled member exits ── */}
-            {scheduledExits.length > 0 && (
-              <div data-tour="scheduled-exits" className="flex flex-col gap-1.5 mt-1">
-                <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wide">Scheduled cash outs</p>
-                {scheduledExits.map(e => {
-                  const addrShort = `${e.investor.slice(0, 6)}…${e.investor.slice(-4)}`;
-                  const actionForm = e.tranche === 'senior' ? 'cashOut' : 'redeem';
-                  const canFund = available >= e.inrValue;
-                  const shortfall = canFund ? 0n : e.inrValue - available;
-                  return (
-                    <div key={`${e.investor}-${e.tranche}`} className="flex flex-col gap-1 rounded-xl bg-gray-50 dark:bg-slate-600 px-3 py-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-xs font-mono text-gray-500 dark:text-slate-400">{addrShort}</span>
-                          <span className="ml-2 text-sm font-bold dark:text-white">{inrDisplay(e.inrValue)}</span>
-                          <span className={`ml-2 text-xs ${e.pastMin ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-gray-400 dark:text-slate-400'}`}>
-                            {e.pastMin ? 'Ready now' : tsLabel(e.minWindowTs)}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => handleOpenForm(
-                            e.tranche === 'senior' ? 'cashOut' : 'cashOut',
-                            { investor: e.investor, loanType: e.loanType, juniorCashOut: e.tranche !== 'senior' }
-                          )}
-                          className="text-xs font-bold text-black dark:text-white border border-gray-300 dark:border-slate-500 rounded-lg px-3 py-1 active:scale-95"
-                        >
-                          {e.tranche === 'senior' ? 'Cash Offer' : 'Get Cash'}
-                        </button>
-                      </div>
-                      {!canFund && !e.pastMin && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400">
-                          ₹{Number(shortfall / 10n ** 18n).toLocaleString('en-IN')} short — window may open before liquidity arrives
-                        </p>
-                      )}
-                      {!canFund && e.pastMin && (
-                        <p className="text-xs text-red-600 dark:text-red-400 font-semibold">
-                          ⚠ Window open but blocked — {inrDisplay(shortfall)} short; needs loan repayments or new deposits
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── No-escrow hint: shown when no pending draws + scheduled exits exist ── */}
-            {hasNoEscrow && scheduledExits.length > 0 && (
-              <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 px-3 py-2">
-                <p className="text-xs text-amber-700 dark:text-amber-400 font-semibold mb-1">No pending loan draws</p>
-                <p className="text-xs text-amber-600 dark:text-amber-500 mb-2">
-                  To pay out members, post a Redeem Order — an LP will convert their nIN to USDT.
-                </p>
-                <button
-                  onClick={() => handleOpenForm('redeem')}
-                  className="text-xs font-bold text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-600 rounded-lg px-3 py-1 active:scale-95"
-                >
-                  Post Redeem Order
-                </button>
-              </div>
-            )}
 
 
           </>
@@ -916,7 +910,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
         <div data-tour="lp-requests" className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl w-full py-6 px-4 gap-3 shadow-bottom">
           <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide">Active LP Requests</p>
 
-          {/* Open CashOffers — union offered escrow INR for USDT (cancel only flips status; no tokens move) */}
+          {/* Give Cash offers — union gives physical cash to LP in exchange for USDT (contract: CashOffer) */}
           {openCashOffersList.map(o => {
             const isCancellingOffer    = cancellingOfferId    !== null && cancellingOfferId    === o.id;
             const isConfirmCancelOffer = confirmCancelOfferId !== null && confirmCancelOfferId === o.id;
@@ -927,7 +921,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
                     disabled={isCancellingOffer}
                     onClick={() => setConfirmCancelOfferId(o.id)}
                     className="absolute top-2 right-2 text-gray-400 dark:text-slate-500 active:scale-90"
-                    aria-label="Cancel cash offer"
+                    aria-label="Cancel give cash offer"
                   >
                     {isCancellingOffer ? (
                       <span className="text-[10px]">…</span>
@@ -940,8 +934,9 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
                 )}
                 <div className="flex flex-col gap-0.5 pr-6">
                   <span className="text-xs font-semibold dark:text-white">
-                    {inrValueDisplay(o.inrValue)} cash offer
+                    Give Cash — {inrValueDisplay(o.inrValue)}
                   </span>
+                  <span className="text-[10px] text-gray-500 dark:text-slate-400">Union gives cash · LP deposits USDT</span>
                   <span className="text-[10px] text-blue-500 dark:text-blue-400">Awaiting LP</span>
                   <span className={`text-[10px] ${o.deadline - now < 3600 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-400 dark:text-slate-400'}`}>
                     expires {tsLabel(o.deadline)}
@@ -974,9 +969,8 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
             );
           })}
 
-          {/* Open RedeemOrders (status=0) — no LP found yet */}
+          {/* Take Cash orders — LP brings physical cash to farmer, earns USDT + fee (contract: RedeemOrder) */}
           {openRedeemOrdersList.map(o => {
-            const farmerShort = resolveName(o.farmer);
             const isCancelling    = cancellingId    !== null && cancellingId    === o.id;
             const isConfirmCancel = confirmCancelId !== null && confirmCancelId === o.id;
             const inr  = Number(o.inrValue);
@@ -988,7 +982,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
                     disabled={isCancelling}
                     onClick={() => setConfirmCancelId(o.id)}
                     className="absolute top-2 right-2 text-gray-400 dark:text-slate-500 active:scale-90"
-                    aria-label="Cancel order"
+                    aria-label="Cancel take cash order"
                   >
                     {isCancelling ? (
                       <span className="text-[10px]">…</span>
@@ -1000,23 +994,17 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
                   </button>
                 )}
                 <div className="flex flex-col gap-0.5 pr-6">
-                  <span className="text-xs font-semibold dark:text-white">
-                    Order to bring {inrValueDisplay(o.inrValue)} in cash
-                  </span>
-                  <span className="text-[10px] font-mono text-gray-400 dark:text-slate-400">{farmerShort}</span>
+                  <span className="text-xs font-semibold dark:text-white">LP brings cash — ₹{inr.toLocaleString('en-IN')}</span>
                   <span className="text-[10px] text-gray-500 dark:text-slate-400">
-                    ₹{feeInr.toLocaleString('en-IN')} LP fee ({o.feeBP / 100}%)
+                    {inr.toLocaleString('en-IN')} nIN · ₹{feeInr.toLocaleString('en-IN')} fee ({o.feeBP / 100}%) · expires {tsLabel(o.deadline)}
                   </span>
-                  <span className="text-[10px] text-blue-500 dark:text-blue-400">No LP found yet</span>
-                  <span className={`text-[10px] ${o.deadline - now < 3600 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-400 dark:text-slate-400'}`}>
-                    expires {tsLabel(o.deadline)}
-                  </span>
+                  <span className="text-[10px] text-blue-500 dark:text-blue-400">Awaiting LP</span>
                 </div>
 
                 {isConfirmCancel && (
                   <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-gray-200 dark:border-slate-600">
                     <p className="text-xs text-gray-700 dark:text-slate-300 text-center">
-                      Cancel this order? The nIN will be sent back to {farmerShort}.
+                      Cancel this order? The member's nIN will be returned to their wallet.
                     </p>
                     <div className="flex gap-2">
                       <button
@@ -1116,6 +1104,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
           onRefresh={refreshFromChain}
           refreshing={chainSyncing}
           onDeepSync={handleDeepSync}
+          cashOutDisabled={settlementShortfall > 0n}
           onCashIn={(loan) => handleOpenForm('cashIn', { memberAddress: loan.borrower })}
           onCashOut={(loan) => handleOpenForm('cashOut', { memberAddress: loan.borrower })}
           onViewMap={(loansWithLand) => {
@@ -1126,6 +1115,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
               features: [],
               geojson: { type: 'FeatureCollection', features: [] },
             });
+            prevIx.current = 6;
             setIx(2);
           }}
           collectDeadline={collectDeadline}

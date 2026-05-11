@@ -5,7 +5,7 @@ import { useInvestGeneric, useWithdrawGeneric, useWithdrawClaimGeneric } from '.
 import { usePreviewUnbond } from '../../hooks/useInvest.ts';
 import { useWeightedRates } from '../../hooks/useWeightedRates.js';
 import { ArrowPathIcon } from '@heroicons/react/24/solid';
-import { CountdownCircleWithdraw } from '../../components/UI/counter.js'
+import { CountdownCircle } from '../../components/UI/counter.js'
 /**
  * Investment List V2. 
  * List of funds of member union (multiple unions possible?), 
@@ -53,7 +53,7 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
     const { withdrawclaimgeneric }                      = useWithdrawClaimGeneric(db?.union?.address,s, token_address)
     const [readyToClaim, setReadyToClaim]               = useState(false);
     const [checkingLiq, setCheckingLiq]                 = useState(false);
-    const remainingSec                                  = hasMaturing ? Math.max(0, Number(hasMaturing.minWindowTs) - hasMaturing.chainNowSec) : 0;
+    const unbondEndTs                                   = hasMaturing ? Number(hasMaturing.minWindowTs) : 0;
     const { rateByPair }                                = useWeightedRates(data, sums, db?.union?.address);
 
     const getRatePercent = (fund, idx) => {
@@ -218,7 +218,7 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                                         { canClaimNow
                                             ? <HandleUnbondClaim />
                                             : coveredByBucket
-                                                ? <CountdownCircleWithdraw remainingSec={remainingSec} size={size} onDone={handleCountdownDone} />
+                                                ? <CountdownCircle endTs={unbondEndTs} size={size} onDone={handleCountdownDone} />
                                                 : (
                                                     <div style={{ width: size, height: size }} className='flex flex-col items-center justify-center rounded-full bg-white bg-opacity-20 text-white text-center gap-0.5'>
                                                         { checkingLiq

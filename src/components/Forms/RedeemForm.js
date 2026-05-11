@@ -96,7 +96,7 @@ export function RedeemForm({ handleOpenForm }) {
       setUsdtOut(usdt);
       setStep('posting');
       const usdtWithBonus = usdt + (usdt * BigInt(permit.feeBP)) / 10_000n;
-      const id = await postRedeemOrder(unionAddr, permit.farmer, permit.inrValue, usdtWithBonus, permit.feeBP);
+      const id = await postRedeemOrder(unionAddr, permit.farmer, permit.inrValue, usdtWithBonus, permit.ninAmount, permit.feeBP);
       setOrderId(id);
       setStep('waiting');
     } catch (err) {

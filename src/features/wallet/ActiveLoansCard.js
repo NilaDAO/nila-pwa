@@ -158,6 +158,7 @@ export default function ActiveLoansCard({
   onViewMap,
   collectDeadline,
   unionAddress,
+  cashOutDisabled = false,
 }) {
   const [sortKey, setSortKey] = useState('eos');
   const [sortDir, setSortDir] = useState('asc');
@@ -206,8 +207,8 @@ export default function ActiveLoansCard({
       startX: e.touches[0].clientX,
       id: loan.id,
       dragging: false,
-      allowLeft:  !inWindow || fullyCashedOut, // repay enabled outside window OR once fully drained
-      allowRight: inWindow && !fullyCashedOut, // cash-out only while window open AND wallet has nIN
+      allowLeft:  !inWindow || fullyCashedOut,                    // repay enabled outside window OR once fully drained
+      allowRight: inWindow && !fullyCashedOut && !cashOutDisabled, // cash-out only while window open AND wallet has nIN AND not settling
     };
   }, [isInCollectWindow, isFullyCashedOut]);
 
@@ -439,7 +440,43 @@ export default function ActiveLoansCard({
     setSyncing(false);
   }, [onDeepSync, syncStep, onRefresh]);
 
-  if (!loans.length) return null;
+  // Empty state: no loans synced yet — show sync bar so leader can scan events
+  if (!loans.length) {
+    return (
+      <div className="flex flex-col gap-2 px-4 pb-4">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide">
+            Active Loans <span className="font-normal">(0)</span>
+          </p>
+          <button
+            onClick={onRefresh}
+            disabled={refreshing || syncing}
+            className="p-1 rounded-full active:scale-90 transition-transform"
+            title="Refresh from chain"
+          >
+            <ArrowPathIcon className={`w-4 h-4 dark:text-slate-400 text-gray-500 ${(refreshing || syncing) ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-slate-500 text-center py-3">
+          No loans synced yet.
+        </p>
+        <div data-tour="loan-sync" className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-slate-600">
+          <span className="text-[10px] text-gray-500 dark:text-slate-400">Scan chain events</span>
+          <button
+            onClick={handleDeepSync}
+            disabled={syncing || syncStep >= SYNC_STEPS.length}
+            className="text-[10px] font-semibold px-2 py-0.5 rounded bg-black dark:bg-white text-white dark:text-gray-800 active:scale-95 disabled:opacity-40"
+          >
+            {syncing
+              ? 'Scanning…'
+              : syncStep >= SYNC_STEPS.length
+                ? 'No loans found'
+                : `Scan ${SYNC_STEPS[syncStep].label}`}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2 px-4 pb-4">
@@ -624,7 +661,7 @@ export default function ActiveLoansCard({
               const inWindow       = isInCollectWindow(loan);
               const fullyCashedOut = isFullyCashedOut(loan);
               const repayAllowed   = !inWindow || fullyCashedOut;
-              const cashOutAllowed = inWindow && !fullyCashedOut;
+              const cashOutAllowed = inWindow && !fullyCashedOut && !cashOutDisabled;
               // Disabled actions get a muted gray bar with an "unavailable" hint.
               const repayBg   = repayAllowed
                 ? `rgba(34,197,94,${leftPct * 0.9})`     // green
@@ -635,6 +672,7 @@ export default function ActiveLoansCard({
               const repayLabel   = repayAllowed   ? 'Repay'    : 'Repay later';
               const cashOutLabel = cashOutAllowed
                 ? 'Cash out'
+                : cashOutDisabled ? 'Settling'
                 : (fullyCashedOut ? 'Cashed out' : 'Cash-out closed');
               return (
               <div className={`relative overflow-hidden rounded-lg ${loan.maturityTs && !loan.chainClosed ? 'bg-red/25' : ''}`}>

@@ -22,7 +22,7 @@ const decimals = 18;
  * Returns { loans, collectDeadline, escrowDuration, loading, error }
  * Each loan: { loanID, loanType, principal, outstanding, rateBP, drawdownTs, union }
  */
-export function useMemberLoans(memberAddress) {
+export function useMemberLoans(memberAddress, loanId = null) {
   const { provider } = useProvider();
   const { db } = useDataContext();
   const [loans, setLoans] = useState([]);
@@ -34,7 +34,7 @@ export function useMemberLoans(memberAddress) {
   const unionAddress = db?.union?.address;
 
   useEffect(() => {
-    if (!memberAddress || !unionAddress || !provider) {
+    if ((!memberAddress && !loanId) || !unionAddress || !provider) {
       setLoans([]);
       setCollectDeadline(null);
       setEscrowDuration(null);
@@ -53,12 +53,18 @@ export function useMemberLoans(memberAddress) {
         const mc = new ethers.Contract(MULTICALL3, MulticallAbi, provider);
         const viewerIface = new ethers.Interface(genericFundViewerAbi);
 
-        // Fetch loan IDs, reserveCfg, and FxPool global escrow duration in parallel
-        const [ids, reserveCfg, globalEscrow] = await Promise.all([
-          viewer.getLoansByBorrower(unionAddress, memberAddress),
+        // Fetch reserveCfg and FxPool global escrow duration.
+        // Loan IDs: if a loanId was pre-supplied (from portfolio view), use it directly
+        // to bypass the borrower index (which can fail for transferred loans).
+        // Otherwise fall back to getLoansByBorrower.
+        const [idsFromChain, reserveCfg, globalEscrow] = await Promise.all([
+          loanId
+            ? Promise.resolve([BigInt(loanId)])
+            : viewer.getLoansByBorrower(unionAddress, memberAddress),
           core.reserveCfgByUnion(unionAddress),
           fxPool.escrowDuration(),
         ]);
+        const ids = idsFromChain;
 
         if (!cancelled) {
           setCollectDeadline(Number(reserveCfg.collectDeadline));
@@ -124,7 +130,7 @@ export function useMemberLoans(memberAddress) {
     })();
 
     return () => { cancelled = true; };
-  }, [memberAddress, unionAddress, provider]);
+  }, [memberAddress, loanId, unionAddress, provider]);
 
   return { loans, collectDeadline, escrowDuration, loading, error };
 }

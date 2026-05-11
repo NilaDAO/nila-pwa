@@ -8,6 +8,7 @@ import Spinner from '../../../components/UI/spinner.js';
 import useLendingFlow from '../../../hooks/useDirectLendingFlow.js'
 import { useMintFoodToken, useBurnLandTitle } from '../../../hooks/useMintLandTitle.ts'
 import { useRecordHash } from '../../../hooks/useRecordHash.ts'
+import { CROP_CODE_NAMES, CROP_VARIETIES } from '../../../hooks/useFoodTokenBatches.ts'
 import { readItem } from '../../../utils/db.js'
 import { decodeMetadataUri } from '../../../utils/decodeMetadataUri.ts'
 import { useWallet, useContract } from '../../../hooks/useWallet.ts'
@@ -15,6 +16,7 @@ import landTitleArtifact from '../../../components/ABI/NilaLandTitleWithName.jso
 
 const _ltAbi = (landTitleArtifact).abi ?? landTitleArtifact;
 const _ltAddr = process.env.REACT_APP_LAND_TITLE_MAIN;
+const CROPS_DATA = Object.entries(CROP_CODE_NAMES).map(([code, name]) => [code, name]);
 
 const clusterKeyOf = (feature, idx) => {
   const clusterId = feature?.properties?.cluster_id;
@@ -743,6 +745,14 @@ export const StaticCards = ({ LAND }) => {
     }
   }, [setFieldActivity, record]);
 
+  // Open form immediately when arriving via "Join batch" from CultivationCard or task list
+  useEffect(() => {
+    if (!fieldActivity?.pendingJoin) return;
+    setAction('season');
+    setCardView('transactionview');
+    setFieldActivity(prev => prev ? { ...prev, pendingJoin: false } : prev);
+  }, [fieldActivity?.pendingJoin]);
+
   // Sync selected clusters from map into form (select mode)
   useEffect(() => {
     if (!fieldActivity?.selectMode && form.coverage === 'partial') {
@@ -889,6 +899,7 @@ export const StaticCards = ({ LAND }) => {
           <CycleSwiper record={record} onCycleChange={handleCycleChange} onCurrentRestore={handleCurrentRestore} />
         )}
         {/* ── Section 1: Cumulative data ── */}
+        {action !== 'season' && (
         <div style={{ zIndex: 0}} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1">
                 <div
                   onPointerDown={(e) => controls.start(e)}
@@ -943,9 +954,21 @@ export const StaticCards = ({ LAND }) => {
                           <span className="font-bold dark:text-white">{w.mean_soil_moisture != null ? `${Math.round(w.mean_soil_moisture)} kg/m²` : '—'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-500 dark:text-slate-400">Day</span>
-                          <span className="font-bold dark:text-white">{ac.days_since_sos ? `${ac.days_since_sos} since sowing` : '—'}</span>
+                          <span className="text-gray-500 dark:text-slate-400">Days since sowing</span>
+                          <span className="font-bold dark:text-white">{ac.days_since_sos ? `${ac.days_since_sos}` : '—'}</span>
                         </div>
+                        {record && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500 dark:text-slate-400">Rotation</span>
+                            <span className="font-bold dark:text-white">{record.scorecard?.rotation_pattern || '—'}</span>
+                          </div>
+                        )}
+                        {record && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500 dark:text-slate-400">Yield class</span>
+                            <span className="font-bold dark:text-white">{record.scorecard?.yield_trend || '—'}</span>
+                          </div>
+                        )}
                       </div>
                       {ac.crop_confidence > 0 && (
                         <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1 mt-1">
@@ -989,14 +1012,6 @@ export const StaticCards = ({ LAND }) => {
                       {sinceYear && (
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Since {sinceYear}</p>
                       )}
-                      <div className="flex justify-between">
-                        <span className="text-xs text-gray-500 dark:text-slate-400">Rotation</span>
-                        <span className="text-xs font-bold dark:text-white">{sc.rotation_pattern || '—'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-xs text-gray-500 dark:text-slate-400">Yield class</span>
-                        <span className="text-xs font-bold dark:text-white">{sc.yield_trend || '—'}</span>
-                      </div>
                       {Object.entries(byCrop).map(([crop, b]) => (
                         <div key={crop} className="flex justify-between">
                           <span className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1">
@@ -1009,23 +1024,6 @@ export const StaticCards = ({ LAND }) => {
                           </span>
                         </div>
                       ))}
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-500 dark:text-slate-400">Fees earned</span>
-                        {claimableFees != null && claimableFees >= 50n * 10n**18n ? (
-                          <button
-                            onClick={claimViewFees}
-                            className="text-[10px] font-bold px-3 py-1 rounded-lg bg-green-600 text-white active:bg-green-700"
-                          >
-                            Claim {Number(claimableFees / 10n**14n) / 10000} nIN
-                          </button>
-                        ) : (
-                          <span className="text-xs font-bold dark:text-white">
-                            {claimableFees != null && claimableFees > 0n
-                              ? `${Number(claimableFees / 10n**14n) / 10000} nIN`
-                              : claimableFees === 0n ? '0 nIN' : '—'}
-                          </span>
-                        )}
-                      </div>
                       <p className='flex text-[10px] text-gray-400 dark:text-slate-500 justify-end pt-1'>
                         {area > 0 ? `${Number(area).toLocaleString('en-IN', { maximumFractionDigits: 0 })} m²` : ''}
                         {' · '}last overflight: {fieldActivity?.meta?.last_scene_date || record?.meta?.last_scene_date}
@@ -1033,32 +1031,85 @@ export const StaticCards = ({ LAND }) => {
                     </div>
                     );
                   })()}
-              </div>
+              {/* JOIN batch button */}
+              {fieldActivity.suggestedBatch && (() => {
+                const b = fieldActivity.suggestedBatch;
+                const dot = cropColor(b.cropColorKey ?? b.cropCode);
+                const joinBatch = () => {
+                  const match = CROPS_DATA.find(c => c[1].toLowerCase() === (b.cropName ?? '').toLowerCase());
+                  setForm(prev => ({ ...prev, ...(match ? { crop: match } : {}), selectedBatch: b }));
+                  setAction('season');
+                };
+                return (
+                  <button
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={joinBatch}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 active:scale-[0.98] transition-transform"
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: dot }} />
+                    <span className="text-xs text-gray-600 dark:text-slate-300 flex-1 text-left">{b.cropName}</span>
+                    <span className="text-xs font-bold dark:text-white">JOIN</span>
+                  </button>
+                );
+              })()}
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={() => { setAction('season'); setCardView('transactionview'); }}
+                className="text-[10px] text-gray-400 dark:text-slate-400 py-1 active:scale-95 text-left"
+              >
+                + Change or add another crop
+              </button>
         </div>
+        </div>
+        )}
 
-        {/* ── Section 2: Actions ── */}
+        {/* ── Section 3: Data fees ── */}
+        {record && action !== 'season' && (
+          <div style={{ zIndex: 0 }} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-10 py-5 gap-2" onPointerDown={(e) => controls.start(e)}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Your data earnings</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed">
+              Each time someone reads your property history — a lender, a buyer, or the union — you earn a small fee in nIN. These are your rights as the data owner.
+            </p>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs text-gray-400 dark:text-slate-500">Earned so far</span>
+              {claimableFees != null && claimableFees >= 50n * 10n**18n ? (
+                <button onClick={claimViewFees} className="text-xs font-bold px-4 py-1.5 rounded-xl bg-green-600 text-white active:bg-green-700">
+                  Claim {Number(claimableFees / 10n**14n) / 10000} nIN
+                </button>
+              ) : (
+                <span className="text-xs font-bold dark:text-white">
+                  {claimableFees != null && claimableFees > 0n ? `${Number(claimableFees / 10n**14n) / 10000} nIN` : claimableFees === 0n ? '0 nIN' : '—'}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ── Section 2: Actions ── */}
         {(() => {
           const isFallow = !record?.current_cycle && record?.clusters?.features?.length === 0;
           const isActive = !isFallow && (clusterGroups.length > 0 || record?.current_cycle);
           const primaryLabel = isFallow ? 'New season' : 'Set crop';
           const btn = "px-4 py-2 rounded-lg text-xs font-bold active:scale-95 border bg-white dark:bg-slate-700 text-black dark:text-white border-gray-200 dark:border-slate-600";
-          const btnOff = btn + " opacity-40";
 
-          const CROPS = [['0',"Paddy"],['1',"Groundnut"],['2',"Sugarcane"],['3',"Banana"],['4',"Potato"],['5',"Onion"],['6',"Sesame"],['7',"Cassava"]];
-          const VARS = {
-            0: [['0',"CO 51"],['1',"ADT 43"],['2',"TRY 3"],['3',"BPT 5204"]],
-            1: [['0',"TMV 7"],['1',"TMV 13"],['2',"VRI 2"],['3',"VRI 3"]],
-            2: [['0',"CO 86032"],['1',"COC 24"],['2',"COC 671"],['3',"CO 62175"]],
-            3: [['0',"Grand Naine"],['1',"Poovan"],['2',"Nendran"],['3',"Rasthali"]],
-            4: [['0',"Kufri Jyoti"],['1',"Kufri Super"],['2',"Kufri Surya"]],
-            5: [['0',"CO 3"],['1',"CO (On) 5"],['2',"Arka Kalyan"],['3',"Agrifound Dark Red"]],
-            6: [['0',"TMV 3"],['1',"TMV 4"],['2',"TMV 6"],['3',"TMV 7"],['4',"SVPR 1"],['5',"CO 1"]],
-            7: [['0',"H-165"],['1',"H-226"],['2',"Sree Vijaya"],['3',"Sree Jaya"],['4',"CO (TP) 4"],['5',"Mulluvadi"]],
-          };
+          const CROPS = Object.entries(CROP_CODE_NAMES).map(([code, name]) => [code, name]);
+          const VARS = Object.fromEntries(
+            Object.entries(CROP_VARIETIES).map(([code, vars]) => [
+              code, vars.map(v => [String(v.code), v.name]),
+            ])
+          );
 
           return (
-          <div style={{ zIndex: 0}} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-6 py-4 gap-2"
+          <div
+            style={action === 'season' ? {
+              position: 'fixed',
+              top: 'calc(env(safe-area-inset-top) + 64px)',
+              left: '8px',
+              right: '8px',
+              width: 'auto',
+              zIndex: 50,
+            } : { zIndex: 0 }}
+            className="flex bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-6 py-4 gap-2"
             onPointerDown={(e) => controls.start(e)}
           >
             <div className="flex justify-between items-center">
@@ -1076,15 +1127,13 @@ export const StaticCards = ({ LAND }) => {
               return (
               <div className="flex flex-wrap gap-2">
                 <button className={btn} onClick={() => setAction('season')}>
-                  {isFallow ? 'New season' : 'Crop passport'}
+                  {isFallow ? 'New season' : 'Join batch'}
                 </button>
                 {ac?.reasoning && (
                   <button className="px-4 py-2 rounded-lg text-xs font-bold active:scale-95 border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800" onClick={() => setShowAdvice(true)}>
                     Read the crop advice
                   </button>
                 )}
-                <button className={btnOff} disabled>Pre-sale</button>
-                <button className={btnOff} disabled>Shared cropping</button>
               </div>
               );
             })()}
@@ -1225,7 +1274,7 @@ export const StaticCards = ({ LAND }) => {
                     onClick={() => { setAction('mint'); setCardView('transactionview'); }}
                     className="py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95 mt-2"
                   >
-                    Create crop passport
+                    Join batch
                   </button>
                   </>
                 )}

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, memo } from 'react'
 import { GoogleMap, useJsApiLoader, Polygon } from '@react-google-maps/api';
-import { useNavContext } from '../../../utils/NavigationContext';
+import { useNavContext, useDataContext } from '../../../utils/NavigationContext';
 import { cropColor } from '../../../utils/cropColors.js';
 
 const containerStyle = {
@@ -41,8 +41,11 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
   const [selectFeatures]                    = useState(false)
   const [outline, setOutline]               = useState([])
   const [portfolioOutlines, setPortfolioOutlines] = useState([])
+  const [portfolioPrevOutlines, setPortfolioPrevOutlines] = useState([])
   const portfolioMarkersRef                 = useRef([])
+  const portfolioBoundsRef                  = useRef(null)
   const { cardIx }                          = useNavContext()
+  const { setFieldActivity }                = useDataContext()
   const features                            = fieldActivity?.geojson?.features || fieldActivity?.features || []
   const dominant                            = fieldActivity?.dominant
   const featureIds                          = cardIx !== null ? (dominant?.[cardIx]?.geometry_indices ?? Array.from({length: features.length}, (_, i) => i)) : Array.from({length: features.length}, (_, i) => i)
@@ -250,40 +253,40 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     if (!map || !fieldActivity?.portfolioMode || !fieldActivity?.portfolioProperties) {
       // Clean up if leaving portfolio mode
       if (portfolioOutlines.length) setPortfolioOutlines([]);
+      if (portfolioPrevOutlines.length) setPortfolioPrevOutlines([]);
       portfolioMarkersRef.current.forEach(m => { m.map = null; });
       portfolioMarkersRef.current = [];
+      portfolioBoundsRef.current = null;
       return;
     }
 
     const props = fieldActivity.portfolioProperties;
     const bounds = new window.google.maps.LatLngBounds();
     const polys = [];
-    const labelStyle = 'background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);color:white;padding:6px 10px;border-radius:10px;font-size:10px;line-height:1.5;white-space:nowrap;';
-
+    const labelStyle = 'background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);color:white;padding:6px 10px;border-radius:10px;font-size:10px;line-height:1.5;white-space:nowrap;cursor:pointer;';
     const markers = [];
 
     for (const [lid, meta] of Object.entries(props)) {
       if (!meta.outline?.length) continue;
 
-      // Build outline polygons
+      // Build outline polygons (colours applied in render via portfolioSelected)
       for (const ring of meta.outline) {
         const latLngs = ring.map(([lat, lng]) => ({ lat, lng }));
         latLngs.forEach(p => bounds.extend(p));
         polys.push({ latLngs, lid });
       }
 
-      // Label at centroid
+      // Label at centroid — clickable
       if (meta.centroid) {
         const pos = { lat: meta.centroid[0], lng: meta.centroid[1] };
         bounds.extend(pos);
 
         const el = document.createElement('div');
         el.style.cssText = labelStyle;
-        const fieldCount = meta.fieldNames?.length || 0;
-        el.innerHTML = [
-          `<b>${meta.farm}</b>`,
-          fieldCount > 0 ? `${fieldCount} field${fieldCount > 1 ? 's' : ''}` : '',
-        ].filter(Boolean).join('<br>');
+        el.innerHTML = `<b>${meta.farm}</b>`;
+        el.addEventListener('click', () =>
+          setFieldActivity(prev => prev ? { ...prev, portfolioSelected: lid } : prev)
+        );
 
         markers.push(new window.google.maps.marker.AdvancedMarkerElement({
           map, position: pos, content: el,
@@ -292,28 +295,64 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     }
 
     setPortfolioOutlines(polys);
+    portfolioBoundsRef.current = bounds;
 
     // Clean up previous markers, store new ones
     portfolioMarkersRef.current.forEach(m => { m.map = null; });
     portfolioMarkersRef.current = markers;
 
-    // Fit bounds to all portfolio properties
-    if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, 40);
-      // Nudge center up so outlines aren't hidden behind the bottom card
+    return () => markers.forEach(m => { m.map = null; });
+  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioProperties, setFieldActivity]);
+
+  // ------------------ portfolio: center on selected / re-fit all -------------------------
+  useEffect(() => {
+    if (!map || !fieldActivity?.portfolioMode) return;
+    const selected = fieldActivity?.portfolioSelected;
+    const props = fieldActivity?.portfolioProperties;
+
+    if (selected && props?.[selected]) {
+      // Fit to the selected property
+      const meta = props[selected];
+      const bounds = new window.google.maps.LatLngBounds();
+      (meta.outline || []).forEach(ring => ring.forEach(([lat, lng]) => bounds.extend({ lat, lng })));
+      if (meta.centroid) bounds.extend({ lat: meta.centroid[0], lng: meta.centroid[1] });
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds, 80);
+        const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+          const center = map.getCenter();
+          const span = map.getBounds()?.toSpan();
+          if (span) map.panTo({ lat: center.lat() - span.lat() * 0.18, lng: center.lng() });
+        });
+        return () => window.google.maps.event.removeListener(listener);
+      }
+    } else if (portfolioBoundsRef.current && !portfolioBoundsRef.current.isEmpty()) {
+      // No selection — fit to all properties
+      map.fitBounds(portfolioBoundsRef.current, 40);
       const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
         const center = map.getCenter();
         const span = map.getBounds()?.toSpan();
         if (span) map.panTo({ lat: center.lat() - span.lat() * 0.15, lng: center.lng() });
       });
-      return () => {
-        window.google.maps.event.removeListener(listener);
-        markers.forEach(m => { m.map = null; });
-      };
+      return () => window.google.maps.event.removeListener(listener);
     }
+  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioSelected, fieldActivity?.portfolioProperties]);
 
-    return () => markers.forEach(m => { m.map = null; });
-  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioProperties]);
+  // ------------------ portfolio: previous borrower outlines (grey, not clickable) ----------------
+  useEffect(() => {
+    if (!map || !fieldActivity?.portfolioMode || !fieldActivity?.portfolioPrevProperties) {
+      if (portfolioPrevOutlines.length) setPortfolioPrevOutlines([]);
+      return;
+    }
+    const polys = [];
+    for (const [lid, meta] of Object.entries(fieldActivity.portfolioPrevProperties)) {
+      if (!meta.outline?.length) continue;
+      for (const ring of meta.outline) {
+        const latLngs = ring.map(([lat, lng]) => ({ lat, lng }));
+        polys.push({ latLngs, lid });
+      }
+    }
+    setPortfolioPrevOutlines(polys);
+  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioPrevProperties]);
 
   // ------------------ portfolio label visibility (no refit) ----------------
   useEffect(() => {
@@ -345,22 +384,42 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
             }}
           />
         ))}
-        {/* Portfolio outlines — multi-property view for union leaders */}
-        {portfolioOutlines.map((poly, i) => (
+        {/* Previous borrower outlines — grey, not clickable */}
+        {portfolioPrevOutlines.map((poly, i) => (
           <Polygon
-            key={`pf-${poly.lid}-${i}`}
+            key={`pfprev-${poly.lid}-${i}`}
             paths={poly.latLngs}
             options={{
-              fillColor: "rgba(59, 130, 246, 0.25)",
-              fillOpacity: 0.3,
-              strokeColor: "#3B82F6",
-              strokeOpacity: 0.9,
-              strokeWeight: 1.5,
+              fillColor: 'rgba(156,163,175,0.12)',
+              fillOpacity: 1,
+              strokeColor: '#9CA3AF',
+              strokeOpacity: 0.65,
+              strokeWeight: 1,
               clickable: false,
-              zIndex: 2,
+              zIndex: 1,
             }}
           />
         ))}
+        {/* Portfolio outlines — amber, clickable, highlight selected */}
+        {portfolioOutlines.map((poly, i) => {
+          const isSelected = String(fieldActivity?.portfolioSelected) === String(poly.lid);
+          return (
+            <Polygon
+              key={`pf-${poly.lid}-${i}`}
+              paths={poly.latLngs}
+              onClick={() => setFieldActivity(prev => prev ? { ...prev, portfolioSelected: poly.lid } : prev)}
+              options={{
+                fillColor: isSelected ? 'rgba(245,158,11,0.35)' : 'rgba(245,158,11,0.15)',
+                fillOpacity: 1,
+                strokeColor: isSelected ? '#D97706' : '#F59E0B',
+                strokeOpacity: 0.95,
+                strokeWeight: isSelected ? 2.5 : 1.5,
+                clickable: true,
+                zIndex: isSelected ? 4 : 2,
+              }}
+            />
+          );
+        })}
         // ------------------ Dominant features -------------------------
         {/* Activity / Select mode */}
         {features && features.filter((_f, i) => featureIds.includes(i)).flatMap((f, i) => {

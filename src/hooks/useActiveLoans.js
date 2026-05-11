@@ -6,7 +6,6 @@ import { useProvider } from './useWallet.ts';
 import genericFundViewerArtifact from '../components/ABI/genericFundViewer.json';
 import MulticallAbi from '../components/ABI/MultiCall3.json';
 import landTitleArtifact from '../components/ABI/NilaLandTitleWithName.json';
-import { decodeMetadataUri } from '../utils/decodeMetadataUri.ts';
 
 const genericFundViewerAbi = genericFundViewerArtifact.abi;
 const genericFundViewerAddress = process.env.REACT_APP_VIEWER_MAIN;
@@ -277,46 +276,57 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
       console.log('[chainSync] farm name resolution — _ltAddr:', _ltAddr);
       if (_ltAddr) {
         const lt = new ethers.Contract(_ltAddr, _ltAbi, provider);
+        const ltIface = new ethers.Interface(_ltAbi);
+        const mc = new ethers.Contract(MULTICALL3, MulticallAbi, provider);
         const fresh = await readAllItems('ActiveLoans') ?? {};
         const allLoans = Object.values(fresh).filter(l => !l.chainClosed);
         const needLandId = allLoans.filter(l => !l.landId && l.borrower);
         const needName = allLoans.filter(l => l.landId && !l.farmName);
         console.log(`[chainSync] ${allLoans.length} active loans, ${needLandId.length} need landId, ${needName.length} need farmName`);
 
-        // Step 1: resolve landId from chain for loans without one
-        for (const l of needLandId) {
-          try {
-            const bal = await lt.balanceOf(l.borrower);
-            if (bal > 0n) {
-              const tid = Number(await lt.tokenOfOwnerByIndex(l.borrower, 0));
-              const updated = { ...l, landId: tid };
+        // Step 1a: batch balanceOf to find loans whose borrower has a land title
+        if (needLandId.length > 0) {
+          const balCalls = needLandId.map(l => [_ltAddr, ltIface.encodeFunctionData('balanceOf', [l.borrower])]);
+          const balResults = await mc.tryAggregate.staticCall(false, balCalls);
+          const hasTitle = needLandId.filter((_, i) => {
+            if (!balResults[i].success) return false;
+            const [bal] = ltIface.decodeFunctionResult('balanceOf', balResults[i].returnData);
+            return bal > 0n;
+          });
+
+          // Step 1b: batch tokenOfOwnerByIndex for borrowers who have a title
+          if (hasTitle.length > 0) {
+            const tidCalls = hasTitle.map(l => [_ltAddr, ltIface.encodeFunctionData('tokenOfOwnerByIndex', [l.borrower, 0])]);
+            const tidResults = await mc.tryAggregate.staticCall(false, tidCalls);
+            for (let k = 0; k < hasTitle.length; k++) {
+              const l = hasTitle[k];
+              if (!tidResults[k].success) continue;
+              const [tid] = ltIface.decodeFunctionResult('tokenOfOwnerByIndex', tidResults[k].returnData);
+              const updated = { ...l, landId: Number(tid) };
               await setDBitem(l.id, updated, 'ActiveLoans');
               fresh[l.id] = updated;
-              console.log(`[chainSync] resolved landId: ${l.borrower.slice(0,8)}… → ${tid}`);
-            } else {
-              console.log(`[chainSync] no land title for ${l.borrower.slice(0,8)}…`);
+              console.log(`[chainSync] resolved landId: ${l.borrower.slice(0,8)}… → ${Number(tid)}`);
             }
-          } catch (e) {
-            console.warn(`[chainSync] balanceOf failed ${l.borrower.slice(0,8)}…:`, e.message);
+          } else {
+            console.log('[chainSync] no borrowers have a land title');
           }
         }
 
-        // Step 2: resolve farmName from tokenURI for loans with landId but no farmName
-        const needName2 = Object.values(fresh).filter(
-          l => l.landId && !l.farmName && !l.chainClosed
-        );
+        // Step 2: batch getTitleName for loans with landId but no farmName
+        const needName2 = Object.values(fresh).filter(l => l.landId && !l.farmName && !l.chainClosed);
         console.log(`[chainSync] ${needName2.length} loans need farmName after landId resolution`);
-        for (const l of needName2) {
-          try {
-            const uri = await lt.tokenURI(l.landId);
-            const decoded = await decodeMetadataUri(uri);
-            if (decoded?.farm) {
-              const updated = { ...fresh[l.id] ?? l, farmName: decoded.farm };
+        if (needName2.length > 0) {
+          const nameCalls = needName2.map(l => [_ltAddr, ltIface.encodeFunctionData('getTitleName', [l.landId])]);
+          const nameResults = await mc.tryAggregate.staticCall(false, nameCalls);
+          for (let k = 0; k < needName2.length; k++) {
+            const l = needName2[k];
+            if (!nameResults[k].success) continue;
+            const [name] = ltIface.decodeFunctionResult('getTitleName', nameResults[k].returnData);
+            if (name) {
+              const updated = { ...fresh[l.id] ?? l, farmName: name };
               await setDBitem(l.id, updated, 'ActiveLoans');
-              console.log(`[chainSync] ✓ ${l.id.slice(0,8)} landId=${l.landId} → "${decoded.farm}"`);
+              console.log(`[chainSync] ✓ ${l.id.slice(0,8)} landId=${l.landId} → "${name}"`);
             }
-          } catch (e) {
-            console.warn(`[chainSync] tokenURI failed for land ${l.landId}:`, e.message);
           }
         }
       } else {
