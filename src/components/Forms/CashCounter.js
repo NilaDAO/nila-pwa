@@ -151,6 +151,9 @@ const CashCounter = ({ handleOpenForm }) => {
   const { pendingCount, isUploading, uploadPending } = useTrainingData();
 
   const prefillAddress = txdetails?.memberAddress ?? null;
+  // prefillLoan: pre-seeded from portfolio view — bypasses the getLoansByBorrower
+  // chain query which can fail for transferred / re-indexed loans.
+  const prefillLoan    = txdetails?.prefillLoan ?? null;
   const [memberAddress, setMemberAddress] = useState(prefillAddress);
   const [phase, setPhase] = useState(
     prefillAddress        ? 'scan'
@@ -159,8 +162,11 @@ const CashCounter = ({ handleOpenForm }) => {
   // investOverride: member has a loan but explicitly wants to invest instead
   const [investOverride, setInvestOverride] = useState(false);
 
-  // Fetch member loans + collectDeadline as soon as we have an address
-  const { loans, collectDeadline, escrowDuration, loading: loansLoading } = useMemberLoans(memberAddress);
+  // When prefillLoan is supplied, skip the chain query entirely.
+  const { loans: chainLoans, collectDeadline, escrowDuration, loading: chainLoansLoading } =
+    useMemberLoans(prefillLoan ? null : memberAddress);
+  const loans       = prefillLoan ? [prefillLoan] : chainLoans;
+  const loansLoading = prefillLoan ? false : chainLoansLoading;
 
   // hasLoan: member has an active or pending loan
   const hasLoan = loans.length > 0;

@@ -2,12 +2,12 @@ import React, { memo } from 'react'
 import StaticMapNav from './FieldView/staticNav';
 import FieldRegNav from './FieldRegistration/fieldRegNav';
 
-const MapNav = ({ LAND, onFeatureClick, cardView }) => {
+const MapNav = ({ LAND, onFeatureClick, cardView, portfolioMode }) => {
   const hasLand = Boolean(LAND?.current?.hasLand);
   const hasPendingMint = Boolean(LAND?.current?.pendingMint);
   const hasPendingMetadata = Boolean(LAND?.current?.metadata || LAND?.current?.LAND?.metadata);
-  const showFieldRegNav = !hasLand && !hasPendingMint && !hasPendingMetadata;
-  const showStaticNav = hasLand || hasPendingMint || hasPendingMetadata;
+  const showFieldRegNav = !hasLand && !hasPendingMint && !hasPendingMetadata && !portfolioMode;
+  const showStaticNav = hasLand || hasPendingMint || hasPendingMetadata || portfolioMode;
 
   return (
     /**

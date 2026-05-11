@@ -88,7 +88,7 @@ export function useGlobalOpenRedeemOrders(depth = 100) {
           if (Number(o.status) === 0 && Number(o.deadline) > now) {
             let usdtAmount = 0n;
             try {
-              const escrow = await fxPool!.getEscrow(o.escrowId as bigint);
+              const escrow = await fxPool!.escrows(o.escrowId as bigint);
               const mintRate = escrow.mintRate as bigint;
               if (mintRate > 0n) {
                 usdtAmount = ((o.ninAmount as bigint) * 10n ** 8n) / mintRate / 10n ** 12n;
@@ -169,7 +169,7 @@ export function usePendingCashDeliveries(unionAddr?: string, depth = 50) {
     queryFn: async () => {
       const nextId: bigint = await fxPool!.nextRedeemOrderId();
       const start = nextId > BigInt(depth) ? nextId - BigInt(depth) : 0n;
-      const pending: { id: bigint; inrValue: bigint; usdtLocked: bigint; feeBP: number; lp: string; deadline: number }[] = [];
+      const pending: { id: bigint; farmer: string; inrValue: bigint; usdtLocked: bigint; feeBP: number; lp: string; deadline: number }[] = [];
       for (let id = nextId - 1n; id >= start; id--) {
         try {
           const o = await fxPool!.redeemOrders(id);
@@ -179,6 +179,7 @@ export function usePendingCashDeliveries(unionAddr?: string, depth = 50) {
           ) {
             pending.push({
               id,
+              farmer:     o.farmer     as string,
               inrValue:   o.inrValue   as bigint,
               usdtLocked: o.usdtLocked as bigint,
               feeBP:      Number(o.feeBP),
@@ -322,7 +323,7 @@ export function useUnionActiveEscrows(unionAddr?: string, loanType?: string, dep
       const active: { id: bigint; ninAmount: bigint; inrValue: bigint; deadline: number }[] = [];
       for (let id = nextId - 1n; id >= start; id--) {
         try {
-          const escrow = await fxPool!.getEscrow(id);
+          const escrow = await fxPool!.escrows(id);
           if (
             escrow.union?.toLowerCase() === unionAddr!.toLowerCase() &&
             Number(escrow.status) === 0

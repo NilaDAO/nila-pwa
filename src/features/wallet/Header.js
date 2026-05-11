@@ -3,7 +3,7 @@ import { ClockIcon, DocumentIcon } from '@heroicons/react/24/outline'
 import { useDataContext, useNavContext, useViewModeContext } from '../../utils/NavigationContext'
 
 const Header = ({version, cardShrink}) => {
-    const { txIndex, setTxIndex } = useDataContext();
+    const { txIndex, setTxIndex, fieldActivity, setFieldActivity } = useDataContext();
     const { tokenview, setTokenview, setCardView } = useViewModeContext();
     const { ix,setIx,prevIx } = useNavContext();
 
@@ -41,8 +41,9 @@ const Header = ({version, cardShrink}) => {
 
     const handleBack = () => {
         /**
-         * rules: 
+         * rules:
          * if tv, use previx
+         * if portfolio mode, clear it and go back to prevIx (set to 6 by UnionReserve)
          * if not tv, use null
          * tv can be set after tx or action
          */
@@ -50,8 +51,10 @@ const Header = ({version, cardShrink}) => {
             setCardView('default')
             setTokenview(false)
             setIx(prevIx.current)
-        } 
-        if (!tokenview && ix > 0){
+        } else if (fieldActivity?.portfolioMode) {
+            setFieldActivity(null);
+            setIx(prevIx.current);
+        } else if (ix > 0){
             setIx(null)
         }
     }

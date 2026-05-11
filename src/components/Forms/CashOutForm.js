@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ethers } from 'ethers';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useDataContext } from '../../utils/NavigationContext';
+import { useDataContext, useNavContext, useViewModeContext } from '../../utils/NavigationContext';
 import { readItem, setDBitem } from '../../utils/db';
 import { useContactBook } from '../../hooks/useContactBook';
 import { useFxPool } from '../../hooks/useWallet.ts';
-import { useCashOffer, useUnionOpenCashOffersList } from '../../hooks/useCashOffer.ts';
+import { useCashOffer, useUnionOpenCashOffersList, useUnionOpenRedeemOrdersList } from '../../hooks/useCashOffer.ts';
 import { useRedeemOrder } from '../../hooks/useRedeemOrder.ts';
 import { useMemberLoans } from '../../hooks/useMemberLoans';
 import { useUnionCashReserve } from '../../hooks/useUnionCashReserve.ts';
@@ -37,15 +37,25 @@ function deadlineSecs(dl) {
 // steps: scan-qr | review-loan | set-fee | posting | waiting | filled | confirm | done
 export function CashOutForm({ handleOpenForm }) {
   const { db, txdetails } = useDataContext();
+  const { setIx, prevIx } = useNavContext();
+  const { setTokenview, setCardView } = useViewModeContext();
+  // Mirror DragSheet.close() — navigates back to wherever the form was opened from.
+  const closeSheet = () => {
+    console.log('[CashOut] closeSheet → prevIx=', prevIx.current);
+    setIx(prevIx.current ?? null);
+    setTokenview(false);
+    setCardView('default');
+  };
   const { resolveName, hasName, addContact } = useContactBook();
   const unionAddr = db?.union?.address;
 
   const qc = useQueryClient();
-  const { postCashOffer, confirmCashOfferDelivered, burnFarmerNin, burnAndDrainEscrows, redeemFarmerNin, postRedeemOrder, confirmCashDelivery, cashScanMint, acceptLoan, getNinBalance, systemHealth, fillCashOfferWithNin } = useFxPool();
+  const { postCashOffer, confirmCashOfferDelivered, burnFarmerNin, burnAndDrainEscrows, redeemFarmerNin, postRedeemOrder, confirmCashDelivery, cashScanMint, acceptLoan, getNinBalance, getNinAllowance, systemHealth, fillCashOfferWithNin } = useFxPool();
   const isJuniorCashOut = txdetails?.juniorCashOut === true;
   const { scanGroups, scannedBills, runningTotal, addBulkGroup, clearSession } = useCashSession();
   const { addCash: addLPCash, consumeCash: consumeLPCash } = useLPCashOnHand(unionAddr);
   const { data: openCashOffersList = [] } = useUnionOpenCashOffersList(unionAddr);
+  const { data: openRedeemOrdersList = [] } = useUnionOpenRedeemOrdersList(unionAddr);
 
   const prefillAddress = txdetails?.memberAddress ?? null;
   const [step,           setStep]          = useState(
@@ -57,6 +67,7 @@ export function CashOutForm({ handleOpenForm }) {
   const [feeBP,          setFeeBP]         = useState(100); // 1% default
   const [offerId,        setOfferId]       = useState(null);
   const [redeemOrderId,  setRedeemOrderId] = useState(null);
+  const [stagedUsdtOut,  setStagedUsdtOut] = useState(null); // set after redeemFarmerNin mines — prevents re-burn on retry
   const [error,          setError]         = useState(null);
 
   const { loans, loading: loansLoading } = useMemberLoans(memberAddress);
@@ -69,35 +80,64 @@ export function CashOutForm({ handleOpenForm }) {
   // payout cap. The other is the loan principal: see maxPayoutRaw below for why
   // we cap at min(balance, principal) instead of just balance.
   const [ninBalanceRaw, setNinBalanceRaw]         = useState(0n);
+  const [ninAllowanceRaw, setNinAllowanceRaw]     = useState(0n);
   const [ninBalanceFetched, setNinBalanceFetched] = useState(false);
   const [cashOutInput, setCashOutInput]           = useState('');       // leader-entered amount (string for input)
+  const fxAddress = process.env.REACT_APP_FX_POOL_MAIN;
+  // Reset the input only when the scanned member changes — not on every balance refresh.
+  useEffect(() => { setCashOutInput(''); }, [memberAddress]);
   useEffect(() => {
-    if (!memberAddress || !getNinBalance) { setNinBalanceRaw(0n); setNinBalanceFetched(false); return; }
+    if (!memberAddress || !getNinBalance || !getNinAllowance || !fxAddress) {
+      setNinBalanceRaw(0n); setNinAllowanceRaw(0n); setNinBalanceFetched(false); return;
+    }
     let stale = false;
     setNinBalanceFetched(false);
-    getNinBalance(memberAddress).then((b) => {
-      console.log('[CashOut] nIN balance for', memberAddress, '=', b.toString());
-      if (!stale) { setNinBalanceRaw(b); setNinBalanceFetched(true); setCashOutInput(''); }
-    }).catch((err) => { console.error('[CashOut] getNinBalance failed:', err); });
+    Promise.all([
+      getNinBalance(memberAddress),
+      getNinAllowance(memberAddress, fxAddress),
+    ]).then(([bal, allowance]) => {
+      console.log('[CashOut] nIN balance for', memberAddress, '=', bal.toString(), 'allowance =', allowance.toString());
+      if (!stale) { setNinBalanceRaw(bal); setNinAllowanceRaw(allowance); setNinBalanceFetched(true); }
+    }).catch((err) => { console.error('[CashOut] getNinBalance/Allowance failed:', err); });
     return () => { stale = true; };
-  }, [memberAddress, getNinBalance]);
+  }, [memberAddress, getNinBalance, getNinAllowance, fxAddress]);
 
   // For pending loans, payout = full principal (acceptLoan mints nIN first).
-  // For active loans, cap = min(wallet nIN, loan principal).
-  //   - Wallet nIN may include residue from prior loans/repayments. FxPool's
-  //     burnFarmerNin holds BURNER_ROLE on nIN so it CAN burn that residue,
-  //     but the residue doesn't belong to *this* loan and burning it would
-  //     silently over-disburse (loan.outstanding stays at principal while the
-  //     borrower loses nIN they paid for elsewhere).
-  //   - Capping at principal makes the form match what the loan can legally
-  //     disburse without over-burning the borrower's other balances.
+  // For active loans, cap = min(wallet nIN, permit allowance, loan principal).
+  //   - The allowance is set by the EIP-2612 permit signed at drawLoanWithVoucher
+  //     time and decreases with each burn. burnFarmerNin / redeemFarmerNin now
+  //     call transferFrom before burning, so they will revert if the amount
+  //     exceeds the allowance — the cap here matches what the contract enforces.
+  //   - Wallet nIN may include residue from other loans; using allowance (not
+  //     raw balance) prevents burning tokens the borrower never authorised for
+  //     this disbursement.
+  //   - principalRaw cap: the farmer can never cash out more than their loan
+  //     amount regardless of wallet balance or allowance (e.g. MaxUint256 in
+  //     local test seeds).
   const activeCapRaw   = activeLoan
-    ? (ninBalanceRaw < activeLoan.principalRaw ? ninBalanceRaw : activeLoan.principalRaw)
+    ? (ninBalanceRaw < ninAllowanceRaw ? ninBalanceRaw : ninAllowanceRaw)
     : 0n;
-  const maxPayoutRaw   = activeLoan ? activeCapRaw : principalRaw;
-  const maxPayout      = Number(maxPayoutRaw / 10n ** 18n);
-  const inputRaw       = cashOutInput ? ethers.parseUnits(cashOutInput, 18) : maxPayoutRaw;
-  const payoutRaw      = inputRaw > maxPayoutRaw ? maxPayoutRaw : inputRaw;
+  const maxPayoutRaw   = activeLoan
+    ? (activeCapRaw < principalRaw ? activeCapRaw : principalRaw)
+    : principalRaw;
+
+  // Existing open RedeemOrders for this specific farmer.
+  // Used to (a) show pending orders in the UI and (b) enforce a defensive cap so that
+  // if ninBalanceRaw is stale (e.g. MaxUint256 test allowance means transferFrom doesn't
+  // decrement it), we still can't offer more than principal − already-ordered.
+  const existingFarmerOrders = memberAddress
+    ? openRedeemOrdersList.filter(o => o.farmer?.toLowerCase() === memberAddress.toLowerCase())
+    : [];
+  const existingOrderedRaw = existingFarmerOrders.reduce(
+    (acc, o) => acc + BigInt(o.inrValue) * 10n ** 18n, 0n
+  );
+  // orderedCapRaw = what's still available to order (principal minus already-pending)
+  const orderedCapRaw  = principalRaw > existingOrderedRaw ? principalRaw - existingOrderedRaw : 0n;
+  const effectiveMaxRaw = orderedCapRaw < maxPayoutRaw ? orderedCapRaw : maxPayoutRaw;
+
+  const maxPayout      = Number(effectiveMaxRaw / 10n ** 18n);
+  const inputRaw       = cashOutInput ? ethers.parseUnits(cashOutInput, 18) : effectiveMaxRaw;
+  const payoutRaw      = inputRaw > effectiveMaxRaw ? effectiveMaxRaw : inputRaw;
   const principal      = Number(payoutRaw / 10n ** 18n);                  // for display
 
   // Persist the freshly-read nIN balance into the ActiveLoans IDB record so
@@ -271,8 +311,8 @@ export function CashOutForm({ handleOpenForm }) {
         }
         // 2. Burn LP portion from farmer's wallet → receive USDT equivalent.
         const usdtOut = await redeemFarmerNin(memberAddress, fromLPRaw);
-        // 3. Post RedeemOrder: lock the USDT we received (no extra bonus — union has exactly usdtOut).
-        const id = await postRedeemOrder(unionAddr, memberAddress, BigInt(Math.round(fromLP)), usdtOut, feeBP);
+        // 3. Post RedeemOrder: lock the USDT we received + store ninAmount for deferred burn (CS027).
+        const id = await postRedeemOrder(unionAddr, memberAddress, BigInt(Math.round(fromLP)), usdtOut, fromLPRaw, feeBP);
         qc.invalidateQueries({ queryKey: ['unionCashReserve', unionAddr] });
         qc.invalidateQueries({ queryKey: ['activeLoans'] });
         qc.invalidateQueries({ queryKey: ['tasks'] });
@@ -317,18 +357,27 @@ export function CashOutForm({ handleOpenForm }) {
   };
 
   // No-escrow path: swap farmer's nIN for USDT (using existing allowance), then post RedeemOrder.
+  // Always navigates back to the CL card (closeSheet in finally) so the user lands on
+  // UnionReserve after the TxProgress dismisses — for both success and failure.
   const handlePostRedeemRequest = async () => {
     if (!unionAddr || !memberAddress || !activeLoan) return;
     setError(null);
     setStep('redeem-posting');
+    let localUsdtOut = stagedUsdtOut;
     try {
-      const usdtOut = await redeemFarmerNin(memberAddress, payoutRaw);
-      const id = await postRedeemOrder(unionAddr, memberAddress, BigInt(Math.round(fromLP)), usdtOut, feeBP);
+      if (localUsdtOut === null) {
+        localUsdtOut = await redeemFarmerNin(memberAddress, payoutRaw);
+        setStagedUsdtOut(localUsdtOut);
+      }
+      const id = await postRedeemOrder(unionAddr, memberAddress, BigInt(Math.round(fromLP)), localUsdtOut, payoutRaw, feeBP);
+      setStagedUsdtOut(null);
       setRedeemOrderId(id);
-      setStep('redeem-waiting');
+      qc.invalidateQueries({ queryKey: ['unionOpenRedeemOrdersList'] });
+      qc.invalidateQueries({ queryKey: ['pendingCashDeliveries'] });
     } catch (err) {
       setError(err?.reason || err?.message || 'Failed');
-      setStep('review-loan');
+    } finally {
+      closeSheet();
     }
   };
 
@@ -490,6 +539,23 @@ export function CashOutForm({ handleOpenForm }) {
               )
             ) : (
               <>
+                {/* Existing open RedeemOrders for this farmer */}
+                {existingFarmerOrders.length > 0 && (
+                  <div className="rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 flex flex-col gap-1">
+                    <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                      {existingFarmerOrders.length} open LP request{existingFarmerOrders.length > 1 ? 's' : ''}
+                    </p>
+                    {existingFarmerOrders.map(o => (
+                      <p key={String(o.id)} className="text-xs text-amber-600 dark:text-amber-400">
+                        ₹{Number(o.inrValue).toLocaleString('en-IN')} · {Number(o.inrValue).toLocaleString('en-IN')} nIN · Awaiting LP
+                      </p>
+                    ))}
+                    <p className="text-xs text-amber-500 dark:text-amber-500">
+                      Remaining available: ₹{maxPayout.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                )}
+
                 {/* Amount input — leader can choose partial payout */}
                 <div className="rounded-xl bg-gray-100 dark:bg-slate-800 px-4 py-3 flex flex-col gap-1">
                   <label className="text-xs text-gray-500 dark:text-slate-400">Cash out amount</label>
@@ -508,7 +574,7 @@ export function CashOutForm({ handleOpenForm }) {
                     )}
                   </div>
                   <p className="text-xs text-gray-400 dark:text-slate-500">
-                    Available: ₹{maxPayout.toLocaleString('en-IN')} nIN in wallet
+                    Permitted: ₹{maxPayout.toLocaleString('en-IN')} nIN
                   </p>
                 </div>
 
@@ -551,6 +617,7 @@ export function CashOutForm({ handleOpenForm }) {
                           <div className="flex flex-col">
                             <span className="text-xs text-gray-500 dark:text-slate-400">LP brings soon</span>
                             <span className="text-xl font-bold text-red dark:text-red_dark">₹{fromLP.toLocaleString('en-IN')}</span>
+                            <span className="text-xs text-gray-400 dark:text-slate-500">{fromLP.toLocaleString('en-IN')} nIN</span>
                           </div>
                           <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-gray-200 dark:bg-slate-700 text-red dark:text-red_dark">LP</span>
                         </div>
@@ -577,6 +644,7 @@ export function CashOutForm({ handleOpenForm }) {
                       <div className="flex flex-col">
                         <span className="text-xs text-gray-500 dark:text-slate-400">LP brings</span>
                         <span className="text-xl font-bold text-red dark:text-red_dark">₹{principal.toLocaleString('en-IN')}</span>
+                        <span className="text-xs text-gray-400 dark:text-slate-500">{principal.toLocaleString('en-IN')} nIN</span>
                       </div>
                       <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-gray-200 dark:bg-slate-700 text-red dark:text-red_dark">LP</span>
                     </div>
@@ -742,9 +810,29 @@ export function CashOutForm({ handleOpenForm }) {
         {/* ── RedeemOrder: swapping nIN for USDT ── */}
         {step === 'redeem-posting' && (
           <motion.div key="redeem-posting" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4 py-8">
-            <div className="w-8 h-8 border-2 border-gray-300 border-t-black dark:border-t-white rounded-full animate-spin" />
-            <p className="text-sm dark:text-white">Swapping nIN → USDT &amp; posting request…</p>
-            <p className="text-xs text-gray-400 dark:text-slate-500 text-center">Using member's existing allowance — no extra signature needed.</p>
+            {error ? (
+              <>
+                <p className="text-sm font-bold text-red-600 dark:text-red-400 text-center">Order posting failed</p>
+                <p className="text-xs text-red-500 dark:text-red-400 text-center">{error}</p>
+                {stagedUsdtOut !== null && (
+                  <p className="text-xs text-gray-400 dark:text-slate-500 text-center">
+                    nIN was already swapped. Retry will post the order without burning again.
+                  </p>
+                )}
+                <button
+                  onClick={handlePostRedeemRequest}
+                  className="mt-2 w-full py-3.5 rounded-2xl bg-black dark:bg-white text-white dark:text-black font-bold text-sm active:scale-[0.98]"
+                >
+                  {stagedUsdtOut !== null ? 'Retry — post order only' : 'Retry'}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-8 h-8 border-2 border-gray-300 border-t-black dark:border-t-white rounded-full animate-spin" />
+                <p className="text-sm dark:text-white">Swapping nIN → USDT &amp; posting request…</p>
+                <p className="text-xs text-gray-400 dark:text-slate-500 text-center">Using member's existing allowance — no extra signature needed.</p>
+              </>
+            )}
           </motion.div>
         )}
 

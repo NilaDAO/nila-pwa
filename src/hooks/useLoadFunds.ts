@@ -344,7 +344,7 @@ export function useLoadFundsData(unionAddress: string, f: any[], investor: strin
       networkMode: 'always',
       queryFn: async () => {
         if (!provider || !investor) return [] as GenericFundData[];
-        
+
         const data: GenericFundData[] = [];
         for (const fund of f) {
           const d = await loadGenericFundData(unionAddress,fund, provider, investor, fund?.[2]);
@@ -473,14 +473,18 @@ export function useWithdrawGeneric(
             console.log('mkt', mkt)
             console.log('inv', inv)
 
-            const availableShares = Number(inv.shares) - Number(inv.pending);
+            // Mirror senior path: stay in BigInt to avoid RAY-scale precision loss.
+            // Contract checks: shares > inv.shares - inv.pending - inv.claimable
+            const availableShares = BigInt(inv.shares) - BigInt(inv.pending) - BigInt(inv.claimable ?? 0n);
+            const to_shares = amt * RAY / BigInt(s.indexes.junior);
+            const rawShares = to_shares < availableShares ? to_shares : availableShares;
+            const safeShares = rawShares > 10000n ? rawShares - 10000n : rawShares;
+            console.log('requestUnbondJunior', safeShares.toString());
 
-            const to_shares = amt * RAY / BigInt(s.indexes.junior)
-            const min = Math.min(Number(to_shares), Number(availableShares))
-            console.log('requestUnbondJunior', min)
+            if (safeShares === 0n) throw new Error('No shares available to unbond. Your position may already be fully pending or the amount is too small.');
 
             const fund_id = s.fund_id
-            return core.requestUnbondJunior(unionAddress,fund_id, BigInt(min))
+            return core.requestUnbondJunior(unionAddress, fund_id, safeShares)
           }
         },
         {

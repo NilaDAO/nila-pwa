@@ -52,7 +52,7 @@ const SwipeCard = ({ t }) => {
             } : undefined;
             t.click(t.tx_nmb, lpOpts);
         }
-        if (triggered === 'cancel') t.click2();
+        if (triggered === 'cancel' && t.click2) t.click2();
     };
 
     // Touch
@@ -81,13 +81,13 @@ const SwipeCard = ({ t }) => {
                 className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10"
                 style={{ opacity: acceptPct }}
             >
-                <span className="text-green dark:text-green font-bold text-sm">{rightLabel}</span>
+                <span className="text-green dark:text-green font-bold text-xs">{rightLabel}</span>
             </div>
             <div
                 className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-10"
                 style={{ opacity: cancelPct }}
             >
-                <span className={`${leftPositive ? 'text-green dark:text-green' : 'text-red dark:text-red'} font-bold text-sm`}>{leftLabel}</span>
+                <span className={`${leftPositive ? 'text-green dark:text-green' : 'text-red dark:text-red'} font-bold text-xs`}>{leftLabel}</span>
             </div>
 
             {/* draggable content */}
