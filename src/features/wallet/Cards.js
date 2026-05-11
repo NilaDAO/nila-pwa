@@ -7,6 +7,7 @@ import useTouch from "../../hooks/useTouch";
 import { useWeightedRates } from '../../hooks/useWeightedRates.js';
 import { motion } from 'framer-motion';
 import { cropColor, phenoColor } from '../../utils/cropColors.js';
+import { CROP_IMG } from '../../hooks/useFilterTasks';
 
 const infoText = 'Your cap rate dictates your borrowing terms and grant size: the lower your cap rate, the larger the loan you can access at a lower interest rate. To jump-start your liquidity in union funds, Nila offers grants to eligible newcomers.' 
 const SHRINK_PERC = 0.3
@@ -238,7 +239,8 @@ export const InvestmentCard = ({CAP, sums, cardShrink, inArrays }) => {
 export const CultivationCard = ({ dominant, cardIndex = 0 }) => {
     const [ crop, setCrop ] = useState();
     const { tokenview } = useViewModeContext();
-    const { db } = useDataContext();
+    const { db, fieldActivity, setFieldActivity } = useDataContext();
+    const { handleToggleView } = useTouch();
     const [url, setUrl] = useState(null);
     const flipBackground = cardIndex % 2 === 1;
     const cropLabel = typeof dominant?.crop_type === 'string'
@@ -306,8 +308,20 @@ export const CultivationCard = ({ dominant, cardIndex = 0 }) => {
             <table className="relative z-10 flex flex-row h-full justify-between px-4 pt-9 text-white">
                 <tbody>
                     <tr className='flex flex-col flex-grow'>
-                        <td className="font-bold text-xl">{cropLabel == 'other' || cropLabel == 'unknown' ? <DeclareCropType /> : cropLabel}</td>
-                        <td className="text-xs text-gray-100">💡 pre-sell this crop</td>
+                        <td className="font-bold text-xl">{cropLabel == 'other' || cropLabel == 'unknown' && <DeclareCropType />}</td>
+                        {fieldActivity?.suggestedBatch && (
+                          <td
+                            className="flex items-center gap-2 mt-1 cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev); handleToggleView({ ix: 2, i: cardIndex }); }}
+                          >
+                            <img
+                              src={CROP_IMG[fieldActivity.suggestedBatch.cropCode]}
+                              alt={fieldActivity.suggestedBatch.cropName}
+                              className="h-8 w-8 object-contain drop-shadow"
+                            />
+                            <span className="bg-white/25 text-white font-semibold px-2 py-0.5 rounded-full text-xs">Join batch →</span>
+                          </td>
+                        )}
 
                     </tr>
                 </tbody>
@@ -436,6 +450,42 @@ export const CashLiquidityCard = ({ treasury = 0n, available = 0n, lpPending = 0
     );
 };
 
+// ── Orders & Pricing summary card ─────────────────────────────────────────────
+// Compact summary shown in the card stack. Full detail opens in Topic (ix=7).
+export const OrdersSummaryCard = ({ totalQt = 0, totalUsdt = 0, cropBreakdown = '', cardShrink }) => {
+    const { ix }          = useNavContext();
+    const { isCollapsed } = useTouch();
+    return (
+        <div className="flex flex-col h-full w-full pt-4">
+            { cardShrink < SHRINK_PERC && (ix || isCollapsed) &&
+            <div>
+                <table className="w-full flex flex-row justify-between">
+                    <tbody>
+                        <tr className="flex flex-col flex-grow">
+                            <td className="text-left font-bold text-lg text-gray-900 dark:text-white">
+                                {totalQt.toLocaleString('en-IN')} Qt
+                            </td>
+                            {totalUsdt > 0 && (
+                                <td className="text-left text-xs text-gray-500 dark:text-gray-300">
+                                    ${totalUsdt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                            )}
+                        </tr>
+                    </tbody>
+                    {cropBreakdown && (
+                        <tbody>
+                            <tr className="text-xs text-gray-500 dark:text-gray-300 text-right">
+                                <td>{cropBreakdown}</td>
+                            </tr>
+                        </tbody>
+                    )}
+                </table>
+            </div>
+            }
+        </div>
+    );
+};
+
 export const Card = ({
     i,
     type,
@@ -473,7 +523,8 @@ export const Card = ({
         DEFAULTED: 'bg-gray-100 dark:bg-gray-700 border-2 dark:border-slate-400',
         INVEST: 'bg-green dark:bg-green_dark',
         MAP: 'bg-darkgrey',
-        CASH_LIQUIDITY: 'bg-indigo-50 dark:bg-slate-800',
+        CASH_LIQUIDITY: 'bg-indigo-50 dark:bg-slate-700',
+        ORDERS: 'bg-gray-300 dark:bg-slate-800',
     }
     const variants = {
         stacked: (custom) => ({
@@ -544,7 +595,8 @@ export const Card = ({
             ${type == 'ASSETS' && 'dark:text-slate-400'}
             ${type == 'DEFAULTED' && 'dark:text-slate-400'}
             ${type == 'MAP' && 'text-white z-10 dark:text-white'}
-            ${type == 'CASH_LIQUIDITY' && 'text-black z-10 dark:text-white'}
+            ${type == 'CASH_LIQUIDITY' && 'dark:text-slate-400'}
+            ${type == 'ORDERS' && 'text-gray-800 dark:text-white z-10'}
             `}>
             {titleDot && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: titleDot }} />}
             {title}

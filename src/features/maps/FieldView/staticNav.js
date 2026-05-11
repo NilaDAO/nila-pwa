@@ -17,6 +17,11 @@ const StaticMapNav = ({LAND, onFeatureClick}) => {
     setFieldActivity(prev => prev ? { ...prev, viewmode: false } : prev);
   }, [setFieldActivity]);
 
+  // Portfolio mode: clear selected property (go back to list), re-fit map to all
+  const handlePortfolioBack = useCallback(() => {
+    setFieldActivity(prev => prev ? { ...prev, portfolioSelected: null } : prev);
+  }, [setFieldActivity]);
+
   const hasSelection = fieldActivity?.selectMode &&
     (fieldActivity.features || []).some(f => f.properties?.selected);
 
@@ -26,12 +31,19 @@ const StaticMapNav = ({LAND, onFeatureClick}) => {
 
   return (
       <>
-        {metadata && <Maps metadata={metadata} fieldActivity={fieldActivity} onFeatureClick={onFeatureClick}/>}
+        {(metadata || fieldActivity?.portfolioMode) && <Maps metadata={metadata} fieldActivity={fieldActivity} onFeatureClick={onFeatureClick}/>}
         {fieldActivity?.viewmode && !fieldActivity?.selectMode &&
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center w-full z-20">
            <div className="pointer-events-auto relative flex flex-col items-center justify-center">
             <XCircleIcon onClick={handleClose} className='h-20 w-20 text-white' />
            </div>
+        </div>
+        }
+        {fieldActivity?.portfolioMode && fieldActivity?.portfolioSelected &&
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center w-full z-20">
+          <div className="pointer-events-auto relative flex flex-col items-center justify-center">
+            <XCircleIcon onClick={handlePortfolioBack} className='h-20 w-20 text-white' />
+          </div>
         </div>
         }
         {hasSelection && (

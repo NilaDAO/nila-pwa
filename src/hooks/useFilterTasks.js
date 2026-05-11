@@ -26,8 +26,19 @@ export function usePolBalance(address, provider) {
   });
 }
 
+export const CROP_IMG = {
+  0: 'images/paddy.png',
+  1: 'images/groundnut.png',
+  2: 'images/sugarcane.png',
+  3: 'images/label-06.webp',
+  4: 'images/label-06.webp',
+  5: 'images/label-06.webp',
+  6: 'images/sesame.png',
+  7: 'images/cassava.png',
+};
+
 export function useFilterTasks(LAND, CAP) {
-  const { db, tokenData, unionFunds, fieldActivity } = useDataContext();
+  const { db, tokenData, unionFunds, fieldActivity, setFieldActivity } = useDataContext();
   const { provider }                 = useProvider();
   const queryClient                  = useQueryClient();
   const isLeader                     = Boolean(db?.union?.leader);
@@ -120,7 +131,7 @@ export function useFilterTasks(LAND, CAP) {
       try {
         const amountRaw = ethers.parseUnits(String(lpOpts.amount), 18);
         const usdtOut = await redeemFarmerNin(borrowerAddr, amountRaw);
-        await postRedeemOrder(union, borrowerAddr, BigInt(lpOpts.amount), usdtOut, 100);
+        await postRedeemOrder(union, borrowerAddr, BigInt(lpOpts.amount), usdtOut, amountRaw, 100);
         queryClient.invalidateQueries({ queryKey: ['globalOpenCashOffers'] });
         queryClient.invalidateQueries({ queryKey: ['globalOpenRedeemOrders'] });
       } catch (e) { console.error('LP offer creation failed:', e); }
@@ -250,6 +261,9 @@ export function useFilterTasks(LAND, CAP) {
       dismissedGiveOffers.size,
       pendingDeliveries.length,
       filledCashOffers.length,
+      fieldActivity?.activeCycle?.length ?? 0,
+      fieldActivity?.suggestedBatch?.id ?? null,
+      !!fieldActivity?.dormant,
     ],
     // useFilterTasks is a pure derivation over upstream hooks — no network call.
     // Treat the composed list as never-stale: when an upstream signal changes the
@@ -489,6 +503,42 @@ export function useFilterTasks(LAND, CAP) {
           title: 'Treasury liquidity low.',
           subtitle: 'Post a Cash Offer to get USDT from an LP.',
           btn: 'View',
+        },
+        // Batch match: active cycle crop matches an open union batch → swipe right to join
+        { i: 600,
+          active: Boolean(fieldActivity?.activeCycle?.length && fieldActivity?.suggestedBatch),
+          img: CROP_IMG[fieldActivity?.suggestedBatch?.cropCode] ?? 'images/paddy.png',
+          tx_nmb: { ix: 2, i: 0 },
+          click: () => { setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
+          btn2: true,
+          swipeRightLabel: 'Join batch →',
+          swipeLeftLabel: (() => { const b = fieldActivity?.suggestedBatch; return `✕ Not ${b?.cropName?.toLowerCase() ?? 'this crop'}`; })(),
+          click2: () => { setFieldActivity(prev => prev ? { ...prev, pendingCropForm: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
+          title: (() => {
+            const b = fieldActivity?.suggestedBatch;
+            if (!b) return 'Batch open for your crop.';
+            const crop = b.cropName?.toLowerCase();
+            if (b.deliveryDate > 0 && b.targetQtyKg > 0n)    return `Join the ${crop} growing programme.`;
+            return ` Get a loan up to 1L`;
+          })(),
+          subtitle: (() => {
+            const b = fieldActivity?.suggestedBatch;
+            if (!b) return null;
+            const crop = b.cropName?.toLowerCase();
+            const unit = b.cropCode === 2 || b.cropCode === 7 ? 'MT' : b.cropCode === 6 ? 'kg' : 'quintal';
+            const div  = b.cropCode === 2 || b.cropCode === 7 ? 1000 : b.cropCode === 6 ? 1 : 100;
+            const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+            if (b.hasOrder) {
+              const parts = [];
+              if (b.pricePerKgUsdt > 0n) parts.push(`$${(Number(b.pricePerKgUsdt) / 1e6).toFixed(2)}/${unit}`);
+              if (b.deliveryDate > 0)    parts.push(`deliver by ${fmtDate(b.deliveryDate)}`);
+              return parts.join(' · ') || 'Union handles delivery and logistics.';
+            }
+            if (b.deliveryDate > 0 && b.targetQtyKg > 0n) {
+              return `${Number(b.targetQtyKg) / div} ${unit} target · deliver by ${fmtDate(b.deliveryDate)}`;
+            }
+            return `Join and confirm your ${crop} planting `;
+          })(),
         },
       ];
 

@@ -47,7 +47,7 @@ function GetCashFillSheet({ offer, onClose }) {
     if (!fxPool || !offer) return;
     (async () => {
       try {
-        const escrow = await fxPool.getEscrow(offer.escrowId);
+        const escrow = await fxPool.escrows(offer.escrowId);
         // usdtAmount = ninAmount * 1e8 / mintRate / 1e12  (oracleDecimals=8, usdtDecimals=6)
         const usdt6 = (escrow.ninAmount * 10n ** 8n) / escrow.mintRate / 10n ** 12n;
         setUsdtEst(Number(usdt6) / 1e6);
@@ -190,7 +190,7 @@ function GiveCashFillSheet({ offer, onClose }) {
     if (!fxPool || !offer) return;
     (async () => {
       try {
-        const usdtBase = await fxPool.quoteRedeem(offer.ninAmount);
+        const [usdtBase] = await fxPool.previewRedeem(offer.ninAmount);
         const fee      = (usdtBase * BigInt(offer.feeBP)) / 10_000n;
         setUsdtEst(Number(usdtBase + fee) / 1e6);
       } catch {}

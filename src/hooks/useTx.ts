@@ -247,7 +247,41 @@ export function useTx() {
 
             if (parsed?.name) {
               console.error("Parsed revert error:", parsed.name, parsed.args);
-              setTxMessage(`Sorry, the transaction failed because of ${parsed.name}.`);
+              let msg: string;
+              if (parsed.name === 'ERC20InsufficientBalance') {
+                // args: [account, balance, needed] — both 6-dec USDT or 18-dec nIN.
+                // Heuristic: values < 1e12 raw are USDT (6 dec), larger are nIN (18 dec).
+                const have: bigint = parsed.args[1];
+                const need: bigint = parsed.args[2];
+                const isUsdt = need < 1_000_000_000_000n;
+                const fmt = (n: bigint) => isUsdt
+                  ? (Number(n) / 1e6).toFixed(2)
+                  : (Number(n) / 1e18).toFixed(4);
+                const unit = isUsdt ? 'USDT' : 'nIN';
+                msg = `Pool has ${fmt(have)} ${unit} but needs ${fmt(need)} ${unit}. Top up the pool before confirming.`;
+              } else if (parsed.name === 'ERC20InsufficientAllowance') {
+                const have: bigint = parsed.args[1];
+                const need: bigint = parsed.args[2];
+                const isUsdt = need < 1_000_000_000_000n;
+                const fmt = (n: bigint) => isUsdt
+                  ? (Number(n) / 1e6).toFixed(2)
+                  : (Number(n) / 1e18).toFixed(4);
+                const unit = isUsdt ? 'USDT' : 'nIN';
+                msg = `Token allowance too low — approved ${fmt(have)} ${unit}, need ${fmt(need)} ${unit}. Please approve first.`;
+              } else if (parsed.name === 'BadShares') {
+                msg = 'Nothing to unbond — your shares may already be fully pending, already claimable, or the requested amount is too small.';
+              } else if (parsed.name === 'BadState') {
+                msg = 'Action not allowed in the current state — check that the maturity window or lock period has passed.';
+              } else if (parsed.name === 'InsufficientCash') {
+                msg = 'Not enough liquid cash in the pool for this withdrawal right now.';
+              } else if (parsed.name === 'NothingToClaim') {
+                msg = 'Nothing to claim yet — your unbond request may not have matured.';
+              } else if (parsed.name === 'BadRatio') {
+                msg = 'Withdrawal would breach the junior/senior ratio limit. Wait for more deposits or for loans to mature.';
+              } else {
+                msg = `Sorry, the transaction failed (${parsed.name}).`;
+              }
+              setTxMessage(msg);
             } else if (e?.reason) {
               setTxMessage(`Sorry, the transaction failed: ${e.reason}`);
             } else if (e?.shortMessage) {

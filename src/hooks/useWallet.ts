@@ -8,6 +8,8 @@ import nilaFxPoolArtifact from '../components/ABI/NilaFxPool.json';
 const nilaFxPoolAbi = (nilaFxPoolArtifact as any).abi ?? nilaFxPoolArtifact;
 import genericFundCoreArtifact from '../components/ABI/genericFundCore.json';
 const genericFundCoreAbi = (genericFundCoreArtifact as any).abi ?? genericFundCoreArtifact;
+import genericFundViewerArtifact from '../components/ABI/genericFundViewer.json';
+const genericFundViewerAbi = (genericFundViewerArtifact as any).abi ?? genericFundViewerArtifact;
 import { useTx } from "./useTx.ts";
 import { InterfaceAbi, Contract, BaseContract } from "ethers";
 import { updateUserChain } from "../utils/cognito_helpers.js";
@@ -149,6 +151,8 @@ export function useFxPool(opts: FxOptions = {}) {
   const [ninAddress, setNinAddress] = useState(opts.ninAddress ?? process.env.REACT_APP_NIN_MAIN);
 
   const fxPool = useContract(fxAddress, nilaFxPoolAbi, wallet);
+  const viewerAddress = process.env.REACT_APP_VIEWER_MAIN;
+  const viewer = useContract(viewerAddress, genericFundViewerAbi, wallet);
   const erc20Abi = useMemo(
     () => [
       "function allowance(address owner, address spender) view returns (uint256)",
@@ -259,7 +263,7 @@ export function useFxPool(opts: FxOptions = {}) {
   const quoteRedeem = useCallback(async (ninAmount: number) => {
     if (!fxPool) throw new Error("FX pool not ready");
     const amt = ethers.parseUnits(ninAmount.toString(), ninDecimals);
-    return fxPool.quoteRedeem(amt);
+    return fxPool.previewRedeem(amt);
   }, [fxPool, ninDecimals]);
 
   // ScanPurpose enum: 0 = INVEST (give/contribute), 1 = REPAY, 2 = DISBURSE
@@ -311,7 +315,7 @@ export function useFxPool(opts: FxOptions = {}) {
     const start = nextId > 50n ? nextId - 50n : 0n;
     for (let id = nextId - 1n; id >= start; id--) {
       try {
-        const escrow = await fxPool.getEscrow(id);
+        const escrow = await fxPool.escrows(id);
         if (
           escrow.union?.toLowerCase() === unionAddr.toLowerCase() &&
           Number(escrow.status) === 0
@@ -367,12 +371,14 @@ export function useFxPool(opts: FxOptions = {}) {
     return usdtOut;
   }, [fxPool, wallet, runTx, qc]);
 
-  // Step 2: record earmarked USDT as a cash request — USDT stays in pool, no allowance needed.
+  // Step 2: record earmarked USDT + locked nIN as a cash request — USDT stays in pool, no allowance needed.
+  // CS027: ninAmount added — the nIN locked by redeemFarmerNin, stored for deferred burn on delivery/cancel.
   const postRedeemOrder = useCallback(async (
     unionAddr: string,
     farmer: string,
     inrValue: bigint,
     usdtAmount: bigint,
+    ninAmount: bigint,
     feeBP: number,
   ): Promise<bigint> => {
     if (!fxPool || !wallet) throw new Error("FX pool or wallet not ready");
@@ -381,8 +387,8 @@ export function useFxPool(opts: FxOptions = {}) {
     const fxIface = new ethers.Interface((nilaFxPoolArtifact as any).abi ?? nilaFxPoolArtifact);
     await runTx(async () => {
       const nonce = await (wallet.provider as ethers.JsonRpcProvider).send("eth_getTransactionCount", [wallet.address, "pending"]);
-      await fxPool.postRedeemOrder.staticCall(unionAddr, farmer, inrValue, usdtAmount, feeBP);
-      return fxPool.postRedeemOrder(unionAddr, farmer, inrValue, usdtAmount, feeBP, { nonce });
+      await fxPool.postRedeemOrder.staticCall(unionAddr, farmer, inrValue, usdtAmount, ninAmount, feeBP);
+      return fxPool.postRedeemOrder(unionAddr, farmer, inrValue, usdtAmount, ninAmount, feeBP, { nonce });
     }, {
       onSuccess: (receipt: any) => {
         for (const log of receipt?.logs ?? []) {
@@ -466,7 +472,7 @@ export function useFxPool(opts: FxOptions = {}) {
   const lpFillRedeemOrder = useCallback(async (offerId: bigint) => {
     if (!fxPool || !wallet) throw new Error('FX pool or wallet not ready');
     const offer = await fxPool.cashOffers(offerId);
-    const escrow = await fxPool.getEscrow(offer.escrowId);
+    const escrow = await fxPool.escrows(offer.escrowId);
     // Same formula as resolveEscrowUsdt: usdtAmount = ninAmount * 1e8 / mintRate / 1e12
     const usdtAmount = (escrow.ninAmount * 10n ** 8n) / escrow.mintRate / 10n ** 12n;
     await ensureUsdtAllowance(usdtAmount);
@@ -577,6 +583,12 @@ export function useFxPool(opts: FxOptions = {}) {
     return nin.balanceOf(addr) as Promise<bigint>;
   }, [nin]);
 
+  // Read the nIN allowance granted to a spender (used by CashOutForm to cap payout at the permit amount).
+  const getNinAllowance = useCallback(async (owner: string, spender: string): Promise<bigint> => {
+    if (!nin) throw new Error("NIN contract not ready");
+    return nin.allowance(owner, spender) as Promise<bigint>;
+  }, [nin]);
+
   // CS016: Atomic cash-out — burn farmer nIN + drain escrows in one tx (no partial-completion window).
   const burnAndDrainEscrows = useCallback(async (farmer: string, burnAmount: bigint, escrowIds: bigint[], amounts: bigint[]) => {
     if (!fxPool || !wallet) throw new Error("FX pool or wallet not ready");
@@ -617,11 +629,11 @@ export function useFxPool(opts: FxOptions = {}) {
 
   // Read three-layer health for a union: usdtDeposited, usdtPromised, cashEscrowNin, healthRatio.
   const systemHealth = useCallback(async (unionAddr: string, loanType: string) => {
-    if (!fxPool) throw new Error("FX pool not ready");
+    if (!viewer || !fxAddress) throw new Error("Viewer or FX pool address not ready");
     const [usdtDeposited, usdtPromised, cashEscrowNin, healthRatio] =
-      await fxPool.systemHealth(unionAddr, loanType);
+      await viewer.systemHealth(fxAddress, unionAddr, loanType);
     return { usdtDeposited, usdtPromised, cashEscrowNin, healthRatio };
-  }, [fxPool]);
+  }, [viewer, fxAddress]);
 
   // FIFO deposit: union deposits USDT, protocol routes to oldest active escrows.
   const depositUsdtFifo = useCallback(async (unionAddr: string, usdtAmount: bigint) => {
@@ -669,6 +681,7 @@ export function useFxPool(opts: FxOptions = {}) {
     getActiveEscrowForUnion,
     acceptLoan,
     getNinBalance,
+    getNinAllowance,
     burnFarmerNin,
     burnAndDrainEscrows,
     redeemFarmerNin,
