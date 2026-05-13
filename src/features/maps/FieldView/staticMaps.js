@@ -28,6 +28,18 @@ const options = {
     tilt:0,
     };
 
+// AdvancedMarkerElement requires mapId with Advanced Markers enabled in Google Cloud Console.
+// Use this wrapper — falls back to a no-op if the capability isn't available.
+function addMarkerLabel(map, position, el) {
+  if (!map?.mapCapabilities?.isAdvancedMarkersAvailable) return null;
+  try {
+    return new window.google.maps.marker.AdvancedMarkerElement({ map, position, content: el });
+  } catch (e) {
+    console.warn('[map] AdvancedMarkerElement failed:', e.message);
+    return null;
+  }
+}
+
 const centroidOf = (feature) => {
   const coords = feature.geometry.type === 'MultiPolygon'
     ? feature.geometry.coordinates.flat(2)
@@ -134,14 +146,9 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
         el.style.fontSize = '20px';
         el.style.lineHeight = '1';
         el.textContent = emoji;
-        const marker = new window.google.maps.marker.AdvancedMarkerElement({
-          map,
-          position: centroidOf(f),
-          content: el,
-        });
-        return marker;
+        return addMarkerLabel(map, centroidOf(f), el);
       });
-    return () => markers.forEach(m => { m.map = null; });
+    return () => markers.forEach(m => { if (m) m.map = null; });
   }, [map, features]);
 
   // ------------------ info labels (dormant / historical) -------------------------
@@ -159,12 +166,14 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     if (fieldActivity?.dormant && !fieldActivity?.historical && outline.length) {
       // Current state: fallow / dormant — single label at outline centroid
       const poly = outline[0];
+      if (!poly?.latLngs?.length) return;
       const center = poly.latLngs.reduce(
         (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
         { lat: 0, lng: 0 }
       );
       center.lat /= poly.latLngs.length;
       center.lng /= poly.latLngs.length;
+      if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng)) return;
 
       const d = fieldActivity.dormantStatus || {};
       const el = document.createElement('div');
@@ -177,9 +186,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
         d.daysSinceCrop != null ? `Last crop: ${d.daysSinceCrop}d ago` : '',
       ].filter(Boolean).join('<br>');
 
-      markers.push(new window.google.maps.marker.AdvancedMarkerElement({
-        map, position: center, content: el,
-      }));
+      markers.push(addMarkerLabel(map, center, el));
 
     } else if (fieldActivity?.activeCycle?.length > 0) {
       // Active crop: label per cluster with health + stage
@@ -202,9 +209,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
           const el = document.createElement('div');
           el.style.cssText = labelStyle;
           el.innerHTML = labelHtml;
-          markers.push(new window.google.maps.marker.AdvancedMarkerElement({
-            map, position: centroidOf(f), content: el,
-          }));
+          markers.push(addMarkerLabel(map, centroidOf(f), el));
         });
       } else if (outline.length) {
         // No cluster features — place label at outline centroid
@@ -218,9 +223,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
         const el = document.createElement('div');
         el.style.cssText = labelStyle;
         el.innerHTML = labelHtml;
-        markers.push(new window.google.maps.marker.AdvancedMarkerElement({
-          map, position: center, content: el,
-        }));
+        markers.push(addMarkerLabel(map, center, el));
       }
 
     } else if (fieldActivity?.historical && features.length) {
@@ -239,13 +242,11 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
           cycle.peak_ndvi ? `Peak NDVI: ${cycle.peak_ndvi.toFixed(2)}` : '',
         ].filter(Boolean).join('<br>');
 
-        markers.push(new window.google.maps.marker.AdvancedMarkerElement({
-          map, position: centroidOf(f), content: el,
-        }));
+        markers.push(addMarkerLabel(map, centroidOf(f), el));
       });
     }
 
-    return () => markers.forEach(m => { m.map = null; });
+    return () => markers.forEach(m => { if (m) m.map = null; });
   }, [map, fieldActivity?.dormant, fieldActivity?.activeCycle, fieldActivity?.historical, fieldActivity?.historicalCycle, features, outline]);
 
   // ------------------ portfolio outlines + labels -------------------------
@@ -288,9 +289,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
           setFieldActivity(prev => prev ? { ...prev, portfolioSelected: lid } : prev)
         );
 
-        markers.push(new window.google.maps.marker.AdvancedMarkerElement({
-          map, position: pos, content: el,
-        }));
+        markers.push(addMarkerLabel(map, pos, el));
       }
     }
 
@@ -298,7 +297,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     portfolioBoundsRef.current = bounds;
 
     // Clean up previous markers, store new ones
-    portfolioMarkersRef.current.forEach(m => { m.map = null; });
+    portfolioMarkersRef.current.forEach(m => { if (m) m.map = null; });
     portfolioMarkersRef.current = markers;
 
     return () => markers.forEach(m => { m.map = null; });

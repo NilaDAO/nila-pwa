@@ -8,6 +8,7 @@ import { useWeightedRates } from '../../hooks/useWeightedRates.js';
 import { motion } from 'framer-motion';
 import { cropColor, phenoColor } from '../../utils/cropColors.js';
 import { CROP_IMG } from '../../hooks/useFilterTasks';
+import { CROP_UNIT, CROP_CODE_NAMES } from '../../hooks/useFoodTokenBatches.ts';
 
 const infoText = 'Your cap rate dictates your borrowing terms and grant size: the lower your cap rate, the larger the loan you can access at a lower interest rate. To jump-start your liquidity in union funds, Nila offers grants to eligible newcomers.' 
 const SHRINK_PERC = 0.3
@@ -188,16 +189,9 @@ export const InvestmentCard = ({CAP, sums, cardShrink, inArrays }) => {
                         <table className="w-full flex flex-row justify-between">
                             <tbody>
                                 <tr className='flex flex-col flex-grow'>
+                                    
                                     <td className="text-left text-xs flex items-center gap-1">
-                                        <span>{isRefetching ? 'refetching' : 'You invested'}</span>
-                                        <button
-                                            type="button"
-                                            onClick={handleReload}
-                                            className="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600"
-                                            aria-label="Refresh fund data"
-                                        >
-                                            <ArrowPathIcon className={`h-4 w-4 text-gray-500 dark:text-black ${isRefetching ? 'animate-spin' : ''}`} />
-                                        </button>
+                                        <span className="text-[10px] text-gray-400 dark:text-slate-900">{isRefetching ? 'refetching' : 'You invested'}</span>
                                     </td>
                                     <td className={`text-left font-bold text-lg mb-3 ${isRefetching ? 'animate-pulse' : ''}`}>nIN {totalInvestedByUser.toLocaleString('en-IN', { maximumFractionDigits: 0 })}/-</td>
                                 </tr>
@@ -239,7 +233,7 @@ export const InvestmentCard = ({CAP, sums, cardShrink, inArrays }) => {
 export const CultivationCard = ({ dominant, cardIndex = 0 }) => {
     const [ crop, setCrop ] = useState();
     const { tokenview } = useViewModeContext();
-    const { db, fieldActivity, setFieldActivity } = useDataContext();
+    const { db } = useDataContext();
     const { handleToggleView } = useTouch();
     const [url, setUrl] = useState(null);
     const flipBackground = cardIndex % 2 === 1;
@@ -305,26 +299,7 @@ export const CultivationCard = ({ dominant, cardIndex = 0 }) => {
                 className={`absolute inset-0 ${url ? 'dark:bg-black/40' : ''}`}
                 style={!url ? { backgroundColor: cropHex, opacity: 0.85 } : undefined}
             />
-            <table className="relative z-10 flex flex-row h-full justify-between px-4 pt-9 text-white">
-                <tbody>
-                    <tr className='flex flex-col flex-grow'>
-                        <td className="font-bold text-xl">{cropLabel == 'other' || cropLabel == 'unknown' && <DeclareCropType />}</td>
-                        {fieldActivity?.suggestedBatch && (
-                          <td
-                            className="flex items-center gap-2 mt-1 cursor-pointer"
-                            onClick={(e) => { e.stopPropagation(); setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev); handleToggleView({ ix: 2, i: cardIndex }); }}
-                          >
-                            <img
-                              src={CROP_IMG[fieldActivity.suggestedBatch.cropCode]}
-                              alt={fieldActivity.suggestedBatch.cropName}
-                              className="h-8 w-8 object-contain drop-shadow"
-                            />
-                            <span className="bg-white/25 text-white font-semibold px-2 py-0.5 rounded-full text-xs">Join batch →</span>
-                          </td>
-                        )}
-
-                    </tr>
-                </tbody>
+            <table className="relative z-10 flex flex-row h-full justify-end px-4 pt-9 text-white">
                 <tbody>
                     <tr className='text-xs flex flex-col items-end'>
                         <td className="text-xs text-gray-100">Status: {STATUS[status] || status}</td>
@@ -424,7 +399,7 @@ export const CashLiquidityCard = ({ treasury = 0n, available = 0n, lpPending = 0
                 <table className="w-full flex flex-row justify-between">
                     <tbody>
                         <tr className="flex flex-col flex-grow">
-                            <td className="text-left text-xs dark:text-slate-300">Available to cash-in</td>
+                            <td className="text-[10px] text-gray-400 dark:text-slate-400">Available to cash-in</td>
                             <td className="text-left font-bold text-lg mb-3 dark:text-white">₹{availableInr}</td>
                         </tr>
                     </tbody>
@@ -452,34 +427,70 @@ export const CashLiquidityCard = ({ treasury = 0n, available = 0n, lpPending = 0
 
 // ── Orders & Pricing summary card ─────────────────────────────────────────────
 // Compact summary shown in the card stack. Full detail opens in Topic (ix=7).
-export const OrdersSummaryCard = ({ totalQt = 0, totalUsdt = 0, cropBreakdown = '', cardShrink }) => {
+export const OrdersSummaryCard = ({ activeBatches = [], cardShrink, onRefresh }) => {
     const { ix }          = useNavContext();
     const { isCollapsed } = useTouch();
+    const isFetching      = useIsFetching({ queryKey: ['foodTokenBatches'] }) > 0;
+
+    const handleRefresh = (e) => {
+        e.stopPropagation();
+        onRefresh?.();
+    };
+
+    // Aggregate per crop: total claimedQtyKg and best price across batches
+    const cropRows = Object.values(
+        activeBatches.reduce((acc, b) => {
+            const key = b.cropCode;
+            if (!acc[key]) acc[key] = { cropCode: key, claimedKg: 0, pricePerKgUsdt: 0 };
+            acc[key].claimedKg += Number(b.claimedQtyKg ?? 0n);
+            if (Number(b.pricePerKgUsdt) > acc[key].pricePerKgUsdt)
+                acc[key].pricePerKgUsdt = Number(b.pricePerKgUsdt);
+            return acc;
+        }, {})
+    ).filter(r => r.claimedKg > 0);
+
+    // Price is stored as USDT/kg with 6 decimals; display as ₹ (consistent with AssetsView)
+    const totalValueInr = cropRows.reduce((s, r) => {
+        if (!r.pricePerKgUsdt) return s;
+        return s + r.claimedKg * r.pricePerKgUsdt / 1e6;
+    }, 0);
+
     return (
         <div className="flex flex-col h-full w-full pt-4">
             { cardShrink < SHRINK_PERC && (ix || isCollapsed) &&
-            <div>
-                <table className="w-full flex flex-row justify-between">
-                    <tbody>
-                        <tr className="flex flex-col flex-grow">
-                            <td className="text-left font-bold text-lg text-gray-900 dark:text-white">
-                                {totalQt.toLocaleString('en-IN')} Qt
-                            </td>
-                            {totalUsdt > 0 && (
-                                <td className="text-left text-xs text-gray-500 dark:text-gray-300">
-                                    ${totalUsdt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </td>
-                            )}
-                        </tr>
-                    </tbody>
-                    {cropBreakdown && (
-                        <tbody>
-                            <tr className="text-xs text-gray-500 dark:text-gray-300 text-right">
-                                <td>{cropBreakdown}</td>
-                            </tr>
-                        </tbody>
-                    )}
-                </table>
+            <div className="flex flex-row justify-between items-start w-full">
+                {/* Left: total value */}
+                <div className="flex flex-col">
+                    <span className="text-[10px] text-gray-400 dark:text-slate-500">est. value</span>
+                    <span className="font-bold text-lg text-gray-900 dark:text-white">
+                        {totalValueInr > 0
+                            ? `₹${totalValueInr.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+                            : '—'
+                        }
+                    </span>
+                </div>
+
+                {/* Right: per-crop rows + refresh */}
+                <div className="flex flex-col items-end gap-0.5">
+                    <button
+                        type="button"
+                        onClick={handleRefresh}
+                        className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 mt-0.5"
+                        aria-label="Refresh orders"
+                    >
+                        <ArrowPathIcon className={`h-3.5 w-3.5 text-gray-400 dark:text-gray-500 ${isFetching ? 'animate-spin' : ''}`} />
+                    </button>
+                    {cropRows.map(r => {
+                        const unit = CROP_UNIT[r.cropCode] ?? { label: 'kg', toKg: 1 };
+                        const qty  = r.claimedKg / unit.toKg;
+                        const name = (CROP_CODE_NAMES[r.cropCode] ?? `Crop ${r.cropCode}`).toLowerCase();
+                        return (
+                            <span key={r.cropCode} className="text-xs text-gray-600 dark:text-gray-300">
+                                {name} · {qty % 1 === 0 ? qty.toLocaleString('en-IN') : qty.toFixed(1)} {unit.label}
+                            </span>
+                        );
+                    })}
+                </div>
             </div>
             }
         </div>

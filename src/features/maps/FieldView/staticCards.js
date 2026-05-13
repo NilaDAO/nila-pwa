@@ -1,22 +1,30 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDataContext, useNavContext, useViewModeContext } from '../../../utils/NavigationContext';
 import { cropColor } from '../../../utils/cropColors.js';
-import { motion, useDragControls, AnimatePresence } from 'framer-motion';
+import { motion, useDragControls, AnimatePresence, useAnimation } from 'framer-motion';
 import { RateSlider, ClaimButton, DropdownButton } from '../../../components/UI/buttons';
 import { ChevronDownIcon, TagIcon } from '@heroicons/react/24/solid';
 import Spinner from '../../../components/UI/spinner.js';
 import useLendingFlow from '../../../hooks/useDirectLendingFlow.js'
 import { useMintFoodToken, useBurnLandTitle } from '../../../hooks/useMintLandTitle.ts'
 import { useRecordHash } from '../../../hooks/useRecordHash.ts'
-import { CROP_CODE_NAMES, CROP_VARIETIES } from '../../../hooks/useFoodTokenBatches.ts'
+import { CROP_CODE_NAMES, CROP_VARIETIES, CROP_UNIT, useFoodTokenBatches } from '../../../hooks/useFoodTokenBatches.ts'
 import { readItem } from '../../../utils/db.js'
 import { decodeMetadataUri } from '../../../utils/decodeMetadataUri.ts'
 import { useWallet, useContract } from '../../../hooks/useWallet.ts'
+import { useTx } from '../../../hooks/useTx.ts'
+import { useCertRegistry, CERT_NAMES } from '../../../hooks/useCertRegistry.ts'
 import landTitleArtifact from '../../../components/ABI/NilaLandTitleWithName.json'
+import foodTokenArtifact from '../../../components/ABI/FoodTokens.json'
+
+const _ftAbi = (foodTokenArtifact).abi ?? foodTokenArtifact;
+const _ftAddr = process.env.REACT_APP_FOODTOKEN_ADDRESS;
 
 const _ltAbi = (landTitleArtifact).abi ?? landTitleArtifact;
 const _ltAddr = process.env.REACT_APP_LAND_TITLE_MAIN;
 const CROPS_DATA = Object.entries(CROP_CODE_NAMES).map(([code, name]) => [code, name]);
+const CERT_IMAGES = ['/images/label-01.webp', '/images/label-04.webp', '/images/label-02.webp', '/images/label-03.webp', '/images/label-05.webp'];
 
 const clusterKeyOf = (feature, idx) => {
   const clusterId = feature?.properties?.cluster_id;
@@ -616,17 +624,98 @@ const PortfolioCards = () => {
 };
 
 
+// ── Cert status panel (shown on join-batch when batch has requiredCerts > 0) ──
+
+const CERT_STATUS_ICON = { valid: '✓', expiring: '⚠', expired: '✕', missing: '✕' };
+const CERT_STATUS_COLOR = {
+  valid:    'text-green-600 dark:text-green-400',
+  expiring: 'text-amber-500 dark:text-amber-400',
+  expired:  'text-red-500 dark:text-red-400',
+  missing:  'text-gray-400 dark:text-slate-500',
+};
+
+function fmtExpiry(unixTs) {
+  if (!unixTs) return null;
+  return new Date(unixTs * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function CertStatusPanel({ farmerAddress, requiredMask, onJoin, joining, disabled, onApplyCert }) {
+  const { requiredCerts, metCount, allMet, loading } = useCertRegistry(farmerAddress, requiredMask);
+
+  if (loading) return <p className="text-[10px] text-gray-400 dark:text-slate-500">Checking certificates…</p>;
+  if (!requiredCerts.length) return null;
+
+  const firstMissing = requiredCerts.find(c => c.status === 'missing' || c.status === 'expired');
+
+  return (
+    <div className="flex flex-col gap-2 p-3 rounded-xl bg-gray-50 dark:bg-slate-700/50">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">
+          Certificate status
+        </p>
+        <span className="text-[10px] font-bold dark:text-white">{metCount} of {requiredCerts.length}</span>
+      </div>
+
+      {requiredCerts.map(cert => (
+        <div key={cert.index} className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <span className={`text-xs font-bold w-4 ${CERT_STATUS_COLOR[cert.status]}`}>
+              {CERT_STATUS_ICON[cert.status]}
+            </span>
+            <span className="text-xs dark:text-slate-300">{cert.name}</span>
+          </div>
+          <span className={`text-[10px] ${CERT_STATUS_COLOR[cert.status]}`}>
+            {cert.status === 'valid' || cert.status === 'expiring'
+              ? `valid until ${fmtExpiry(cert.expiresAt)}`
+              : cert.status === 'expired'
+                ? `expired ${fmtExpiry(cert.expiresAt)}`
+                : 'not found'}
+          </span>
+        </div>
+      ))}
+
+      {allMet ? (
+        <button
+          onClick={onJoin}
+          disabled={joining || disabled}
+          className="py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95 disabled:opacity-40 mt-1"
+        >
+          {joining ? 'Joining…' : 'Join batch'}
+        </button>
+      ) : (
+        <button
+          onClick={onApplyCert}
+          className="py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95 disabled:opacity-40 mt-1"
+        >
+          Apply for the certificates first
+        </button>
+      )}
+    </div>
+  );
+}
+
 export const StaticCards = ({ LAND }) => {
   const [ action, setAction ]                  = useState(null)
   const [ showAdvice, setShowAdvice ]          = useState(false)
   const [ loading, setLoading ]                = useState(true)
-  const { db, fieldActivity,setFieldActivity } = useDataContext();
+  const { db, fieldActivity, setFieldActivity, tokenData } = useDataContext();
   const { setIx }                              = useNavContext();
   const { setTokenview, setCardView }          = useViewModeContext();
+  const qc                                     = useQueryClient();
   const controls                               = useDragControls();
+  const motionAnimate                          = useAnimation();
   const startYRef                              = useRef(0);
 
   const close = () => { setIx(null); setTokenview(false); setCardView('default'); };
+
+  // Drive card position via animation controls so we can snap to y:0 on demand
+  const springTransition = { type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 };
+  useEffect(() => {
+    motionAnimate.start({ y: fieldActivity?.selectMode ? 250 : 0, transition: springTransition });
+  }, [fieldActivity?.selectMode]);
+  useEffect(() => {
+    if (action === 'season') motionAnimate.start({ y: 0, transition: springTransition });
+  }, [action]);
 
   // Clear portfolioMode on unmount so user's map works next time
   useEffect(() => {
@@ -638,12 +727,29 @@ export const StaticCards = ({ LAND }) => {
   }, []);
 
   const [ selected, setSelected ]              = useState([])
-  const [ form, setForm ]                      = useState({ crop: '', var: '', coverage: 'full' })
-  const [ cropOpen, setCropOpen ]              = useState(false)
+  const [ form, setForm ]                      = useState({ crop: '', var: '', coverage: 'full', yieldUnits: null })
+
   const [ varOpen, setVarOpen ]                = useState(false)
-  const cropRef                                = useRef(null)
+
   const varRef                                 = useRef(null)
   const { burnLandTitle }                      = useBurnLandTitle(Number(process.env.REACT_APP_CHAIN_ID) || 137);
+  const unionAddr = db?.union?.address;
+  const { data: batchSummary }                 = useFoodTokenBatches(unionAddr);
+  const { wallet }                             = useWallet();
+  const foodToken                              = useContract(_ftAddr, _ftAbi, wallet);
+  const [ joining, setJoining ]                = useState(false);
+  const runTx                                  = useTx();
+  const [ yieldDraft, setYieldDraft ]          = useState(1);
+  const [ editingYield, setEditingYield ]      = useState(false);
+  const [ activeBatchCert, setActiveBatchCert ] = useState(null);
+  const [ showPassportInfo, setShowPassportInfo ] = useState(false);
+  const [ showDetailedData, setShowDetailedData ]   = useState(false);
+
+  useEffect(() => {
+    setYieldDraft(1);
+    setEditingYield(false);
+    setForm(prev => ({ ...prev, yieldUnits: null }));
+  }, [form.selectedBatch?.id]);
 
   // CS023: gated property data — log record hash flow for verification
   const tokenId = LAND?.current?.LAND?.id;
@@ -748,10 +854,25 @@ export const StaticCards = ({ LAND }) => {
   // Open form immediately when arriving via "Join batch" from CultivationCard or task list
   useEffect(() => {
     if (!fieldActivity?.pendingJoin) return;
+    const b = fieldActivity.suggestedBatch;
+    if (b) {
+      const match = CROPS_DATA.find(c => c[1].toLowerCase() === (b.cropName ?? '').toLowerCase());
+      setForm(prev => ({ ...prev, ...(match ? { crop: match } : {}), selectedBatch: b }));
+    }
     setAction('season');
     setCardView('transactionview');
     setFieldActivity(prev => prev ? { ...prev, pendingJoin: false } : prev);
   }, [fieldActivity?.pendingJoin]);
+
+  // Open form in free mode (no batch pre-selected) — fallow field task, "I'm not growing X" slide
+  useEffect(() => {
+    if (!fieldActivity?.pendingCropForm) return;
+    setForm(prev => ({ ...prev, selectedBatch: null, crop: '', var: '' }));
+    setActiveBatchCert(null);
+    setAction('season');
+    setCardView('transactionview');
+    setFieldActivity(prev => prev ? { ...prev, pendingCropForm: false } : prev);
+  }, [fieldActivity?.pendingCropForm]);
 
   // Sync selected clusters from map into form (select mode)
   useEffect(() => {
@@ -759,9 +880,9 @@ export const StaticCards = ({ LAND }) => {
       // Select mode ended (confirm was clicked) — bring card back up
       setCardView('default');
       setForm(prev => ({ ...prev, coverage: 'confirmed' }));
-      // Scroll crop dropdown into view after card animates back
+      // Scroll variety dropdown into view after card animates back
       setTimeout(() => {
-        cropRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        varRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 400);
       return;
     }
@@ -797,6 +918,22 @@ export const StaticCards = ({ LAND }) => {
   }, [features, db?.farmname]);
   const featureLength = fieldActivity?.featurelength || features.length
   const land_v2 = LAND.current.LAND?.metadata?.v ? true : false
+
+  const activeCropType = fieldActivity?.activeCycle?.[0]?.crop_type?.toLowerCase();
+  const hasTokenForActiveCrop = activeCropType
+    ? (tokenData ?? []).some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && CROP_CODE_NAMES[t.cropCode]?.toLowerCase() === activeCropType)
+    : false;
+  const activeCropTokenBal = hasTokenForActiveCrop
+    ? (tokenData ?? []).filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && CROP_CODE_NAMES[t.cropCode]?.toLowerCase() === activeCropType)
+        .reduce((s, t) => s + t.bal, 0)
+    : 0;
+  const activeCropTokenCode = hasTokenForActiveCrop
+    ? (tokenData ?? []).find(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && CROP_CODE_NAMES[t.cropCode]?.toLowerCase() === activeCropType)?.cropCode
+    : null;
+  const activeCropUnit = activeCropTokenCode != null ? (CROP_UNIT[activeCropTokenCode] ?? { label: 'kg', toKg: 1 }) : { label: 'kg', toKg: 1 };
+  const activeCropBalDisplay = activeCropTokenCode != null
+    ? (activeCropTokenBal / activeCropUnit.toKg).toLocaleString('en-IN', { maximumFractionDigits: 1 })
+    : '0';
 
   // update selection state when features arrive
   useEffect(() => {
@@ -878,7 +1015,7 @@ export const StaticCards = ({ LAND }) => {
       <>
       <motion.div
         initial={{ y: -300 }}
-        animate={{ y: fieldActivity?.selectMode ? 250 : 0 }}
+        animate={motionAnimate}
         drag="y"
         dragConstraints={{ top: -500, bottom: 150 }}
         dragListener={false}
@@ -886,11 +1023,14 @@ export const StaticCards = ({ LAND }) => {
         dragElastic={0.05}
         onDragEnd={(_, info) => {
           if (fieldActivity?.selectMode && info.offset.y < -50) {
-            // Dragged up during select mode — confirm selection
             setFieldActivity(prev => prev ? { ...prev, selectMode: false } : prev);
           }
+          if (info.offset.y > 100 && (action || showAdvice)) {
+            setAction(null);
+            setShowAdvice(false);
+            motionAnimate.start({ y: 0, transition: springTransition });
+          }
         }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 }}
         style={{ touchAction: 'none' }}
         className="flex flex-col py-4 mb-96"
       >
@@ -928,11 +1068,25 @@ export const StaticCards = ({ LAND }) => {
                     const w = ac.weather_summary || {};
                     return (
                     <div className="flex flex-col gap-1.5 px-4 pt-3">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: cropColor(ac.crop_type) }} />
-                        <span className="text-sm font-semibold dark:text-white">{ac.crop_type}</span>
-                        <span className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full">{ac.stage}</span>
-                        <span className={`text-[10px] font-semibold ${healthColor}`}>{ac.health}</span>
+                      {hasTokenForActiveCrop && (
+                        <div className="flex items-center gap-1.5 self-start px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 mb-1">
+                          <span className="text-[10px] font-semibold text-green-700 dark:text-green-400">
+                            Crop passport · {activeCropBalDisplay} {activeCropUnit.label}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: cropColor(ac.crop_type) }} />
+                          <span className="text-sm font-semibold dark:text-white">{ac.crop_type}</span>
+                          <span className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full">{ac.stage}</span>
+                          <span className={`text-[10px] font-semibold ${healthColor}`}>{ac.health}</span>
+                        </div>
+                        <button
+                          onPointerDown={e => e.stopPropagation()}
+                          onClick={() => setShowDetailedData(v => !v)}
+                          className="text-[10px] text-blue-500 dark:text-blue-400 px-1 flex-shrink-0"
+                        >ℹ</button>
                       </div>
                       <div className="flex flex-col gap-1 text-xs">
                         <div className="flex justify-between">
@@ -945,32 +1099,36 @@ export const StaticCards = ({ LAND }) => {
                           <span className="text-gray-500 dark:text-slate-400">Est. yield</span>
                           <span className="font-bold dark:text-white">{ac.expected_yield_kg_acre ? `${ac.expected_yield_kg_acre} kg/acre` : '—'}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500 dark:text-slate-400">Rain</span>
-                          <span className="font-bold dark:text-white">{w.total_rain_mm != null ? `${w.total_rain_mm} mm` : '—'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500 dark:text-slate-400">Soil moisture</span>
-                          <span className="font-bold dark:text-white">{w.mean_soil_moisture != null ? `${Math.round(w.mean_soil_moisture)} kg/m²` : '—'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500 dark:text-slate-400">Days since sowing</span>
-                          <span className="font-bold dark:text-white">{ac.days_since_sos ? `${ac.days_since_sos}` : '—'}</span>
-                        </div>
-                        {record && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-500 dark:text-slate-400">Rotation</span>
-                            <span className="font-bold dark:text-white">{record.scorecard?.rotation_pattern || '—'}</span>
-                          </div>
-                        )}
-                        {record && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-500 dark:text-slate-400">Yield class</span>
-                            <span className="font-bold dark:text-white">{record.scorecard?.yield_trend || '—'}</span>
-                          </div>
+                        {showDetailedData && (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500 dark:text-slate-400">Rain</span>
+                              <span className="font-bold dark:text-white">{w.total_rain_mm != null ? `${w.total_rain_mm} mm` : '—'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500 dark:text-slate-400">Soil moisture</span>
+                              <span className="font-bold dark:text-white">{w.mean_soil_moisture != null ? `${Math.round(w.mean_soil_moisture)} kg/m²` : '—'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500 dark:text-slate-400">Days since sowing</span>
+                              <span className="font-bold dark:text-white">{ac.days_since_sos ? `${ac.days_since_sos}` : '—'}</span>
+                            </div>
+                            {record && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-500 dark:text-slate-400">Rotation</span>
+                                <span className="font-bold dark:text-white">{record.scorecard?.rotation_pattern || '—'}</span>
+                              </div>
+                            )}
+                            {record && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-500 dark:text-slate-400">Yield class</span>
+                                <span className="font-bold dark:text-white">{record.scorecard?.yield_trend || '—'}</span>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
-                      {ac.crop_confidence > 0 && (
+                      {showDetailedData && ac.crop_confidence > 0 && (
                         <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1 mt-1">
                           <div className="h-1 rounded-full" style={{ width: `${Math.round(ac.crop_confidence * 100)}%`, backgroundColor: cropColor(ac.crop_type) }} />
                         </div>
@@ -1032,13 +1190,14 @@ export const StaticCards = ({ LAND }) => {
                     );
                   })()}
               {/* JOIN batch button */}
-              {fieldActivity.suggestedBatch && (() => {
+              {!hasTokenForActiveCrop && fieldActivity.suggestedBatch && (() => {
                 const b = fieldActivity.suggestedBatch;
                 const dot = cropColor(b.cropColorKey ?? b.cropCode);
                 const joinBatch = () => {
                   const match = CROPS_DATA.find(c => c[1].toLowerCase() === (b.cropName ?? '').toLowerCase());
-                  setForm(prev => ({ ...prev, ...(match ? { crop: match } : {}), selectedBatch: b }));
+                  setForm(prev => ({ ...prev, ...(match ? { crop: match } : {}), var: '', selectedBatch: b }));
                   setAction('season');
+                  setCardView('transactionview');
                 };
                 return (
                   <button
@@ -1052,13 +1211,15 @@ export const StaticCards = ({ LAND }) => {
                   </button>
                 );
               })()}
-              <button
-                onPointerDown={e => e.stopPropagation()}
-                onClick={() => { setAction('season'); setCardView('transactionview'); }}
-                className="text-[10px] text-gray-400 dark:text-slate-400 py-1 active:scale-95 text-left"
-              >
-                + Change or add another crop
-              </button>
+              {!hasTokenForActiveCrop && (
+                <button
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={() => { setAction('season'); setCardView('transactionview'); }}
+                  className="text-[10px] text-gray-400 dark:text-slate-400 py-1 active:scale-95 text-left"
+                >
+                  + Change or add another crop
+                </button>
+              )}
         </div>
         </div>
         )}
@@ -1092,7 +1253,6 @@ export const StaticCards = ({ LAND }) => {
           const primaryLabel = isFallow ? 'New season' : 'Set crop';
           const btn = "px-4 py-2 rounded-lg text-xs font-bold active:scale-95 border bg-white dark:bg-slate-700 text-black dark:text-white border-gray-200 dark:border-slate-600";
 
-          const CROPS = Object.entries(CROP_CODE_NAMES).map(([code, name]) => [code, name]);
           const VARS = Object.fromEntries(
             Object.entries(CROP_VARIETIES).map(([code, vars]) => [
               code, vars.map(v => [String(v.code), v.name]),
@@ -1101,32 +1261,19 @@ export const StaticCards = ({ LAND }) => {
 
           return (
           <div
-            style={action === 'season' ? {
-              position: 'fixed',
-              top: 'calc(env(safe-area-inset-top) + 64px)',
-              left: '8px',
-              right: '8px',
-              width: 'auto',
-              zIndex: 50,
-            } : { zIndex: 0 }}
-            className="flex bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-6 py-4 gap-2"
+            style={{ zIndex: 0 }}
+            className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-6 py-4 gap-2"
             onPointerDown={(e) => controls.start(e)}
           >
-            <div className="flex justify-between items-center">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Actions</p>
-              {(action === 'season' || showAdvice) && (
-                <button
-                  onClick={() => { setAction(null); setShowAdvice(false); }}
-                  className="text-gray-400 dark:text-slate-400 text-sm px-1 active:scale-95"
-                >✕</button>
-              )}
+            <div className="flex justify-center pb-1">
+              <div className="w-8 h-1 rounded-full bg-gray-300 dark:bg-slate-500" />
             </div>
 
             {!action && !showAdvice && (() => {
               const ac = fieldActivity?.activeCycle?.[0];
               return (
               <div className="flex flex-wrap gap-2">
-                <button className={btn} onClick={() => setAction('season')}>
+                <button className={btn} onClick={() => { setForm(prev => ({ ...prev, selectedBatch: null, crop: '', var: '' })); setActiveBatchCert(null); setAction('season'); setCardView('transactionview'); }}>
                   {isFallow ? 'New season' : 'Join batch'}
                 </button>
                 {ac?.reasoning && (
@@ -1154,130 +1301,421 @@ export const StaticCards = ({ LAND }) => {
               );
             })()}
 
-            {action === 'season' && (
-              <div className="flex flex-col gap-3 pt-1">
-                <p className="text-xs dark:text-slate-300">Area</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setForm(prev => ({...prev, coverage: 'full'}))}
-                    className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${form.coverage === 'full' ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-semibold' : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white'}`}
-                  >Entire property</button>
-                  <button
-                    onClick={() => {
-                      setForm(prev => ({...prev, coverage: 'partial', selectedClusters: []}));
-                      setCardView('mapview');
-                      // Flatten + dedupe all historical clusters, mark as unselected
-                      if (record?.per_cycle_clusters) {
-                        const sortedKeys = Object.keys(record.per_cycle_clusters)
-                          .sort((a, b) => parseInt(b.split('_')[1]) - parseInt(a.split('_')[1]));
-                        const seen = new Set();
-                        const allFeats = [];
-                        for (const k of sortedKeys) {
-                          const feats = record.per_cycle_clusters[k]?.features || [];
-                          for (const f of feats) {
-                            const cid = f.properties?.cluster_id;
-                            if (cid != null && !seen.has(cid)) {
-                              seen.add(cid);
-                              allFeats.push({...f, properties: {...f.properties, activity: 'selectable', selected: false}});
-                            }
-                          }
-                        }
-                        if (allFeats.length) {
-                          setFieldActivity(prev => ({
-                            ...prev,
-                            features: allFeats,
-                            geojson: { type: 'FeatureCollection', features: allFeats },
-                            featurelength: allFeats.length,
-                            dormant: false,
-                            historical: false,
-                            selectMode: true,
-                          }));
-                        }
-                      }
-                    }}
-                    className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${(form.coverage === 'partial' || form.coverage === 'confirmed') ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-semibold' : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white'}`}
-                  >Select fields</button>
-                </div>
-
-                {form.coverage === 'partial' && (
-                  <p className="text-[10px] dark:text-slate-500">
-                    {form.selectedClusters?.length > 0
-                      ? `${form.selectedClusters.length} area(s) selected — confirm on map`
-                      : 'Tap areas on the map'}
-                  </p>
-                )}
-                {form.coverage === 'confirmed' && form.selectedClusters?.length > 0 && (
-                  <p className="text-[10px] text-green-600 dark:text-green-400">{form.selectedClusters.length} area(s) confirmed</p>
-                )}
-
-                <p className="text-xs dark:text-slate-300">Crop</p>
-                <div ref={cropRef} className="relative">
-                  <button
-                    onClick={() => setCropOpen(o => !o)}
-                    className="w-full text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white text-left flex items-center justify-between"
-                  >
-                    <span>{form.crop ? form.crop[1] : 'Select crop'}</span>
-                    <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${cropOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {cropOpen && (
-                    <div className="absolute left-0 right-0 mt-1 z-20 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-lg overflow-hidden">
-                      {CROPS.map((opt) => (
-                        <button key={opt[0]}
-                          onClick={() => { setForm(prev => ({...prev, crop: opt, var: ''})); setCropOpen(false); }}
-                          className={`w-full text-left text-xs px-3 py-1.5 dark:text-white ${form.crop?.[0] === opt[0] ? 'bg-gray-100 dark:bg-slate-600 font-semibold' : 'active:bg-gray-50 dark:active:bg-slate-600'}`}
-                        >{opt[1]}</button>
-                      ))}
+            {/* Selected batch chip — shown when a batch is pre-selected (shortcut) or picked from list */}
+            {action === 'season' && form.selectedBatch && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Selected batch</p>
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-black dark:border-white bg-black dark:bg-slate-900">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: cropColor(form.selectedBatch.cropColorKey ?? form.selectedBatch.cropCode) }} />
+                  <span className="text-xs text-white font-semibold flex-1">{form.selectedBatch.cropName}</span>
+                  {form.selectedBatch.displayCode && (
+                    <span className="text-[10px] text-gray-400 font-mono">{form.selectedBatch.displayCode}</span>
+                  )}
+                  {form.selectedBatch.deliveryDate > 0 && (
+                    <span className="text-[10px] text-gray-300">
+                      {new Date(form.selectedBatch.deliveryDate * 1000).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                    </span>
+                  )}
+                  {form.selectedBatch.requiredCerts > 0 && (
+                    <div className="flex items-center gap-1">
+                      {CERT_IMAGES.map((img, i) =>
+                        (form.selectedBatch.requiredCerts & (1 << i)) !== 0 ? (
+                          <button
+                            key={i}
+                            onPointerDown={e => e.stopPropagation()}
+                            onClick={() => setActiveBatchCert(activeBatchCert === i ? null : i)}
+                            className={`rounded-full focus:outline-none ${activeBatchCert === i ? 'ring-2 ring-offset-1 ring-white' : ''}`}
+                          >
+                            <img src={img} alt={CERT_NAMES[i]} className="h-5 w-5 rounded-full object-cover" />
+                          </button>
+                        ) : null
+                      )}
                     </div>
                   )}
+                  <button
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={() => { setForm(prev => ({ ...prev, selectedBatch: null, crop: '', var: '' })); setActiveBatchCert(null); }}
+                    className="text-gray-400 text-sm px-1 active:scale-95"
+                  >✕</button>
                 </div>
+                {activeBatchCert !== null && (
+                  <p className="text-[10px] text-gray-400 dark:text-slate-400 px-1">{CERT_NAMES[activeBatchCert]}</p>
+                )}
+
+              </div>
+            )}
+
+            {/* Open batch list — only shown when no batch is selected yet */}
+            {action === 'season' && batchSummary?.active?.length > 0 && !form.selectedBatch && (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wide">{isFallow ? 'New season' : 'Join batch'}</p>
+                <p className="text-xs dark:text-slate-300">Select a batch:</p>
+                {batchSummary.active.map(b => {
+                  const dot = cropColor(b.cropColorKey ?? b.cropCode);
+                  const pickBatch = () => {
+                    const match = CROPS_DATA.find(c => c[1].toLowerCase() === (b.cropName ?? '').toLowerCase());
+                    setForm(prev => ({ ...prev, ...(match ? { crop: match, var: '' } : {}), selectedBatch: b }));
+                    setActiveBatchCert(null);
+                  };
+                  const hasCerts = b.requiredCerts > 0;
+                  return (
+                    <div key={b.id} className="flex flex-col gap-1">
+                      <div
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={pickBatch}
+                        className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/50 cursor-pointer active:scale-95 transition-transform select-none"
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: dot }} />
+                        <span className="text-xs text-gray-600 dark:text-slate-300 flex-1">{b.cropName}</span>
+                        <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono">#{b.id}</span>
+                        {b.displayCode && (
+                          <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono">{b.displayCode}</span>
+                        )}
+                        {b.deliveryDate > 0 && (
+                          <span className="text-[10px] text-gray-400 dark:text-slate-500">
+                            {new Date(b.deliveryDate * 1000).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                          </span>
+                        )}
+                        {hasCerts && (
+                          <div className="flex items-center gap-1">
+                            {CERT_IMAGES.map((img, i) =>
+                              (b.requiredCerts & (1 << i)) !== 0 ? (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onPointerDown={e => e.stopPropagation()}
+                                  onClick={e => { e.stopPropagation(); setActiveBatchCert(activeBatchCert === i ? null : i); }}
+                                  className={`rounded-full focus:outline-none ${activeBatchCert === i ? 'ring-2 ring-offset-1 ring-gray-400 dark:ring-slate-400' : ''}`}
+                                >
+                                  <img src={img} alt={CERT_NAMES[i]} className="h-5 w-5 rounded-full object-cover" />
+                                </button>
+                              ) : null
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {activeBatchCert !== null && (b.requiredCerts & (1 << activeBatchCert)) !== 0 && (
+                        <p className="text-[10px] text-gray-400 dark:text-slate-400 px-1">{CERT_NAMES[activeBatchCert]}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {action === 'season' && (
+              <div className="flex flex-col gap-3 pt-1">
+                {form.selectedBatch && (
+                  <>
+                    <p className="text-xs dark:text-slate-300">Area</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setForm(prev => ({...prev, coverage: 'full'}))}
+                        className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${form.coverage === 'full' ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-semibold' : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white'}`}
+                      >Entire property</button>
+                      <button
+                        onClick={() => {
+                          setForm(prev => ({...prev, coverage: 'partial', selectedClusters: []}));
+                          setCardView('mapview');
+                          if (record?.per_cycle_clusters) {
+                            const sortedKeys = Object.keys(record.per_cycle_clusters)
+                              .sort((a, b) => parseInt(b.split('_')[1]) - parseInt(a.split('_')[1]));
+                            const seen = new Set();
+                            const allFeats = [];
+                            for (const k of sortedKeys) {
+                              const feats = record.per_cycle_clusters[k]?.features || [];
+                              for (const f of feats) {
+                                const cid = f.properties?.cluster_id;
+                                if (cid != null && !seen.has(cid)) {
+                                  seen.add(cid);
+                                  allFeats.push({...f, properties: {...f.properties, activity: 'selectable', selected: false}});
+                                }
+                              }
+                            }
+                            if (allFeats.length) {
+                              setFieldActivity(prev => ({
+                                ...prev,
+                                features: allFeats,
+                                geojson: { type: 'FeatureCollection', features: allFeats },
+                                featurelength: allFeats.length,
+                                dormant: false,
+                                historical: false,
+                                selectMode: true,
+                              }));
+                            }
+                          }
+                        }}
+                        className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${(form.coverage === 'partial' || form.coverage === 'confirmed') ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-semibold' : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white'}`}
+                      >Select fields</button>
+                    </div>
+                    {form.coverage === 'partial' && (
+                      <p className="text-[10px] dark:text-slate-500">
+                        {form.selectedClusters?.length > 0
+                          ? `${form.selectedClusters.length} area(s) selected — confirm on map`
+                          : 'Tap areas on the map'}
+                      </p>
+                    )}
+                    {form.coverage === 'confirmed' && form.selectedClusters?.length > 0 && (
+                      <p className="text-[10px] text-green-600 dark:text-green-400">{form.selectedClusters.length} area(s) confirmed</p>
+                    )}
+                  </>
+                )}
 
                 {form.crop && (
                   <>
-                    <p className="text-xs dark:text-slate-300">What variety are you growing?</p>
-                    <div ref={varRef} className="relative">
-                      <button
-                        onClick={() => setVarOpen(o => !o)}
-                        className="w-full text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white text-left flex items-center justify-between"
-                      >
-                        <span>{form.var ? form.var[1] : 'Select variety'}</span>
-                        <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${varOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                      {varOpen && (
-                        <div className="absolute left-0 right-0 mt-1 z-10 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-lg overflow-hidden">
-                          {VARS[form.crop[0]].map((opt) => (
-                            <button key={opt[0]}
-                              onClick={() => { setForm(prev => ({...prev, var: opt})); setVarOpen(false); }}
-                              className={`w-full text-left text-xs px-3 py-1.5 dark:text-white ${form.var?.[0] === opt[0] ? 'bg-gray-100 dark:bg-slate-600 font-semibold' : 'active:bg-gray-50 dark:active:bg-slate-600'}`}
-                            >{opt[1]}</button>
-                          ))}
+                    <p className="text-xs dark:text-slate-300">Variety</p>
+                    {form.selectedBatch?.varietyCode !== 0 ? (() => {
+                      const pinnedVar = CROP_VARIETIES[form.selectedBatch.cropCode]?.find(v => v.code === form.selectedBatch.varietyCode);
+                      const varEntry = pinnedVar ? [String(pinnedVar.code), pinnedVar.name] : null;
+                      return form.var ? (
+                        <p className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/50 dark:text-white">
+                          This batch only selects variety <span className="font-semibold">{form.var[1]}</span>
+                        </p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {varEntry && (
+                            <button
+                              onClick={() => setForm(prev => ({ ...prev, var: varEntry }))}
+                              className="w-full text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-400 bg-white dark:bg-slate-700 dark:text-white font-semibold active:scale-95"
+                            >
+                              I am growing {varEntry[1]}
+                            </button>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })() : (
+                      <div ref={varRef} className="relative">
+                        <button
+                          onClick={() => setVarOpen(o => !o)}
+                          className="w-full text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white text-left flex items-center justify-between"
+                        >
+                          <span>{form.var ? form.var[1] : 'Select variety'}</span>
+                          <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${varOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {varOpen && (
+                          <div className="absolute left-0 right-0 mt-1 z-10 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-lg overflow-hidden">
+                            {VARS[form.crop[0]].map((opt) => (
+                              <button key={opt[0]}
+                                onClick={() => { setForm(prev => ({...prev, var: opt})); setVarOpen(false); }}
+                                className={`w-full text-left text-xs px-3 py-1.5 dark:text-white ${form.var?.[0] === opt[0] ? 'bg-gray-100 dark:bg-slate-600 font-semibold' : 'active:bg-gray-50 dark:active:bg-slate-600'}`}
+                              >{opt[1]}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
 
-                {form.var && (
+                {form.selectedBatch && (() => {
+                  const unit              = CROP_UNIT[form.selectedBatch.cropCode] ?? { label: 'kg', toKg: 1 };
+                  const hasCertReqs       = form.selectedBatch.requiredCerts > 0;
+                  const varietyRequired   = (form.selectedBatch?.varietyCode ?? 0) !== 0;
+
+                  const areaAcres         = (record?.meta?.parcel_area_m2 ?? 0) / 4046.86;
+                  const activeCycleYieldKg = Math.round(
+                    (fieldActivity?.activeCycle?.[0]?.expected_yield_kg_acre ?? 0) * areaAcres
+                  );
+                  const hasEstimate       = activeCycleYieldKg > 0;
+
+                  // Fallback yield for slider range when no active-cycle estimate.
+                  // Priority: historical cycles for same crop → typical yield for crop type.
+                  const TYPICAL_KG_ACRE   = { 0:1800, 1:750, 2:30000, 3:8000, 4:7000, 5:6000, 6:300, 7:12000 };
+                  const historyCycles     = record?.cycles ? Object.values(record.cycles) : [];
+                  const cropName          = (CROP_CODE_NAMES[form.selectedBatch.cropCode] ?? '').toLowerCase();
+                  const sameCropYields    = historyCycles
+                    .filter(c => (c.crop_type ?? '').toLowerCase() === cropName && c.yield_kg_per_acre != null)
+                    .map(c => c.yield_kg_per_acre);
+                  const histAvgPerAcre    = sameCropYields.length > 0
+                    ? sameCropYields.reduce((s, v) => s + v, 0) / sameCropYields.length
+                    : (TYPICAL_KG_ACRE[form.selectedBatch.cropCode] ?? 1000);
+                  const fallbackYieldKg   = areaAcres > 0
+                    ? Math.round(histAvgPerAcre * areaAcres)
+                    : Math.round(histAvgPerAcre * 0.5);
+
+                  const estimatedYieldKg  = hasEstimate ? activeCycleYieldKg : fallbackYieldKg;
+                  const estimatedYieldUnits = Math.max(1, Math.round(estimatedYieldKg / unit.toKg));
+                  const showSlider        = (!hasEstimate && form.yieldUnits == null) || editingYield;
+                  const yieldConfirmed    = hasEstimate || form.yieldUnits != null;
+                  const effectiveYieldUnits = form.yieldUnits ?? estimatedYieldUnits;
+                  const effectiveYieldKg  = Math.max(1, Math.round(effectiveYieldUnits * unit.toKg));
+                  const canJoin           = (!varietyRequired || !!form.var) && yieldConfirmed;
+
+                  const hasPrice          = form.selectedBatch.pricePerKgUsdt > 0n;
+                  const priceINRperKg     = hasPrice ? Number(form.selectedBatch.pricePerKgUsdt) / 1e6 : 0;
+                  const priceINRperUnit   = priceINRperKg * unit.toKg;
+                  const earningsINR       = hasPrice ? Math.round(effectiveYieldKg * priceINRperKg) : null;
+
+                  const title = hasEstimate && form.yieldUnits == null ? 'Estimated Yield' : 'Wanted Yield';
+
+                  const handleJoinBatch = async () => {
+                    if (!foodToken || !form.selectedBatch || (varietyRequired && !form.var) || !yieldConfirmed) {
+                      console.warn('[joinBatch] guard blocked', { foodToken: !!foodToken, batch: !!form.selectedBatch, variety: form.var, yieldConfirmed });
+                      return;
+                    }
+                    const varPart = form.var ? ` variety ${form.var[1]}` : '';
+                    const msg = `I confirm I am growing ${form.selectedBatch.cropName}${varPart} on the selected fields.`;
+                    if (!window.confirm(msg)) return;
+                    const landTitleId = LAND?.current?.LAND?.id;
+                    if (!landTitleId) { console.warn('[joinBatch] no landTitleId'); return; }
+                    const harvestTs = fieldActivity?.activeCycle?.[0]?.expected_harvest_date
+                      ? Math.floor(new Date(fieldActivity.activeCycle[0].expected_harvest_date).getTime() / 1000)
+                      : 0;
+                    console.log('[joinBatch] start', {
+                      batchId: form.selectedBatch.id,
+                      landTitleId,
+                      harvestTs,
+                      effectiveYieldKg,
+                      wallet: wallet.address,
+                    });
+                    setJoining(true);
+                    const memberData = await foodToken.batchMembers(form.selectedBatch.id, wallet.address);
+                    const alreadyJoined = memberData.status !== 0n;
+                    console.log('[joinBatch] alreadyJoined:', alreadyJoined, 'memberData.status:', memberData.status);
+                    if (!alreadyJoined) {
+                      const receipt = await runTx(async () => {
+                        const nonce = await wallet.provider.send('eth_getTransactionCount', [wallet.address, 'pending']);
+                        console.log('[joinBatch] joinBatch nonce:', nonce);
+                        return foodToken.joinBatch(form.selectedBatch.id, { nonce });
+                      });
+                      console.log('[joinBatch] joinBatch receipt:', receipt?.hash);
+                      if (!receipt) { setJoining(false); return; }
+                    }
+                    await runTx(
+                      async () => {
+                        const nonce = await wallet.provider.send('eth_getTransactionCount', [wallet.address, 'pending']);
+                        console.log('[joinBatch] mintForBatchMember nonce:', nonce, 'yieldKg:', effectiveYieldKg);
+                        return foodToken.mintForBatchMember(form.selectedBatch.id, landTitleId, harvestTs, effectiveYieldKg, { nonce });
+                      },
+                      {
+                        onSuccess: (receipt) => {
+                          console.log('[joinBatch] mint success, receipt:', receipt?.hash);
+                          qc.invalidateQueries({ queryKey: ['balances'] });
+                          qc.invalidateQueries({ queryKey: ['foodTokenBatches'] });
+                          qc.invalidateQueries({ queryKey: ['tasks'] });
+                          setCardView('transactionview');
+                          setTimeout(() => { setIx(0); setCardView('default'); }, 600);
+                        },
+                        onSettled: () => setJoining(false),
+                      }
+                    );
+                  };
+
+                  const hasTokenForBatch = tokenData?.some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && t.cropCode === form.selectedBatch.cropCode);
+                  const farmerTokenBal   = hasTokenForBatch
+                    ? tokenData.filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && t.cropCode === form.selectedBatch.cropCode)
+                               .reduce((s, t) => s + t.bal, 0)
+                    : 0;
+                  const farmerBalDisplay = unit ? (farmerTokenBal / unit.toKg).toLocaleString('en-IN', { maximumFractionDigits: 1 }) : farmerTokenBal;
+
+                  if (hasTokenForBatch) {
+                    return (
+                      <div className="mt-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 px-4 py-3 flex flex-col gap-1">
+                        <p className="text-xs font-semibold text-green-700 dark:text-green-400">Crop passport confirmed</p>
+                        <p className="text-[10px] text-green-600 dark:text-green-500">
+                          {farmerBalDisplay} {unit.label} of {form.selectedBatch.cropName.toLowerCase()} registered for this season.
+                        </p>
+                        {hasPrice && (
+                          <p className="text-[10px] text-green-600 dark:text-green-500">
+                            Estimated earnings: ₹{Math.round((farmerTokenBal / unit.toKg) * priceINRperUnit).toLocaleString('en-IN')}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
                   <>
-                  <div className="mt-3 p-3 rounded-xl bg-gray-50 dark:bg-slate-600/50">
-                    <p className="text-[10px] dark:text-slate-300 leading-relaxed">
-                      Create a <span className="font-semibold">crop passport</span> for this season —
-                      a digital certificate that proves what you're growing, where, and when.
-                      With it you can:
-                    </p>
-                    <ul className="text-[10px] dark:text-slate-300 mt-1.5 ml-3 space-y-0.5">
-                      <li>· Get better loan terms from your union</li>
-                      <li>· Pre-sell your harvest at a locked price</li>
-                      <li>· Join bulk growing plans for higher rates</li>
-                    </ul>
+                  <div className="mt-3 flex items-center justify-between">
+                    <p className="text-[10px] text-gray-400 dark:text-slate-500 uppercase tracking-wide">Crop passport</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowPassportInfo(v => !v)}
+                      className="text-[10px] text-blue-500 dark:text-blue-400 px-1"
+                    >ℹ</button>
                   </div>
-                  <button
-                    onClick={() => { setAction('mint'); setCardView('transactionview'); }}
-                    className="py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95 mt-2"
-                  >
-                    Join batch
-                  </button>
+                  {showPassportInfo && (
+                    <div className="mt-1 p-3 rounded-xl bg-gray-50 dark:bg-slate-600/50">
+                      <p className="text-[10px] dark:text-slate-300 leading-relaxed">
+                        A digital certificate that proves what you're growing, where, and when. With it you can:
+                      </p>
+                      <ul className="text-[10px] dark:text-slate-300 mt-1.5 ml-3 space-y-0.5">
+                        <li>· Get better loan terms from your union</li>
+                        <li>· Pre-sell your harvest at a locked price</li>
+                        <li>· Join bulk growing plans for higher rates</li>
+                      </ul>
+                    </div>
+                  )}
+
+                  {showSlider ? (
+                    <div className="mt-3 px-1">
+                      <p className="text-[10px] text-gray-400 dark:text-slate-500 mb-1 uppercase tracking-wide">{title}</p>
+                      <div className="flex flex-col m-4 items-center">
+                        <RateSlider
+                          key={estimatedYieldUnits}
+                          type="unit"
+                          decimals={0}
+                          min={1}
+                          max={Math.max(effectiveYieldUnits * 3, 10)}
+                          step={1}
+                          initial={effectiveYieldUnits}
+                          onChange={setYieldDraft}
+                          onSet={() => { setForm(prev => ({ ...prev, yieldUnits: yieldDraft })); setEditingYield(false); }}
+                        />
+                        <p className="text-[10px] text-gray-400 dark:text-slate-500 -mt-2">
+                          {unit.label}{hasPrice ? ` · ₹${priceINRperUnit.toFixed(0)}/${unit.label}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between mt-3 px-1">
+                      <div>
+                        <p className="text-[10px] text-gray-400 dark:text-slate-500 uppercase tracking-wide">{title}</p>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold dark:text-white">{effectiveYieldUnits} {unit.label}</span>
+                          {earningsINR && (
+                            <span className="text-xs font-medium text-black dark:text-white">
+                              ₹{earningsINR.toLocaleString('en-IN')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => { setEditingYield(true); setYieldDraft(effectiveYieldUnits); }}
+                        className="text-[10px] text-blue-500 dark:text-blue-400"
+                      >change</button>
+                    </div>
+                  )}
+
+                  {hasEstimate && form.yieldUnits != null &&
+                    Math.abs(effectiveYieldUnits - estimatedYieldUnits) / estimatedYieldUnits > 0.20 && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-2 px-1 flex gap-1">
+                      <span>⚠</span>
+                      <span>Your estimate diverges substantially from ours. {db?.union?.name ?? 'Your union'} can visit you to do a field analysis.</span>
+                    </p>
+                  )}
+
+                  {hasCertReqs ? (
+                    <CertStatusPanel
+                      farmerAddress={db?.address}
+                      requiredMask={form.selectedBatch.requiredCerts}
+                      onJoin={handleJoinBatch}
+                      joining={joining}
+                      disabled={!yieldConfirmed}
+                      onApplyCert={() => setIx(0)}
+                    />
+                  ) : (
+                    <button
+                      disabled={!canJoin}
+                      onClick={handleJoinBatch}
+                      className={`w-full py-3 rounded-xl text-sm font-bold mt-3 transition-opacity ${canJoin ? 'bg-black dark:bg-white text-white dark:text-gray-800 active:scale-95' : 'bg-black dark:bg-white text-white dark:text-gray-800 opacity-30 cursor-not-allowed'}`}
+                    >
+                      {joining ? 'Joining…' : canJoin ? 'Join batch' : !yieldConfirmed ? 'Set yield first' : 'Select variety to continue'}
+                    </button>
+                  )}
                   </>
-                )}
+                  );
+                })()}
               </div>
             )}
           </div>

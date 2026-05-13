@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from 'react';
-import { useDataContext } from '../utils/NavigationContext';
+import { useDataContext, useViewModeContext } from '../utils/NavigationContext';
 import { ethers } from 'ethers';
 import { useActiveLoans } from './useActiveLoans';
 import { useContactBook } from './useContactBook';
@@ -13,6 +13,7 @@ import { useGlobalOpenRedeemOrders, useGlobalOpenCashOffers, usePendingCashDeliv
 import { useLPProfile } from './useLPProfile';
 import { useFxPool } from './useWallet.ts';
 import { useLoadFundsData } from './useLoadFunds.ts';
+import { useCertRegistry } from './useCertRegistry.ts';
 
 export function usePolBalance(address, provider) {
   return useQuery({
@@ -25,6 +26,14 @@ export function usePolBalance(address, provider) {
     staleTime: 2 * 60 * 1000,
   });
 }
+
+export const CERT_IMG = [
+  '/images/label-01.webp',
+  '/images/label-04.webp',
+  '/images/label-02.webp',
+  '/images/label-03.webp',
+  '/images/label-05.webp',
+];
 
 export const CROP_IMG = {
   0: 'images/paddy.png',
@@ -39,6 +48,7 @@ export const CROP_IMG = {
 
 export function useFilterTasks(LAND, CAP) {
   const { db, tokenData, unionFunds, fieldActivity, setFieldActivity } = useDataContext();
+  const { navRef } = useViewModeContext();
   const { provider }                 = useProvider();
   const queryClient                  = useQueryClient();
   const isLeader                     = Boolean(db?.union?.leader);
@@ -84,6 +94,14 @@ export function useFilterTasks(LAND, CAP) {
   const [dismissedGetOffers,  setDismissedGetOffers]  = useState(new Set());
   const [dismissedGiveOffers, setDismissedGiveOffers] = useState(new Set());
 
+  // Split matching batches into those the farmer can join immediately vs. those needing a cert.
+  const allSuggestedBatches = fieldActivity?.suggestedBatches
+    ?? (fieldActivity?.suggestedBatch ? [fieldActivity.suggestedBatch] : []);
+  const openBatch  = allSuggestedBatches.find(b => (b.requiredCerts ?? 0) === 0) ?? null;
+  const certBatch  = allSuggestedBatches.find(b => (b.requiredCerts ?? 0) > 0)  ?? null;
+  const batchRequiredMask = certBatch?.requiredCerts ?? 0;
+  const { allMet: certsAllMet, requiredCerts: batchRequiredCertsList, loading: certLoading } = useCertRegistry(db?.address, batchRequiredMask);
+
   // compute readiness OUTSIDE queryFn so we can gate with `enabled`
   const tokenDataReady = Array.isArray(tokenData);
   const landReady = Boolean(LAND?.current) && typeof LAND.current?.hasLand === 'boolean';
@@ -105,6 +123,7 @@ export function useFilterTasks(LAND, CAP) {
     lpProfilePending ||
     getOffersPending ||
     giveOffersPending ||
+    certLoading ||
     (isLeader && reservePending);
   function shuffle(arr) {
     const a = arr.slice();
@@ -262,8 +281,11 @@ export function useFilterTasks(LAND, CAP) {
       pendingDeliveries.length,
       filledCashOffers.length,
       fieldActivity?.activeCycle?.length ?? 0,
-      fieldActivity?.suggestedBatch?.id ?? null,
+      openBatch?.id ?? null,
+      certBatch?.id ?? null,
       !!fieldActivity?.dormant,
+      batchRequiredMask,
+      certsAllMet,
     ],
     // useFilterTasks is a pure derivation over upstream hooks — no network call.
     // Treat the composed list as never-stale: when an upstream signal changes the
@@ -290,16 +312,21 @@ export function useFilterTasks(LAND, CAP) {
       const notificationsGranted = notificationPermission === 'granted';
       const baseNin = 40;
       const POL_or_Flag = (typeof polBalance === 'number' && polBalance < 0.2) || topUpGasFlag;
+      const hasActiveCycle = Boolean(fieldActivity?.activeCycle?.length);
+      const missingCerts = batchRequiredCertsList.filter(c => c.status !== 'valid' && c.status !== 'expiring');
 
       const taskList = [
-        { i: 0, 
-          active: !chainSync, 
-          img: "images/sat.svg", 
-          tx_nmb: 0, 
-          click: () => switchToMain(), 
-          title: `${db?.union?.name} has moved to Polygon mainnet.`, 
+        { i: 0,
+          active: !chainSync,
+          img: "images/sat.svg",
+          tx_nmb: 0,
+          click: () => switchToMain(),
+          title: `${db?.union?.name} has moved to Polygon mainnet.`,
           subtitle: 'Make the switch too.',
           btn: 'Switch',
+          swipeable: true,
+          swipeRightLabel: 'Switch ✓',
+          swipeHint: 'Swipe to switch',
         },
         { i: 2,
           active: !hasLandToken && !LAND?.current?.hasLand,
@@ -316,22 +343,28 @@ export function useFilterTasks(LAND, CAP) {
           btn: landMintPending && notificationsGranted ? null : (landMintPending ? 'Enable' : 'Claim'),
          },
         { i: 4,
-          active: Number(CAP?.current) > MINCAP, 
-          img: "images/label-06.webp", 
-          tx_nmb: { ix: 1, i: 0 }, 
-          click: handleToggleView, 
+          active: Number(CAP?.current) > MINCAP,
+          img: "images/label-06.webp",
+          tx_nmb: { ix: 1, i: 0 },
+          click: handleToggleView,
           title: `Invest to reach the minimal loan cap`,
           subtitle: `Invest more nIN to unlock borrowing.`,
           btn: 'Invest',
-         },
-        { i: 5, 
-          active: fallowFields, 
-          img: "images/paddy.png", 
-          tx_nmb: { ix: 2, i: 0 }, 
-          click: handleToggleView, 
-          title: `Start a new cultivation`, 
+          swipeable: true,
+          swipeRightLabel: 'Invest ✓',
+          swipeHint: 'Swipe to invest',
+        },
+        { i: 5,
+          active: fallowFields,
+          img: "images/paddy.png",
+          tx_nmb: { ix: 2, i: 0 },
+          click: () => { setFieldActivity(prev => prev ? { ...prev, pendingCropForm: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
+          title: `Start a new cultivation`,
           subtitle: `Get up to 1L support to grow on fallow and unused fields.`,
-          btn: 'Grow'
+          btn: 'Grow',
+          swipeable: true,
+          swipeRightLabel: 'Grow ✓',
+          swipeHint: 'Swipe to grow',
         },
         // Show buy 
         { i: 6, 
@@ -504,27 +537,26 @@ export function useFilterTasks(LAND, CAP) {
           subtitle: 'Post a Cash Offer to get USDT from an LP.',
           btn: 'View',
         },
-        // Batch match: active cycle crop matches an open union batch → swipe right to join
+        // Batch match: open batch (no cert requirement) → swipe right to join
         { i: 600,
-          active: Boolean(fieldActivity?.activeCycle?.length && fieldActivity?.suggestedBatch),
-          img: CROP_IMG[fieldActivity?.suggestedBatch?.cropCode] ?? 'images/paddy.png',
+          active: hasActiveCycle && openBatch !== null && !tokenData?.some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && t.cropCode === openBatch?.cropCode),
+          img: CROP_IMG[openBatch?.cropCode] ?? 'images/paddy.png',
           tx_nmb: { ix: 2, i: 0 },
           click: () => { setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
           btn2: true,
           swipeRightLabel: 'Join batch →',
-          swipeLeftLabel: (() => { const b = fieldActivity?.suggestedBatch; return `✕ Not ${b?.cropName?.toLowerCase() ?? 'this crop'}`; })(),
+          swipeLeftLabel: (() => { const b = openBatch; return `✕ I'm not growing ${b?.cropName?.toLowerCase() ?? 'this crop'}`; })(),
           click2: () => { setFieldActivity(prev => prev ? { ...prev, pendingCropForm: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
           title: (() => {
-            const b = fieldActivity?.suggestedBatch;
+            const b = openBatch;
             if (!b) return 'Batch open for your crop.';
             const crop = b.cropName?.toLowerCase();
-            if (b.deliveryDate > 0 && b.targetQtyKg > 0n)    return `Join the ${crop} growing programme.`;
-            return ` Get a loan up to 1L`;
+            if (b.deliveryDate > 0 && b.targetQtyKg > 0n) return `Join the ${crop} growing programme.`;
+            return `Get a loan up to 1L`;
           })(),
           subtitle: (() => {
-            const b = fieldActivity?.suggestedBatch;
+            const b = openBatch;
             if (!b) return null;
-            const crop = b.cropName?.toLowerCase();
             const unit = b.cropCode === 2 || b.cropCode === 7 ? 'MT' : b.cropCode === 6 ? 'kg' : 'quintal';
             const div  = b.cropCode === 2 || b.cropCode === 7 ? 1000 : b.cropCode === 6 ? 1 : 100;
             const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -537,7 +569,53 @@ export function useFilterTasks(LAND, CAP) {
             if (b.deliveryDate > 0 && b.targetQtyKg > 0n) {
               return `${Number(b.targetQtyKg) / div} ${unit} target · deliver by ${fmtDate(b.deliveryDate)}`;
             }
-            return `Join and confirm your ${crop} planting `;
+            return `Join and confirm your ${b.cropName?.toLowerCase()} planting`;
+          })(),
+        },
+        // Cert-required batch: farmer is missing the required cert → prompt to apply.
+        { i: 601,
+          active: hasActiveCycle && certBatch !== null && !certsAllMet,
+          img: missingCerts[0]?.index != null ? CERT_IMG[missingCerts[0].index] : (CROP_IMG[certBatch?.cropCode] ?? 'images/paddy.png'),
+          tx_nmb: { ix: 0 },
+          click: () => { navRef.current.assetTab = false; handleToggleView({ ix: 0 }); },
+          title: `${db?.union?.name} needs farmers with a ${missingCerts[0]?.name} certification.`,
+          subtitle: 'Start the application',
+          btn: 'Apply',
+          swipeable: true,
+          swipeRightLabel: 'Apply ✓',
+          swipeHint: 'Swipe to apply',
+        },
+        // Cert-required batch: farmer already holds all required certs → join directly.
+        { i: 602,
+          active: hasActiveCycle && certBatch !== null && certsAllMet && !tokenData?.some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && t.cropCode === certBatch?.cropCode),
+          img: CROP_IMG[certBatch?.cropCode] ?? 'images/paddy.png',
+          tx_nmb: { ix: 2, i: 0 },
+          click: () => { setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
+          btn2: true,
+          swipeRightLabel: 'Join batch →',
+          swipeLeftLabel: (() => { const b = certBatch; return `✕ I'm not growing ${b?.cropName?.toLowerCase() ?? 'this crop'}`; })(),
+          click2: () => { setFieldActivity(prev => prev ? { ...prev, pendingCropForm: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
+          title: (() => {
+            const b = certBatch;
+            if (!b) return 'Certified batch open for your crop.';
+            return `You qualify for the ${b.cropName?.toLowerCase()} certified batch.`;
+          })(),
+          subtitle: (() => {
+            const b = certBatch;
+            if (!b) return null;
+            const unit = b.cropCode === 2 || b.cropCode === 7 ? 'MT' : b.cropCode === 6 ? 'kg' : 'quintal';
+            const div  = b.cropCode === 2 || b.cropCode === 7 ? 1000 : b.cropCode === 6 ? 1 : 100;
+            const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+            if (b.hasOrder) {
+              const parts = [];
+              if (b.pricePerKgUsdt > 0n) parts.push(`$${(Number(b.pricePerKgUsdt) / 1e6).toFixed(2)}/${unit}`);
+              if (b.deliveryDate > 0)    parts.push(`deliver by ${fmtDate(b.deliveryDate)}`);
+              return parts.join(' · ') || 'Union handles delivery and logistics.';
+            }
+            if (b.deliveryDate > 0 && b.targetQtyKg > 0n) {
+              return `${Number(b.targetQtyKg) / div} ${unit} target · deliver by ${fmtDate(b.deliveryDate)}`;
+            }
+            return `Join and confirm your ${b.cropName?.toLowerCase()} planting`;
           })(),
         },
       ];

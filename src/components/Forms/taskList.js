@@ -21,7 +21,7 @@ const AllTasks = ({ LAND, CAP }) => {
             { !isPending && data && data.length > 0 ?
             <div className="flex flex-col w-full" style={{ scrollbarWidth: 'none' }}>
                 { data.map((t, k) => (
-                    t.btn2 ? (
+                    (t.btn2 || t.swipeable) ? (
                         <div key={t.i ?? k} className={`${k && 'border-t-2'} py-3 border-gray-200 dark:border-slate-600`}>
                             <SwipeCard t={t} />
                         </div>

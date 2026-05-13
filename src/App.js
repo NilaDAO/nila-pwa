@@ -46,11 +46,17 @@ function App({installAvailable}) {
   const hot_ready                                          = !!chain && !!address
   const unionAddress                                       = db && db.union?.address
 
-  const {data : bal,  error : Ebal, isFetched: Fbal }      = useErc20Balances(chain, address, { enabled: hot_ready});
+  const [landTitleId, setLandTitleId]                      = useState(Number(db?.reload?.land?.LAND?.id) || undefined);
+  const {data : bal,  error : Ebal, isFetched: Fbal }      = useErc20Balances(chain, address, { enabled: hot_ready}, landTitleId);
   const foodtokens                                         = bal && bal.filter(b => b.type === 'ERC1155').length + 1 // 0 is false...
   const cold_ready                                         = Boolean((!!chain && !!address && !!useCache && !!foodtokens) || (registerRecoverFlag && !!foodtokens))
   const {data : grant, error : Egrant, isFetched: Fgrant}  = useGrantInfo(chain, address, unionAddress, foodtokens, cold_ready );
   const {data : land, error : Eland,  isFetched: Fland }   = useLandTitle(chain, address, cold_ready, pendingLandMint );
+
+  // When land title resolves (e.g. fresh inject), update landTitleId so useErc20Balances refetches food tokens
+  useEffect(() => {
+    if (land?.LAND?.id) setLandTitleId(Number(land.LAND.id));
+  }, [land?.LAND?.id]);
   
   // keep tokenData in sync with latest balances (incl. post-tx invalidations)
   useEffect(() => {
