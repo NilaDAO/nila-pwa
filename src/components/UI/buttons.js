@@ -491,28 +491,30 @@ export function RateSlider({
 
   return (
     <div className='flex flex-row w-[85%] items-center' >
-      <div className="relative w-full h-16">
+      <div className="relative w-full h-10">
         {/* Track */}
-        <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-300 rounded" style={{ transform: 'translateY(-50%)' }} />
+        <div className="absolute top-1/2 left-0 w-full h-px bg-gray-300 rounded" style={{ transform: 'translateY(-50%)' }} />
         {/* Filled portion */}
         <div
-          className={`absolute top-1/2 left-0 h-1 ${color} rounded`}
+          className={`absolute top-1/2 left-0 h-px ${color} rounded`}
           style={{
             width: `${percent}%`,
             transform: 'translateY(-50%)'
           }}
         />
-        {/* Knob + label */}
+        {/* Value label */}
         <div
-          className="absolute top-5 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
+          className="absolute -top-2 transform -translate-x-1/2 text-xs font-medium text-black dark:text-white leading-none"
           style={{ left: `${percent}%` }}
         >
-          <div className='mb-1 text-sm font-medium text-black dark:text-white'>
-            {type === 'percentage' || type === 'kg' ? value?.toFixed(decimals): value}
-            {type === 'percentage' ? '%' : type === 'kg' ? 'kg' : ''}
-          </div>
-          <div className={`w-9 h-9 ${color} border border-gray-400 rounded-full shadow`} />
+          {type === 'percentage' || type === 'kg' ? value?.toFixed(decimals) : value}
+          {type === 'percentage' ? '%' : type === 'kg' ? 'kg' : ''}
         </div>
+        {/* Knob dot — centered on the track line */}
+        <div
+          className={`absolute top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 ${color} border border-gray-400 rounded-full shadow`}
+          style={{ left: `${percent}%` }}
+        />
         {/* Invisible native input to handle dragging */}
         <input
           type="range"
@@ -521,11 +523,11 @@ export function RateSlider({
           step={step}
           value={value}
           onChange={handleChange}
-          className="absolute top-1/2 left-0 w-full h-1 opacity-0 cursor-pointer"
+          className="absolute top-1/2 left-0 w-full h-px opacity-0 cursor-pointer"
           style={{ transform: 'translateY(-50%)' }}
         />
       </div>
-      <CheckCircleIcon onClick={onSet} className='w-12 h-12 mx-3 dark:text-white' />
+      <CheckCircleIcon onClick={onSet} className='w-8 h-8 mx-2 dark:text-white' />
     </div>
   );
 }

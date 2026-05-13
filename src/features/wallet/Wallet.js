@@ -113,7 +113,7 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, save
             : ix === 4 ? <Settings handleOpenForm={handleOpenForm} LAND={LAND} />
             : ix === 5 ? <Forms LAND={LAND} CAP={CAP} handleOpenForm={handleOpenForm} />
             : ix === 6 ? <UnionReserve handleOpenForm={handleOpenForm} savedFieldActivity={savedFieldActivity} />
-            : ix === 7 && <OrdersCard unionAddr={db?.union?.leader ? db?.address : undefined} />
+            : ix === 7 && <OrdersCard unionAddr={db?.union?.leader ? db?.union?.address : undefined} />
             }
         </motion.div>
         </div> 
@@ -296,6 +296,32 @@ function Wallet({LAND}) {
       (d) => String(d?.activity || '').toLowerCase() === 'active'
     )
     const hasDominantCultivations                                                         = Boolean(fieldActivity) && ActiveCultivations.length > 0
+    const hasActiveFoodTokens                                                             = tokenData?.some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0)
+
+    // Synthetic dominant entries from food tokens — used when no satellite record exists yet
+    const foodTokenDominants = hasActiveFoodTokens && !hasDominantCultivations
+      ? Object.values(
+          (tokenData ?? [])
+            .filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0)
+            .reduce((acc, t) => {
+              const key = t.cropCode ?? t.sym;
+              if (!acc[key]) acc[key] = {
+                cluster_id:      `foodtoken-${key}`,
+                crop_type:       CROP_CODE_NAMES[t.cropCode] ?? t.sym?.split('-')[0] ?? 'Crop',
+                stage:           'growing',
+                activity:        'active',
+                signals:         { status: 'ACTIVE_GOOD' },
+                yield_kg_per_acre: 0,
+                yield_index:     0,
+                area_m2:         0,
+                harvest_window:  null,
+              };
+              return acc;
+            }, {})
+        )
+      : []
+
+    const allCultivations = [...ActiveCultivations, ...foodTokenDominants]
     const CAP                                                                             = useRef()
     const inArrays                                                                        = debts.some(d => d.defaulted)
     const meta = LAND.current?.LAND?.metadata || LAND.current?.metadata;
@@ -311,21 +337,23 @@ function Wallet({LAND}) {
     const cashOutDisabled = (reserveData?.settlementShortfall ?? 0n) > 0n;
 
     // Orders & Pricing — leaders only
-    const { data: batchSummary } = useFoodTokenBatches(db?.union?.leader ? db?.address : db?.union?.address);
+    const { data: batchSummary, refetch: refetchBatches } = useFoodTokenBatches(db?.union?.address);
     const activeBatches      = batchSummary?.active          ?? [];
     const totalClaimedQt     = batchSummary?.totalClaimedQt  ?? 0;
     const totalClaimedUsdt   = batchSummary?.totalClaimedUsdt ?? 0;
     const cropBreakdown      = batchSummary?.cropBreakdown   ?? '';
 
-    // Derive suggestedBatch: first active batch whose cropCode matches the active cycle's crop_type
+    // Derive suggestedBatches: ALL active batches whose cropCode matches the active cycle's crop_type
     useEffect(() => {
       const cc = fieldActivity?.activeCycle;
       const cropType = cc?.length ? (cc[0]?.crop_type ?? '').toLowerCase() : null;
-      const match = cropType && activeBatches.length
-        ? activeBatches.find(b => (CROP_CODE_NAMES[b.cropCode] ?? '').toLowerCase() === cropType) ?? null
-        : null;
-      if ((match?.id ?? null) === (fieldActivity?.suggestedBatch?.id ?? null)) return;
-      setFieldActivity(prev => prev ? { ...prev, suggestedBatch: match } : prev);
+      const matches = cropType && activeBatches.length
+        ? activeBatches.filter(b => (CROP_CODE_NAMES[b.cropCode] ?? '').toLowerCase() === cropType)
+        : [];
+      const matchIds  = matches.map(b => b.id).join(',');
+      const existingIds = (fieldActivity?.suggestedBatches ?? (fieldActivity?.suggestedBatch ? [fieldActivity.suggestedBatch] : [])).map(b => b.id).join(',');
+      if (matchIds === existingIds) return;
+      setFieldActivity(prev => prev ? { ...prev, suggestedBatches: matches, suggestedBatch: matches[0] ?? null } : prev);
     }, [fieldActivity?.activeCycle, activeBatches]);
 
     const handleOpenForm = (e, params) => {
@@ -442,7 +470,7 @@ function Wallet({LAND}) {
           key: 1,
           type: 'INVEST',
           show: ix === 1 || ix === null,
-          title: !isCollapsed && earnings > 10 ? `Claim the ${(earnings).toLocaleString('en-IN',{ maximumFractionDigits: 0})} nIN you earned` : "Invest and Borrow",
+          title: !isCollapsed && earnings > 10 ? `Claim the ${(earnings).toLocaleString('en-IN',{ maximumFractionDigits: 0})} nIN you earned` : "Invest & Borrow",
           onClick: () => handleToggleView({ ix: 1}),
           content: <InvestmentCard CAP={CAP} sums={sums} cardShrink={cardShrink} inArrays={inArrays} />
         },
@@ -450,7 +478,7 @@ function Wallet({LAND}) {
           key: 'union-reserve',
           type: 'CASH_LIQUIDITY',
           show: ix === 6 || ix === null,
-          title: "Cash & Liquidity",
+          title: "Cash and Liquidity",
           onClick: () => handleToggleView({ ix: 6 }),
           content: <CashLiquidityCard
             treasury={reserveData?.treasury ?? 0n}
@@ -463,13 +491,12 @@ function Wallet({LAND}) {
           key: 'food-orders',
           type: 'ORDERS',
           show: ix === 7 || ix === null,
-          title: "Orders and Post-harvest",
+          title: "Orders & Post-harvest",
           onClick: () => handleToggleView({ ix: 7 }),
           content: <OrdersSummaryCard
-            totalQt={totalClaimedQt}
-            totalUsdt={totalClaimedUsdt}
-            cropBreakdown={cropBreakdown}
+            activeBatches={activeBatches}
             cardShrink={cardShrink}
+            onRefresh={refetchBatches}
           />,
         }] : []),
         // Generate Active Debt cards
@@ -481,8 +508,8 @@ function Wallet({LAND}) {
             onClick: () => handleToggleView({ ix: 3, i: i }),
             content: <DebtCard d={d} cardShrink={cardShrink} />
           })) || []),          
-        // Generate MAP cards (wait for record before showing)
-        ...((!recordReady || hasDominantCultivations) ? [] : (LAND.current?.length ? landTitles : [null]).map((land, i) => ({
+        // Generate MAP cards (wait for record before showing; suppress if farmer already has food tokens)
+        ...((!recordReady || hasDominantCultivations || hasActiveFoodTokens) ? [] : (LAND.current?.length ? landTitles : [null]).map((land, i) => ({
           key: `map-${i}`,
           type: 'MAP',
           show: ix === null,
@@ -490,21 +517,42 @@ function Wallet({LAND}) {
           onClick: () => handleToggleView({ ix: 2, i: i}),
           content: <MapCard db={db} />,
         }))),
-        // Generate Active Tokenized cultivations
-        ...(ActiveCultivations.map((d, i) => {
+        // Generate Active Tokenized cultivations (satellite records + food-token fallback)
+        ...(allCultivations.map((d, i) => {
             const label = typeof d?.crop_type === 'string'
               ? d.crop_type
               : (d?.crop_type?.dominant?.label || d?.crop_type?.label);
-            const cardTitle = (label && label !== 'other' && label !== 'unknown')
-              ? label
-              : (d?.field_name || 'Cultivation');
+            const isFoodTokenHolder = hasActiveFoodTokens;
+            const confirmedLabel = (label && label !== 'other' && label !== 'unknown') ? label : (d?.field_name || 'Cultivation');
+            const knownCrop = label && label !== 'other' && label !== 'unknown' && label !== 'fallow';
+            const rawUnion = db?.union?.name;
+            const unionName = rawUnion && rawUnion.length > 12
+              ? (rawUnion.lastIndexOf(' ', 12) > 0 ? rawUnion.slice(0, rawUnion.lastIndexOf(' ', 12)) : rawUnion.slice(0, 12))
+              : rawUnion;
+            const hasBatch = Boolean(fieldActivity?.suggestedBatch);
+            const cardTitle = isFoodTokenHolder
+              ? confirmedLabel
+              : hasBatch && knownCrop
+                ? (unionName ? `Join the ${unionName} ${label} batch` : `Join a ${label} batch`)
+                : hasBatch
+                  ? (unionName ? `Join the ${unionName} batch` : 'Join a cycle batch')
+                  : (knownCrop ? confirmedLabel : 'Cycle detected');
             return {
               key: `tokenized-${i}-${d?.cluster_id ?? ''}`,
               type: 'MAP',
               show: ix === null,
               title: cardTitle,
-              titleDot: cropColor(label),
-              onClick: () => handleToggleView({ ix: 2, i: i}),
+              titleDot: isFoodTokenHolder ? cropColor(label) : 'rgba(255,255,255,0.45)',
+              onClick: () => {
+                if (!isFoodTokenHolder) {
+                  if (fieldActivity?.suggestedBatch) {
+                    setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev);
+                  } else {
+                    setFieldActivity(prev => prev ? { ...prev, pendingCropForm: true } : prev);
+                  }
+                }
+                handleToggleView({ ix: 2, i: i });
+              },
               content: <CultivationCard dominant={d} cardIndex={i} />
             };
           }) || []),      
