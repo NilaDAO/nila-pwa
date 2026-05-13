@@ -226,11 +226,13 @@ export interface Batch {
   claimedQtyKg: bigint;
   deliveryDate: number;      // unix ts, 0 = no delivery date
   pricePerKgUsdt: bigint;    // 6 decimals (USDT), 0 = no on-chain price
+  requiredCerts: number;     // uint8 bitmask — bit 0=FairTrade … bit 4=Q&S
 }
 
 // Batch struct field order (for positional fallback):
 //   union_(0), cropCode(1), varietyCode(2), active(3), conditions(4),
-//   buyer(5), targetQtyKg(6), claimedQtyKg(7), deliveryDate(8), pricePerKgUsdt(9), status(10)
+//   buyer(5), targetQtyKg(6), claimedQtyKg(7), deliveryDate(8), pricePerKgUsdt(9), status(10),
+//   requiredCerts(11)
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
@@ -247,6 +249,7 @@ export function useFoodTokenBatches(unionAddr?: string) {
     refetchInterval: 120_000,
     queryFn: async () => {
       const nextId: bigint = await foodToken!.nextBatchId();
+      console.log('[useFoodTokenBatches] nextId:', Number(nextId), 'unionAddr:', unionAddr);
       if (nextId === 0n) return { active: [], totalClaimedQt: 0, totalClaimedUsdt: 0, cropBreakdown: '' };
 
       const batches: Batch[] = [];
@@ -267,7 +270,10 @@ export function useFoodTokenBatches(unionAddr?: string) {
         if (!raw) continue;
 
         const batchUnion = (raw.union_ ?? raw[0] ?? '').toLowerCase();
-        if (batchUnion !== unionAddr!.toLowerCase()) continue;
+        if (batchUnion !== unionAddr!.toLowerCase()) {
+          console.log('[useFoodTokenBatches] batch', ids[i], 'skipped — union mismatch:', batchUnion, '!==', unionAddr!.toLowerCase());
+          continue;
+        }
 
         const cropCode    = Number(raw.cropCode    ?? raw[1]);
         const varietyCode = Number(raw.varietyCode ?? raw[2]);
@@ -277,6 +283,8 @@ export function useFoodTokenBatches(unionAddr?: string) {
         const buyerLow    = buyer.toLowerCase();
         const hasOrder    = buyerLow !== ZERO_ADDR;
 
+        const claimedQtyKg = (raw.claimedQtyKg ?? raw[7]) as bigint;
+        console.log('[useFoodTokenBatches] batch', ids[i], 'claimedQtyKg:', Number(claimedQtyKg), 'active:', active);
         batches.push({
           id:             ids[i],
           union:          batchUnion,
@@ -291,15 +299,17 @@ export function useFoodTokenBatches(unionAddr?: string) {
           buyerName:      hasOrder ? resolveName(buyer) : 'Open programme',
           hasOrder,
           targetQtyKg:    (raw.targetQtyKg    ?? raw[6]) as bigint,
-          claimedQtyKg:   (raw.claimedQtyKg   ?? raw[7]) as bigint,
+          claimedQtyKg,
           deliveryDate:   Number(raw.deliveryDate    ?? raw[8]),
           pricePerKgUsdt: (raw.pricePerKgUsdt  ?? raw[9]) as bigint,
+          requiredCerts:  Number(raw.requiredCerts   ?? raw[11] ?? 0),
         });
       }
 
       const active = batches.filter(b => b.active);
 
       const totalClaimedQt = active.reduce((s, b) => s + Number(b.claimedQtyKg) / 100, 0);
+      console.log('[useFoodTokenBatches] result — activeBatches:', active.length, 'totalClaimedQt:', totalClaimedQt);
 
       const totalClaimedUsdt = active.reduce((s, b) => {
         if (!b.hasOrder || b.pricePerKgUsdt === 0n) return s;

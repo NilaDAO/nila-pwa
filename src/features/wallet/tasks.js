@@ -44,7 +44,7 @@ const TaskMessage = ({ LAND, CAP, inArrays }) => {
             >
                 { data.map((t, k) => (
                     <div key={t.i ?? k} className="snap-start shrink-0 w-full px-6" style={{ scrollSnapAlign: 'start' }}>
-                        { t.btn2 ? (
+                        { (t.btn2 || t.swipeable) ? (
                             <SwipeCard t={t} />
                         ) : (
                             <>

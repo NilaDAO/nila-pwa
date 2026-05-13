@@ -4,6 +4,8 @@ import { ExchangeButton, ClaimButton, IndividualExchangeButton } from '../../com
 import { useDataContext } from "../../utils/NavigationContext";
 import { useFxPool } from "../../hooks/useWallet.ts";
 import { formatUnits } from 'ethers';
+import { CROP_UNIT } from '../../hooks/useFoodTokenBatches.ts';
+import { CROP_IMG } from '../../hooks/useFilterTasks.js';
 
 const FEE = 0.998;
 
@@ -127,8 +129,19 @@ export const UpiTransferCard = () => (
 export const InfoCard = ({ info, data, sym_short, hasLand }) => (
   <div className="bg-white dark:bg-gray-700 rounded-3xl w-full py-6 px-4 shadow-bottom flex flex-col gap-2">
     <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide">Info</p>
-    <p className="text-sm dark:text-slate-400">{info[data.type]}</p>
-    <p className="text-sm whitespace-pre-line dark:text-slate-400">{info[sym_short]}</p>
+    {data?.type === 'ERC1155' ? (
+      <ul className="text-xs dark:text-slate-400 flex flex-col gap-2 list-disc list-outside pl-4 mt-1">
+        <li className="pl-1">Proof that you have joined a certified crop batch for this season.</li>
+        <li className="pl-1">The quantity shown is your expected harvest. It may be revised as your crop grows.</li>
+        <li className="pl-1">This is the asset you sell — you can also borrow against it before harvest.</li>
+        <li className="pl-1">If your harvest is not moved within 3 weeks of the harvest date, the token expires.</li>
+      </ul>
+    ) : (
+      <>
+        <p className="text-sm dark:text-slate-400">{info[data?.type]}</p>
+        <p className="text-sm whitespace-pre-line dark:text-slate-400">{info[sym_short]}</p>
+      </>
+    )}
     {!hasLand && sym_short === 'NILA' && (
       <p className="flex flex-row text-sm pt-2 dark:text-slate-400">
         <LockClosedIcon className="m-4 h-6 w-8" />
@@ -151,9 +164,91 @@ export const AssetsView = ({
     hasLand,
     handleSendTokens,
     }) => {
-    const { debts } = useDataContext();
+    const { debts, db } = useDataContext();
     const hasActiveDebt = Array.isArray(debts) && debts.length > 0;
     const noLandBalance = (data?.sym === 'LAND' && Number(data?.bal || 0) <= 0);
+
+    // ── ERC1155 food token detail view ──────────────────────────────────────
+    if (data?.type === 'ERC1155') {
+        const unit         = CROP_UNIT[data.cropCode] ?? { label: 'kg', toKg: 1 };
+        const cropImg      = CROP_IMG[data.cropCode] ?? '/images/paddy.png';
+        const [cropName, varName] = (data.sym ?? '').split('-');
+        const balUnits     = data.bal / unit.toKg;
+        const pricePerUnit = data._pricePerUnit ?? 0;
+        const totalVal     = pricePerUnit * balUnits;
+        const batch        = data._batch;
+        const targetKg     = batch ? Number(batch.targetQtyKg ?? 0n) : 0;
+        const farmerPct    = targetKg > 0 ? Math.round((data.bal / targetKg) * 100) : null;
+        const isOpen       = batch ? batch.active && (batch.status ?? 0) === 0 : null;
+        const deliveryDate = batch?.deliveryDate > 0
+            ? new Date(batch.deliveryDate * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+            : null;
+        const unionName = db?.union?.name ?? null;
+
+        return (
+            <div
+                className="bg-white dark:bg-gray-700 rounded-3xl w-full py-6 px-4 shadow-bottom flex flex-col items-center"
+                onTouchStart={handletouchstart}
+                onTouchEnd={handletouchend}
+            >
+                <img
+                    src={cropImg}
+                    alt={cropName}
+                    onClick={handlebacktolist}
+                    className="w-[20%] py-6 object-cover"
+                />
+                <h3 className="font-bold pb-4 dark:text-white capitalize whitespace-nowrap">
+                    {cropName}{varName ? ` · ${varName}` : ''}
+                </h3>
+
+                <div className="flex flex-row w-full justify-between pt-4">
+                    <div className="flex flex-col py-2 px-4">
+                        <p className="text-xs text-gray-400 dark:text-slate-400">Quantity</p>
+                        <p className="font-bold dark:text-white">{balUnits.toLocaleString('en-IN', { maximumFractionDigits: 2 })} {unit.label}</p>
+                    </div>
+                    <div className="flex flex-col items-end py-2 px-4">
+                        <p className="text-xs text-gray-400 dark:text-slate-400">Est. value</p>
+                        <p className="font-bold dark:text-white">{totalVal > 0 ? `₹${totalVal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—'}</p>
+                        {pricePerUnit > 0 && (
+                            <p className="text-[10px] text-gray-400 dark:text-slate-500">₹{pricePerUnit.toLocaleString('en-IN', { maximumFractionDigits: 0 })}/{unit.label}</p>
+                        )}
+                    </div>
+                </div>
+
+                {batch && (
+                    <div className="w-full border-t border-gray-100 dark:border-slate-600 pt-3 pb-2 px-4 flex flex-col gap-1.5">
+                        <div className="flex flex-row justify-between">
+                            <span className="text-xs text-gray-400 dark:text-slate-400">Union</span>
+                            <span className="text-xs font-medium dark:text-white">{unionName ?? '—'}</span>
+                        </div>
+                        <div className="flex flex-row justify-between">
+                            <span className="text-xs text-gray-400 dark:text-slate-400">Batch</span>
+                            <span className={`text-xs font-medium ${isOpen ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-slate-400'}`}>
+                                {isOpen === null ? '—' : isOpen ? 'Open' : 'Closed'}
+                            </span>
+                        </div>
+                        <div className="flex flex-row justify-between">
+                            <span className="text-xs text-gray-400 dark:text-slate-400">Delivery by</span>
+                            <span className="text-xs font-medium dark:text-white">{deliveryDate ?? '~'}</span>
+                        </div>
+                        <div className="flex flex-row justify-between">
+                            <span className="text-xs text-gray-400 dark:text-slate-400">Target</span>
+                            <span className="text-xs font-medium dark:text-white">
+                                {farmerPct !== null ? `${farmerPct}%` : '~'}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                <ClaimButton
+                    color="black"
+                    handleClick={handleConfirmBurn}
+                    disabled={false}
+                    title={`Burn ${cropName?.toLowerCase() ?? 'crop'} asset`}
+                />
+            </div>
+        );
+    }
 
     return (
         <div
@@ -185,7 +280,7 @@ export const AssetsView = ({
                 </div>
             </div>
             <ExchangeButton disabled={attr.disabled} handleTx={handleSendTokens} title={attr.buttonTitle} texts={{ 'plus': 'receive', 'minus': 'send' }} />
-            {(data.type === 'ERC1155' || sym_short === 'LAND') && (
+            {sym_short === 'LAND' && (
                 <ClaimButton
                     color="black"
                     handleClick={handleConfirmBurn}

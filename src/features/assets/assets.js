@@ -44,7 +44,7 @@ const Assets = ({LAND,handleOpenForm}) => {
                 <AssetList LAND={LAND} data={data} handleTokenView={handleTokenView} handleOpenForm={handleOpenForm} />
             </div>
             :
-            <div className='bg-white dark:bg-gray-700 rounded-3xl w-full mb-[220px] py-6 rounded-br-3xl rounded-bl-3xl shadow-bottom'>
+            <div className='flex flex-col gap-4 w-full mb-[220px]'>
                 <CertGrid data={data} handleTokenView={handleTokenView} />
             </div>
             }
