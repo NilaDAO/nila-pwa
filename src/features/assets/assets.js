@@ -3,7 +3,7 @@ import { useViewModeContext, useNavContext } from '../../utils/NavigationContext
 import CertGrid from '../assets/certGrid';
 import AssetList from './assetsList';
 
-const Assets = ({LAND,handleOpenForm}) => {
+const Assets = ({LAND, handleOpenForm, onViewField}) => {
     const { navRef,tokenview,setTokenview,setCardView } = useViewModeContext();
     const { ix, prevIx } = useNavContext();
     const [ data, setData ] = useState({ tab: true });
@@ -41,7 +41,7 @@ const Assets = ({LAND,handleOpenForm}) => {
             </div>
             { tab ?
             <div className={tokenview ? '' : 'bg-white dark:bg-gray-700 rounded-3xl w-full mb-[220px] py-6 shadow-bottom'}>
-                <AssetList LAND={LAND} data={data} handleTokenView={handleTokenView} handleOpenForm={handleOpenForm} />
+                <AssetList LAND={LAND} data={data} handleTokenView={handleTokenView} handleOpenForm={handleOpenForm} onViewField={onViewField} />
             </div>
             :
             <div className='flex flex-col gap-4 w-full mb-[220px]'>

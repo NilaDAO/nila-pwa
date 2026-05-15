@@ -7,7 +7,7 @@ import { AssetsView, UsdtSwapCard, UpiTransferCard, InfoCard } from './assetsVie
 import { useFoodTokenBatches, CROP_UNIT } from '../../hooks/useFoodTokenBatches.ts';
 import { CROP_IMG } from '../../hooks/useFilterTasks.js';
 
-const AssetList = ({ data, handleTokenView, LAND, handleOpenForm }) => {
+const AssetList = ({ data, handleTokenView, LAND, handleOpenForm, onViewField }) => {
     const { tokenData, setSelectedAsset, db }       = useDataContext();
     const { tokenview, setTokenview, setCardView }   = useViewModeContext();
     const { handleTouchStart, handleTouchEnd }        = useTouch()
@@ -99,6 +99,7 @@ const AssetList = ({ data, handleTokenView, LAND, handleOpenForm }) => {
                 handlebacktolist={handleBackToList}
                 handleConfirmBurn={handleConfirmBurn}
                 attr={attr}
+                onViewField={onViewField}
                 handleSendTokens={() => {
                     setSelectedAsset(data);
                     setTokenview(false);

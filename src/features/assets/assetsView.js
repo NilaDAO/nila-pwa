@@ -163,6 +163,7 @@ export const AssetsView = ({
     attr,
     hasLand,
     handleSendTokens,
+    onViewField,
     }) => {
     const { debts, db } = useDataContext();
     const hasActiveDebt = Array.isArray(debts) && debts.length > 0;
@@ -172,7 +173,9 @@ export const AssetsView = ({
     if (data?.type === 'ERC1155') {
         const unit         = CROP_UNIT[data.cropCode] ?? { label: 'kg', toKg: 1 };
         const cropImg      = CROP_IMG[data.cropCode] ?? '/images/paddy.png';
-        const [cropName, varName] = (data.sym ?? '').split('-');
+        const _symDash = (data.sym ?? '').indexOf('-');
+        const cropName = _symDash >= 0 ? data.sym.slice(0, _symDash) : (data.sym ?? '');
+        const varName  = _symDash >= 0 ? data.sym.slice(_symDash + 1) : '';
         const balUnits     = data.bal / unit.toKg;
         const pricePerUnit = data._pricePerUnit ?? 0;
         const totalVal     = pricePerUnit * balUnits;
@@ -223,7 +226,7 @@ export const AssetsView = ({
                         </div>
                         <div className="flex flex-row justify-between">
                             <span className="text-xs text-gray-400 dark:text-slate-400">Batch</span>
-                            <span className={`text-xs font-medium ${isOpen ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-slate-400'}`}>
+                            <span className={`text-xs font-medium ${isOpen ? 'text-green dark:text-amber-400' : 'text-gray-500 dark:text-slate-400'}`}>
                                 {isOpen === null ? '—' : isOpen ? 'Open' : 'Closed'}
                             </span>
                         </div>
@@ -237,9 +240,29 @@ export const AssetsView = ({
                                 {farmerPct !== null ? `${farmerPct}%` : '~'}
                             </span>
                         </div>
+                        <div className="flex flex-row justify-between">
+                            <span className="text-xs text-gray-400 dark:text-slate-400">Field</span>
+                            <span className="text-xs font-medium font-mono dark:text-white">
+                                {data.fieldNumber === 0 ? 'entire property' : `#${String(data.fieldNumber).padStart(2, '0')}`}
+                            </span>
+                        </div>
+                        {data.areaM2 > 0 && (
+                            <div className="flex flex-row justify-between">
+                                <span className="text-xs text-gray-400 dark:text-slate-400">Area</span>
+                                <span className="text-xs font-medium font-mono dark:text-white">{data.areaM2.toLocaleString('en-IN')} m²</span>
+                            </div>
+                        )}
                     </div>
                 )}
 
+                {onViewField && (
+                    <ClaimButton
+                        color="white"
+                        handleClick={onViewField}
+                        disabled={false}
+                        title="View field"
+                    />
+                )}
                 <ClaimButton
                     color="black"
                     handleClick={handleConfirmBurn}
