@@ -9,7 +9,8 @@ import Spinner from '../../../components/UI/spinner.js';
 import useLendingFlow from '../../../hooks/useDirectLendingFlow.js'
 import { useMintFoodToken, useBurnLandTitle } from '../../../hooks/useMintLandTitle.ts'
 import { useRecordHash } from '../../../hooks/useRecordHash.ts'
-import { CROP_CODE_NAMES, CROP_VARIETIES, CROP_UNIT, useFoodTokenBatches } from '../../../hooks/useFoodTokenBatches.ts'
+import { CROP_CODE_NAMES, CROP_VARIETIES, CROP_UNIT, CROP_CODE_COLOR_KEY, useFoodTokenBatches } from '../../../hooks/useFoodTokenBatches.ts'
+import { CROP_IMG } from '../../../hooks/useFilterTasks.js'
 import { readItem } from '../../../utils/db.js'
 import { decodeMetadataUri } from '../../../utils/decodeMetadataUri.ts'
 import { useWallet, useContract } from '../../../hooks/useWallet.ts'
@@ -379,17 +380,32 @@ const DormantCard = ({ record }) => {
   if (!status?.surface) return null;
 
   return (
-    <div className="px-4 pt-3 flex flex-col gap-1.5">
-      <p className="text-sm font-semibold dark:text-white flex items-center gap-2">
-        <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: dormantColor(status.ndvi) }} />
-        Fallow
-      </p>
-      <div className="flex flex-col gap-0.5 text-xs dark:text-slate-300">
-        <p>Surface: <span className="font-semibold dark:text-white">{status.surface}</span></p>
-        <p>Soil: <span className="font-semibold dark:text-white">{status.moisture}</span></p>
-        {status.ploughed && <p>{status.ploughed}</p>}
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="inline-block w-3 h-3 rounded-full flex-shrink-0 bg-gray-300 dark:bg-gray-500" />
+        <span className="text-sm font-semibold dark:text-white">fallow</span>
+      </div>
+      <div className="flex flex-col gap-1 text-xs pt-1">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 pt-1">Season</p>
+        <div className="flex justify-between pt-1">
+          <span className="text-gray-500 dark:text-slate-400">Surface</span>
+          <span className="font-bold dark:text-white">{status.surface}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500 dark:text-slate-400">Soil</span>
+          <span className="font-bold dark:text-white">{status.moisture}</span>
+        </div>
+        {status.ploughed && (
+          <div className="flex justify-between">
+            <span className="text-gray-500 dark:text-slate-400">Tillage</span>
+            <span className="font-bold dark:text-white">{status.ploughed}</span>
+          </div>
+        )}
         {status.daysSinceCrop != null && (
-          <p>Last crop ended <span className="font-semibold dark:text-white">{status.daysSinceCrop}d</span> ago</p>
+          <div className="flex justify-between">
+            <span className="text-gray-500 dark:text-slate-400">Last crop</span>
+            <span className="font-bold dark:text-white">{status.daysSinceCrop}d ago</span>
+          </div>
         )}
       </div>
     </div>
@@ -694,12 +710,16 @@ function CertStatusPanel({ farmerAddress, requiredMask, onJoin, joining, disable
   );
 }
 
+const TYPICAL_GROW_DAYS = { 0: 105, 1: 95, 2: 320, 3: 270, 4: 80, 5: 105, 6: 82, 7: 315 };
+const TYPICAL_KG_ACRE_BATCH = { 0: 1800, 1: 750, 2: 30000, 3: 8000, 4: 7000, 5: 6000, 6: 300, 7: 12000 };
+
 export const StaticCards = ({ LAND }) => {
   const [ action, setAction ]                  = useState(null)
   const [ showAdvice, setShowAdvice ]          = useState(false)
+  const [ showDataInfo, setShowDataInfo ]      = useState(false)
   const [ loading, setLoading ]                = useState(true)
   const { db, fieldActivity, setFieldActivity, tokenData } = useDataContext();
-  const { setIx }                              = useNavContext();
+  const { setIx, cardIx }                      = useNavContext();
   const { setTokenview, setCardView }          = useViewModeContext();
   const qc                                     = useQueryClient();
   const controls                               = useDragControls();
@@ -711,7 +731,7 @@ export const StaticCards = ({ LAND }) => {
   // Drive card position via animation controls so we can snap to y:0 on demand
   const springTransition = { type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 };
   useEffect(() => {
-    motionAnimate.start({ y: fieldActivity?.selectMode ? 250 : 0, transition: springTransition });
+    motionAnimate.start({ y: 0, transition: springTransition });
   }, [fieldActivity?.selectMode]);
   useEffect(() => {
     if (action === 'season') motionAnimate.start({ y: 0, transition: springTransition });
@@ -727,11 +747,13 @@ export const StaticCards = ({ LAND }) => {
   }, []);
 
   const [ selected, setSelected ]              = useState([])
-  const [ form, setForm ]                      = useState({ crop: '', var: '', coverage: 'full', yieldUnits: null })
+  const [ form, setForm ]                      = useState({ crop: '', var: '', sos: '', coverage: 'full', yieldUnits: null })
 
   const [ varOpen, setVarOpen ]                = useState(false)
+  const [ overrideCropOpen, setOverrideCropOpen ] = useState(false)
 
   const varRef                                 = useRef(null)
+  const overrideCropRef                        = useRef(null)
   const { burnLandTitle }                      = useBurnLandTitle(Number(process.env.REACT_APP_CHAIN_ID) || 137);
   const unionAddr = db?.union?.address;
   const { data: batchSummary }                 = useFoodTokenBatches(unionAddr);
@@ -744,6 +766,8 @@ export const StaticCards = ({ LAND }) => {
   const [ activeBatchCert, setActiveBatchCert ] = useState(null);
   const [ showPassportInfo, setShowPassportInfo ] = useState(false);
   const [ showDetailedData, setShowDetailedData ]   = useState(false);
+  const [ override, setOverride ]                   = useState(null);
+  const [ showOverride, setShowOverride ]            = useState(false);
 
   useEffect(() => {
     setYieldDraft(1);
@@ -769,6 +793,13 @@ export const StaticCards = ({ LAND }) => {
       console.warn('[CS023] record error', recordError);
     }
   }, [record, recordError]);
+
+  // Preset form.sos from record once it loads (only if not already set by user)
+  useEffect(() => {
+    const sos = record?.current_cycle?.[0]?.sos;
+    if (sos) setForm(prev => prev.sos ? prev : { ...prev, sos });
+  }, [record]);
+
 
   // CS023: when user swipes to a cycle, push its clusters onto the map
   const handleCycleChange = useCallback((cycle, perCycleClusters) => {
@@ -1038,199 +1069,557 @@ export const StaticCards = ({ LAND }) => {
         {record?.cycles && Object.keys(record.cycles).length > 0 && (
           <CycleSwiper record={record} onCycleChange={handleCycleChange} onCurrentRestore={handleCurrentRestore} />
         )}
-        {/* ── Section 1: Cumulative data ── */}
-        {action !== 'season' && (
-        <div style={{ zIndex: 0}} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1">
-                <div
-                  onPointerDown={(e) => controls.start(e)}
-                  onTouchStart={(e) => { startYRef.current = e.touches[0].clientY; }}
-                  onTouchEnd={(e) => { if (e.changedTouches[0].clientY - startYRef.current > 25) close(); }}
-                  className="h-10 w-full select-none cursor-grab active:cursor-grabbing flex justify-center items-center"
-                >
-                  <span className="h-1 w-16 rounded-full bg-slate-300 dark:bg-slate-500" />
+        {/* ── Section 1: Field status ── */}
+        {action !== 'season' && (() => {
+          const isFallowField = !record?.current_cycle && record?.clusters?.features?.length === 0;
+          // Include record.current_cycle: Wallet.js sets activeCycle from it, but record may arrive after render
+          const hasActiveCycle = (fieldActivity?.activeCycle?.length ?? 0) > 0
+            || (record?.current_cycle?.length ?? 0) > 0;
+          const anyFoodToken = (tokenData ?? []).some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0);
+          // Gate: only render once Wallet.js has processed record+tokenData for THIS field.
+          // fieldActivity.recordToken is stamped by Wallet.js's useEffect — prevents stale
+          // activeCycle from a previous field triggering the wrong state.
+          if (!record || fieldActivity?.recordToken !== tokenId) return null;
+          // ac: prefer EO-derived activeCycle, fall back to backend current_cycle
+          const ac = fieldActivity?.activeCycle?.[0] ?? record?.current_cycle?.[0] ?? null;
+          // tokenData is guaranteed non-null here (recordToken gate only unlocks after tokenData is fetched)
+          // Deduplicate by cropCode to match the ordering of foodTokenDominants in Wallet.js (cardIx aligns).
+          const activeFoodTokens = Object.values(
+            (tokenData ?? [])
+              .filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0)
+              .reduce((acc, t) => { const k = t.cropCode ?? t.sym; if (!acc[k]) acc[k] = t; return acc; }, {})
+          );
+          // Only show the panel for the currently selected cultivation card
+          const visibleFoodTokens = cardIx != null ? activeFoodTokens.slice(cardIx, cardIx + 1) : activeFoodTokens;
+          const recordCropLower = ac?.crop_type?.toLowerCase() ?? null;
+
+          // fieldState for non-food-token paths only (states 1 and 2)
+          let fieldState;
+          if (anyFoodToken) fieldState = 'food';
+          else if (hasActiveCycle) fieldState = 2;
+          else fieldState = 1;
+          const eos = ac?.predicted_eos;
+          const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) : '—';
+          const harvestText = eos?.length ? `${fmtDate(eos[0])}${eos[1] ? ` → ${fmtDate(eos[1])}` : ''}` : null;
+          const daysToHarvest = eos?.[0] ? Math.round((new Date(eos[0]) - new Date()) / 86400000) : null;
+          const formatHarvestDate = (iso) => {
+            if (!iso) return null;
+            const d = new Date(iso + 'T00:00:00Z');
+            const day = d.getUTCDate();
+            const month = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+            const year = d.getUTCFullYear();
+            const part = day <= 10 ? 'early' : day <= 20 ? 'mid' : 'late';
+            const yearStr = year !== new Date().getFullYear() ? ` '${String(year).slice(2)}` : '';
+            return `${part} ${month}${yearStr}`;
+          };
+          const healthColor = ac?.health === 'stressed' ? 'text-amber-500' : ac?.health === 'poor' ? 'text-red' : 'text-green dark:text-amber-400';
+
+          const isBatchFeasible = (b) => {
+            if (!b.deliveryDate || b.deliveryDate === 0) return true;
+            const growDays = TYPICAL_GROW_DAYS[b.cropCode] ?? 100;
+            return Date.now() / 1000 + growDays * 86400 < b.deliveryDate;
+          };
+
+          const areaM2 = record?.meta?.parcel_area_m2 ?? 0;
+          const areaAcres = areaM2 / 4046.86;
+          const effectiveAcres = areaAcres * 0.85;
+
+          const effectiveCropType = override?.cropType ?? ac?.crop_type;
+          const isManual = !!override?.cropType;
+          const overrideCropCode = isManual
+            ? (CROPS_DATA.find(([, n]) => n === override.cropType)?.[0] ?? null)
+            : null;
+          const matchingBatches = (batchSummary?.active ?? [])
+            .filter(b => (CROP_CODE_NAMES[b.cropCode] ?? '').toLowerCase() === (effectiveCropType ?? '').toLowerCase())
+            .filter(b => isBatchFeasible(b))
+            .sort((a, bb) => Number(bb.pricePerKgUsdt ?? 0) - Number(a.pricePerKgUsdt ?? 0));
+          const bestBatch = matchingBatches[0] ?? null;
+
+          const variety = ac?.variety ?? record?.current_cycle?.[0]?.variety ?? null;
+
+          return (
+          <div style={{ zIndex: 0 }} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1">
+            <div
+              onPointerDown={(e) => controls.start(e)}
+              onTouchStart={(e) => { startYRef.current = e.touches[0].clientY; }}
+              onTouchEnd={(e) => { if (e.changedTouches[0].clientY - startYRef.current > 25) close(); }}
+              className="h-10 w-full select-none cursor-grab active:cursor-grabbing flex justify-center items-center"
+            >
+              <span className="h-1 w-16 rounded-full bg-slate-300 dark:bg-slate-500" />
+            </div>
+            <div className="flex flex-col px-6 pb-6" onPointerDown={(e) => controls.start(e)}>
+
+              {/* Header row */}
+              <div className="flex items-start justify-between px-4">
+                <div>
+                  <h3 className='font-bold dark:text-white'>{db['farmname']}</h3>
+                  <p className='text-[10px] dark:text-slate-500'>&#9888; Beta — data may be inaccurate</p>
                 </div>
-                <div className="flex flex-col px-6 pb-6"
-                  onPointerDown={(e) => controls.start(e)}
-                >
-                  <h3 className='font-bold px-4 dark:text-white'>{db['farmname']}</h3>
-                  <p className='text-[10px] px-4 dark:text-slate-500'>&#9888; Beta — data may be inaccurate</p>
+              </div>
 
-                  { loading && <Spinner size='small' stages={'loading latest records'} />}
+              {loading && <Spinner size='small' stages={'loading latest records'} />}
 
-                  {/* Active crop status */}
-                  {fieldActivity?.activeCycle?.length > 0 && (() => {
-                    const ac = fieldActivity.activeCycle[0];
-                    const eos = ac.predicted_eos;
-                    const fmtHarvest = (d) => { if (!d) return ''; const dt = new Date(d); return dt.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }); };
-                    const harvestText = eos?.length ? `${fmtHarvest(eos[0])}${eos[1] ? ` → ${fmtHarvest(eos[1])}` : ''}` : null;
-                    const daysToHarvest = eos?.[0] ? Math.round((new Date(eos[0]) - new Date()) / 86400000) : null;
-                    const healthColor = ac.health === 'stressed' ? 'text-amber-500' : ac.health === 'poor' ? 'text-red-500' : 'text-green-500';
-                    const w = ac.weather_summary || {};
-                    return (
-                    <div className="flex flex-col gap-1.5 px-4 pt-3">
-                      {hasTokenForActiveCrop && (
-                        <div className="flex items-center gap-1.5 self-start px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 mb-1">
-                          <span className="text-[10px] font-semibold text-green-700 dark:text-green-400">
-                            Crop passport · {activeCropBalDisplay} {activeCropUnit.label}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: cropColor(ac.crop_type) }} />
-                          <span className="text-sm font-semibold dark:text-white">{ac.crop_type}</span>
-                          <span className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full">{ac.stage}</span>
-                          <span className={`text-[10px] font-semibold ${healthColor}`}>{ac.health}</span>
-                        </div>
+              {/* ── State 1: Fallow — available batches with earnings ── */}
+              {fieldState === 1 && (
+                <div className="px-4 pt-3 flex flex-col gap-2">
+                  <DormantCard record={record} />
+                  {(batchSummary?.active?.length ?? 0) === 0 ? (
+                    <p className="text-[10px] text-gray-400 dark:text-slate-500 pt-1">No active batches from your union yet.</p>
+                  ) : (
+                    <div className="flex flex-col gap-2 pt-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Recommended batch</p>
+                      <div className="flex flex-col gap-2">
+                        {batchSummary.active.map(b => {
+                          const feasible = isBatchFeasible(b);
+                          const typicalKg = (TYPICAL_KG_ACRE_BATCH[b.cropCode] ?? 1000) * effectiveAcres;
+                          const pricePerKg = Number(b.pricePerKgUsdt ?? 0) / 1e6;
+                          const earnings = pricePerKg > 0 && effectiveAcres > 0 ? Math.round(typicalKg * pricePerKg) : null;
+                          const deliveryStr = b.deliveryDate > 0
+                            ? new Date(b.deliveryDate * 1000).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: '2-digit' })
+                            : null;
+                          const img = CROP_IMG[b.cropCode] ?? 'images/paddy.png';
+                          const pickBatch = () => {
+                            if (!feasible) return;
+                            const match = CROPS_DATA.find(c => c[1].toLowerCase() === (b.cropName ?? '').toLowerCase());
+                            setForm(prev => ({ ...prev, ...(match ? { crop: match, var: '' } : {}), selectedBatch: b }));
+                            setActiveBatchCert(null);
+                            setAction('season');
+                            setCardView('transactionview');
+                          };
+                          return (
+                            <button
+                              key={b.id}
+                              onPointerDown={e => e.stopPropagation()}
+                              onClick={pickBatch}
+                              disabled={!feasible}
+                              className={`py-6 w-full flex flex-col items-center justify-center gap-2 rounded-xl border select-none active:scale-95 ${feasible ? 'border-gray-200 dark:border-slate-600' : 'border-gray-100 dark:border-slate-700 opacity-40'}`}
+                            >
+                              <img src={img} alt={b.cropName} className="w-16 h-16 object-contain" />
+                              <span className="text-sm font-semibold dark:text-white">{b.cropName}</span>
+                              {earnings != null ? (
+                                <span className="text-sm font-bold dark:text-white">₹{earnings.toLocaleString('en-IN')}</span>
+                              ) : (
+                                <span className="text-xs text-gray-400 dark:text-slate-500">no price set</span>
+                              )}
+                              {deliveryStr && (
+                                <span className="text-[10px] text-gray-400 dark:text-slate-500">
+                                  {feasible ? `by ${deliveryStr}` : `too late · ${deliveryStr}`}
+                                </span>
+                              )}
+                              {effectiveAcres > 0 && (
+                                <span className="text-[10px] text-gray-400 dark:text-slate-500">
+                                  Est. on {effectiveAcres.toFixed(2)} ac (85%)
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-gray-400 dark:text-slate-300 leading-relaxed flex gap-1.5 pt-1">
+                        <span className="flex-shrink-0">⚠️</span>
+                        <span>Not grow advice. Always discuss with your local agricultural office what should be grown on your land.</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── State 2: Active cycle, no food token ── */}
+              {fieldState === 2 && ac && (
+                <div className="flex flex-col gap-1.5 px-4 pt-3">
+                  {showOverride && (
+                    <div className="flex flex-col gap-2 py-3 rounded-xl bg-gray-50 dark:bg-slate-700/50 mb-1">
+                      <div ref={overrideCropRef} className="relative">
                         <button
                           onPointerDown={e => e.stopPropagation()}
-                          onClick={() => setShowDetailedData(v => !v)}
-                          className="text-[10px] text-blue-500 dark:text-blue-400 px-1 flex-shrink-0"
-                        >ℹ</button>
+                          onClick={() => setOverrideCropOpen(o => !o)}
+                          className="w-full text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white text-left flex items-center justify-between"
+                        >
+                          <span>{override?.cropType ?? `detected: ${ac.crop_type}`}</span>
+                          <ChevronDownIcon className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${overrideCropOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {overrideCropOpen && (
+                          <div className="absolute left-0 right-0 mt-1 z-10 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-lg overflow-auto max-h-48">
+                            <button
+                              key="__detected__"
+                              onPointerDown={e => e.stopPropagation()}
+                              onClick={() => { setOverride(prev => { const n = { ...(prev ?? {}) }; delete n.cropType; return Object.keys(n).length ? n : null; }); setOverrideCropOpen(false); setShowOverride(false); }}
+                              className={`w-full text-left text-xs px-3 py-1.5 dark:text-white ${!override?.cropType ? 'bg-gray-100 dark:bg-slate-600 font-semibold' : 'active:bg-gray-50 dark:active:bg-slate-600'}`}
+                            >detected: {ac.crop_type}</button>
+                            {CROPS_DATA.map(([code, name]) => (
+                              <button
+                                key={code}
+                                onPointerDown={e => e.stopPropagation()}
+                                onClick={() => { setOverride(prev => ({ ...(prev ?? {}), cropType: name })); setOverrideCropOpen(false); setShowOverride(false); }}
+                                className={`w-full text-left text-xs px-3 py-1.5 dark:text-white ${override?.cropType === name ? 'bg-gray-100 dark:bg-slate-600 font-semibold' : 'active:bg-gray-50 dark:active:bg-slate-600'}`}
+                              >{name}</button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex flex-col gap-1 text-xs">
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: anyFoodToken ? cropColor(effectiveCropType ?? '') : '#9ca3af' }} />
+                      <span className="text-sm font-semibold dark:text-white">{effectiveCropType}</span>
+                      <span className={`text-[10px] ${isManual ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-slate-500'}`}>
+                        {isManual ? 'manual' : 'est.'}
+                      </span>
+                    </div>
+                    <button
+                      onPointerDown={e => e.stopPropagation()}
+                      onClick={() => setShowOverride(v => !v)}
+                      className="text-[10px] text-blue-500 dark:text-blue-400 flex-shrink-0"
+                    >Not {effectiveCropType}?</button>
+                  </div>
+                  <div className="flex flex-col gap-1 text-xs pt-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 pt-1">Season</p>
+                    {(override?.sos ?? ac.sos) && (
+                      <div className="flex justify-between pt-1">
+                        <span className="text-gray-500 dark:text-slate-400">Start of season</span>
+                        <span className="font-bold dark:text-white">
+                          {formatHarvestDate(override?.sos ?? ac.sos) ?? (override?.sos ?? ac.sos)}
+                        </span>
+                      </div>
+                    )}
+                    {!isManual && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-slate-400">Harvest</span>
+                        <span className="font-bold dark:text-white">
+                          {daysToHarvest != null && daysToHarvest > 0
+                            ? `${daysToHarvest}d · ${formatHarvestDate(eos?.[0]) ?? harvestText ?? '—'}`
+                            : formatHarvestDate(eos?.[0]) ?? harvestText ?? '—'}
+                        </span>
+                      </div>
+                    )}
+                    {!isManual && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-slate-400">Est. yield</span>
+                        <span className="font-bold dark:text-white">{ac.expected_yield_kg_acre ? `${ac.expected_yield_kg_acre} kg/acre` : '—'}</span>
+                      </div>
+                    )}
+                    {!isManual && ac.stage && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-slate-400">Stage</span>
+                        <span className="font-bold dark:text-white">{ac.stage}</span>
+                      </div>
+                    )}
+                    {!isManual && ac.health && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-slate-400">Health</span>
+                        <span className={`font-bold ${healthColor}`}>{ac.health}</span>
+                      </div>
+                    )}
+                    {isManual && (
+                      <p className="text-[10px] text-gray-400 dark:text-slate-300 leading-relaxed flex gap-1.5 pt-1">
+                        <span className="flex-shrink-0">⚠️</span>
+                        <span>Thanks for the update. We will review our prediction as soon as possible.</span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-col gap-2">
+                    {bestBatch ? (() => {
+                      const feasible = isBatchFeasible(bestBatch);
+                      const typicalKg = (!isManual && ac.expected_yield_kg_acre)
+                        ? ac.expected_yield_kg_acre * effectiveAcres
+                        : (TYPICAL_KG_ACRE_BATCH[bestBatch.cropCode] ?? 1000) * effectiveAcres;
+                      const pricePerKg = Number(bestBatch.pricePerKgUsdt ?? 0) / 1e6;
+                      const earnings = pricePerKg > 0 && effectiveAcres > 0 ? Math.round(typicalKg * pricePerKg) : null;
+                      const deliveryStr = bestBatch.deliveryDate > 0
+                        ? new Date(bestBatch.deliveryDate * 1000).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: '2-digit' })
+                        : null;
+                      const img = CROP_IMG[bestBatch.cropCode] ?? 'images/paddy.png';
+                      return (
+                        <>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Recommended batch</p>
+                          <button
+                            onPointerDown={e => e.stopPropagation()}
+                            onClick={() => {
+                              if (!feasible) return;
+                              const match = CROPS_DATA.find(c => c[1].toLowerCase() === (bestBatch.cropName ?? '').toLowerCase());
+                              setForm(prev => ({ ...prev, ...(match ? { crop: match, var: '' } : {}), selectedBatch: bestBatch }));
+                              setActiveBatchCert(null);
+                              setAction('season');
+                              setCardView('transactionview');
+                            }}
+                            disabled={!feasible}
+                            className={`py-6 w-full flex flex-col items-center justify-center gap-2 rounded-xl border select-none active:scale-95 ${feasible ? 'border-gray-200 dark:border-slate-600' : 'border-gray-100 dark:border-slate-700 opacity-40'}`}
+                          >
+                            <img src={img} alt={bestBatch.cropName} className="w-16 h-16 object-contain" />
+                            <span className="text-sm font-semibold dark:text-white">{bestBatch.cropName}</span>
+                            {earnings != null ? (
+                              <span className="text-sm font-bold dark:text-white">₹{earnings.toLocaleString('en-IN')}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400 dark:text-slate-500">no price set</span>
+                            )}
+                            {deliveryStr && (
+                              <span className="text-[10px] text-gray-400 dark:text-slate-500">
+                                {feasible ? `by ${deliveryStr}` : `too late · ${deliveryStr}`}
+                              </span>
+                            )}
+                            {effectiveAcres > 0 && (
+                              <span className="text-[10px] text-gray-400 dark:text-slate-500">
+                                Est. on {effectiveAcres.toFixed(2)} ac
+                              </span>
+                            )}
+                          </button>
+                          <p className="text-[10px] text-gray-400 dark:text-slate-300 leading-relaxed flex gap-1.5">
+                            <span className="flex-shrink-0">⚠️</span>
+                            <span>Not grow advice. Always discuss with your local agricultural office what should be grown on your land.</span>
+                          </p>
+                        </>
+                      );
+                    })() : (
+                      <div className="flex flex-col gap-1">
+                        <button disabled className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-600 opacity-50">
+                          <span className="text-xs text-gray-400 dark:text-slate-400">No matching batch available</span>
+                        </button>
+                        <p className="text-[10px] text-gray-400 dark:text-slate-300 leading-relaxed flex gap-1.5">
+                          <span className="flex-shrink-0">⚠️</span>
+                          <span>Ask your union to create batches for {effectiveCropType}.</span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Food token states: one panel per token (state 3 = matches satellite, state 4 = no match) ── */}
+              {fieldState === 'food' && visibleFoodTokens.map(tok => {
+                const tokCropName = CROP_CODE_NAMES[tok.cropCode] ?? tok.sym?.split('-')[0] ?? 'Crop';
+                const tokMatchesSatellite = hasActiveCycle && tokCropName.toLowerCase() === recordCropLower;
+                const tokUnit = CROP_UNIT[tok.cropCode] ?? { label: 'kg', toKg: 1 };
+                const tokVariety = tok.varietyCode != null
+                  ? (CROP_VARIETIES[tok.cropCode]?.find(v => v.code === tok.varietyCode + 1)?.name ?? null)
+                  : null;
+                const tokBatch = (batchSummary?.active ?? []).find(b => b.cropCode === tok.cropCode);
+                const tokBatchId = tokBatch?.id ?? null;
+                const tokSos = tokMatchesSatellite ? (ac?.sos ?? null) : null;
+                const tokCropColor = cropColor(CROP_CODE_COLOR_KEY[tok.cropCode ?? -1] ?? tokCropName);
+
+                if (tokMatchesSatellite && ac) {
+                  // State 3: token confirmed by satellite — show full monitoring data
+                  return (
+                    <div key={`ft-s3-${tok.cropCode}`} className="flex flex-col gap-1.5 px-4 pt-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cropColor(ac.crop_type) }} />
+                        <span className="text-sm font-semibold dark:text-white">{ac.crop_type}</span>
+                        {tokBatchId != null && (
+                          <span
+                            className="text-[10px] font-semibold text-white px-1.5 py-0.5 rounded-full"
+                            style={{ backgroundColor: tokCropColor }}
+                          >
+                            part of batch #{tokBatchId}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1 text-xs pt-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 pt-1">Season</p>
+                        <div className="flex justify-between pt-1">
+                          <span className="text-gray-500 dark:text-slate-400">Start of the season</span>
+                          <span className="font-bold dark:text-white">{formatHarvestDate(ac.sos) ?? ac.sos ?? '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Variety</span>
+                          <span className="font-bold dark:text-white">{variety ?? tokVariety ?? '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Tokens</span>
+                          <span className="font-bold dark:text-white">{activeCropBalDisplay} {activeCropUnit.label}</span>
+                        </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500 dark:text-slate-400">Harvest</span>
                           <span className="font-bold dark:text-white">
-                            {daysToHarvest != null && daysToHarvest > 0 ? `${daysToHarvest}d` : harvestText || '—'}
+                            {daysToHarvest != null && daysToHarvest > 0
+                              ? `${daysToHarvest}d · ${formatHarvestDate(eos?.[0]) ?? harvestText ?? '—'}`
+                              : formatHarvestDate(eos?.[0]) ?? harvestText ?? '—'}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500 dark:text-slate-400">Est. yield</span>
                           <span className="font-bold dark:text-white">{ac.expected_yield_kg_acre ? `${ac.expected_yield_kg_acre} kg/acre` : '—'}</span>
                         </div>
-                        {showDetailedData && (
-                          <>
-                            <div className="flex justify-between">
-                              <span className="text-gray-500 dark:text-slate-400">Rain</span>
-                              <span className="font-bold dark:text-white">{w.total_rain_mm != null ? `${w.total_rain_mm} mm` : '—'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-500 dark:text-slate-400">Soil moisture</span>
-                              <span className="font-bold dark:text-white">{w.mean_soil_moisture != null ? `${Math.round(w.mean_soil_moisture)} kg/m²` : '—'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-500 dark:text-slate-400">Days since sowing</span>
-                              <span className="font-bold dark:text-white">{ac.days_since_sos ? `${ac.days_since_sos}` : '—'}</span>
-                            </div>
-                            {record && (
-                              <div className="flex justify-between">
-                                <span className="text-gray-500 dark:text-slate-400">Rotation</span>
-                                <span className="font-bold dark:text-white">{record.scorecard?.rotation_pattern || '—'}</span>
-                              </div>
-                            )}
-                            {record && (
-                              <div className="flex justify-between">
-                                <span className="text-gray-500 dark:text-slate-400">Yield class</span>
-                                <span className="font-bold dark:text-white">{record.scorecard?.yield_trend || '—'}</span>
-                              </div>
-                            )}
-                          </>
+                        {ac.stage && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500 dark:text-slate-400">Stage</span>
+                            <span className="font-bold dark:text-white">{ac.stage}</span>
+                          </div>
                         )}
+                        {ac.health && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500 dark:text-slate-400">Health</span>
+                            <span className={`font-bold ${healthColor}`}>{ac.health}</span>
+                          </div>
+                        )}
+                        {ac.weather_summary?.total_rain_mm != null && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500 dark:text-slate-400">Rain</span>
+                            <span className="font-bold dark:text-white">{ac.weather_summary.total_rain_mm} mm</span>
+                          </div>
+                        )}
+                        {ac.weather_summary?.mean_soil_moisture != null && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500 dark:text-slate-400">Soil moisture</span>
+                            <span className="font-bold dark:text-white">{Math.round(ac.weather_summary.mean_soil_moisture)} kg/m²</span>
+                          </div>
+                        )}
+                        {ac.days_since_sos != null && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500 dark:text-slate-400">Days since sowing</span>
+                            <span className="font-bold dark:text-white">{ac.days_since_sos}</span>
+                          </div>
+                        )}
+                        {record?.scorecard?.rotation_pattern && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500 dark:text-slate-400">Rotation</span>
+                            <span className="font-bold dark:text-white">{record.scorecard.rotation_pattern}</span>
+                          </div>
+                        )}
+                        {record?.scorecard?.yield_trend && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500 dark:text-slate-400">Yield class</span>
+                            <span className="font-bold dark:text-white">{record.scorecard.yield_trend}</span>
+                          </div>
+                        )}
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 pt-2">Advice</p>
+                        <div className="flex justify-between pt-1">
+                          <span className="text-gray-500 dark:text-slate-400">Stage</span>
+                          <span className="font-bold dark:text-white">{ac.stage_description ?? '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Health</span>
+                          <span className="font-bold dark:text-white">{ac.health_description ?? '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Yield outlook</span>
+                          <span className="font-bold dark:text-white">{ac.yield_description ?? '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Water</span>
+                          <span className="font-bold dark:text-white">{ac.water_advice ?? '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Fertilizer</span>
+                          <span className="font-bold dark:text-white">{ac.fertilizer_advice ?? '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Weeding</span>
+                          <span className="font-bold dark:text-white">{ac.weeding_advice ?? '—'}</span>
+                        </div>
                       </div>
-                      {showDetailedData && ac.crop_confidence > 0 && (
-                        <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1 mt-1">
-                          <div className="h-1 rounded-full" style={{ width: `${Math.round(ac.crop_confidence * 100)}%`, backgroundColor: cropColor(ac.crop_type) }} />
-                        </div>
-                      )}
                     </div>
-                    );
-                  })()}
+                  );
+                }
 
-                  {/* Cumulative stats table */}
-                  {record && (() => {
-                    const cycles = record.cycles ? Object.values(record.cycles) : [];
-                    const sc = record.scorecard || {};
-                    const area = record.meta?.parcel_area_m2 || 0;
-                    const areaAcres = area / 4046.86;
-
-                    // Cumulative yield by crop (extrapolate nulls from crop average)
-                    const byCrop = {};
-                    cycles.forEach(c => {
-                      const crop = c.crop_type || 'unknown';
-                      if (!byCrop[crop]) byCrop[crop] = { total: 0, count: 0, withYield: 0, yieldSum: 0 };
-                      byCrop[crop].count++;
-                      if (c.yield_kg_per_acre != null) {
-                        byCrop[crop].withYield++;
-                        byCrop[crop].yieldSum += c.yield_kg_per_acre;
-                      }
-                    });
-                    // Extrapolate: apply average to missing cycles
-                    Object.values(byCrop).forEach(b => {
-                      const avg = b.withYield > 0 ? b.yieldSum / b.withYield : 0;
-                      b.total = Math.round(avg * b.count * areaAcres);
-                    });
-
-                    // Earliest year from SOS dates
-                    const years = cycles.map(c => c.sos?.slice(0, 4)).filter(Boolean);
-                    const sinceYear = years.length ? Math.min(...years.map(Number)) : null;
-
-                    return (
-                    <div className="flex flex-col gap-2 px-4 pt-3">
-                      {sinceYear && (
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Since {sinceYear}</p>
-                      )}
-                      {Object.entries(byCrop).map(([crop, b]) => (
-                        <div key={crop} className="flex justify-between">
-                          <span className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1">
-                            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: cropColor(crop) }} />
-                            {crop} ({b.count}x)
-                          </span>
-                          <span className="text-xs font-bold dark:text-white">
-                            {b.total > 1000 ? `${(b.total / 1000).toLocaleString('en-IN', { maximumFractionDigits: 1 })} t` : `${b.total.toLocaleString('en-IN')} kg`}
-                            {b.withYield < b.count && <span className="text-gray-400 dark:text-slate-500 ml-1">est.</span>}
-                          </span>
-                        </div>
-                      ))}
-                      <p className='flex text-[10px] text-gray-400 dark:text-slate-500 justify-end pt-1'>
-                        {area > 0 ? `${Number(area).toLocaleString('en-IN', { maximumFractionDigits: 0 })} m²` : ''}
-                        {' · '}last overflight: {fieldActivity?.meta?.last_scene_date || record?.meta?.last_scene_date}
-                      </p>
-                    </div>
-                    );
-                  })()}
-              {/* JOIN batch button */}
-              {!hasTokenForActiveCrop && fieldActivity.suggestedBatch && (() => {
-                const b = fieldActivity.suggestedBatch;
-                const dot = cropColor(b.cropColorKey ?? b.cropCode);
-                const joinBatch = () => {
-                  const match = CROPS_DATA.find(c => c[1].toLowerCase() === (b.cropName ?? '').toLowerCase());
-                  setForm(prev => ({ ...prev, ...(match ? { crop: match } : {}), var: '', selectedBatch: b }));
-                  setAction('season');
-                  setCardView('transactionview');
-                };
+                // State 4: token has no matching satellite cycle — show token data only
                 return (
-                  <button
-                    onPointerDown={e => e.stopPropagation()}
-                    onClick={joinBatch}
-                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 active:scale-[0.98] transition-transform"
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: dot }} />
-                    <span className="text-xs text-gray-600 dark:text-slate-300 flex-1 text-left">{b.cropName}</span>
-                    <span className="text-xs font-bold dark:text-white">JOIN</span>
-                  </button>
+                  <div key={`ft-s4-${tok.cropCode}`} className="flex flex-col gap-2 px-4 pt-3">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tokCropColor }} />
+                      <span className="text-sm font-semibold dark:text-white">{tokCropName}</span>
+                      <span
+                        className="text-[10px] font-semibold text-white px-1.5 py-0.5 rounded-full"
+                        style={{ backgroundColor: tokCropColor }}
+                      >
+                        {tokBatchId != null ? `part of batch #${tokBatchId}` : 'attested'}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1 text-xs pt-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 pt-1">Season</p>
+                      <div className="flex justify-between pt-1">
+                        <span className="text-gray-500 dark:text-slate-400">Start of the season</span>
+                        <span className="font-bold dark:text-white">{formatHarvestDate(tokSos) ?? tokSos ?? '—'}</span>
+                      </div>
+                      {tokVariety && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-slate-400">Variety</span>
+                          <span className="font-bold dark:text-white">{tokVariety}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-slate-400">Tokens</span>
+                        <span className="font-bold dark:text-white">
+                          {(tok.bal / tokUnit.toKg).toLocaleString('en-IN', { maximumFractionDigits: 1 })} {tokUnit.label}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      disabled
+                      onPointerDown={e => e.stopPropagation()}
+                      className="mt-2 w-full text-[10px] text-gray-400 dark:text-slate-500 py-2.5 px-3 rounded-xl border border-gray-100 dark:border-slate-700 text-center"
+                    >
+                      🛰 Records will update on the next satellite overpass
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* Cumulative history — shown in state 2 and when a token matches the satellite cycle */}
+              {(fieldState === 2 || (fieldState === 'food' && visibleFoodTokens.some(t => hasActiveCycle && (CROP_CODE_NAMES[t.cropCode] ?? '').toLowerCase() === recordCropLower))) && record && (() => {
+                const cycles = record.cycles ? Object.values(record.cycles) : [];
+                const area = record.meta?.parcel_area_m2 || 0;
+                const histAcres = area / 4046.86;
+                const byCrop = {};
+                cycles.forEach(c => {
+                  const crop = c.crop_type || 'unknown';
+                  if (!byCrop[crop]) byCrop[crop] = { total: 0, count: 0, withYield: 0, yieldSum: 0 };
+                  byCrop[crop].count++;
+                  if (c.yield_kg_per_acre != null) { byCrop[crop].withYield++; byCrop[crop].yieldSum += c.yield_kg_per_acre; }
+                });
+                Object.values(byCrop).forEach(b => {
+                  const avg = b.withYield > 0 ? b.yieldSum / b.withYield : 0;
+                  b.total = Math.round(avg * b.count * histAcres);
+                });
+                const years = cycles.map(c => c.sos?.slice(0, 4)).filter(Boolean);
+                const sinceYear = years.length ? Math.min(...years.map(Number)) : null;
+                if (!Object.keys(byCrop).length) return null;
+                return (
+                  <div className="flex flex-col gap-2 px-4 pt-3">
+                    {sinceYear && (
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Since {sinceYear}</p>
+                    )}
+                    {Object.entries(byCrop).map(([crop, b]) => (
+                      <div key={crop} className="flex justify-between">
+                        <span className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1">
+                          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: cropColor(crop) }} />
+                          {crop} ({b.count}x)
+                        </span>
+                        <span className="text-xs font-bold dark:text-white">
+                          {b.total > 1000 ? `${(b.total / 1000).toLocaleString('en-IN', { maximumFractionDigits: 1 })} t` : `${b.total.toLocaleString('en-IN')} kg`}
+                          {b.withYield < b.count && <span className="text-gray-400 dark:text-slate-500 ml-1">est.</span>}
+                        </span>
+                      </div>
+                    ))}
+                    <p className='flex text-[10px] text-gray-400 dark:text-slate-500 justify-end pt-1'>
+                      {area > 0 ? `${Number(area).toLocaleString('en-IN', { maximumFractionDigits: 0 })} m²` : ''}
+                      {' · '}last overflight: {fieldActivity?.meta?.last_scene_date || record?.meta?.last_scene_date}
+                    </p>
+                  </div>
                 );
               })()}
-              {!hasTokenForActiveCrop && (
-                <button
-                  onPointerDown={e => e.stopPropagation()}
-                  onClick={() => { setAction('season'); setCardView('transactionview'); }}
-                  className="text-[10px] text-gray-400 dark:text-slate-400 py-1 active:scale-95 text-left"
-                >
-                  + Change or add another crop
-                </button>
-              )}
-        </div>
-        </div>
-        )}
+
+            </div>
+          </div>
+          );
+        })()}
 
         {/* ── Section 3: Data fees ── */}
         {record && action !== 'season' && (
           <div style={{ zIndex: 0 }} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-10 py-5 gap-2" onPointerDown={(e) => controls.start(e)}>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Your data earnings</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed">
-              Each time someone reads your property history — a lender, a buyer, or the union — you earn a small fee in nIN. These are your rights as the data owner.
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 flex-1">Your data earnings</p>
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={() => setShowDataInfo(v => !v)}
+                className="text-gray-400 dark:text-slate-500 text-sm leading-none"
+              >ⓘ</button>
+            </div>
+            {showDataInfo && (
+              <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed">
+                Each time someone reads your property history — a lender, a buyer, or the union — you earn a small fee in nIN. These are your rights as the data owner.
+              </p>
+            )}
             <div className="flex items-center justify-between pt-1">
               <span className="text-xs text-gray-400 dark:text-slate-500">Earned so far</span>
               {claimableFees != null && claimableFees >= 50n * 10n**18n ? (
@@ -1269,37 +1658,13 @@ export const StaticCards = ({ LAND }) => {
               <div className="w-8 h-1 rounded-full bg-gray-300 dark:bg-slate-500" />
             </div>
 
-            {!action && !showAdvice && (() => {
-              const ac = fieldActivity?.activeCycle?.[0];
-              return (
+            {!action && (
               <div className="flex flex-wrap gap-2">
                 <button className={btn} onClick={() => { setForm(prev => ({ ...prev, selectedBatch: null, crop: '', var: '' })); setActiveBatchCert(null); setAction('season'); setCardView('transactionview'); }}>
                   {isFallow ? 'New season' : 'Join batch'}
                 </button>
-                {ac?.reasoning && (
-                  <button className="px-4 py-2 rounded-lg text-xs font-bold active:scale-95 border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800" onClick={() => setShowAdvice(true)}>
-                    Read the crop advice
-                  </button>
-                )}
               </div>
-              );
-            })()}
-
-            {showAdvice && (() => {
-              const ac = fieldActivity?.activeCycle?.[0];
-              if (!ac?.reasoning) return null;
-              return (
-              <div className="flex flex-col gap-2 pt-1">
-                <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-600/50">
-                  <p className="text-[10px] dark:text-slate-300 leading-relaxed">{ac.reasoning}</p>
-                </div>
-                <button
-                  className="w-full py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95 opacity-40"
-                  disabled
-                >Ask a local expert</button>
-              </div>
-              );
-            })()}
+            )}
 
             {/* Selected batch chip — shown when a batch is pre-selected (shortcut) or picked from list */}
             {action === 'season' && form.selectedBatch && (
@@ -1403,11 +1768,25 @@ export const StaticCards = ({ LAND }) => {
               </div>
             )}
 
-            {action === 'season' && (
+            {/* No batches empty state */}
+            {action === 'season' && !form.selectedBatch && batchSummary && batchSummary.active.length === 0 && (
+              <p className="text-xs text-gray-400 dark:text-slate-500 pt-1">Your union has not created any crop batches. Ask them to add a new batch for the crops you are growing.</p>
+            )}
+
+            {action === 'season' && (() => {
+              const activeFTs = (tokenData ?? []).filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0);
+              const fullPropToken = activeFTs.find(t => t.fieldNumber === 0);
+              const entirePropertyPlanted = !!fullPropToken;
+              return (
               <div className="flex flex-col gap-3 pt-1">
                 {form.selectedBatch && (
                   <>
                     <p className="text-xs dark:text-slate-300">Area</p>
+                    {entirePropertyPlanted ? (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        All fields planted · {fullPropToken.sym.replace('-', ' ')}
+                      </p>
+                    ) : (
                     <div className="flex gap-2">
                       <button
                         onClick={() => setForm(prev => ({...prev, coverage: 'full'}))}
@@ -1443,11 +1822,26 @@ export const StaticCards = ({ LAND }) => {
                                 selectMode: true,
                               }));
                             }
+                          } else if (record?.clusters?.features?.length) {
+                            const allFeats = record.clusters.features.map(f => ({
+                              ...f,
+                              properties: { ...f.properties, activity: 'selectable', selected: false },
+                            }));
+                            setFieldActivity(prev => ({
+                              ...prev,
+                              features: allFeats,
+                              geojson: { type: 'FeatureCollection', features: allFeats },
+                              featurelength: allFeats.length,
+                              dormant: false,
+                              historical: false,
+                              selectMode: true,
+                            }));
                           }
                         }}
                         className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${(form.coverage === 'partial' || form.coverage === 'confirmed') ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-semibold' : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white'}`}
                       >Select fields</button>
                     </div>
+                    )}
                     {form.coverage === 'partial' && (
                       <p className="text-[10px] dark:text-slate-500">
                         {form.selectedClusters?.length > 0
@@ -1507,15 +1901,31 @@ export const StaticCards = ({ LAND }) => {
                   </>
                 )}
 
+                {form.crop && (
+                  <>
+                    <p className="text-xs dark:text-slate-300">Start of the season</p>
+                    <input
+                      type="date"
+                      value={form.sos}
+                      onPointerDown={e => e.stopPropagation()}
+                      onChange={e => setForm(prev => ({ ...prev, sos: e.target.value }))}
+                      className="text-xs rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white dark:[color-scheme:dark] px-3 py-1.5 w-full"
+                    />
+                  </>
+                )}
+
                 {form.selectedBatch && (() => {
                   const unit              = CROP_UNIT[form.selectedBatch.cropCode] ?? { label: 'kg', toKg: 1 };
                   const hasCertReqs       = form.selectedBatch.requiredCerts > 0;
                   const varietyRequired   = (form.selectedBatch?.varietyCode ?? 0) !== 0;
 
                   const areaAcres         = (record?.meta?.parcel_area_m2 ?? 0) / 4046.86;
-                  const activeCycleYieldKg = Math.round(
-                    (fieldActivity?.activeCycle?.[0]?.expected_yield_kg_acre ?? 0) * areaAcres
-                  );
+                  const activeCycleCrop   = (fieldActivity?.activeCycle?.[0]?.crop_type ?? '').toLowerCase();
+                  const batchCropName     = (CROP_CODE_NAMES[form.selectedBatch.cropCode] ?? '').toLowerCase();
+                  const cycleMatchesBatch = activeCycleCrop && batchCropName && activeCycleCrop === batchCropName;
+                  const activeCycleYieldKg = cycleMatchesBatch
+                    ? Math.round((fieldActivity.activeCycle[0].expected_yield_kg_acre ?? 0) * areaAcres)
+                    : 0;
                   const hasEstimate       = activeCycleYieldKg > 0;
 
                   // Fallback yield for slider range when no active-cycle estimate.
@@ -1539,20 +1949,35 @@ export const StaticCards = ({ LAND }) => {
                   const yieldConfirmed    = hasEstimate || form.yieldUnits != null;
                   const effectiveYieldUnits = form.yieldUnits ?? estimatedYieldUnits;
                   const effectiveYieldKg  = Math.max(1, Math.round(effectiveYieldUnits * unit.toKg));
-                  const canJoin           = (!varietyRequired || !!form.var) && yieldConfirmed;
+                  const canJoin           = (!varietyRequired || !!form.var) && !!form.sos;
 
                   const hasPrice          = form.selectedBatch.pricePerKgUsdt > 0n;
                   const priceINRperKg     = hasPrice ? Number(form.selectedBatch.pricePerKgUsdt) / 1e6 : 0;
                   const priceINRperUnit   = priceINRperKg * unit.toKg;
                   const earningsINR       = hasPrice ? Math.round(effectiveYieldKg * priceINRperKg) : null;
 
-                  const title = hasEstimate && form.yieldUnits == null ? 'Estimated Yield' : 'Wanted Yield';
+                  const title = hasEstimate && form.yieldUnits == null ? 'Estimated Yield' : 'Set the yield you expect (optional)';
 
                   const handleJoinBatch = async () => {
-                    if (!foodToken || !form.selectedBatch || (varietyRequired && !form.var) || !yieldConfirmed) {
-                      console.warn('[joinBatch] guard blocked', { foodToken: !!foodToken, batch: !!form.selectedBatch, variety: form.var, yieldConfirmed });
+                    if (!foodToken || !form.selectedBatch || (varietyRequired && !form.var) || !form.sos) {
+                      console.warn('[joinBatch] guard blocked', { foodToken: !!foodToken, batch: !!form.selectedBatch, variety: form.var, sos: form.sos });
                       return;
                     }
+
+                    // Compute field codex — fieldNumber=0 means entire property
+                    const allFeatures = fieldActivity?.features ?? record?.clusters?.features ?? [];
+                    let fieldNum = 0;
+                    let fieldAreaM2 = 0;
+                    if (form.coverage === 'confirmed' && form.selectedClusters?.length > 0) {
+                      const sel = new Set(form.selectedClusters);
+                      const picked = allFeatures.filter(f => sel.has(f.properties?.cluster_id));
+                      fieldNum = Math.min(...form.selectedClusters);
+                      fieldAreaM2 = Math.round(picked.reduce((s, f) => s + (Number(f.properties?.area_m2) || 0), 0));
+                    } else {
+                      fieldNum = 0;
+                      fieldAreaM2 = Math.round(areaM2); // record.meta.parcel_area_m2 for entire property
+                    }
+                    console.log('[joinBatch] field codex', { fieldNum, fieldAreaM2, coverage: form.coverage });
                     const varPart = form.var ? ` variety ${form.var[1]}` : '';
                     const msg = `I confirm I am growing ${form.selectedBatch.cropName}${varPart} on the selected fields.`;
                     if (!window.confirm(msg)) return;
@@ -1585,7 +2010,8 @@ export const StaticCards = ({ LAND }) => {
                       async () => {
                         const nonce = await wallet.provider.send('eth_getTransactionCount', [wallet.address, 'pending']);
                         console.log('[joinBatch] mintForBatchMember nonce:', nonce, 'yieldKg:', effectiveYieldKg);
-                        return foodToken.mintForBatchMember(form.selectedBatch.id, landTitleId, harvestTs, effectiveYieldKg, { nonce });
+                        const farmerVarietyCode = form.var ? Number(form.var[0]) : 0;
+                        return foodToken.mintForBatchMember(form.selectedBatch.id, landTitleId, harvestTs, effectiveYieldKg, fieldNum, fieldAreaM2, farmerVarietyCode, { nonce });
                       },
                       {
                         onSuccess: (receipt) => {
@@ -1610,13 +2036,13 @@ export const StaticCards = ({ LAND }) => {
 
                   if (hasTokenForBatch) {
                     return (
-                      <div className="mt-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 px-4 py-3 flex flex-col gap-1">
-                        <p className="text-xs font-semibold text-green-700 dark:text-green-400">Crop passport confirmed</p>
-                        <p className="text-[10px] text-green-600 dark:text-green-500">
+                      <div className="mt-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-gray-500 dark:border-green-700 px-4 py-3 flex flex-col gap-1">
+                        <p className="text-xs font-semibold text-green-700 dark:text-amber-400">Crop passport confirmed</p>
+                        <p className="text-[10px] text-green-600 dark:text-white">
                           {farmerBalDisplay} {unit.label} of {form.selectedBatch.cropName.toLowerCase()} registered for this season.
                         </p>
                         {hasPrice && (
-                          <p className="text-[10px] text-green-600 dark:text-green-500">
+                          <p className="text-[10px] text-green-600 dark:text-white">
                             Estimated earnings: ₹{Math.round((farmerTokenBal / unit.toKg) * priceINRperUnit).toLocaleString('en-IN')}
                           </p>
                         )}
@@ -1626,30 +2052,9 @@ export const StaticCards = ({ LAND }) => {
 
                   return (
                   <>
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="text-[10px] text-gray-400 dark:text-slate-500 uppercase tracking-wide">Crop passport</p>
-                    <button
-                      type="button"
-                      onClick={() => setShowPassportInfo(v => !v)}
-                      className="text-[10px] text-blue-500 dark:text-blue-400 px-1"
-                    >ℹ</button>
-                  </div>
-                  {showPassportInfo && (
-                    <div className="mt-1 p-3 rounded-xl bg-gray-50 dark:bg-slate-600/50">
-                      <p className="text-[10px] dark:text-slate-300 leading-relaxed">
-                        A digital certificate that proves what you're growing, where, and when. With it you can:
-                      </p>
-                      <ul className="text-[10px] dark:text-slate-300 mt-1.5 ml-3 space-y-0.5">
-                        <li>· Get better loan terms from your union</li>
-                        <li>· Pre-sell your harvest at a locked price</li>
-                        <li>· Join bulk growing plans for higher rates</li>
-                      </ul>
-                    </div>
-                  )}
-
                   {showSlider ? (
                     <div className="mt-3 px-1">
-                      <p className="text-[10px] text-gray-400 dark:text-slate-500 mb-1 uppercase tracking-wide">{title}</p>
+                      <p className="text-xs text-gray-500 dark:text-slate-300 mb-1">{title}</p>
                       <div className="flex flex-col m-4 items-center">
                         <RateSlider
                           key={estimatedYieldUnits}
@@ -1660,7 +2065,7 @@ export const StaticCards = ({ LAND }) => {
                           step={1}
                           initial={effectiveYieldUnits}
                           onChange={setYieldDraft}
-                          onSet={() => { setForm(prev => ({ ...prev, yieldUnits: yieldDraft })); setEditingYield(false); }}
+                          onSet={() => { setForm(prev => ({ ...prev, yieldUnits: editingYield ? yieldDraft : effectiveYieldUnits })); setEditingYield(false); }}
                         />
                         <p className="text-[10px] text-gray-400 dark:text-slate-500 -mt-2">
                           {unit.label}{hasPrice ? ` · ₹${priceINRperUnit.toFixed(0)}/${unit.label}` : ''}
@@ -1670,7 +2075,7 @@ export const StaticCards = ({ LAND }) => {
                   ) : (
                     <div className="flex items-center justify-between mt-3 px-1">
                       <div>
-                        <p className="text-[10px] text-gray-400 dark:text-slate-500 uppercase tracking-wide">{title}</p>
+                        <p className="text-xs text-gray-500 dark:text-slate-300">{title}</p>
                         <div className="flex flex-col">
                           <span className="text-sm font-bold dark:text-white">{effectiveYieldUnits} {unit.label}</span>
                           {earningsINR && (
@@ -1686,6 +2091,19 @@ export const StaticCards = ({ LAND }) => {
                       >change</button>
                     </div>
                   )}
+                  <div className="mt-3">
+                    <p className="text-xs text-gray-500 dark:text-slate-300">What do I get?</p>
+                    <div className="mt-1 p-3 rounded-xl bg-gray-50 dark:bg-slate-600/50">
+                      <p className="text-[10px] dark:text-slate-300 leading-relaxed">
+                        When you join you will receive a digital asset to:
+                      </p>
+                      <ul className="text-[10px] dark:text-slate-300 mt-1.5 ml-3 space-y-0.5">
+                        <li>· Get better loan terms from your union</li>
+                        <li>· Pre-sell your harvest at a locked price</li>
+                        <li>· Join bulk growing plans for higher rates</li>
+                      </ul>
+                    </div>
+                  </div>
 
                   {hasEstimate && form.yieldUnits != null &&
                     Math.abs(effectiveYieldUnits - estimatedYieldUnits) / estimatedYieldUnits > 0.20 && (
@@ -1701,7 +2119,7 @@ export const StaticCards = ({ LAND }) => {
                       requiredMask={form.selectedBatch.requiredCerts}
                       onJoin={handleJoinBatch}
                       joining={joining}
-                      disabled={!yieldConfirmed}
+                      disabled={!canJoin}
                       onApplyCert={() => setIx(0)}
                     />
                   ) : (
@@ -1710,14 +2128,15 @@ export const StaticCards = ({ LAND }) => {
                       onClick={handleJoinBatch}
                       className={`w-full py-3 rounded-xl text-sm font-bold mt-3 transition-opacity ${canJoin ? 'bg-black dark:bg-white text-white dark:text-gray-800 active:scale-95' : 'bg-black dark:bg-white text-white dark:text-gray-800 opacity-30 cursor-not-allowed'}`}
                     >
-                      {joining ? 'Joining…' : canJoin ? 'Join batch' : !yieldConfirmed ? 'Set yield first' : 'Select variety to continue'}
+                      {joining ? 'Joining…' : canJoin ? 'Join batch' : !form.sos ? 'Add start of season' : 'Select variety to continue'}
                     </button>
                   )}
                   </>
                   );
                 })()}
               </div>
-            )}
+          );
+        })()}
           </div>
           );
         })()}

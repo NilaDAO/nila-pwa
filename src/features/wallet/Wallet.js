@@ -30,8 +30,8 @@ import { setMetaThemeColor } from '../../utils/metaTheme';
 
 const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, savedFieldActivity }) => {
     const [scrolling, setScrolled] = useState(0); // true ⇒ user pulled up
-    const { cardView }             = useViewModeContext();
-    const { ix, cardIx }           = useNavContext();
+    const { cardView, setCardView } = useViewModeContext();
+    const { ix, cardIx, setIx }    = useNavContext();
     const { debts, db, fieldActivity } = useDataContext();
     const controls                 = useAnimation();
     const scrollRef                = useRef(null);
@@ -99,7 +99,7 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, save
             animate={controls} 
             transition={{ type: "spring", stiffness: 300, damping: 30, bounce: 0.5 }}
             >
-            { ix === 0 ? <Assets LAND={LAND} handleOpenForm={handleOpenForm} /> 
+            { ix === 0 ? <Assets LAND={LAND} handleOpenForm={handleOpenForm} onViewField={() => { setIx(2); setCardView('mapview'); }} />
             : ix === 1 ? <Investments LAND={LAND} funds={funds} CAP={CAP} sums={sums} /> 
             : ix === 2 ? (LAND.current.hasLand || fieldActivity?.portfolioMode) ? <StaticCards LAND={LAND} />
               : LAND.current?.pendingMint ? (
@@ -236,12 +236,13 @@ function Wallet({LAND}) {
 
     // When record arrives, populate fieldActivity with dominant + activeCycle
     useEffect(() => {
-      if (!record) return;
+      // Wait for tokenData to be fetched (null = not yet fetched) before stamping recordToken,
+      // so the gate in staticCards doesn't unlock until both record and tokenData are ready.
+      if (!record || tokenData === null) return;
       const cc = record.current_cycle;
       const hasActive = cc && cc.length > 0;
 
       if (hasActive) {
-        // Build one dominant entry from the primary prediction (for CultivationCard)
         const primary = cc[0];
         const parcelArea = Number(record.meta?.parcel_area_m2) || 0;
         const dominant = [{
@@ -254,74 +255,109 @@ function Wallet({LAND}) {
           yield_index: primary.crop_confidence || 0,
           area_m2: parcelArea,
           harvest_window: primary.predicted_eos ? { earliest: primary.predicted_eos[0], latest: primary.predicted_eos[1] } : null,
+          health: primary.health ?? null,
+          health_description: primary.health_description ?? null,
+          water_advice: primary.water_advice ?? null,
+          fertilizer_advice: primary.fertilizer_advice ?? null,
+          weeding_advice: primary.weeding_advice ?? null,
         }];
-
-        // Find cluster features for the open cycle
         const openCycleKey = Object.keys(record.cycles || {}).find(k => record.cycles[k].is_open);
         const pcc = openCycleKey ? record.per_cycle_clusters?.[openCycleKey] : null;
         const features = (pcc?.features || record.clusters?.features || []).map(f => ({
           ...f,
           properties: { ...f.properties, crop_type: cc[0]?.crop_type, activity: 'active' },
         }));
-
         setFieldActivity(prev => ({
           ...prev,
           dominant,
           activeCycle: cc,
           dormant: false,
+          recordToken: tokenId,
           ...(features.length > 0
             ? { features, geojson: { type: 'FeatureCollection', features }, featurelength: features.length }
             : {}),
           meta: { ...prev?.meta, last_scene_date: record.meta?.last_scene_date },
         }));
       } else {
-        // Dormant / fallow
         setFieldActivity(prev => ({
           ...prev,
           dominant: [],
           activeCycle: null,
           dormant: record.clusters?.features?.length === 0,
+          recordToken: tokenId,
           meta: { ...prev?.meta, last_scene_date: record.meta?.last_scene_date },
         }));
       }
-    }, [record]);
+    }, [record, tokenData]);
 
     // Wait for record before deciding MapCard vs CultivationCard
     // If no tokenId (no land title), skip waiting — show MapCard immediately
     const recordReady = !tokenId || record != null || recordError != null;
-    const dominantClusters                                                                = Array.isArray(fieldActivity?.dominant)
+    // Only use dominant when it was computed for the current field — prevents stale cross-field renders
+    const fieldActivitySynced = !tokenId || fieldActivity?.recordToken === tokenId;
+    const dominantClusters                                                                = fieldActivitySynced && Array.isArray(fieldActivity?.dominant)
       ? fieldActivity.dominant
-      : fieldActivity?.dominant ? [fieldActivity.dominant] : []
+      : fieldActivity?.dominant && fieldActivitySynced ? [fieldActivity.dominant] : []
     const ActiveCultivations                                                              = dominantClusters.filter(
       (d) => String(d?.activity || '').toLowerCase() === 'active'
     )
     const hasDominantCultivations                                                         = Boolean(fieldActivity) && ActiveCultivations.length > 0
     const hasActiveFoodTokens                                                             = tokenData?.some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0)
 
-    // Synthetic dominant entries from food tokens — used when no satellite record exists yet
-    const foodTokenDominants = hasActiveFoodTokens && !hasDominantCultivations
+    // Food token dominants — one card per ERC1155 crop. Always built when tokens exist;
+    // food tokens take full priority over satellite dominant (satellite is fallback only).
+    // When a token's crop matches the satellite active cycle, enrich it with satellite data
+    // and use cluster_id 'active-X' so CultivationCard shows state 3 (monitoring) not state 4.
+    const activeSatelliteCycle = record?.current_cycle?.[0] ?? null;
+    const parcelAreaM2 = Number(record?.meta?.parcel_area_m2) || 0;
+    const foodTokenDominants = hasActiveFoodTokens
       ? Object.values(
           (tokenData ?? [])
             .filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0)
             .reduce((acc, t) => {
               const key = t.cropCode ?? t.sym;
-              if (!acc[key]) acc[key] = {
-                cluster_id:      `foodtoken-${key}`,
-                crop_type:       CROP_CODE_NAMES[t.cropCode] ?? t.sym?.split('-')[0] ?? 'Crop',
-                stage:           'growing',
-                activity:        'active',
-                signals:         { status: 'ACTIVE_GOOD' },
-                yield_kg_per_acre: 0,
-                yield_index:     0,
-                area_m2:         0,
-                harvest_window:  null,
-              };
+              if (!acc[key]) {
+                const cropName = CROP_CODE_NAMES[t.cropCode] ?? t.sym?.split('-')[0] ?? 'Crop';
+                const matchesSatellite = activeSatelliteCycle &&
+                  cropName.toLowerCase() === activeSatelliteCycle.crop_type?.toLowerCase();
+                acc[key] = matchesSatellite
+                  ? {
+                      cluster_id:        `active-${tokenId}`,
+                      crop_type:         cropName,
+                      stage:             activeSatelliteCycle.stage,
+                      activity:          'active',
+                      signals:           { status: activeSatelliteCycle.health === 'stressed' ? 'POSSIBLE_STRESS' : 'ACTIVE_GOOD' },
+                      yield_kg_per_acre: activeSatelliteCycle.expected_yield_kg_acre || 0,
+                      yield_index:       activeSatelliteCycle.crop_confidence || 0,
+                      area_m2:           parcelAreaM2,
+                      harvest_window:    activeSatelliteCycle.predicted_eos
+                        ? { earliest: activeSatelliteCycle.predicted_eos[0], latest: activeSatelliteCycle.predicted_eos[1] }
+                        : null,
+                      health:             activeSatelliteCycle.health ?? null,
+                      health_description: activeSatelliteCycle.health_description ?? null,
+                      water_advice:       activeSatelliteCycle.water_advice ?? null,
+                      fertilizer_advice:  activeSatelliteCycle.fertilizer_advice ?? null,
+                      weeding_advice:     activeSatelliteCycle.weeding_advice ?? null,
+                    }
+                  : {
+                      cluster_id:        `foodtoken-${key}`,
+                      crop_type:         cropName,
+                      stage:             'growing',
+                      activity:          'active',
+                      signals:           { status: 'ACTIVE_GOOD' },
+                      yield_kg_per_acre: 0,
+                      yield_index:       0,
+                      area_m2:           0,
+                      harvest_window:    null,
+                    };
+              }
               return acc;
             }, {})
         )
       : []
 
-    const allCultivations = [...ActiveCultivations, ...foodTokenDominants]
+    // If the user has food tokens, show those cards; satellite dominant is only shown when no tokens
+    const allCultivations = hasActiveFoodTokens ? foodTokenDominants : ActiveCultivations
     const CAP                                                                             = useRef()
     const inArrays                                                                        = debts.some(d => d.defaulted)
     const meta = LAND.current?.LAND?.metadata || LAND.current?.metadata;
@@ -543,16 +579,7 @@ function Wallet({LAND}) {
               show: ix === null,
               title: cardTitle,
               titleDot: isFoodTokenHolder ? cropColor(label) : 'rgba(255,255,255,0.45)',
-              onClick: () => {
-                if (!isFoodTokenHolder) {
-                  if (fieldActivity?.suggestedBatch) {
-                    setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev);
-                  } else {
-                    setFieldActivity(prev => prev ? { ...prev, pendingCropForm: true } : prev);
-                  }
-                }
-                handleToggleView({ ix: 2, i: i });
-              },
+              onClick: () => { handleToggleView({ ix: 2, i: i }); },
               content: <CultivationCard dominant={d} cardIndex={i} />
             };
           }) || []),      
