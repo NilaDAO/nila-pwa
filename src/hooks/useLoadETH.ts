@@ -14,6 +14,7 @@ import { readItem, setDBitem } from '../utils/db';
 import { parseCompactMeta, getCenter, ringsAreaMeters2 } from '../utils/fetch_landTitleMeta.ts';
 import { decodeMetadataUri } from '../utils/decodeMetadataUri.ts';
 import { useDataContext } from "../utils/NavigationContext.js";
+import { CROP_CODE_NAMES, CROP_VARIETIES } from './useFoodTokenBatches.ts';
 
 const nilaGrantContract = String(process.env.REACT_APP_GRANT_ADDRESS)
 const foodTokenContract = process.env.REACT_APP_FOODTOKEN_ADDRESS || ''
@@ -34,72 +35,6 @@ const LOCAL_TOKENS = [
   { addr: String(process.env.REACT_APP_USDT_MAIN || "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"), abi: erc20ABI, decimals: 6, key: "USDT" },
 ].filter(t => t.addr && t.addr !== 'undefined');
 
-const LOOKUP_TABLE : any = {
-    "0": {
-        "crop": "Paddy",
-        "varieties": {
-            "0": "CO51",
-            "1": "ADT 43",
-            "2": "TRY 3",
-            "3": "BPT 5204"
-        }
-    },
-    "1": {
-        "crop": "Groundnut",
-        "varieties": {
-            "0": "TMV 7",
-            "1": "TMV 13",
-            "2": "VRI 2",
-            "3": "VRI 3",
-            "4": "VRI 6"
-        }
-    },
-    "2": {
-        "crop": "Sugarcane",
-        "varieties": {
-            "0": "CO 86032",
-            "1": "COC 24",
-            "2": "COC 671",
-            "3": "CO 62175",
-            "4": "CoG 94077",
-            "5": "CoG 6",
-            "6": "Co 86032 (10‑12 mnths)",
-            "7": "CoSi (SC)6",
-            "8": "TNAU SC Si 7",
-            "9": "TNAU SC Si 8",
-            "10": "COC 25"
-        }
-    },
-    "3": {
-        "crop": "Banana",
-        "varieties": {
-            "0": "Grand Naine",
-            "1": "Poovan",
-            "2": "Nendran",
-            "3": "Rasthali",
-            "4": "Monthan",
-            "5": "Ney Poovan"
-        }
-    },
-    "4": {
-        "crop": "Potato",
-        "varieties": {
-            "0": "Kufri Jyoti",
-            "1": "Kufri Super",
-            "2": "Kufri Surya",
-            "3": "Kufri Swarna"
-        }
-    },
-    "5": {
-        "crop": "Onion",
-        "varieties": {
-            "0": "CO 3",
-            "1": "CO (On) 5",
-            "2": "Arka Kalyan",
-            "3": "Agrifound Dark Red"
-        }
-    }
-}
 
 /**
  * how to fetch erc1155 token naming
@@ -108,7 +43,7 @@ const LOOKUP_TABLE : any = {
  * we use indexer and predict pixels based on activity 
  */
 
-export type Bal    = { type: string, id: number, sym: string; bal: number, p: number, cropCode?: number, varietyCode?: number };
+export type Bal    = { type: string, id: number, sym: string; bal: number, p: number, cropCode?: number, varietyCode?: number, fieldNumber?: number, areaM2?: number, sosYear?: number, sosTs?: number, harvestTs?: number, status?: number };
 export type Land    = { sym: string; bal: number, p: number, metadata: number[][], id: string };
 export type Enabled = { enabled: boolean }
 
@@ -149,11 +84,23 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
           ]);
         }
 
-        // ── Food tokens: getLandTitleTokens → getToken + balanceOf ────────────
+        // ── Food tokens: getLandTitleTokens → unpack tokenId + thin mappings ────
+        // Identity (cropCode, varietyCode, fieldNumber, areaM2, sosYear) is
+        // encoded in the tokenId itself — no contract call needed for those.
+        function unpackFoodTokenId(tokenId: bigint) {
+          return {
+            landTitleId: Number(tokenId >> 224n),
+            cropCode:    Number((tokenId >> 214n) & 0x3FFn),
+            varietyCode: Number((tokenId >> 204n) & 0x3FFn),
+            fieldNumber: Number((tokenId >> 197n) & 0x7Fn),
+            areaM2:      Number((tokenId >> 173n) & 0xFFFFFFn),
+            sosYear:     Number((tokenId >> 157n) & 0xFFFFn),
+          };
+        }
+
         async function fetchFoodTokens(): Promise<Bal[]> {
           if (!foodTokenContract || !address) return [];
           try {
-            // Resolve land title ID: use prop if provided, else look it up on-chain
             let ltId = landTitleId;
             if (!ltId) {
               const lt = new ethers.Contract(String(process.env.REACT_APP_LAND_TITLE_MAIN), landTitleAbi, rpc);
@@ -163,30 +110,39 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
             }
             console.log('[food] landTitleId resolved:', ltId, 'contract:', foodTokenContract);
             const foodContract = new ethers.Contract(foodTokenContract, foodTokenAbi, rpc);
-            // Array.from: ethers v6 returns a read-only Result object; we need a mutable copy
             const tokenIds: bigint[] = Array.from(await foodContract.getLandTitleTokens(ltId));
             console.log('[food] tokenIds for ltId', ltId, ':', tokenIds.map(String));
             if (tokenIds.length === 0) return [];
 
+            // 4 calls per token — identity decoded from tokenId bits, no getToken needed
             const innerCalls = tokenIds.flatMap(id => [
-              { target: foodTokenContract, callData: foodIface.encodeFunctionData("getToken",   [id]) },
-              { target: foodTokenContract, callData: foodIface.encodeFunctionData("balanceOf",  [address, id]) },
+              { target: foodTokenContract, callData: foodIface.encodeFunctionData("balanceOf",    [address, id]) },
+              { target: foodTokenContract, callData: foodIface.encodeFunctionData("tokenStatus",  [id]) },
+              { target: foodTokenContract, callData: foodIface.encodeFunctionData("tokenSos",     [id]) },
+              { target: foodTokenContract, callData: foodIface.encodeFunctionData("tokenHarvestTs", [id]) },
             ]);
             const [, foodData] = await mc.aggregate.staticCall(innerCalls);
 
             const items: Bal[] = [];
             tokenIds.forEach((id, i) => {
-              const tok  = foodIface.decodeFunctionResult("getToken",  foodData[i * 2])[0];
-              const balN = foodIface.decodeFunctionResult("balanceOf", foodData[i * 2 + 1])[0] as bigint;
-              if (balN === 0n) return;
+              const balN      = foodIface.decodeFunctionResult("balanceOf",     foodData[i * 4])[0] as bigint;
+              const status    = Number(foodIface.decodeFunctionResult("tokenStatus",  foodData[i * 4 + 1])[0]);
+              const sosTs     = Number(foodIface.decodeFunctionResult("tokenSos",     foodData[i * 4 + 2])[0]);
+              const harvestTs = Number(foodIface.decodeFunctionResult("tokenHarvestTs", foodData[i * 4 + 3])[0]);
 
-              const cropCode    = Number(tok.cropCode    ?? tok[2]);
-              const varietyCode = Number(tok.varietyCode ?? tok[3]);
-              const cropEntry   = (LOOKUP_TABLE as any)[cropCode];
-              const cropName    = cropEntry?.crop ?? `Crop ${cropCode}`;
-              const varName     = cropEntry?.varieties?.[varietyCode] ?? `Var ${varietyCode}`;
+              // status 0 = never minted, 4 = cancelled — skip both
+              if (balN === 0n || status === 0 || status === 4) return;
 
-              items.push({ type: 'ERC1155', id: Number(id), sym: `${cropName}-${varName}`, bal: Number(balN), p: 0, cropCode, varietyCode });
+              const { cropCode, varietyCode, fieldNumber, areaM2, sosYear } = unpackFoodTokenId(id);
+              const cropName  = CROP_CODE_NAMES[cropCode] ?? `Crop ${cropCode}`;
+              const varName   = CROP_VARIETIES[cropCode]?.find(v => v.code === varietyCode)?.name ?? `Var ${varietyCode}`;
+
+              items.push({
+                type: 'ERC1155', id: Number(id),
+                sym: `${cropName}-${varName}`,
+                bal: Number(balN), p: 0,
+                cropCode, varietyCode, fieldNumber, areaM2, sosYear, sosTs, harvestTs, status,
+              });
             });
             return items;
           } catch (e) {

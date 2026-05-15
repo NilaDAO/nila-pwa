@@ -110,6 +110,26 @@ export function batchDisplayCode(cropCode: number, varietyCode: number): string 
   return String(cropCode).padStart(3, '0') + String(varietyCode).padStart(3, '0');
 }
 
+/** Token display code: batchDisplayCode + fieldNumber (2 digits) + areaM2 (raw digits)
+ *  fieldNumber=0  → "00" (entire property)
+ *  fieldNumber=1  → "01" (cluster_id 1)
+ *  e.g. cropCode=0, varietyCode=1, fieldNumber=1, areaM2=8002 → "000001018002"
+ *       cropCode=0, varietyCode=1, fieldNumber=0, areaM2=1400  → "000001001400" (entire property)
+ */
+export function tokenDisplayCode(
+  cropCode: number,
+  varietyCode: number,
+  fieldNumber: number,
+  areaM2: number,
+): string {
+  return (
+    String(cropCode).padStart(3, '0') +
+    String(varietyCode).padStart(3, '0') +
+    String(fieldNumber).padStart(2, '0') +
+    String(areaM2)
+  );
+}
+
 // ─── Cultivation requirements ────────────────────────────────────────────────
 //
 // Bit assignment is PERMANENT — never reuse a bit once published.
@@ -249,7 +269,6 @@ export function useFoodTokenBatches(unionAddr?: string) {
     refetchInterval: 120_000,
     queryFn: async () => {
       const nextId: bigint = await foodToken!.nextBatchId();
-      console.log('[useFoodTokenBatches] nextId:', Number(nextId), 'unionAddr:', unionAddr);
       if (nextId === 0n) return { active: [], totalClaimedQt: 0, totalClaimedUsdt: 0, cropBreakdown: '' };
 
       const batches: Batch[] = [];
@@ -259,7 +278,6 @@ export function useFoodTokenBatches(unionAddr?: string) {
       const results = await Promise.all(
         ids.map(id =>
           foodToken!.getBatch(id).catch((e: any) => {
-            console.warn('[useFoodTokenBatches] getBatch', id, 'failed:', e?.message);
             return null;
           })
         )
@@ -271,7 +289,6 @@ export function useFoodTokenBatches(unionAddr?: string) {
 
         const batchUnion = (raw.union_ ?? raw[0] ?? '').toLowerCase();
         if (batchUnion !== unionAddr!.toLowerCase()) {
-          console.log('[useFoodTokenBatches] batch', ids[i], 'skipped — union mismatch:', batchUnion, '!==', unionAddr!.toLowerCase());
           continue;
         }
 
@@ -284,7 +301,6 @@ export function useFoodTokenBatches(unionAddr?: string) {
         const hasOrder    = buyerLow !== ZERO_ADDR;
 
         const claimedQtyKg = (raw.claimedQtyKg ?? raw[7]) as bigint;
-        console.log('[useFoodTokenBatches] batch', ids[i], 'claimedQtyKg:', Number(claimedQtyKg), 'active:', active);
         batches.push({
           id:             ids[i],
           union:          batchUnion,
@@ -309,7 +325,6 @@ export function useFoodTokenBatches(unionAddr?: string) {
       const active = batches.filter(b => b.active);
 
       const totalClaimedQt = active.reduce((s, b) => s + Number(b.claimedQtyKg) / 100, 0);
-      console.log('[useFoodTokenBatches] result — activeBatches:', active.length, 'totalClaimedQt:', totalClaimedQt);
 
       const totalClaimedUsdt = active.reduce((s, b) => {
         if (!b.hasOrder || b.pricePerKgUsdt === 0n) return s;
