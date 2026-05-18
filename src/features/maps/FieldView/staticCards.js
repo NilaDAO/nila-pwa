@@ -1163,7 +1163,7 @@ export const StaticCards = ({ LAND }) => {
               {fieldState === 1 && (
                 <div className="px-4 pt-3 flex flex-col gap-2">
                   <DormantCard record={record} />
-                  {(batchSummary?.active?.length ?? 0) === 0 ? (
+                  {!batchSummary ? null : batchSummary.active.length === 0 ? (
                     <p className="text-[10px] text-gray-400 dark:text-slate-500 pt-1">No active batches from your union yet.</p>
                   ) : (
                     <div className="flex flex-col gap-2 pt-1">
@@ -1421,8 +1421,8 @@ export const StaticCards = ({ LAND }) => {
                 const tokCropName = CROP_CODE_NAMES[tok.cropCode] ?? tok.sym?.split('-')[0] ?? 'Crop';
                 const tokMatchesSatellite = hasActiveCycle && tokCropName.toLowerCase() === recordCropLower;
                 const tokUnit = CROP_UNIT[tok.cropCode] ?? { label: 'kg', toKg: 1 };
-                const tokVariety = tok.varietyCode != null
-                  ? (CROP_VARIETIES[tok.cropCode]?.find(v => v.code === tok.varietyCode + 1)?.name ?? null)
+                const tokVariety = tok.varietyCode != null && tok.varietyCode !== 0
+                  ? (CROP_VARIETIES[tok.cropCode]?.find(v => v.code === tok.varietyCode)?.name ?? null)
                   : null;
                 const tokBatch = (batchSummary?.active ?? []).find(b => b.cropCode === tok.cropCode);
                 const tokBatchId = tokBatch?.id ?? null;
@@ -1669,7 +1669,7 @@ export const StaticCards = ({ LAND }) => {
 
         {/* ── Section 3: Data fees ── */}
         {record && action !== 'season' && (
-          <div style={{ zIndex: 0 }} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-10 py-5 gap-2" onPointerDown={(e) => controls.start(e)}>
+          <div style={{ zIndex: 0 }} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-6 py-5 gap-2" onPointerDown={(e) => controls.start(e)}>
             <div className="flex items-center gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 flex-1">Your data earnings</p>
               <button
