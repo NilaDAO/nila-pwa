@@ -4,8 +4,8 @@ import { useDataContext, useViewModeContext } from '../../utils/NavigationContex
 import useTouch from '../../hooks/useTouch';
 import { useMintFoodToken, useBurnLandTitle } from '../../hooks/useMintLandTitle.ts'
 import { AssetsView, UsdtSwapCard, UpiTransferCard, InfoCard } from './assetsView';
-import { useFoodTokenBatches, CROP_UNIT } from '../../hooks/useFoodTokenBatches.ts';
-import { CROP_IMG } from '../../hooks/useFilterTasks.js';
+import { useFoodTokenBatches, CROP_UNIT, CROP_CODE_NAMES } from '../../hooks/useFoodTokenBatches.ts';
+import { cropColor, cropIconUrl } from '../../utils/cropColors.js';
 
 const AssetList = ({ data, handleTokenView, LAND, handleOpenForm, onViewField }) => {
     const { tokenData, setSelectedAsset, db }       = useDataContext();
@@ -33,9 +33,12 @@ const AssetList = ({ data, handleTokenView, LAND, handleOpenForm, onViewField })
     }
 
     // USD price per unit for a token. For ERC1155 food tokens, look up the matching batch price.
+    // Falls back to varietyCode=0 (wildcard batch) if no exact variety match exists.
     const displayPrice = (t) => {
         if (t.type !== 'ERC1155') return t.p;
-        return batchPriceLookup[`${t.cropCode}_${t.varietyCode}`] ?? 0;
+        return batchPriceLookup[`${t.cropCode}_${t.varietyCode}`]
+            ?? batchPriceLookup[`${t.cropCode}_0`]
+            ?? 0;
     };
 
     const handleBackToList = () => {
@@ -120,9 +123,12 @@ const AssetList = ({ data, handleTokenView, LAND, handleOpenForm, onViewField })
             :
             <div>
             { extendedList.filter(t => t.type !== 'CERT').map((t, i) => {
-                const imgSrc  = t.type === 'ERC1155'
-                    ? (CROP_IMG[t.cropCode] ?? '/images/paddy.png')
-                    : (imageData[t.sym.split('-')[0].toUpperCase()] ?? '/images/NIN.png');
+                const imgSrc  = t.type !== 'ERC1155'
+                    ? (imageData[t.sym.split('-')[0].toUpperCase()] ?? '/images/NIN.png')
+                    : null;
+                const cropName    = t.type === 'ERC1155' ? (CROP_CODE_NAMES[t.cropCode] ?? t.sym.split('-')[0].toLowerCase()) : null;
+                const cropIconSrc = t.type === 'ERC1155' ? cropIconUrl(cropName) : null;
+                const itemCropColor = t.type === 'ERC1155' ? cropColor(cropName) : null;
                 const unit        = t.type === 'ERC1155' ? (CROP_UNIT[t.cropCode] ?? { label: 'kg', toKg: 1 }) : null;
                 const matchBatch  = t.type === 'ERC1155'
                     ? (batchData?.active ?? []).find(b => b.cropCode === t.cropCode && (b.varietyCode === 0 || b.varietyCode === t.varietyCode))
@@ -143,11 +149,29 @@ const AssetList = ({ data, handleTokenView, LAND, handleOpenForm, onViewField })
                     const enriched = unit ? { ...t, _pricePerUnit: pricePerUnit, _batch: matchBatch ?? null } : t;
                     setSelectedAsset(enriched);
                     handleTokenView(enriched);
-                }} className="flex flex-row justify-between">
-                    <div className="flex flex-row p-4 mx-4">
-                        <img className="h-12 w-12" src={imgSrc} alt={t.sym} />
+                }} className="flex flex-row justify-between overflow-hidden">
+                    <div className="flex flex-row p-4 mx-4 min-w-0 flex-1">
+                        {t.type === 'ERC1155' ? (
+                            <div className="h-12 w-12 rounded-full flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: itemCropColor }}>
+                                {cropIconSrc && (
+                                    <div className="w-9 h-9" style={{
+                                        WebkitMaskImage: `url(${cropIconSrc})`,
+                                        maskImage: `url(${cropIconSrc})`,
+                                        WebkitMaskRepeat: 'no-repeat',
+                                        maskRepeat: 'no-repeat',
+                                        WebkitMaskSize: 'contain',
+                                        maskSize: 'contain',
+                                        WebkitMaskPosition: 'center',
+                                        maskPosition: 'center',
+                                        backgroundColor: 'black',
+                                    }} />
+                                )}
+                            </div>
+                        ) : (
+                            <img className="h-12 w-12" src={imgSrc} alt={t.sym} />
+                        )}
                         <div className="flex flex-col">
-                            <p className="font-bold px-4 dark:text-white capitalize whitespace-nowrap">
+                            <p className="font-bold px-4 dark:text-white capitalize truncate">
                                 {t.type === 'ERC1155' ? t.sym.replace('-', ' · ') : t.sym}
                             </p>
                             { t.sym === 'LAND'
@@ -158,7 +182,7 @@ const AssetList = ({ data, handleTokenView, LAND, handleOpenForm, onViewField })
                             }
                         </div>
                     </div>
-                    <div className="flex flex-col items-end py-4 mx-4">
+                    <div className="flex flex-col items-end py-4 mx-4 flex-shrink-0">
                         <p className="font-bold px-4 dark:text-white">{balDisplay}</p>
                         { t.sym === 'LAND'
                             ? <p className="px-4 text-gray-400">₹{(t.p * t.bal).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
