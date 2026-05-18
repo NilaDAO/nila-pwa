@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDataContext, useNavContext, useViewModeContext } from '../../../utils/NavigationContext';
-import { cropColor } from '../../../utils/cropColors.js';
+import { cropColor, cropIconUrl } from '../../../utils/cropColors.js';
 import { motion, useDragControls, AnimatePresence, useAnimation } from 'framer-motion';
 import { RateSlider, ClaimButton, DropdownButton } from '../../../components/UI/buttons';
 import { ChevronDownIcon, TagIcon } from '@heroicons/react/24/solid';
@@ -747,7 +747,7 @@ export const StaticCards = ({ LAND }) => {
   }, []);
 
   const [ selected, setSelected ]              = useState([])
-  const [ form, setForm ]                      = useState({ crop: '', var: '', sos: '', coverage: 'full', yieldUnits: null })
+  const [ form, setForm ]                      = useState({ crop: '', var: '', sos: '', sosEditing: false, coverage: null, yieldUnits: null })
 
   const [ varOpen, setVarOpen ]                = useState(false)
   const [ overrideCropOpen, setOverrideCropOpen ] = useState(false)
@@ -1066,7 +1066,7 @@ export const StaticCards = ({ LAND }) => {
         className="flex flex-col py-4 mb-96"
       >
         {/* Cycle nav — above the card, moves with it */}
-        {record?.cycles && Object.keys(record.cycles).length > 0 && (
+        {action !== 'season' && record?.cycles && Object.keys(record.cycles).length > 0 && (
           <CycleSwiper record={record} onCycleChange={handleCycleChange} onCurrentRestore={handleCurrentRestore} />
         )}
         {/* ── Section 1: Field status ── */}
@@ -1177,7 +1177,8 @@ export const StaticCards = ({ LAND }) => {
                           const deliveryStr = b.deliveryDate > 0
                             ? new Date(b.deliveryDate * 1000).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: '2-digit' })
                             : null;
-                          const img = CROP_IMG[b.cropCode] ?? 'images/paddy.png';
+                          const batchIconSrc   = cropIconUrl(b.cropName);
+                          const batchCropColor = cropColor(b.cropName);
                           const pickBatch = () => {
                             if (!feasible) return;
                             const match = CROPS_DATA.find(c => c[1].toLowerCase() === (b.cropName ?? '').toLowerCase());
@@ -1194,7 +1195,18 @@ export const StaticCards = ({ LAND }) => {
                               disabled={!feasible}
                               className={`py-6 w-full flex flex-col items-center justify-center gap-2 rounded-xl border select-none active:scale-95 ${feasible ? 'border-gray-200 dark:border-slate-600' : 'border-gray-100 dark:border-slate-700 opacity-40'}`}
                             >
-                              <img src={img} alt={b.cropName} className="w-16 h-16 object-contain" />
+                              <div className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: batchCropColor }}>
+                                {batchIconSrc && (
+                                  <div className="w-10 h-10" style={{
+                                    WebkitMaskImage: `url(${batchIconSrc})`,
+                                    maskImage: `url(${batchIconSrc})`,
+                                    WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                                    WebkitMaskSize: 'contain', maskSize: 'contain',
+                                    WebkitMaskPosition: 'center', maskPosition: 'center',
+                                    backgroundColor: 'black',
+                                  }} />
+                                )}
+                              </div>
                               <span className="text-sm font-semibold dark:text-white">{b.cropName}</span>
                               {earnings != null ? (
                                 <span className="text-sm font-bold dark:text-white">₹{earnings.toLocaleString('en-IN')}</span>
@@ -1261,7 +1273,14 @@ export const StaticCards = ({ LAND }) => {
                   )}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: anyFoodToken ? cropColor(effectiveCropType ?? '') : '#9ca3af' }} />
+                      <div className="w-4 h-4 flex-shrink-0" style={{
+                        WebkitMaskImage: `url(${cropIconUrl(effectiveCropType)})`,
+                        maskImage: `url(${cropIconUrl(effectiveCropType)})`,
+                        WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                        WebkitMaskSize: 'contain', maskSize: 'contain',
+                        WebkitMaskPosition: 'center', maskPosition: 'center',
+                        backgroundColor: anyFoodToken ? cropColor(effectiveCropType ?? '') : '#9ca3af',
+                      }} />
                       <span className="text-sm font-semibold dark:text-white">{effectiveCropType}</span>
                       <span className={`text-[10px] ${isManual ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-slate-500'}`}>
                         {isManual ? 'manual' : 'est.'}
@@ -1329,7 +1348,8 @@ export const StaticCards = ({ LAND }) => {
                       const deliveryStr = bestBatch.deliveryDate > 0
                         ? new Date(bestBatch.deliveryDate * 1000).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: '2-digit' })
                         : null;
-                      const img = CROP_IMG[bestBatch.cropCode] ?? 'images/paddy.png';
+                      const batchIconSrc   = cropIconUrl(bestBatch.cropName);
+                      const batchCropColor = cropColor(bestBatch.cropName);
                       return (
                         <>
                           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Recommended batch</p>
@@ -1346,7 +1366,18 @@ export const StaticCards = ({ LAND }) => {
                             disabled={!feasible}
                             className={`py-6 w-full flex flex-col items-center justify-center gap-2 rounded-xl border select-none active:scale-95 ${feasible ? 'border-gray-200 dark:border-slate-600' : 'border-gray-100 dark:border-slate-700 opacity-40'}`}
                           >
-                            <img src={img} alt={bestBatch.cropName} className="w-16 h-16 object-contain" />
+                            <div className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: batchCropColor }}>
+                              {batchIconSrc && (
+                                <div className="w-10 h-10" style={{
+                                  WebkitMaskImage: `url(${batchIconSrc})`,
+                                  maskImage: `url(${batchIconSrc})`,
+                                  WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                                  WebkitMaskSize: 'contain', maskSize: 'contain',
+                                  WebkitMaskPosition: 'center', maskPosition: 'center',
+                                  backgroundColor: 'black',
+                                }} />
+                              )}
+                            </div>
                             <span className="text-sm font-semibold dark:text-white">{bestBatch.cropName}</span>
                             {earnings != null ? (
                               <span className="text-sm font-bold dark:text-white">₹{earnings.toLocaleString('en-IN')}</span>
@@ -1395,7 +1426,9 @@ export const StaticCards = ({ LAND }) => {
                   : null;
                 const tokBatch = (batchSummary?.active ?? []).find(b => b.cropCode === tok.cropCode);
                 const tokBatchId = tokBatch?.id ?? null;
-                const tokSos = tokMatchesSatellite ? (ac?.sos ?? null) : null;
+                const tokSos = tokMatchesSatellite
+                  ? (ac?.sos ?? null)
+                  : (tok.sosTs ? new Date(tok.sosTs * 1000).toISOString().slice(0, 10) : null);
                 const tokCropColor = cropColor(CROP_CODE_COLOR_KEY[tok.cropCode ?? -1] ?? tokCropName);
 
                 if (tokMatchesSatellite && ac) {
@@ -1403,7 +1436,17 @@ export const StaticCards = ({ LAND }) => {
                   return (
                     <div key={`ft-s3-${tok.cropCode}`} className="flex flex-col gap-1.5 px-4 pt-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cropColor(ac.crop_type) }} />
+                        {ac.crop_type && ac.crop_type !== 'unknown'
+                          ? <div className="w-4 h-4 flex-shrink-0" style={{
+                              WebkitMaskImage: `url(${cropIconUrl(ac.crop_type)})`,
+                              maskImage: `url(${cropIconUrl(ac.crop_type)})`,
+                              WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                              WebkitMaskSize: 'contain', maskSize: 'contain',
+                              WebkitMaskPosition: 'center', maskPosition: 'center',
+                              backgroundColor: cropColor(ac.crop_type),
+                            }} />
+                          : <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cropColor(ac.crop_type) }} />
+                        }
                         <span className="text-sm font-semibold dark:text-white">{ac.crop_type}</span>
                         {tokBatchId != null && (
                           <span
@@ -1516,7 +1559,17 @@ export const StaticCards = ({ LAND }) => {
                 return (
                   <div key={`ft-s4-${tok.cropCode}`} className="flex flex-col gap-2 px-4 pt-3">
                     <div className="flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tokCropColor }} />
+                      {tokCropName && tokCropName !== 'unknown'
+                        ? <div className="w-4 h-4 flex-shrink-0" style={{
+                            WebkitMaskImage: `url(${cropIconUrl(tokCropName)})`,
+                            maskImage: `url(${cropIconUrl(tokCropName)})`,
+                            WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                            WebkitMaskSize: 'contain', maskSize: 'contain',
+                            WebkitMaskPosition: 'center', maskPosition: 'center',
+                            backgroundColor: tokCropColor,
+                          }} />
+                        : <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tokCropColor }} />
+                      }
                       <span className="text-sm font-semibold dark:text-white">{tokCropName}</span>
                       <span
                         className="text-[10px] font-semibold text-white px-1.5 py-0.5 rounded-full"
@@ -1582,7 +1635,17 @@ export const StaticCards = ({ LAND }) => {
                     {Object.entries(byCrop).map(([crop, b]) => (
                       <div key={crop} className="flex justify-between">
                         <span className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1">
-                          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: cropColor(crop) }} />
+                          {crop !== 'unknown'
+                            ? <div className="w-3 h-3 flex-shrink-0" style={{
+                                WebkitMaskImage: `url(${cropIconUrl(crop)})`,
+                                maskImage: `url(${cropIconUrl(crop)})`,
+                                WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                                WebkitMaskSize: 'contain', maskSize: 'contain',
+                                WebkitMaskPosition: 'center', maskPosition: 'center',
+                                backgroundColor: cropColor(crop),
+                              }} />
+                            : <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: cropColor(crop) }} />
+                          }
                           {crop} ({b.count}x)
                         </span>
                         <span className="text-xs font-bold dark:text-white">
@@ -1637,6 +1700,11 @@ export const StaticCards = ({ LAND }) => {
 
         {/* ── Section 2: Actions ── */}
         {(() => {
+          if (!record) return (
+            <div style={{ zIndex: 0 }} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-6 py-5" onPointerDown={(e) => controls.start(e)}>
+              <p className="text-xs text-gray-400 dark:text-slate-500 text-center">Setting up your field data. This usually takes 1–2 days after your land title is registered.</p>
+            </div>
+          );
           const isFallow = !record?.current_cycle && record?.clusters?.features?.length === 0;
           const isActive = !isFallow && (clusterGroups.length > 0 || record?.current_cycle);
           const primaryLabel = isFallow ? 'New season' : 'Set crop';
@@ -1849,8 +1917,19 @@ export const StaticCards = ({ LAND }) => {
                           : 'Tap areas on the map'}
                       </p>
                     )}
+                    {form.coverage === 'full' && (
+                      <p className="text-[10px] text-green-600 dark:text-green-400">
+                        {((record?.meta?.parcel_area_m2 ?? 0) / 4046.86).toFixed(1)} ac — entire property
+                      </p>
+                    )}
                     {form.coverage === 'confirmed' && form.selectedClusters?.length > 0 && (
-                      <p className="text-[10px] text-green-600 dark:text-green-400">{form.selectedClusters.length} area(s) confirmed</p>
+                      <p className="text-[10px] text-green dark:text-amber-400">
+                        {form.selectedClusters.length} area(s) confirmed · {(
+                          (fieldActivity?.features ?? record?.clusters?.features ?? [])
+                            .filter(f => new Set(form.selectedClusters).has(f.properties?.cluster_id))
+                            .reduce((s, f) => s + (Number(f.properties?.area_m2) || 0), 0) / 4046.86
+                        ).toFixed(1)} ac
+                      </p>
                     )}
                   </>
                 )}
@@ -1901,18 +1980,87 @@ export const StaticCards = ({ LAND }) => {
                   </>
                 )}
 
-                {form.crop && (
-                  <>
-                    <p className="text-xs dark:text-slate-300">Start of the season</p>
-                    <input
-                      type="date"
-                      value={form.sos}
-                      onPointerDown={e => e.stopPropagation()}
-                      onChange={e => setForm(prev => ({ ...prev, sos: e.target.value }))}
-                      className="text-xs rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white dark:[color-scheme:dark] px-3 py-1.5 w-full"
-                    />
-                  </>
-                )}
+                {form.crop && (() => {
+                  const oracleSos = record?.current_cycle?.[0]?.sos;
+                  const hasCaseA  = !!oracleSos;
+                  const sosTs     = form.sos ? Math.floor(new Date(form.sos + 'T00:00:00Z').getTime() / 1000) : 0;
+                  const daysSinceSOS = sosTs > 0 ? Math.floor((Date.now() / 1000 - sosTs) / 86400) : null;
+                  const stageLabel = daysSinceSOS === null ? null
+                    : daysSinceSOS <= 14  ? 'Seedling / Transplanting'
+                    : daysSinceSOS <= 45  ? 'Vegetative / Tillering'
+                    : daysSinceSOS <= 85  ? 'Reproductive'
+                    : daysSinceSOS <= 110 ? 'Grain Filling'
+                    : 'Harvest Ready';
+                  const oracleSosFormatted = oracleSos
+                    ? new Date(oracleSos + 'T00:00:00Z').toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
+                    : null;
+                  const oracleDaysAgo = oracleSos
+                    ? Math.floor((Date.now() - new Date(oracleSos + 'T00:00:00Z').getTime()) / 86400000)
+                    : null;
+                  const todayStr = new Date().toISOString().slice(0, 10);
+                  const minSosStr = new Date(Date.now() - 270 * 86400000).toISOString().slice(0, 10);
+                  const confirmed = hasCaseA && form.sos === oracleSos && !form.sosEditing;
+
+                  return (
+                    <>
+                      <p className="text-xs dark:text-slate-300">Start of season</p>
+
+                      {hasCaseA && !form.sosEditing ? (
+                        <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-slate-700/50">
+                          <p className="text-xs dark:text-white">
+                            We detected planting on <span className="font-semibold">{oracleSosFormatted}</span>
+                            {oracleDaysAgo != null ? ` — ${oracleDaysAgo}d ago` : ''}
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onPointerDown={e => e.stopPropagation()}
+                              onClick={() => setForm(prev => ({ ...prev, sosEditing: true }))}
+                              className="text-xs px-3 py-1 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white active:scale-95"
+                            >Correct date</button>
+                            <button
+                              onPointerDown={e => e.stopPropagation()}
+                              onClick={() => setForm(prev => ({ ...prev, sos: oracleSos, sosEditing: false }))}
+                              className={`text-xs px-3 py-1 rounded-lg active:scale-95 ${confirmed ? 'bg-green-600 text-white' : 'border border-green-600 text-green-700 dark:text-green-400 bg-white dark:bg-slate-700'}`}
+                            >{confirmed ? '✓ Confirmed' : 'Confirm ✓'}</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1.5">
+                          {!hasCaseA && <p className="text-[10px] text-gray-500 dark:text-slate-400">When did you plant?</p>}
+                          <div className="flex gap-2">
+                            <button
+                              onPointerDown={e => e.stopPropagation()}
+                              onClick={() => setForm(prev => ({ ...prev, sos: todayStr, sosEditing: false }))}
+                              className={`text-xs px-3 py-1.5 rounded-lg border active:scale-95 flex-shrink-0 ${form.sos === todayStr ? 'bg-black dark:bg-white text-white dark:text-gray-800 border-black dark:border-white font-semibold' : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white'}`}
+                            >Today</button>
+                            <input
+                              type="date"
+                              value={form.sos}
+                              max={todayStr}
+                              min={minSosStr}
+                              onPointerDown={e => e.stopPropagation()}
+                              onChange={e => setForm(prev => ({ ...prev, sos: e.target.value, sosEditing: false }))}
+                              className="flex-1 text-xs rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white dark:[color-scheme:dark] px-3 py-1.5"
+                            />
+                          </div>
+                          {hasCaseA && form.sosEditing && (
+                            <button
+                              onPointerDown={e => e.stopPropagation()}
+                              onClick={() => setForm(prev => ({ ...prev, sos: oracleSos, sosEditing: false }))}
+                              className="text-[10px] text-gray-400 dark:text-slate-500 underline text-left"
+                            >← Back to oracle date</button>
+                          )}
+                        </div>
+                      )}
+
+                      {stageLabel && (
+                        <p className="text-[10px] text-gray-400 dark:text-slate-500">
+                          Your crop is in <span className="font-medium dark:text-slate-400">{stageLabel}</span> stage
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {form.selectedBatch && (() => {
                   const unit              = CROP_UNIT[form.selectedBatch.cropCode] ?? { label: 'kg', toKg: 1 };
@@ -1949,7 +2097,7 @@ export const StaticCards = ({ LAND }) => {
                   const yieldConfirmed    = hasEstimate || form.yieldUnits != null;
                   const effectiveYieldUnits = form.yieldUnits ?? estimatedYieldUnits;
                   const effectiveYieldKg  = Math.max(1, Math.round(effectiveYieldUnits * unit.toKg));
-                  const canJoin           = (!varietyRequired || !!form.var) && !!form.sos;
+                  const canJoin           = (!varietyRequired || !!form.var) && !!form.sos && (form.coverage === 'full' || form.coverage === 'confirmed');
 
                   const hasPrice          = form.selectedBatch.pricePerKgUsdt > 0n;
                   const priceINRperKg     = hasPrice ? Number(form.selectedBatch.pricePerKgUsdt) / 1e6 : 0;
@@ -1959,8 +2107,9 @@ export const StaticCards = ({ LAND }) => {
                   const title = hasEstimate && form.yieldUnits == null ? 'Estimated Yield' : 'Set the yield you expect (optional)';
 
                   const handleJoinBatch = async () => {
-                    if (!foodToken || !form.selectedBatch || (varietyRequired && !form.var) || !form.sos) {
-                      console.warn('[joinBatch] guard blocked', { foodToken: !!foodToken, batch: !!form.selectedBatch, variety: form.var, sos: form.sos });
+                    const sosTs = form.sos ? Math.floor(new Date(form.sos + 'T00:00:00Z').getTime() / 1000) : 0;
+                    if (!foodToken || !form.selectedBatch || (varietyRequired && !form.var) || !sosTs) {
+                      console.warn('[joinBatch] guard blocked', { foodToken: !!foodToken, batch: !!form.selectedBatch, variety: form.var, sosTs });
                       return;
                     }
 
@@ -1975,7 +2124,7 @@ export const StaticCards = ({ LAND }) => {
                       fieldAreaM2 = Math.round(picked.reduce((s, f) => s + (Number(f.properties?.area_m2) || 0), 0));
                     } else {
                       fieldNum = 0;
-                      fieldAreaM2 = Math.round(areaM2); // record.meta.parcel_area_m2 for entire property
+                      fieldAreaM2 = Math.round(record?.meta?.parcel_area_m2 ?? 0);
                     }
                     console.log('[joinBatch] field codex', { fieldNum, fieldAreaM2, coverage: form.coverage });
                     const varPart = form.var ? ` variety ${form.var[1]}` : '';
@@ -2011,7 +2160,7 @@ export const StaticCards = ({ LAND }) => {
                         const nonce = await wallet.provider.send('eth_getTransactionCount', [wallet.address, 'pending']);
                         console.log('[joinBatch] mintForBatchMember nonce:', nonce, 'yieldKg:', effectiveYieldKg);
                         const farmerVarietyCode = form.var ? Number(form.var[0]) : 0;
-                        return foodToken.mintForBatchMember(form.selectedBatch.id, landTitleId, harvestTs, effectiveYieldKg, fieldNum, fieldAreaM2, farmerVarietyCode, { nonce });
+                        return foodToken.mintForBatchMember(form.selectedBatch.id, landTitleId, harvestTs, effectiveYieldKg, fieldNum, fieldAreaM2, farmerVarietyCode, sosTs, { nonce });
                       },
                       {
                         onSuccess: (receipt) => {
@@ -2128,7 +2277,7 @@ export const StaticCards = ({ LAND }) => {
                       onClick={handleJoinBatch}
                       className={`w-full py-3 rounded-xl text-sm font-bold mt-3 transition-opacity ${canJoin ? 'bg-black dark:bg-white text-white dark:text-gray-800 active:scale-95' : 'bg-black dark:bg-white text-white dark:text-gray-800 opacity-30 cursor-not-allowed'}`}
                     >
-                      {joining ? 'Joining…' : canJoin ? 'Join batch' : !form.sos ? 'Add start of season' : 'Select variety to continue'}
+                      {joining ? 'Joining…' : canJoin ? 'Join batch' : !form.coverage ? 'Select area above' : form.coverage === 'partial' ? 'Confirm field selection' : !form.sos ? 'Add start of season' : 'Select variety to continue'}
                     </button>
                   )}
                   </>

@@ -566,6 +566,7 @@ function Wallet({LAND}) {
               ? (rawUnion.lastIndexOf(' ', 12) > 0 ? rawUnion.slice(0, rawUnion.lastIndexOf(' ', 12)) : rawUnion.slice(0, 12))
               : rawUnion;
             const hasBatch = Boolean(fieldActivity?.suggestedBatch);
+            const batchCropName = fieldActivity?.suggestedBatch?.cropName ?? null;
             const cardTitle = isFoodTokenHolder
               ? confirmedLabel
               : hasBatch && knownCrop
@@ -573,12 +574,14 @@ function Wallet({LAND}) {
                 : hasBatch
                   ? (unionName ? `Join the ${unionName} batch` : 'Join a cycle batch')
                   : (knownCrop ? confirmedLabel : 'Cycle detected');
+            const titleCrop = isFoodTokenHolder ? label : (hasBatch && batchCropName ? batchCropName : null);
             return {
               key: `tokenized-${i}-${d?.cluster_id ?? ''}`,
               type: 'MAP',
               show: ix === null,
               title: cardTitle,
-              titleDot: isFoodTokenHolder ? cropColor(label) : 'rgba(255,255,255,0.45)',
+              titleDot: titleCrop ? cropColor(titleCrop) : 'rgba(255,255,255,0.45)',
+              titleIconCrop: titleCrop,
               onClick: () => { handleToggleView({ ix: 2, i: i }); },
               content: <CultivationCard dominant={d} cardIndex={i} />
             };
@@ -627,13 +630,14 @@ function Wallet({LAND}) {
                         onTouchEnd={handleTouchEnd}
                         >
                         <AnimatePresence >
-                            {visibleCards.map(({ key, type, title, titleDot, onClick, content, props = {} }, index) => (
+                            {visibleCards.map(({ key, type, title, titleDot, titleIconCrop, onClick, content, props = {} }, index) => (
                                 <Card
                                     key={key}
                                     i={index}
                                     type={type}
                                     title={title}
                                     titleDot={titleDot}
+                                    titleIconCrop={titleIconCrop}
                                     onClick={onClick}
                                     inArrays={inArrays}
                                     isCollapsed={isCollapsed}
