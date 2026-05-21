@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, memo } from 'react'
 import { GoogleMap, useJsApiLoader, Polygon } from '@react-google-maps/api';
 import { useNavContext, useDataContext } from '../../../utils/NavigationContext';
 import { cropColor } from '../../../utils/cropColors.js';
+import { CROP_CODE_NAMES } from '../../../hooks/useFoodTokenBatches.ts';
 
 const containerStyle = {
   position: 'absolute',  
@@ -57,7 +58,15 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
   const portfolioMarkersRef                 = useRef([])
   const portfolioBoundsRef                  = useRef(null)
   const { cardIx }                          = useNavContext()
-  const { setFieldActivity }                = useDataContext()
+  const { setFieldActivity, tokenData }     = useDataContext()
+
+  // Food token priority: user self-attested a crop; unconfirmed until oracle matches it
+  const ft            = (tokenData ?? []).find(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0)
+  const ftCropName    = ft ? (CROP_CODE_NAMES[ft.cropCode] ?? null) : null
+  const ftCropColor   = ftCropName ? cropColor(ftCropName) : null
+  const satelliteCrop = fieldActivity?.activeCycle?.[0]?.crop_type?.toLowerCase() ?? null
+  const ftConfirmed   = !!(ftCropName && satelliteCrop && ftCropName.toLowerCase() === satelliteCrop)
+  const ftUnconfirmed = !!(ftCropName && !ftConfirmed)
   const features                            = fieldActivity?.geojson?.features || fieldActivity?.features || []
   const dominant                            = fieldActivity?.dominant
   const featureIds                          = cardIx !== null ? (dominant?.[cardIx]?.geometry_indices ?? Array.from({length: features.length}, (_, i) => i)) : Array.from({length: features.length}, (_, i) => i)
@@ -119,9 +128,10 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
   polygons.forEach(({ bounds }) => globalBounds.union(bounds));
 
   setOutline(polygons);
-  map.fitBounds(globalBounds, 20);
+  map.fitBounds(globalBounds, 60);
   // shift center upward so polygon isn't hidden behind the bottom card
   const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+    if (map.getZoom() > 17) map.setZoom(17);
     const center = map.getCenter();
     const bounds = map.getBounds();
     const latSpan = bounds.toSpan().lat();
@@ -163,7 +173,23 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
       return dt.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
     };
 
-    if (fieldActivity?.dormant && !fieldActivity?.historical && outline.length) {
+    if (ftUnconfirmed && ftCropName && outline.length) {
+      // Food token declared but oracle hasn't confirmed — show crop name only, no monitoring info
+      const poly = outline[0];
+      if (!poly?.latLngs?.length) return;
+      const center = poly.latLngs.reduce(
+        (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
+        { lat: 0, lng: 0 }
+      );
+      center.lat /= poly.latLngs.length;
+      center.lng /= poly.latLngs.length;
+      if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng)) return;
+      const el = document.createElement('div');
+      el.style.cssText = labelStyle;
+      el.innerHTML = `<span class="animate-pulse" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ftCropColor};margin-right:6px;vertical-align:middle;"></span><b>${ftCropName}</b><br><span style="font-size:9px;color:rgba(255,255,255,0.6);">Oracle is confirming your claim</span>`;
+      markers.push(addMarkerLabel(map, center, el));
+
+    } else if (fieldActivity?.dormant && !fieldActivity?.historical && outline.length) {
       // Current state: fallow / dormant — single label at outline centroid
       const poly = outline[0];
       if (!poly?.latLngs?.length) return;
@@ -247,7 +273,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     }
 
     return () => markers.forEach(m => { if (m) m.map = null; });
-  }, [map, fieldActivity?.dormant, fieldActivity?.activeCycle, fieldActivity?.historical, fieldActivity?.historicalCycle, features, outline]);
+  }, [map, fieldActivity?.dormant, fieldActivity?.activeCycle, fieldActivity?.historical, fieldActivity?.historicalCycle, features, outline, ftUnconfirmed, ftCropName, ftCropColor]);
 
   // ------------------ portfolio outlines + labels -------------------------
   useEffect(() => {
@@ -373,11 +399,16 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
             key={i}
             paths={poly.latLngs}
             options={{
-              fillColor: (fieldActivity?.dormant && !fieldActivity?.historical) ? fieldActivity.dormantColor : "rgba(255, 255, 255, 0.4)",
-              fillOpacity: (fieldActivity?.dormant && !fieldActivity?.historical) ? 0.5 : 0.4,
-              strokeColor: (fieldActivity?.dormant && !fieldActivity?.historical) ? "#5C4A1E" : "#333333",
-              strokeOpacity: 0.8,
-              strokeWeight: (fieldActivity?.dormant && !fieldActivity?.historical) ? 1.5 : 0.5,
+              fillColor: ftUnconfirmed
+                ? ftCropColor
+                : (fieldActivity?.dormant && !fieldActivity?.historical) ? fieldActivity.dormantColor : "#D4CF5A",
+              fillOpacity: ftUnconfirmed ? 0.15
+                : (fieldActivity?.dormant && !fieldActivity?.historical) ? 0.5 : 0.4,
+              strokeColor: ftUnconfirmed
+                ? ftCropColor
+                : (fieldActivity?.dormant && !fieldActivity?.historical) ? "#5C4A1E" : "#D4CF5A",
+              strokeOpacity: 1,
+              strokeWeight: 1,
               clickable: false,
               zIndex: 1,
             }}
