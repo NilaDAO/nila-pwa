@@ -1,10 +1,12 @@
 import React, { useState, useCallback, useEffect, useMemo, memo, useRef } from 'react'
 import debounce from 'lodash.debounce';
 import { useFieldRegContext } from '../../../utils/FieldRegContext'
+import { rectangularize, sharpenCorners } from '../../../hooks/useRegFlow'
 import { useDataContext } from "../../../utils/NavigationContext";
 import { GoogleMap, useJsApiLoader, Polygon, InfoBox } from '@react-google-maps/api';
 
 const GOOGLE_MAP_LIBRARIES = ['maps','marker']
+
 
 const containerStyle = {
   position: 'absolute',  
@@ -56,11 +58,13 @@ function Maps({ onMapLoad, parentFlow }) {
   const [ newMap, setMap ]                                         = useState(null) // map instance
   const { fieldReg, updateFieldReg }                               = useFieldRegContext()
   const { db }                                                     = useDataContext()
-  const { flow, polygons, approvedFields,positions, remote, alts } = fieldReg
+  const { flow, polygons, approvedFields, positions, remote, alts, rectStrength, cornerStrength } = fieldReg
   const markersRef                                                 = useRef([]);
   const polylineRef                                                = useRef(null);
   const mapRef                                                     = useRef(null);
+  const didInitialOverviewRef                                      = useRef(false);
   const map                                                        = mapRef.current
+
 
   const { isLoaded } = useJsApiLoader({ 
     id: 'script-loader',
@@ -135,11 +139,12 @@ function Maps({ onMapLoad, parentFlow }) {
 
         function createCircleIcon() {
           const circle = document.createElement('div');
-          circle.style.width = '14px';  // Adjust size as needed
-          circle.style.height = '14px';
-          circle.style.backgroundColor = '#D4CF5A';  // Circle color
-          circle.style.borderRadius = '50%';  // Make it a circle
-          circle.style.border = '1px solid green';  // Optional border
+          circle.style.width = '12px';
+          circle.style.height = '12px';
+          circle.style.backgroundColor = '#D4CF5A';
+          circle.style.borderRadius = '50%';
+          circle.style.border = '1px solid green';
+          circle.style.opacity = '0.45';
           circle.style.display = 'flex';  // Center content (if any)
           circle.style.alignItems = 'center';
           circle.style.justifyContent = 'center';
@@ -166,14 +171,25 @@ function Maps({ onMapLoad, parentFlow }) {
               path: positions,
               geodesic: true,
               strokeColor: "#D4CF5A",
-              strokeOpacity: 0.6,
+              strokeOpacity: 0.3,
               strokeWeight: 1
             });
             polylineRef.current.setMap(map);
           }
-        // Center the map on the last coordinate
-        const lastCoordinate = positions.at(-1);
-        map.setCenter({ lat: lastCoordinate.lat, lng: lastCoordinate.lng });
+        // On first load with existing fields, fit to show all approved fields once
+        if (!didInitialOverviewRef.current && approvedFields.length > 0) {
+          didInitialOverviewRef.current = true;
+          const bounds = new window.google.maps.LatLngBounds();
+          approvedFields.forEach((polygon) => {
+            polygon.shape.forEach((path) => {
+              bounds.extend(new window.google.maps.LatLng(path.lat, path.lng));
+            });
+          });
+          map.fitBounds(bounds);
+        } else {
+          const lastCoordinate = positions.at(-1);
+          map.setCenter({ lat: lastCoordinate.lat, lng: lastCoordinate.lng });
+        }
         } else {
           // Center map and zoom to 
           const bounds = new window.google.maps.LatLngBounds();
@@ -235,17 +251,25 @@ function Maps({ onMapLoad, parentFlow }) {
         onUnmount={onUnmount}
       >
         {/* polygons component */}
-        {flow <= 10 && approvedFields.map((field, index) => (
+        {approvedFields.map((field, index) => (
           <Polygon
-            key={index} // Always use a unique key for list items
+            key={index}
             paths={field.shape}
-            options={{
+            options={flow >= 10 ? {
+              fillColor: "rgba(255, 255, 255, 0.65)",
+              fillOpacity: 0.15,
+              strokeColor: "white",
+              strokeOpacity: 0.3,
+              strokeWeight: 3,
+              clickable: false,
+            } : {
               fillColor: "rgba(255, 255, 255, 0.4)",
               fillOpacity: 0.4,
               strokeColor: "white",
               strokeOpacity: 1,
               strokeWeight: 2,
             }}
+            onClick={flow >= 10 ? undefined : () => updateFieldReg({ polygons: field.shape, panMode: index + 1, rectStrength: 0, cornerStrength: 0 })}
           />
         ))}
         {/* field names on outline */}
@@ -259,7 +283,7 @@ function Maps({ onMapLoad, parentFlow }) {
         {/* Alt output */}
         {alts.length > 0 && (flow === 2 || flow === 3) && (
           <Polygon
-            paths={alts[1]}
+            paths={[sharpenCorners(rectangularize(alts[1][0], rectStrength), cornerStrength)]}
             options={{
               fillColor: "rgba(212, 207, 90, 0.4)",
               fillOpacity: 0.4,
@@ -269,22 +293,15 @@ function Maps({ onMapLoad, parentFlow }) {
             }}></Polygon>
         )}
         {/* Outline */}
-        {(fieldReg.property && flow >= 10) && fieldReg.property.shape.map((ring, idx) => (
-              <Polygon
-                key={idx}
-                paths={ring}
-                options={{
-                  fillColor: "rgba(212, 207, 90, 0.4)",
-                  strokeColor: "#D4CF5A",
-                  strokeOpacity: 1,
-                  strokeWeight: 2,
-                }}
-              />
+        {(fieldReg.property && flow >= 10) && (fieldReg.property.shape || []).map((ring, idx) => (
+          <Polygon key={idx} paths={ring} options={{
+            fillColor: "rgba(212, 207, 90, 0.4)", strokeColor: "#D4CF5A", strokeOpacity: 1, strokeWeight: 2,
+          }} />
         ))}
         {/* Fencing output */}
         {polygons.length > 0 && (
           <Polygon
-            paths={polygons}
+            paths={sharpenCorners(rectangularize(polygons, rectStrength), cornerStrength)}
             options={{
               fillColor: "rgba(212, 207, 90, 0.4)",
               fillOpacity: 0.4,
