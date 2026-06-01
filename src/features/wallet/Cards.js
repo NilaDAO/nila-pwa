@@ -6,9 +6,8 @@ import { useNavContext, useViewModeContext, useDataContext } from '../../utils/N
 import useTouch from "../../hooks/useTouch";
 import { useWeightedRates } from '../../hooks/useWeightedRates.js';
 import { motion } from 'framer-motion';
-import { cropColor, phenoColor } from '../../utils/cropColors.js';
-import { CROP_IMG } from '../../hooks/useFilterTasks';
-import { CROP_UNIT, CROP_CODE_NAMES } from '../../hooks/useFoodTokenBatches.ts';
+import { cropColor, phenoColor, cropIconUrl, normalizeCropType } from '../../utils/cropColors.js';
+import { CROP_UNIT, CROP_CODE_NAMES, useFoodTokenBatches } from '../../hooks/useFoodTokenBatches.ts';
 
 const infoText = 'Your cap rate dictates your borrowing terms and grant size: the lower your cap rate, the larger the loan you can access at a lower interest rate. To jump-start your liquidity in union funds, Nila offers grants to eligible newcomers.' 
 const SHRINK_PERC = 0.3
@@ -231,93 +230,125 @@ export const InvestmentCard = ({CAP, sums, cardShrink, inArrays }) => {
     }
 
 export const CultivationCard = ({ dominant, cardIndex = 0 }) => {
-    const [ crop, setCrop ] = useState();
     const { tokenview } = useViewModeContext();
-    const { db } = useDataContext();
-    const { handleToggleView } = useTouch();
+    const { db, tokenData } = useDataContext();
     const [url, setUrl] = useState(null);
     const flipBackground = cardIndex % 2 === 1;
-    const cropLabel = typeof dominant?.crop_type === 'string'
+
+    const rawCrop = typeof dominant?.crop_type === 'string'
       ? dominant.crop_type
       : (dominant?.crop_type?.dominant?.label || dominant?.crop_type?.label || dominant?.activity || 'Cultivation');
-    const status = dominant?.signals?.status || 'unknown';
-    const pheno = typeof dominant?.stage === 'string'
-      ? dominant.stage
-      : (dominant?.phenology?.stage?.dominant?.stage || 'unknown');
+    // Strip variety/subtype suffix (sugarcane_plant → sugarcane, sugarcane_ratoon → sugarcane).
+    const cropLabel = normalizeCropType(rawCrop) ?? rawCrop;
     const cropHex  = cropColor(cropLabel);
-    const phenoHex = phenoColor(pheno);
-    const yieldIndex = dominant?.yield_index ?? dominant?.yield?.mean_kg_ha ?? 0;
-    const yieldTotalKg = dominant?.yield_total_kg || 0;
     const yieldKgPerAcre = dominant?.yield_kg_per_acre || 0;
     const areaM2 = Number(dominant?.area_m2);
 
-    const DeclareCropType = () => (
-        <div>
-            <input 
-                type="text"
-                placeholder={cropLabel == 'other' || cropLabel == 'unknown' ? 'what is growing here?' : `are you growing ${cropLabel}?`}
-                value={cropLabel == 'other' || cropLabel == 'unknown' ? crop || '' : cropLabel} 
-                onChange = {(e) => setCrop(e.target.value)}
-                className="text-sm bg-transparent focus:ring-2 focus:ring-green"
-            />
-        </div>
-    )
+    // ── Crop image (top-left) ─────────────────────────────────────────────────
+    const cropCodeNum = Number(
+      Object.entries(CROP_CODE_NAMES).find(([, name]) => name.toLowerCase() === cropLabel.toLowerCase())?.[0] ?? -1
+    );
 
-    const yieldcat = (param) => {
-        if (param < 0.2) return 'lower 20%';
-        if (param < 0.5) return 'lower 50%';
-        if (param < 0.8) return 'top 20%';
-        if (param <= 1) return 'best of class';
-        return 'unknown';
-    }
+    // ── Field state ───────────────────────────────────────────────────────────
+    // State 4: food-token only (no active satellite cycle)
+    // State 3: active cycle + food token → show alerts
+    // State 2: active cycle, no food token → show "join batch" if one matches
+    const ft = (tokenData ?? []).find(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0);
+    const isState4 = dominant?.cluster_id?.startsWith('foodtoken-');
+    const fieldState = isState4 ? 4 : ft ? 3 : 2;
+
+    // ── State-2: batch matching ───────────────────────────────────────────────
+    const { active: activeBatches = [] } = useFoodTokenBatches(db?.union?.address);
+    const suggestedBatch = fieldState === 2 && cropCodeNum >= 0
+      ? activeBatches.find(b => b.cropCode === cropCodeNum) ?? null
+      : null;
+
+    // ── State-3: urgency alerts + yield mismatch ──────────────────────────────
+    const adviceBlob = [dominant?.health_description, dominant?.water_advice, dominant?.fertilizer_advice, dominant?.weeding_advice].filter(Boolean).join(' ');
+    const burnDetected = /\bburn\b/i.test(adviceBlob) || dominant?.health === 'poor';
+
+    const urgencyAlerts = [];
+    if (burnDetected)
+      urgencyAlerts.push({ type: 'burn',       icon: '🔥', title: 'Burn risk',    body: dominant?.health_description });
+    if (dominant?.water_advice)
+      urgencyAlerts.push({ type: 'water',      icon: '💧', title: 'Water',        body: dominant.water_advice });
+    if (dominant?.fertilizer_advice)
+      urgencyAlerts.push({ type: 'fertilizer', icon: '🌱', title: 'Fertilizer',   body: dominant.fertilizer_advice });
+    if (dominant?.weeding_advice)
+      urgencyAlerts.push({ type: 'weed',       icon: '🌿', title: 'Weed control', body: dominant.weeding_advice });
+
+    const ftUnit = ft ? (CROP_UNIT[ft.cropCode] ?? { label: 'kg', toKg: 1 }) : null;
+    const areaAcres = Number.isFinite(areaM2) ? (areaM2 / 4046.86) * 0.85 : 0;
+    const expectedKg = yieldKgPerAcre > 0 && areaAcres > 0 ? yieldKgPerAcre * areaAcres : null;
+    const tokenKg = ft?.bal ?? null;
+    const yieldDrift = expectedKg != null && tokenKg > 0 ? Math.abs(expectedKg - tokenKg) / tokenKg : null;
+    const yieldAlert = yieldDrift != null && yieldDrift > 0.15;
 
     useEffect(() => {
-        if (!db?.thumb) {
-            setUrl(null);
-            return;
-        }
+        if (!db?.thumb) { setUrl(null); return; }
         const objectUrl = URL.createObjectURL(db.thumb);
         setUrl(objectUrl);
         return () => URL.revokeObjectURL(objectUrl);
     }, [db?.thumb]);
-    
+
     return (
         <>
             {!tokenview &&
             <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none" style={{ boxShadow: 'inset 0 -4px 8px rgba(0,0,0,0.25)' }}>
-            {url && (
+              {url && (
                 <div
-                    className="absolute inset-0 bg-cover bg-center"
-                    style={{
-                        backgroundImage: `url(${url})`,
-                        backgroundSize: "120%",
-                        transform: flipBackground ? 'scale(-1, -1)' : 'none',
-                    }}
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ backgroundImage: `url(${url})`, backgroundSize: '120%', transform: flipBackground ? 'scale(-1, -1)' : 'none' }}
                 />
-            )}
-            <div
+              )}
+              <div
                 className={`absolute inset-0 ${url ? 'dark:bg-black/40' : ''}`}
                 style={!url ? { backgroundColor: cropHex, opacity: 0.85 } : undefined}
-            />
-            <table className="relative z-10 flex flex-row h-full justify-end px-4 pt-9 text-white">
-                <tbody>
-                    <tr className='text-xs flex flex-col items-end'>
-                        <td className="text-xs text-gray-100">Status: {STATUS[status] || status}</td>
-                        <td className="text-xs text-gray-100 flex items-center gap-1">
-                            <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: phenoHex }} />
-                            {PHENO[pheno] || pheno}
-                        </td>
-                        <td className="text-xs text-gray-100">
-                            Area: {Number.isFinite(areaM2) ? `${areaM2.toLocaleString('en-IN', { maximumFractionDigits: 0 })} m²` : 'n/a'}
-                        </td>
-                        <td className="text-xs text-gray-100">
-                            Yield: {yieldTotalKg > 0
-                              ? `${yieldTotalKg.toLocaleString('en-IN', { maximumFractionDigits: 0 })} kg (${yieldcat(yieldIndex)})`
-                              : yieldcat(yieldIndex)}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+              />
+
+
+              {/* Right panel — state-specific */}
+              <div className="absolute right-0 top-0 bottom-0 w-1/2 z-10 m-3 flex flex-col items-start justify-end gap-1.5 p-3 rounded-2xl bg-black/25">
+
+                {fieldState === 2 && suggestedBatch && (
+                  <div className="rounded-lg px-3 py-1.5 bg-green-600/80 flex flex-col items-end">
+                    <span className="text-[11px] font-semibold text-white leading-tight">Join batch</span>
+                    <span className="text-[9px] text-green-100 leading-tight">{suggestedBatch.cropName}</span>
+                  </div>
+                )}
+
+                {fieldState === 3 && (
+                  <>
+                    {urgencyAlerts.map((a, i) => (
+                      <div key={i} className={`rounded-lg px-2 py-1 flex items-start gap-1 ${a.type === 'burn' ? 'bg-red/80' : 'bg-amber-500/80'}`}>
+                        <span className="text-[10px] leading-tight">{a.icon}</span>
+                        <span className="text-[10px] font-semibold text-white leading-tight">{a.title}</span>
+                      </div>
+                    ))}
+                    {yieldAlert && (
+                      <div className="rounded-lg px-2 py-1 flex items-end gap-1">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-semibold text-white leading-tight">Yield update</span>
+                          <span className="text-[9px] text-blue-100 leading-tight">
+                            est {(expectedKg / ftUnit.toKg).toLocaleString('en-IN', { maximumFractionDigits: 0 })} vs {(tokenKg / ftUnit.toKg).toLocaleString('en-IN', { maximumFractionDigits: 0 })} {ftUnit.label}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {fieldState === 4 && (
+                  <div className="rounded-lg px-2 py-1.5 bg-gray-800/70 flex items-center gap-1.5">
+                    <span className="relative inline-flex w-2.5 h-2.5 flex-shrink-0">
+                      <span className="absolute inset-0 rounded-full bg-gray-400 opacity-60 animate-ping" />
+                      <span className="relative w-2.5 h-2.5 rounded-full bg-gray-300" />
+                    </span>
+                    <span className="text-[10px] text-gray-200 font-medium leading-tight">Record updating</span>
+                  </div>
+                )}
+
+              </div>
             </div>
             }
         </>
@@ -329,13 +360,15 @@ export const AssetCard = ({ cardShrink }) => {
     const { tokenview } = useViewModeContext();
     const { tokenData } = useDataContext();
     const balancesFetching = useIsFetching({ queryKey: ['balances'] });
-    const isRefetching = balancesFetching > 0;
-    const t = tokenData?.reduce((sum, t) => sum + (t.bal * t.p), 0);
-    const total = t ? t : 0 // helper if app is offline for some case (we dont cache balance)
-    // (t.p * 1/extendedList[1].p)
+    const batchFetching    = useIsFetching({ queryKey: ['foodTokenBatches'] });
+    const isRefetching     = balancesFetching > 0 || batchFetching > 0;
+
+    const totalUsd = tokenData?.reduce((sum, t) => sum + (t.bal * t.p), 0) ?? 0;
+
     const handleReload = (e) => {
         e.stopPropagation();
         qc.invalidateQueries({ queryKey: ['balances'] });
+        qc.invalidateQueries({ queryKey: ['foodTokenBatches'] });
     }
     
     return (
@@ -353,8 +386,8 @@ export const AssetCard = ({ cardShrink }) => {
                         <ArrowPathIcon className={`h-4 w-4 text-gray-500 dark:text-gray-200 ${isRefetching ? 'animate-spin' : ''}`} />
                     </button>
                 </div>
-                <h1 className={`font-bold text-xl dark:text-white ${isRefetching ? 'animate-pulse' : ''}`}>{(total * 1/tokenData[0]?.p)?.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}/-</h1>
-                <p className={`text-gray-400 text-xs px-1 ${isRefetching ? 'animate-pulse' : ''}`}>{total.toLocaleString('en-IN',{ style: 'currency', currency: 'USD', maximumFractionDigits: 1 })},-</p>
+                <h1 className={`font-bold text-xl dark:text-white ${isRefetching ? 'animate-pulse' : ''}`}>{(totalUsd * 1/tokenData[0]?.p)?.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}/-</h1>
+                <p className={`text-gray-400 text-xs px-1 ${isRefetching ? 'animate-pulse' : ''}`}>{totalUsd.toLocaleString('en-IN',{ style: 'currency', currency: 'USD', maximumFractionDigits: 1 })},-</p>
             </div>
             }
         </>
@@ -502,6 +535,7 @@ export const Card = ({
     type,
     title,
     titleDot,
+    titleIconCrop,
     children,
     onClick,
     isCollapsed,
@@ -600,7 +634,7 @@ export const Card = ({
         {children}
         <h3 className={`
             font-bold
-            text-sm
+            text-xs
             flex items-center gap-1
             ${type == 'BORROW' || type == 'INVEST' && `dark:text-black ${cardShrink >= 0.5 && 'dark:text-slate-400' }`}
             ${type == 'ASSETS' && 'dark:text-slate-400'}
@@ -609,7 +643,17 @@ export const Card = ({
             ${type == 'CASH_LIQUIDITY' && 'dark:text-slate-400'}
             ${type == 'ORDERS' && 'text-gray-800 dark:text-white z-10'}
             `}>
-            {titleDot && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: titleDot }} />}
+            {titleDot && (titleIconCrop
+              ? <div className="w-5 h-5 mb-1 flex-shrink-0" style={{
+                  WebkitMaskImage: `url(${cropIconUrl(titleIconCrop)})`,
+                  maskImage: `url(${cropIconUrl(titleIconCrop)})`,
+                  WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                  WebkitMaskSize: 'contain', maskSize: 'contain',
+                  WebkitMaskPosition: 'center', maskPosition: 'center',
+                  backgroundColor: titleDot,
+                }} />
+              : <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: titleDot }} />
+            )}
             {title}
         </h3>
         </div>

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDataContext, useNavContext, useViewModeContext } from '../../../utils/NavigationContext';
-import { cropColor, cropIconUrl } from '../../../utils/cropColors.js';
+import { cropColor, cropIconUrl, normalizeCropType } from '../../../utils/cropColors.js';
+import { mergeZonesWithSubzones } from '../../../utils/recordZones.js';
 import { motion, useDragControls, AnimatePresence, useAnimation } from 'framer-motion';
 import { RateSlider, ClaimButton, DropdownButton } from '../../../components/UI/buttons';
 import { ChevronDownIcon, TagIcon } from '@heroicons/react/24/solid';
@@ -229,23 +230,65 @@ const SharedCropping = ({fieldActivity,selected,LAND,setAction}) => {
 
 // ── CS023: Cycle history swiper ──────────────────────────────
 
-const useCycleNav = (record, onCycleChange, onCurrentRestore) => {
-  // Index 0 = "current" (live state), 1+ = historical cycles
-  const historicalCycles = useMemo(() => {
-    if (!record?.cycles) return [];
-    return Object.entries(record.cycles)
-      .map(([key, cycle]) => ({ key, ...cycle }))
-      .sort((a, b) => {
-        if (a.sos && b.sos) return b.sos.localeCompare(a.sos);
-        return parseInt(b.key.split('_')[1]) - parseInt(a.key.split('_')[1]);
-      });
-  }, [record]);
+// Pre-computed season windows for 2019–2027.
+// Each entry: { label, startMs, endMs }
+// Zaid Y  : Feb 1 Y  – May 31 Y
+// Kharif Y: Jun 1 Y  – Sep 30 Y
+// Rabi Y  : Oct 1 Y  – Jan 31 Y+1
+const SEASON_WINDOWS = (() => {
+  const w = [];
+  for (let y = 2019; y <= 2027; y++) {
+    w.push({ label: `Zaid ${y}`,   startMs: Date.UTC(y,   1,  1), endMs: Date.UTC(y,   4, 31) });
+    w.push({ label: `Kharif ${y}`, startMs: Date.UTC(y,   5,  1), endMs: Date.UTC(y,   8, 30) });
+    w.push({ label: `Rabi ${y}`,   startMs: Date.UTC(y,   9,  1), endMs: Date.UTC(y+1, 0, 31) });
+  }
+  return w;
+})();
 
-  const totalCount = historicalCycles.length + 1; // +1 for "current"
-  const [cycleIx, setCycleIx] = useState(0);      // 0 = current
+// A cycle belongs to a season if overlap/min(cycle_days, season_days) > 0.80.
+// Handles short crops (most of the crop is in this season) and
+// perennials (most of the season is covered by the crop).
+function cycleSeasonKeys(cycle) {
+  if (!cycle.sos || !cycle.eos) return [];
+  const sosMs = new Date(cycle.sos).getTime();
+  const eosMs = new Date(cycle.eos).getTime();
+  const cycleDays = (eosMs - sosMs) / 86400000;
+  if (cycleDays <= 0) return [];
+  const keys = [];
+  for (const { label, startMs, endMs } of SEASON_WINDOWS) {
+    const overlapMs = Math.min(eosMs, endMs) - Math.max(sosMs, startMs);
+    if (overlapMs <= 0) continue;
+    const overlapDays = overlapMs / 86400000;
+    const seasonDays  = (endMs - startMs) / 86400000;
+    if (overlapDays / Math.min(cycleDays, seasonDays) > 0.8) keys.push(label);
+  }
+  return keys;
+}
+
+const useCycleNav = (record, selectedZoneId, onCycleChange, onCurrentRestore) => {
+  const seasonGroups = useMemo(() => {
+    if (!record?.cycles) return [];
+    const cycles = Object.entries(record.cycles)
+      .map(([key, c]) => ({ key, ...c }))
+      .filter(c => !!c.eos);
+    const groupMap = new Map();
+    for (const cycle of cycles) {
+      for (const sk of cycleSeasonKeys(cycle)) {
+        if (!groupMap.has(sk)) {
+          const win = SEASON_WINDOWS.find(w => w.label === sk);
+          groupMap.set(sk, { label: sk, startMs: win?.startMs ?? 0, cycles: [] });
+        }
+        groupMap.get(sk).cycles.push(cycle);
+      }
+    }
+    return Array.from(groupMap.values()).sort((a, b) => b.startMs - a.startMs);
+  }, [record, selectedZoneId]);
+
+  const totalCount = seasonGroups.length + 1; // +1 for "current"
+  const [cycleIx, setCycleIx] = useState(0);  // 0 = current
   const userInteracted = useRef(false);
   const isCurrent = cycleIx === 0;
-  const historicalEntry = !isCurrent ? historicalCycles[cycleIx - 1] : null;
+  const currentGroup = !isCurrent ? seasonGroups[cycleIx - 1] : null;
 
   const navigate = useCallback((dir) => {
     const next = cycleIx + dir;
@@ -254,41 +297,33 @@ const useCycleNav = (record, onCycleChange, onCurrentRestore) => {
     setCycleIx(next);
   }, [cycleIx, totalCount]);
 
+  const jumpTo = useCallback((ix) => {
+    if (ix < 0 || ix >= totalCount) return;
+    userInteracted.current = true;
+    setCycleIx(ix);
+  }, [totalCount]);
+
   useEffect(() => {
     if (!userInteracted.current) return;
     if (cycleIx === 0) {
       onCurrentRestore?.();
-    } else if (historicalEntry && record?.per_cycle_clusters) {
-      const pcc = record.per_cycle_clusters[historicalEntry.key];
-      onCycleChange?.(historicalEntry, pcc);
+    } else {
+      const group = seasonGroups[cycleIx - 1];
+      if (group) {
+        const allFeatures = group.cycles.flatMap(c =>
+          record?.per_cycle_clusters?.[c.key]?.features ?? []
+        );
+        onCycleChange?.(group.cycles[0], { type: 'FeatureCollection', features: allFeatures });
+      }
     }
   }, [cycleIx]);
 
-  return { historicalCycles, totalCount, cycleIx, isCurrent, historicalEntry, navigate };
+  return { seasonGroups, totalCount, cycleIx, isCurrent, currentGroup, navigate, jumpTo };
 };
 
-function indianSeason(sos) {
-  if (!sos) return null;
-  const m = parseInt(sos.slice(5, 7));
-  if (m >= 6 && m <= 8) return 'Kharif';
-  if (m >= 10 || m <= 1) return 'Rabi';
-  if (m >= 2 && m <= 5) return 'Zaid';
-  return null;
-}
 
-const CycleSwiper = ({ record, onCycleChange, onCurrentRestore }) => {
-  const { totalCount, cycleIx, isCurrent, historicalEntry, navigate } = useCycleNav(record, onCycleChange, onCurrentRestore);
+const CycleSwiper = ({ cycleIx, totalCount, label, navigate }) => {
   if (totalCount <= 1) return null;
-
-  let label;
-  if (isCurrent) {
-    label = 'Now';
-  } else {
-    const season = indianSeason(historicalEntry?.sos);
-    const year = historicalEntry?.sos?.slice(0, 4);
-    label = [season, year].filter(Boolean).join(' ') || `Cycle ${cycleIx}`;
-  }
-
   return (
     <div className="flex items-center justify-between rounded-2xl backdrop-blur-sm bg-darkgrey/10">
       <button
@@ -298,9 +333,7 @@ const CycleSwiper = ({ record, onCycleChange, onCurrentRestore }) => {
       >
         ‹
       </button>
-      <p className="text-xs text-white">
-        {label}
-      </p>
+      <p className="text-xs text-white">{label}</p>
       <button
         onClick={() => navigate(-1)}
         disabled={cycleIx === 0}
@@ -308,6 +341,53 @@ const CycleSwiper = ({ record, onCycleChange, onCurrentRestore }) => {
       >
         ›
       </button>
+    </div>
+  );
+};
+
+
+const HistoricalCycleCard = ({ cycle }) => {
+  if (!cycle) return null;
+  const fmt = (iso) => iso ? new Date(iso).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '—';
+  const unmix = cycle.unmix || {};
+  const pct = (v) => v == null ? null : `${Math.round(v * 100)}%`;
+  return (
+    <div className="flex flex-col gap-1 text-xs pt-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 pt-1">Past cycle</p>
+      <div className="flex justify-between pt-1">
+        <span className="text-gray-500 dark:text-slate-400">Crop</span>
+        <span className="font-bold dark:text-white">{normalizeCropType(cycle.crop_type) ?? 'unknown'}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-500 dark:text-slate-400">Sowing → harvest</span>
+        <span className="font-bold dark:text-white">{fmt(cycle.sos)} → {fmt(cycle.eos)}</span>
+      </div>
+      {cycle.peak_ndvi != null && (
+        <div className="flex justify-between">
+          <span className="text-gray-500 dark:text-slate-400">Peak NDVI</span>
+          <span className="font-bold dark:text-white">{cycle.peak_ndvi.toFixed(2)}</span>
+        </div>
+      )}
+      {cycle.yield_kg_per_acre != null && (
+        <div className="flex justify-between">
+          <span className="text-gray-500 dark:text-slate-400">Yield</span>
+          <span className="font-bold dark:text-white">{Math.round(cycle.yield_kg_per_acre)} kg/ac</span>
+        </div>
+      )}
+      {cycle.n_clusters != null && (
+        <div className="flex justify-between">
+          <span className="text-gray-500 dark:text-slate-400">Subzones</span>
+          <span className="font-bold dark:text-white">{cycle.n_clusters}</span>
+        </div>
+      )}
+      {(unmix.crop != null || unmix.perennial != null || unmix.bare != null) && (
+        <div className="flex justify-between">
+          <span className="text-gray-500 dark:text-slate-400">Land cover</span>
+          <span className="font-bold dark:text-white">
+            {[pct(unmix.crop) && `crop ${pct(unmix.crop)}`, pct(unmix.perennial) && `perennial ${pct(unmix.perennial)}`, pct(unmix.bare) && `bare ${pct(unmix.bare)}`].filter(Boolean).join(' · ')}
+          </span>
+        </div>
+      )}
     </div>
   );
 };
@@ -801,63 +881,126 @@ export const StaticCards = ({ LAND }) => {
   }, [record]);
 
 
-  // CS023: when user swipes to a cycle, push its clusters onto the map
-  const handleCycleChange = useCallback((cycle, perCycleClusters) => {
-    if (!perCycleClusters?.features?.length) {
-      setFieldActivity(prev => prev ? {
-        ...prev,
-        features: [],
-        geojson: { type: 'FeatureCollection', features: [] },
-        featurelength: 0,
-        dormant: false,
-        historical: true,
-        historicalCycle: cycle,
-        activeCycle: null,
-      } : prev);
-      return;
+  // Build features from the merged zone list (subzones replace their parents).
+  // Stamps `activity: 'active'` + `crop_type` on any zone whose zone_id is in
+  // `activeZoneIds`. For subzones, falls back to the parent's crop lookup when
+  // the subzone itself has no direct classification.
+  const buildZoneFeatures = useCallback((cropByZoneId, activeZoneIds) => {
+    const merged = mergeZonesWithSubzones(record);
+    // If a subdivided parent zone id was passed in activeZoneIds, expand it
+    // to its subzone ids so the partition pieces all light up.
+    const activeSet = activeZoneIds instanceof Set
+      ? new Set(activeZoneIds)
+      : new Set(activeZoneIds || []);
+    for (const z of merged) {
+      if (z.subzone_of && activeSet.has(z.subzone_of)) activeSet.add(z.zone_id);
     }
-    // Enrich features with cycle-level data for map labels
-    const enriched = perCycleClusters.features.map(f => ({
-      ...f,
-      properties: {
-        ...f.properties,
-        crop_type: f.properties?.crop_type || cycle.crop_type,
-        activity: cycle.is_open ? 'active' : 'historical',
-        cycle_sos: cycle.sos,
-        cycle_eos: cycle.eos,
-        cycle_peak_ndvi: cycle.peak_ndvi,
-        cycle_crop_confidence: cycle.crop_confidence,
-      }
-    }));
+    const cropFor = (z) => {
+      const direct = cropByZoneId?.(z.zone_id);
+      if (direct) return direct;
+      // Subzones with no classification inherit the parent zone's crop so
+      // the live current_cycle still drives the color.
+      if (z.subzone_of) return cropByZoneId?.(z.subzone_of) ?? null;
+      return null;
+    };
+    return merged.map(z => {
+      const isActive = activeSet.has(z.zone_id);
+      return {
+        type: 'Feature',
+        properties: {
+          zone_id: z.zone_id,
+          category: z.category,
+          area_m2: z.area_m2,
+          ...(z.subzone_of ? { subzone_of: z.subzone_of } : {}),
+          ...(z._backdrop ? { backdrop: true } : {}),
+          ...(isActive ? { crop_type: cropFor(z) ?? null, activity: 'active' } : {}),
+        },
+        geometry: z.geometry,
+      };
+    });
+  }, [record]);
+
+  const handleCycleChange = useCallback((cycle) => {
+    // Open cycles render like "Now" — all zones get filled with their
+    // respective crop colors (this cycle's zone uses this cycle's crop).
+    // Closed historical cycles only fill the cycle's own zone; subzone
+    // cycles ("zN_a"/"zN_b") add their partition polygon on top of the parent.
+    const cc = record?.current_cycle ?? [];
+    const zoneIdOf = (c) => c?.zone_id ?? c?.cluster_id;  // pipeline writes one or the other
+    let features;
+    if (cycle?.is_open) {
+      const cropForZone = (zid) => {
+        if (zid === cycle?.zone_id) return cycle?.crop_type ?? null;
+        const zc = cc.find(c => zoneIdOf(c) === zid);
+        return zc?.crop_type ?? null;  // unknown → cropColor returns grey
+      };
+      const allZoneIds = mergeZonesWithSubzones(record).map(z => z.zone_id);
+      features = buildZoneFeatures(cropForZone, allZoneIds);
+    } else {
+      // Closed historical cycle: fill all zones with whatever each zone was
+      // growing during this cycle's time window (sos..eos). The cycle's own
+      // zone uses its own crop. Subzone cycles (zN_a/_b) keep their partition
+      // polygon as an overlay on top of the parent.
+      const tgtSos = cycle?.sos || '';
+      const tgtEos = cycle?.eos || tgtSos;
+      const allCycles = Array.isArray(record?.cycles) ? record.cycles : Object.values(record?.cycles || {});
+      // Pick the cycle most overlapping the target window for each zone slot.
+      const overlapDays = (c) => {
+        const a = c?.sos || '';
+        const b = c?.eos || c?.sos || '';
+        if (!a || !tgtSos) return -1;
+        const s = a > tgtSos ? a : tgtSos;
+        const e = (b && tgtEos && b < tgtEos) ? b : tgtEos;
+        return s && e && e >= s ? Math.max(0, (new Date(e) - new Date(s)) / 86400000) : -1;
+      };
+      const cropForZone = (zid) => {
+        if (zid === cycle?.zone_id) return cycle?.crop_type ?? null;
+        // For zoneN that has a subzone partition during this window, prefer
+        // the parent-zone match by stripping the _a/_b suffix.
+        const matches = allCycles
+          .filter(c => {
+            const cz = c?.zone_id || '';
+            const root = cz.replace(/_(a|b)$/, '');
+            return (cz === zid || root === zid) && overlapDays(c) > 0;
+          })
+          .sort((a, b) => overlapDays(b) - overlapDays(a));
+        return matches[0]?.crop_type ?? null;
+      };
+      // Merged zone list already includes subzones; pass both parent and
+      // subzone ids in active set so the partition pieces light up too.
+      const merged = mergeZonesWithSubzones(record);
+      const allZoneIds = merged.map(z => z.zone_id);
+      features = buildZoneFeatures(cropForZone, allZoneIds);
+    }
     setFieldActivity(prev => ({
       ...prev,
-      features: enriched,
-      geojson: { type: 'FeatureCollection', features: enriched },
-      featurelength: enriched.length,
+      features,
+      geojson: { type: 'FeatureCollection', features },
+      featurelength: features.length,
       dormant: false,
       historical: true,
       historicalCycle: cycle,
       activeCycle: null,
       meta: { ...prev?.meta, last_scene_date: record?.meta?.last_scene_date },
     }));
-  }, [setFieldActivity, record]);
+  }, [setFieldActivity, record, buildZoneFeatures]);
 
   // Restore current (live) state when navigating back to "Current"
   const handleCurrentRestore = useCallback(() => {
-    const hasActiveCycle = record?.current_cycle?.length > 0;
+    const cc = record?.current_cycle;
+    const hasActiveCycle = (cc?.length ?? 0) > 0;
     if (hasActiveCycle) {
-      const openCycleKey = Object.keys(record.cycles || {}).find(k => record.cycles[k].is_open);
-      const pcc = openCycleKey ? record.per_cycle_clusters?.[openCycleKey] : null;
-      const cc = record.current_cycle;
-      const rawFeatures = pcc?.features || record?.clusters?.features || [];
-      const enriched = rawFeatures.map(f => ({
-        ...f,
-        properties: { ...f.properties, crop_type: cc[0]?.crop_type, activity: 'active' }
-      }));
+      const zoneIdOf = (c) => c?.zone_id ?? c?.cluster_id;
+      const cropForZone = (zid) => {
+        const zc = (cc || []).find(c => zoneIdOf(c) === zid);
+        return zc?.crop_type ?? null;  // unknown → cropColor returns grey
+      };
+      const allZoneIds = mergeZonesWithSubzones(record).map(z => z.zone_id);
+      const features = buildZoneFeatures(cropForZone, allZoneIds);
       setFieldActivity(prev => ({
         ...prev,
-        ...(enriched.length > 0
-          ? { features: enriched, geojson: { type: 'FeatureCollection', features: enriched }, featurelength: enriched.length }
+        ...(features.length > 0
+          ? { features, geojson: { type: 'FeatureCollection', features }, featurelength: features.length }
           : {}),
         dormant: false,
         historical: false,
@@ -880,7 +1023,10 @@ export const StaticCards = ({ LAND }) => {
         dormantStatus: isDormant ? status : null,
       }));
     }
-  }, [setFieldActivity, record]);
+  }, [setFieldActivity, record, buildZoneFeatures]);
+
+  const selectedZoneId = fieldActivity?.selectedZoneId ?? null;
+  const cycleNav = useCycleNav(record, selectedZoneId, handleCycleChange, handleCurrentRestore);
 
   // Open form immediately when arriving via "Join batch" from CultivationCard or task list
   useEffect(() => {
@@ -920,7 +1066,7 @@ export const StaticCards = ({ LAND }) => {
     if (!fieldActivity?.selectMode) return;
     const sel = (fieldActivity.features || [])
       .filter(f => f.properties?.selected)
-      .map(f => f.properties.cluster_id);
+      .map(f => f.properties.zone_id ?? f.properties.cluster_id);
     setForm(prev => ({ ...prev, selectedClusters: sel }));
   }, [fieldActivity?.selectMode, fieldActivity?.features]);
 
@@ -950,7 +1096,7 @@ export const StaticCards = ({ LAND }) => {
   const featureLength = fieldActivity?.featurelength || features.length
   const land_v2 = LAND.current.LAND?.metadata?.v ? true : false
 
-  const activeCropType = fieldActivity?.activeCycle?.[0]?.crop_type?.toLowerCase();
+  const activeCropType = normalizeCropType(fieldActivity?.activeCycle?.[0]?.crop_type)?.toLowerCase();
   const hasTokenForActiveCrop = activeCropType
     ? (tokenData ?? []).some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && CROP_CODE_NAMES[t.cropCode]?.toLowerCase() === activeCropType)
     : false;
@@ -1059,6 +1205,7 @@ export const StaticCards = ({ LAND }) => {
           if (info.offset.y > 100 && (action || showAdvice)) {
             setAction(null);
             setShowAdvice(false);
+            setCardView('mapview');
             motionAnimate.start({ y: 0, transition: springTransition });
           }
         }}
@@ -1066,22 +1213,49 @@ export const StaticCards = ({ LAND }) => {
         className="flex flex-col py-4 mb-96"
       >
         {/* Cycle nav — above the card, moves with it */}
-        {action !== 'season' && record?.cycles && Object.keys(record.cycles).length > 0 && (
-          <CycleSwiper record={record} onCycleChange={handleCycleChange} onCurrentRestore={handleCurrentRestore} />
+        {action !== 'season' && !selectedZoneId && cycleNav.totalCount > 1 && (
+          <div className="flex flex-col gap-1">
+            {!cycleNav.isCurrent && (
+              <button
+                onClick={() => cycleNav.jumpTo(0)}
+                className="self-center px-4 py-2 rounded-xl text-xs text-white dark:text-black bg-black dark:bg-white"
+              >Reset</button>
+            )}
+            <CycleSwiper
+              cycleIx={cycleNav.cycleIx}
+              totalCount={cycleNav.totalCount}
+              label={cycleNav.isCurrent ? 'Now' : (cycleNav.currentGroup?.label ?? `Season ${cycleNav.cycleIx}`)}
+              navigate={cycleNav.navigate}
+            />
+          </div>
         )}
         {/* ── Section 1: Field status ── */}
         {action !== 'season' && (() => {
           const isFallowField = !record?.current_cycle && record?.clusters?.features?.length === 0;
-          // Include record.current_cycle: Wallet.js sets activeCycle from it, but record may arrive after render
-          const hasActiveCycle = (fieldActivity?.activeCycle?.length ?? 0) > 0
-            || (record?.current_cycle?.length ?? 0) > 0;
           const anyFoodToken = (tokenData ?? []).some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0);
           // Gate: only render once Wallet.js has processed record+tokenData for THIS field.
           // fieldActivity.recordToken is stamped by Wallet.js's useEffect — prevents stale
           // activeCycle from a previous field triggering the wrong state.
           if (!record || fieldActivity?.recordToken !== tokenId) return null;
-          // ac: prefer EO-derived activeCycle, fall back to backend current_cycle
-          const ac = fieldActivity?.activeCycle?.[0] ?? record?.current_cycle?.[0] ?? null;
+          // activeCycle / current_cycle are authoritative for what is active now.
+          const activeCycles = cycleNav.isCurrent
+            ? (fieldActivity?.activeCycle?.length ? fieldActivity.activeCycle : (record?.current_cycle ?? []))
+            : [];
+          const hasActiveCycle = activeCycles.length > 0;
+          // ac: primary active cycle (for header / single-zone compat)
+          const ac = activeCycles[0] ?? null;
+          // When swiper is on a historical season group, use the primary (first) cycle for header display
+          const primaryHist = cycleNav.currentGroup?.cycles[0] ?? null;
+          const effectiveAc = primaryHist ? {
+            crop_type: primaryHist.crop_type,
+            sos: primaryHist.sos,
+            predicted_eos: primaryHist.eos ? [primaryHist.eos] : null,
+            expected_yield_kg_acre: primaryHist.yield_kg_per_acre ?? null,
+            health: primaryHist.health ?? null,
+            stage: null,
+            variety: primaryHist.variety ?? null,
+            is_open: false,
+          } : (ac ?? (selectedZoneId ? {} : null));
           // tokenData is guaranteed non-null here (recordToken gate only unlocks after tokenData is fetched)
           // Deduplicate by cropCode to match the ordering of foodTokenDominants in Wallet.js (cardIx aligns).
           const activeFoodTokens = Object.values(
@@ -1091,14 +1265,18 @@ export const StaticCards = ({ LAND }) => {
           );
           // Only show the panel for the currently selected cultivation card
           const visibleFoodTokens = cardIx != null ? activeFoodTokens.slice(cardIx, cardIx + 1) : activeFoodTokens;
-          const recordCropLower = ac?.crop_type?.toLowerCase() ?? null;
+          const recordCropLower = normalizeCropType(ac?.crop_type)?.toLowerCase() ?? null;
 
-          // fieldState for non-food-token paths only (states 1 and 2)
+          // fieldState for non-food-token paths only (states 1 and 2).
+          // When on a historical group, force state 2 from the group data —
+          // don't trust record.current_cycle which may still carry a stale is_open cycle.
           let fieldState;
-          if (anyFoodToken) fieldState = 'food';
+          if (selectedZoneId) fieldState = 2;
+          else if (anyFoodToken) fieldState = 'food';
+          else if (!cycleNav.isCurrent && cycleNav.currentGroup) fieldState = 2;
           else if (hasActiveCycle) fieldState = 2;
           else fieldState = 1;
-          const eos = ac?.predicted_eos;
+          const eos = effectiveAc?.predicted_eos;
           const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) : '—';
           const harvestText = eos?.length ? `${fmtDate(eos[0])}${eos[1] ? ` → ${fmtDate(eos[1])}` : ''}` : null;
           const daysToHarvest = eos?.[0] ? Math.round((new Date(eos[0]) - new Date()) / 86400000) : null;
@@ -1112,7 +1290,7 @@ export const StaticCards = ({ LAND }) => {
             const yearStr = year !== new Date().getFullYear() ? ` '${String(year).slice(2)}` : '';
             return `${part} ${month}${yearStr}`;
           };
-          const healthColor = ac?.health === 'stressed' ? 'text-amber-500' : ac?.health === 'poor' ? 'text-red' : 'text-green dark:text-amber-400';
+          const healthColor = effectiveAc?.health === 'stressed' ? 'text-amber-500' : effectiveAc?.health === 'poor' ? 'text-red' : 'text-green dark:text-amber-400';
 
           const isBatchFeasible = (b) => {
             if (!b.deliveryDate || b.deliveryDate === 0) return true;
@@ -1124,8 +1302,8 @@ export const StaticCards = ({ LAND }) => {
           const areaAcres = areaM2 / 4046.86;
           const effectiveAcres = areaAcres * 0.85;
 
-          const effectiveCropType = override?.cropType ?? ac?.crop_type;
-          const isManual = !!override?.cropType;
+          const effectiveCropType = normalizeCropType((cycleNav.isCurrent ? override?.cropType : null) ?? effectiveAc?.crop_type);
+          const isManual = cycleNav.isCurrent && !!override?.cropType;
           const overrideCropCode = isManual
             ? (CROPS_DATA.find(([, n]) => n === override.cropType)?.[0] ?? null)
             : null;
@@ -1149,20 +1327,63 @@ export const StaticCards = ({ LAND }) => {
             </div>
             <div className="flex flex-col px-6 pb-6" onPointerDown={(e) => controls.start(e)}>
 
-              {/* Header row */}
-              <div className="flex items-start justify-between px-4">
-                <div>
-                  <h3 className='font-bold dark:text-white'>{db['farmname']}</h3>
-                  <p className='text-[10px] dark:text-slate-500'>&#9888; Beta — data may be inaccurate</p>
-                </div>
-              </div>
-
               {loading && <Spinner size='small' stages={'loading latest records'} />}
 
               {/* ── State 1: Fallow — available batches with earnings ── */}
-              {fieldState === 1 && (
+              {fieldState === 1 && !fieldActivity?.historical && !selectedZoneId && (
                 <div className="px-4 pt-3 flex flex-col gap-2">
                   <DormantCard record={record} />
+                  {/* Season table including fallow rows — mirrors the state-2
+                      table so the user sees zone-by-zone status in Now view too. */}
+                  {(() => {
+                    const allCycles = Array.isArray(record?.cycles) ? record.cycles : Object.values(record?.cycles || {});
+                    const mergedZones = mergeZonesWithSubzones(record).filter(z => !z._backdrop);
+                    if (!mergedZones.length) return null;
+                    let fallowArea = 0;
+                    let fallowLastEos = null;
+                    for (const z of mergedZones) {
+                      fallowArea += Number(z.area_m2) || 0;
+                      const eosForZone = allCycles
+                        .filter(c => {
+                          const cz = c?.zone_id || '';
+                          return cz === z.zone_id || (z.subzone_of && cz === z.subzone_of);
+                        })
+                        .map(c => c.eos)
+                        .filter(Boolean)
+                        .sort()
+                        .reverse()[0];
+                      if (eosForZone && (!fallowLastEos || eosForZone > fallowLastEos)) fallowLastEos = eosForZone;
+                    }
+                    if (fallowArea <= 0) return null;
+                    return (
+                      <div className="pt-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 pt-1 pb-1">Season</p>
+                        <table className="w-full text-[10px]">
+                          <thead>
+                            <tr className="text-gray-400 dark:text-slate-500">
+                              <th className="text-left pb-1 font-semibold">Crop</th>
+                              <th className="text-right pb-1 font-semibold">Harvest</th>
+                              <th className="text-right pb-1 font-semibold">Size</th>
+                              <th className="text-right pb-1 font-semibold">Yield</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="border-t border-gray-100 dark:border-slate-700">
+                              <td className="py-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'#9ca3af', flexShrink:0 }} />
+                                  <span className="capitalize dark:text-white">fallow</span>
+                                </div>
+                              </td>
+                              <td className="py-0.5 text-right text-gray-500 dark:text-slate-400 whitespace-nowrap">{fallowLastEos ? (formatHarvestDate(fallowLastEos) ?? fallowLastEos) : '—'}</td>
+                              <td className="py-0.5 text-right text-gray-500 dark:text-slate-400 whitespace-nowrap">{Math.round(fallowArea)} m²</td>
+                              <td className="py-0.5 text-right font-bold dark:text-white whitespace-nowrap">—</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                   {!batchSummary ? null : batchSummary.active.length === 0 ? (
                     <p className="text-[10px] text-gray-400 dark:text-slate-500 pt-1">No active batches from your union yet.</p>
                   ) : (
@@ -1236,8 +1457,8 @@ export const StaticCards = ({ LAND }) => {
                 </div>
               )}
 
-              {/* ── State 2: Active cycle, no food token ── */}
-              {fieldState === 2 && ac && (
+              {/* ── State 2: Active cycle or historical group, no food token ── */}
+              {fieldState === 2 && effectiveAc && (
                 <div className="flex flex-col gap-1.5 px-4 pt-3">
                   {showOverride && (
                     <div className="flex flex-col gap-2 py-3 rounded-xl bg-gray-50 dark:bg-slate-700/50 mb-1">
@@ -1247,7 +1468,7 @@ export const StaticCards = ({ LAND }) => {
                           onClick={() => setOverrideCropOpen(o => !o)}
                           className="w-full text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white text-left flex items-center justify-between"
                         >
-                          <span>{override?.cropType ?? `detected: ${ac.crop_type}`}</span>
+                          <span>{override?.cropType ?? `detected: ${ac?.crop_type ?? '—'}`}</span>
                           <ChevronDownIcon className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${overrideCropOpen ? 'rotate-180' : ''}`} />
                         </button>
                         {overrideCropOpen && (
@@ -1257,7 +1478,7 @@ export const StaticCards = ({ LAND }) => {
                               onPointerDown={e => e.stopPropagation()}
                               onClick={() => { setOverride(prev => { const n = { ...(prev ?? {}) }; delete n.cropType; return Object.keys(n).length ? n : null; }); setOverrideCropOpen(false); setShowOverride(false); }}
                               className={`w-full text-left text-xs px-3 py-1.5 dark:text-white ${!override?.cropType ? 'bg-gray-100 dark:bg-slate-600 font-semibold' : 'active:bg-gray-50 dark:active:bg-slate-600'}`}
-                            >detected: {ac.crop_type}</button>
+                            >detected: {ac?.crop_type ?? '—'}</button>
                             {CROPS_DATA.map(([code, name]) => (
                               <button
                                 key={code}
@@ -1271,65 +1492,193 @@ export const StaticCards = ({ LAND }) => {
                       </div>
                     </div>
                   )}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 flex-shrink-0" style={{
-                        WebkitMaskImage: `url(${cropIconUrl(effectiveCropType)})`,
-                        maskImage: `url(${cropIconUrl(effectiveCropType)})`,
-                        WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-                        WebkitMaskSize: 'contain', maskSize: 'contain',
-                        WebkitMaskPosition: 'center', maskPosition: 'center',
-                        backgroundColor: anyFoodToken ? cropColor(effectiveCropType ?? '') : '#9ca3af',
-                      }} />
-                      <span className="text-sm font-semibold dark:text-white">{effectiveCropType}</span>
-                      <span className={`text-[10px] ${isManual ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-slate-500'}`}>
-                        {isManual ? 'manual' : 'est.'}
-                      </span>
+                  {cycleNav.isCurrent && (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 flex-shrink-0" style={{
+                          WebkitMaskImage: `url(${cropIconUrl(effectiveCropType)})`,
+                          maskImage: `url(${cropIconUrl(effectiveCropType)})`,
+                          WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                          WebkitMaskSize: 'contain', maskSize: 'contain',
+                          WebkitMaskPosition: 'center', maskPosition: 'center',
+                          backgroundColor: anyFoodToken ? cropColor(effectiveCropType ?? '') : '#9ca3af',
+                        }} />
+                        <span className="text-sm font-semibold dark:text-white">{effectiveCropType}</span>
+                        <span className={`text-[10px] ${isManual ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-slate-500'}`}>
+                          {isManual ? 'manual' : 'est.'}
+                        </span>
+                      </div>
+                      <button
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={() => setShowOverride(v => !v)}
+                        className="text-[10px] text-blue-500 dark:text-blue-400 flex-shrink-0"
+                      >Not {effectiveCropType}?</button>
                     </div>
-                    <button
-                      onPointerDown={e => e.stopPropagation()}
-                      onClick={() => setShowOverride(v => !v)}
-                      className="text-[10px] text-blue-500 dark:text-blue-400 flex-shrink-0"
-                    >Not {effectiveCropType}?</button>
-                  </div>
-                  <div className="flex flex-col gap-1 text-xs pt-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 pt-1">Season</p>
-                    {(override?.sos ?? ac.sos) && (
-                      <div className="flex justify-between pt-1">
-                        <span className="text-gray-500 dark:text-slate-400">Start of season</span>
-                        <span className="font-bold dark:text-white">
-                          {formatHarvestDate(override?.sos ?? ac.sos) ?? (override?.sos ?? ac.sos)}
-                        </span>
-                      </div>
-                    )}
-                    {!isManual && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-slate-400">Harvest</span>
-                        <span className="font-bold dark:text-white">
-                          {daysToHarvest != null && daysToHarvest > 0
-                            ? `${daysToHarvest}d · ${formatHarvestDate(eos?.[0]) ?? harvestText ?? '—'}`
-                            : formatHarvestDate(eos?.[0]) ?? harvestText ?? '—'}
-                        </span>
-                      </div>
-                    )}
-                    {!isManual && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-slate-400">Est. yield</span>
-                        <span className="font-bold dark:text-white">{ac.expected_yield_kg_acre ? `${ac.expected_yield_kg_acre} kg/acre` : '—'}</span>
-                      </div>
-                    )}
-                    {!isManual && ac.stage && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-slate-400">Stage</span>
-                        <span className="font-bold dark:text-white">{ac.stage}</span>
-                      </div>
-                    )}
-                    {!isManual && ac.health && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-slate-400">Health</span>
-                        <span className={`font-bold ${healthColor}`}>{ac.health}</span>
-                      </div>
-                    )}
+                  )}
+                  <div className="pt-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 pt-1 pb-1">Season</p>
+                    {/* Zone detail: flat list of all cycles for the selected zone */}
+                    {selectedZoneId && (() => {
+                      const zoneAreaM2 = (fieldActivity?.geojson?.features ?? [])
+                        .reduce((s, f) => s + (Number(f.properties?.area_m2) || 0), 0);
+                      const allCycles = Object.entries(record?.cycles ?? {})
+                        .map(([key, c]) => ({ key, ...c }))
+                        .filter(c => (c.zone_id ?? c.cluster_id) === selectedZoneId)
+                        .sort((a, b) => (b.sos ?? '') > (a.sos ?? '') ? 1 : -1);
+                      const zoneActive = activeCycles.find(c => (c.zone_id ?? c.cluster_id) === selectedZoneId) ?? null;
+                      return (
+                        <table className="w-full text-[10px]">
+                          <thead>
+                            <tr className="text-gray-400 dark:text-slate-500">
+                              <th className="text-left pb-1 font-semibold">Crop</th>
+                              <th className="text-right pb-1 font-semibold">Start</th>
+                              <th className="text-right pb-1 font-semibold">Harvest</th>
+                              <th className="text-right pb-1 font-semibold">Yield</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {zoneActive && (
+                              <tr className="border-t border-gray-100 dark:border-slate-700">
+                                <td className="py-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: cropColor(normalizeCropType(zoneActive.crop_type)), flexShrink:0 }} />
+                                    <span className="capitalize dark:text-white">{(zoneActive.crop_type ?? 'unknown').replace(/_/g, ' ')}</span>
+                                    <span className="text-gray-400 dark:text-slate-500">active</span>
+                                  </div>
+                                </td>
+                                <td className="py-0.5 text-right text-gray-500 dark:text-slate-400 whitespace-nowrap">{formatHarvestDate(zoneActive.sos) ?? '—'}</td>
+                                <td className="py-0.5 text-right text-gray-500 dark:text-slate-400 whitespace-nowrap">{zoneActive.predicted_eos?.[0] ? formatHarvestDate(zoneActive.predicted_eos[0]) : '—'}</td>
+                                <td className="py-0.5 text-right font-bold dark:text-white whitespace-nowrap">{zoneActive.expected_yield_kg_acre ? `${zoneActive.expected_yield_kg_acre} kg/ac` : '—'}</td>
+                              </tr>
+                            )}
+                            {allCycles.map(c => {
+                              const cropKey = normalizeCropType(c.crop_type) ?? 'unknown';   // for color
+                              const cropDisplay = (c.crop_type ?? 'unknown').replace(/_/g, ' ');  // for label
+                              const yieldVal = c.yield_kg_per_acre ?? c.expected_yield_kg_acre ?? null;
+                              return (
+                                <tr key={c.key} className="border-t border-gray-100 dark:border-slate-700">
+                                  <td className="py-0.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background: cropColor(cropKey), flexShrink:0 }} />
+                                      <span className="capitalize dark:text-white">{cropDisplay}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-0.5 text-right text-gray-500 dark:text-slate-400 whitespace-nowrap">{formatHarvestDate(c.sos) ?? '—'}</td>
+                                  <td className="py-0.5 text-right text-gray-500 dark:text-slate-400 whitespace-nowrap">{c.eos ? formatHarvestDate(c.eos) : '—'}</td>
+                                  <td className="py-0.5 text-right font-bold dark:text-white whitespace-nowrap">{yieldVal ? `${yieldVal} kg/ac` : '—'}</td>
+                                </tr>
+                              );
+                            })}
+                            {zoneAreaM2 > 0 && (
+                              <tr className="border-t border-gray-100 dark:border-slate-700">
+                                <td className="py-0.5 text-gray-500 dark:text-slate-400">Size</td>
+                                <td colSpan={3} className="py-0.5 text-right font-bold dark:text-white">{Math.round(zoneAreaM2)} m²</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      );
+                    })()}
+                    {/* Compact table: historical group or active cycles, with
+                        fallow zones merged as their own row. */}
+                    {!selectedZoneId && (() => {
+                      const rawCycles = cycleNav.currentGroup?.cycles ?? (cycleNav.isCurrent ? activeCycles : []);
+                      // Area per crop — keyed by RAW crop_type so plant/ratoon
+                      // stay as separate rows.
+                      const cropAreaMap = {};
+                      for (const f of (fieldActivity?.geojson?.features ?? [])) {
+                        const k = f.properties?.crop_type ?? 'unknown';
+                        cropAreaMap[k] = (cropAreaMap[k] ?? 0) + (Number(f.properties?.area_m2) || 0);
+                      }
+                      // Merge harvest + yield from cycle records, keyed by RAW crop_type.
+                      const merged = {};
+                      const coveredZones = new Set();
+                      for (const c of (rawCycles || [])) {
+                        const crop = c.crop_type ?? 'unknown';
+                        const eosRaw = c.eos ?? c.predicted_eos?.[0];
+                        const yieldVal = c.yield_kg_per_acre ?? c.expected_yield_kg_acre ?? null;
+                        if (!merged[crop]) merged[crop] = { crop, eos: eosRaw, yields: [] };
+                        else if (eosRaw && (!merged[crop].eos || eosRaw > merged[crop].eos)) merged[crop].eos = eosRaw;
+                        if (yieldVal != null) merged[crop].yields.push(yieldVal);
+                        const cz = c?.zone_id ?? c?.cluster_id;
+                        if (cz) {
+                          coveredZones.add(cz);
+                          coveredZones.add(String(cz).replace(/_(a|b)$/, ''));
+                        }
+                      }
+                      // Fallow zones: any merged zone (incl. subzones) that no
+                      // cycle in the current view touches.
+                      const allCycles = Array.isArray(record?.cycles) ? record.cycles : Object.values(record?.cycles || {});
+                      const mergedZones = mergeZonesWithSubzones(record).filter(z => !z._backdrop);
+                      let fallowArea = 0;
+                      let fallowLastEos = null;
+                      for (const z of mergedZones) {
+                        if (coveredZones.has(z.zone_id)) continue;
+                        if (z.subzone_of && coveredZones.has(z.subzone_of)) continue;
+                        fallowArea += Number(z.area_m2) || 0;
+                        const eosForZone = allCycles
+                          .filter(c => {
+                            const cz = c?.zone_id || '';
+                            return cz === z.zone_id || (z.subzone_of && cz === z.subzone_of);
+                          })
+                          .map(c => c.eos)
+                          .filter(Boolean)
+                          .sort()
+                          .reverse()[0];
+                        if (eosForZone && (!fallowLastEos || eosForZone > fallowLastEos)) fallowLastEos = eosForZone;
+                      }
+                      if (fallowArea > 0) {
+                        merged['__fallow'] = { crop: 'fallow', eos: fallowLastEos, yields: [], _fallowSize: fallowArea };
+                      }
+                      const rows = Object.values(merged);
+                      if (!rows.length) return null;
+                      return (
+                        <table className="w-full text-[10px]">
+                          <thead>
+                            <tr className="text-gray-400 dark:text-slate-500">
+                              <th className="text-left pb-1 font-semibold">Crop</th>
+                              <th className="text-right pb-1 font-semibold">Harvest</th>
+                              <th className="text-right pb-1 font-semibold">Size</th>
+                              <th className="text-right pb-1 font-semibold">Yield</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map(({ crop, eos: eosRaw, yields, _fallowSize }) => {
+                              const isFallow = crop === 'fallow';
+                              const cropKey = isFallow ? 'fallow' : normalizeCropType(crop);  // for color/icon lookup
+                              const col  = isFallow ? '#9ca3af' : cropColor(cropKey);
+                              const icon = isFallow ? null : cropIconUrl(cropKey);
+                              const isRatoon = !isFallow && /ratoon/i.test(crop);
+                              const avgYield = yields.length ? Math.round(yields.reduce((s, v) => s + v, 0) / yields.length) : null;
+                              const sizeM2 = isFallow ? (_fallowSize ?? 0) : (cropAreaMap[crop] ?? 0);
+                              return (
+                                <tr key={crop} className="border-t border-gray-100 dark:border-slate-700">
+                                  <td className="py-0.5">
+                                    <div className="flex items-center gap-1.5">
+                                      {icon
+                                        ? (
+                                          <span
+                                            className="inline-flex items-center justify-center flex-shrink-0"
+                                            style={{ width: 14, height: 14, borderRadius: '50%', border: isRatoon ? '1px solid #9ca3af' : '1px solid transparent', boxSizing: 'border-box' }}
+                                          >
+                                            <div style={{ width: 10, height: 10, WebkitMaskImage:`url(${icon})`, maskImage:`url(${icon})`, WebkitMaskRepeat:'no-repeat', maskRepeat:'no-repeat', WebkitMaskSize:'contain', maskSize:'contain', WebkitMaskPosition:'center', maskPosition:'center', backgroundColor: col }} />
+                                          </span>
+                                        )
+                                        : <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:col, flexShrink:0 }} />
+                                      }
+                                      <span className="capitalize dark:text-white">{crop.replace(/_/g, ' ')}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-0.5 text-right text-gray-500 dark:text-slate-400 whitespace-nowrap">{eosRaw ? formatHarvestDate(eosRaw) : '—'}</td>
+                                  <td className="py-0.5 text-right text-gray-500 dark:text-slate-400 whitespace-nowrap">{sizeM2 > 0 ? `${Math.round(sizeM2)} m²` : '—'}</td>
+                                  <td className="py-0.5 text-right font-bold dark:text-white whitespace-nowrap">{avgYield ? `${avgYield} kg/ac` : '—'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      );
+                    })()}
                     {isManual && (
                       <p className="text-[10px] text-gray-400 dark:text-slate-300 leading-relaxed flex gap-1.5 pt-1">
                         <span className="flex-shrink-0">⚠️</span>
@@ -1337,11 +1686,11 @@ export const StaticCards = ({ LAND }) => {
                       </p>
                     )}
                   </div>
-                  <div className="mt-2 flex flex-col gap-2">
+                  {cycleNav.isCurrent && !selectedZoneId && <div className="mt-2 flex flex-col gap-2">
                     {bestBatch ? (() => {
                       const feasible = isBatchFeasible(bestBatch);
-                      const typicalKg = (!isManual && ac.expected_yield_kg_acre)
-                        ? ac.expected_yield_kg_acre * effectiveAcres
+                      const typicalKg = (!isManual && effectiveAc?.expected_yield_kg_acre)
+                        ? effectiveAc.expected_yield_kg_acre * effectiveAcres
                         : (TYPICAL_KG_ACRE_BATCH[bestBatch.cropCode] ?? 1000) * effectiveAcres;
                       const pricePerKg = Number(bestBatch.pricePerKgUsdt ?? 0) / 1e6;
                       const earnings = pricePerKg > 0 && effectiveAcres > 0 ? Math.round(typicalKg * pricePerKg) : null;
@@ -1412,12 +1761,12 @@ export const StaticCards = ({ LAND }) => {
                         </p>
                       </div>
                     )}
-                  </div>
+                  </div>}
                 </div>
               )}
 
               {/* ── Food token states: one panel per token (state 3 = matches satellite, state 4 = no match) ── */}
-              {fieldState === 'food' && visibleFoodTokens.map(tok => {
+              {fieldState === 'food' && !selectedZoneId && visibleFoodTokens.map(tok => {
                 const tokCropName = CROP_CODE_NAMES[tok.cropCode] ?? tok.sym?.split('-')[0] ?? 'Crop';
                 const tokMatchesSatellite = hasActiveCycle && tokCropName.toLowerCase() === recordCropLower;
                 const tokUnit = CROP_UNIT[tok.cropCode] ?? { label: 'kg', toKg: 1 };
@@ -1447,7 +1796,7 @@ export const StaticCards = ({ LAND }) => {
                             }} />
                           : <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cropColor(ac.crop_type) }} />
                         }
-                        <span className="text-sm font-semibold dark:text-white">{ac.crop_type}</span>
+                        <span className="text-sm font-semibold dark:text-white">{normalizeCropType(ac.crop_type)}</span>
                         {tokBatchId != null && (
                           <span
                             className="text-[10px] font-semibold text-white px-1.5 py-0.5 rounded-full"
@@ -1607,62 +1956,16 @@ export const StaticCards = ({ LAND }) => {
                   </div>
                 );
               })}
-
-              {/* Cumulative history — shown in state 2 and when a token matches the satellite cycle */}
-              {(fieldState === 2 || (fieldState === 'food' && visibleFoodTokens.some(t => hasActiveCycle && (CROP_CODE_NAMES[t.cropCode] ?? '').toLowerCase() === recordCropLower))) && record && (() => {
-                const cycles = record.cycles ? Object.values(record.cycles) : [];
-                const area = record.meta?.parcel_area_m2 || 0;
-                const histAcres = area / 4046.86;
-                const byCrop = {};
-                cycles.forEach(c => {
-                  const crop = c.crop_type || 'unknown';
-                  if (!byCrop[crop]) byCrop[crop] = { total: 0, count: 0, withYield: 0, yieldSum: 0 };
-                  byCrop[crop].count++;
-                  if (c.yield_kg_per_acre != null) { byCrop[crop].withYield++; byCrop[crop].yieldSum += c.yield_kg_per_acre; }
-                });
-                Object.values(byCrop).forEach(b => {
-                  const avg = b.withYield > 0 ? b.yieldSum / b.withYield : 0;
-                  b.total = Math.round(avg * b.count * histAcres);
-                });
-                const years = cycles.map(c => c.sos?.slice(0, 4)).filter(Boolean);
-                const sinceYear = years.length ? Math.min(...years.map(Number)) : null;
-                if (!Object.keys(byCrop).length) return null;
-                return (
-                  <div className="flex flex-col gap-2 px-4 pt-3">
-                    {sinceYear && (
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">Since {sinceYear}</p>
-                    )}
-                    {Object.entries(byCrop).map(([crop, b]) => (
-                      <div key={crop} className="flex justify-between">
-                        <span className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1">
-                          {crop !== 'unknown'
-                            ? <div className="w-3 h-3 flex-shrink-0" style={{
-                                WebkitMaskImage: `url(${cropIconUrl(crop)})`,
-                                maskImage: `url(${cropIconUrl(crop)})`,
-                                WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-                                WebkitMaskSize: 'contain', maskSize: 'contain',
-                                WebkitMaskPosition: 'center', maskPosition: 'center',
-                                backgroundColor: cropColor(crop),
-                              }} />
-                            : <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: cropColor(crop) }} />
-                          }
-                          {crop} ({b.count}x)
-                        </span>
-                        <span className="text-xs font-bold dark:text-white">
-                          {b.total > 1000 ? `${(b.total / 1000).toLocaleString('en-IN', { maximumFractionDigits: 1 })} t` : `${b.total.toLocaleString('en-IN')} kg`}
-                          {b.withYield < b.count && <span className="text-gray-400 dark:text-slate-500 ml-1">est.</span>}
-                        </span>
-                      </div>
-                    ))}
-                    <p className='flex text-[10px] text-gray-400 dark:text-slate-500 justify-end pt-1'>
-                      {area > 0 ? `${Number(area).toLocaleString('en-IN', { maximumFractionDigits: 0 })} m²` : ''}
-                      {' · '}last overflight: {fieldActivity?.meta?.last_scene_date || record?.meta?.last_scene_date}
-                    </p>
-                  </div>
-                );
-              })()}
+              {/* Header row — property/field name lives in the top map header now */}
+              <div className="flex items-center justify-between px-4">
+                <p className="text-[10px] text-gray-400 dark:text-slate-300 leading-relaxed flex gap-1.5 pt-1">
+                  <span className="flex-shrink-0">⚠️</span>
+                  <span>Beta — data may be inaccurate.</span>
+                </p>
+              </div>
 
             </div>
+
           </div>
           );
         })()}
@@ -1679,12 +1982,12 @@ export const StaticCards = ({ LAND }) => {
               >ⓘ</button>
             </div>
             {showDataInfo && (
-              <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed">
-                Each time someone reads your property history — a lender, a buyer, or the union — you earn a small fee in nIN. These are your rights as the data owner.
+              <p className="text-[10px] text-gray-500 dark:text-slate-400 leading-relaxed">
+                The property history is available publicly as it is generated from public data sources using nila proprietary services. However we do require readers to pay a fee, each time the record is updated. You get 30% of that fee.
               </p>
             )}
             <div className="flex items-center justify-between pt-1">
-              <span className="text-xs text-gray-400 dark:text-slate-500">Earned so far</span>
+              <span className="text-[10px] text-gray-400 dark:text-slate-500">Earned so far</span>
               {claimableFees != null && claimableFees >= 50n * 10n**18n ? (
                 <button onClick={claimViewFees} className="text-xs font-bold px-4 py-1.5 rounded-xl bg-green-600 text-white active:bg-green-700">
                   Claim {Number(claimableFees / 10n**14n) / 10000} nIN
@@ -1701,8 +2004,11 @@ export const StaticCards = ({ LAND }) => {
         {/* ── Section 2: Actions ── */}
         {(() => {
           if (!record) return (
-            <div style={{ zIndex: 0 }} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-6 py-5" onPointerDown={(e) => controls.start(e)}>
-              <p className="text-xs text-gray-400 dark:text-slate-500 text-center">Setting up your field data. This usually takes 1–2 days after your land title is registered.</p>
+            <div style={{ zIndex: 0 }} className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1 px-6 py-5 items-center gap-3" onPointerDown={(e) => controls.start(e)}>
+              <motion.div className="animate-bounce dark:text-white">
+                <p className="font-Chains text-[2.5rem] leading-none text-center my-12">a</p>
+              </motion.div>
+              <p className="text-xs text-gray-400 dark:text-slate-300 text-center">Setting up your field data record. This sometimes take a few days, but generally should be done in a few hours. Hang on.</p>
             </div>
           );
           const isFallow = !record?.current_cycle && record?.clusters?.features?.length === 0;
@@ -1864,37 +2170,23 @@ export const StaticCards = ({ LAND }) => {
                         onClick={() => {
                           setForm(prev => ({...prev, coverage: 'partial', selectedClusters: []}));
                           setCardView('mapview');
-                          if (record?.per_cycle_clusters) {
-                            const sortedKeys = Object.keys(record.per_cycle_clusters)
-                              .sort((a, b) => parseInt(b.split('_')[1]) - parseInt(a.split('_')[1]));
-                            const seen = new Set();
-                            const allFeats = [];
-                            for (const k of sortedKeys) {
-                              const feats = record.per_cycle_clusters[k]?.features || [];
-                              for (const f of feats) {
-                                const cid = f.properties?.cluster_id;
-                                if (cid != null && !seen.has(cid)) {
-                                  seen.add(cid);
-                                  allFeats.push({...f, properties: {...f.properties, activity: 'selectable', selected: false}});
-                                }
-                              }
-                            }
-                            if (allFeats.length) {
-                              setFieldActivity(prev => ({
-                                ...prev,
-                                features: allFeats,
-                                geojson: { type: 'FeatureCollection', features: allFeats },
-                                featurelength: allFeats.length,
-                                dormant: false,
-                                historical: false,
-                                selectMode: true,
-                              }));
-                            }
-                          } else if (record?.clusters?.features?.length) {
-                            const allFeats = record.clusters.features.map(f => ({
-                              ...f,
-                              properties: { ...f.properties, activity: 'selectable', selected: false },
-                            }));
+                          // Use the merged zone list so subzones (z0_a/z0_b/…)
+                          // are first-class selectable areas, not their parent.
+                          // Subdivided parents come through as `_backdrop`
+                          // entries — skip those in select mode.
+                          const zones = mergeZonesWithSubzones(record).filter(z => !z._backdrop);
+                          const allFeats = zones.map(z => ({
+                            type: 'Feature',
+                            properties: {
+                              zone_id: z.zone_id,
+                              area_m2: z.area_m2,
+                              ...(z.subzone_of ? { subzone_of: z.subzone_of } : {}),
+                              activity: 'selectable',
+                              selected: false,
+                            },
+                            geometry: z.geometry,
+                          }));
+                          if (allFeats.length) {
                             setFieldActivity(prev => ({
                               ...prev,
                               features: allFeats,
@@ -1903,6 +2195,7 @@ export const StaticCards = ({ LAND }) => {
                               dormant: false,
                               historical: false,
                               selectMode: true,
+                              _selectBeforeFeatures: prev?.geojson?.features ?? prev?.features ?? [],
                             }));
                           }
                         }}
@@ -1924,10 +2217,10 @@ export const StaticCards = ({ LAND }) => {
                     )}
                     {form.coverage === 'confirmed' && form.selectedClusters?.length > 0 && (
                       <p className="text-[10px] text-green dark:text-amber-400">
-                        {form.selectedClusters.length} area(s) confirmed · {(
-                          (fieldActivity?.features ?? record?.clusters?.features ?? [])
-                            .filter(f => new Set(form.selectedClusters).has(f.properties?.cluster_id))
-                            .reduce((s, f) => s + (Number(f.properties?.area_m2) || 0), 0) / 4046.86
+                        {form.selectedClusters.length} zone(s) confirmed · {(
+                          mergeZonesWithSubzones(record)
+                            .filter(z => !z._backdrop && new Set(form.selectedClusters).has(z.zone_id))
+                            .reduce((s, z) => s + (z.area_m2 ?? 0), 0) / 4046.86
                         ).toFixed(1)} ac
                       </p>
                     )}
@@ -2114,14 +2407,16 @@ export const StaticCards = ({ LAND }) => {
                     }
 
                     // Compute field codex — fieldNumber=0 means entire property
-                    const allFeatures = fieldActivity?.features ?? record?.clusters?.features ?? [];
                     let fieldNum = 0;
                     let fieldAreaM2 = 0;
                     if (form.coverage === 'confirmed' && form.selectedClusters?.length > 0) {
                       const sel = new Set(form.selectedClusters);
-                      const picked = allFeatures.filter(f => sel.has(f.properties?.cluster_id));
-                      fieldNum = Math.min(...form.selectedClusters);
-                      fieldAreaM2 = Math.round(picked.reduce((s, f) => s + (Number(f.properties?.area_m2) || 0), 0));
+                      const pickedZones = mergeZonesWithSubzones(record)
+                        .filter(z => !z._backdrop && sel.has(z.zone_id));
+                      fieldAreaM2 = Math.round(pickedZones.reduce((s, z) => s + (z.area_m2 ?? 0), 0));
+                      // fieldNum: numeric index of first selected zone (z0→0, z1_a→1, …)
+                      const zoneNums = pickedZones.map(z => parseInt(String(z.zone_id).match(/(\d+)/)?.[1] ?? '0', 10));
+                      fieldNum = zoneNums.length > 0 ? Math.min(...zoneNums) : 0;
                     } else {
                       fieldNum = 0;
                       fieldAreaM2 = Math.round(record?.meta?.parcel_area_m2 ?? 0);

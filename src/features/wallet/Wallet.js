@@ -4,7 +4,52 @@ import useTouch from "../../hooks/useTouch";
 import { FieldRegProvider } from '../../utils/FieldRegContext';
 import { FieldRegControllerProvider } from '../maps/FieldRegistration/FieldRegController';
 import { useDataContext, useNavContext, useViewModeContext, useTxContext} from '../../utils/NavigationContext';
-import { cropColor } from '../../utils/cropColors.js';
+import { cropColor, zoneColor, normalizeCropType } from '../../utils/cropColors.js';
+import { mergeZonesWithSubzones } from '../../utils/recordZones.js';
+
+// Ray-cast point-in-polygon for tagging subzones with their containing zone.
+// Used as a fallback when feature properties don't already carry zone_id.
+const _pointInRing = (pt, ring) => {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > pt[1]) !== (yj > pt[1]))
+      && (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi + 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+};
+
+const _featureCentroid = (feature) => {
+  const coords = feature?.geometry?.coordinates;
+  if (!coords) return null;
+  // Polygon: coords[0] is outer ring [[lon,lat],...]
+  const ring = feature.geometry.type === 'Polygon' ? coords[0]
+    : feature.geometry.type === 'MultiPolygon' ? coords[0]?.[0] : null;
+  if (!ring?.length) return null;
+  let x = 0, y = 0;
+  for (const p of ring) { x += p[0]; y += p[1]; }
+  return [x / ring.length, y / ring.length];
+};
+
+const _resolveZoneId = (feature, zones) => {
+  const tagged = feature?.properties?.zone_id;
+  if (tagged !== undefined && tagged !== null) return tagged;
+  if (!Array.isArray(zones) || zones.length === 0) return null;
+  const c = _featureCentroid(feature);
+  if (!c) return null;
+  for (const z of zones) {
+    const g = z?.geometry;
+    if (!g?.coordinates) continue;
+    const rings = g.type === 'Polygon' ? [g.coordinates[0]]
+      : g.type === 'MultiPolygon' ? g.coordinates.map(p => p[0]) : [];
+    for (const ring of rings) {
+      if (_pointInRing(c, ring)) return z.zone_id;
+    }
+  }
+  return null;
+};
 import Assets from '../assets/assets'
 import DebtsActive from '../lending/debtsActive';
 import Investments from '../lending/investments';
@@ -242,8 +287,37 @@ function Wallet({LAND}) {
       const cc = record.current_cycle;
       const hasActive = cc && cc.length > 0;
 
+      // New schema: record.zones[] (stable NMF land-cover segments) +
+      // record.clusters{features} (subzones, per-cycle activity partitions).
+      // Tag each subzone with the zone it belongs to so the map/list can color
+      // by zone. cycles[] is a list; current_cycle[] entries may be skeletal,
+      // so enrich each from the matching cycles list entry by cycle_id.
+      const zones = Array.isArray(record.zones) ? record.zones : [];
+      const rawClusters = record.clusters?.features || [];
+      // cycles may arrive as an array (legacy) or as an object keyed by `cycle_0`/`cycle_1`/…
+      const cyclesByKey = {};
+      if (Array.isArray(record.cycles)) {
+        for (const c of record.cycles) {
+          if (c?.cycle_id) cyclesByKey[c.cycle_id] = c;
+          if (c?.idx !== undefined) cyclesByKey[`cycle_${c.idx}`] = c;
+        }
+      } else if (record.cycles && typeof record.cycles === 'object') {
+        for (const [k, c] of Object.entries(record.cycles)) {
+          cyclesByKey[k] = c;
+          if (c?.cycle_id) cyclesByKey[c.cycle_id] = c;
+        }
+      }
+      const subzones = rawClusters.map(f => {
+        const zid = _resolveZoneId(f, zones);
+        return { ...f, properties: { ...f.properties, zone_id: zid } };
+      });
+      const zoneCycles = (cc || []).map(c => {
+        const enriched = c?.cycle_id ? (cyclesByKey[c.cycle_id] || {}) : {};
+        return { ...enriched, ...c };
+      });
+
       if (hasActive) {
-        const primary = cc[0];
+        const primary = zoneCycles[0] || cc[0] || {};
         const parcelArea = Number(record.meta?.parcel_area_m2) || 0;
         const dominant = [{
           cluster_id: `active-${tokenId}`,
@@ -251,7 +325,7 @@ function Wallet({LAND}) {
           stage: primary.stage,
           activity: 'active',
           signals: { status: primary.health === 'stressed' ? 'POSSIBLE_STRESS' : 'ACTIVE_GOOD' },
-          yield_kg_per_acre: primary.expected_yield_kg_acre || 0,
+          yield_kg_per_acre: primary.expected_yield_kg_acre || primary.yield_kg_per_acre || 0,
           yield_index: primary.crop_confidence || 0,
           area_m2: parcelArea,
           harvest_window: primary.predicted_eos ? { earliest: primary.predicted_eos[0], latest: primary.predicted_eos[1] } : null,
@@ -260,17 +334,53 @@ function Wallet({LAND}) {
           water_advice: primary.water_advice ?? null,
           fertilizer_advice: primary.fertilizer_advice ?? null,
           weeding_advice: primary.weeding_advice ?? null,
+          zone_id: primary.zone_id ?? null,
         }];
-        const openCycleKey = Object.keys(record.cycles || {}).find(k => record.cycles[k].is_open);
-        const pcc = openCycleKey ? record.per_cycle_clusters?.[openCycleKey] : null;
-        const features = (pcc?.features || record.clusters?.features || []).map(f => ({
-          ...f,
-          properties: { ...f.properties, crop_type: cc[0]?.crop_type, activity: 'active' },
-        }));
+        // Map features: use zone-tagged subzones if present, else fall back to
+        // zone polygons so the map isn't blank when clusters[] is empty.
+        // Per-zone crop lookup from current_cycle entries. The pipeline writes
+        // the zone identifier as either `zone_id` or `cluster_id` depending on
+        // the code path; both refer to the same zN slot. Returns null for
+        // zones without a matching entry — the map renders those as "unknown"
+        // grey rather than inheriting some other zone's crop.
+        const zoneIdOf = (c) => c?.zone_id ?? c?.cluster_id;
+        const cropForZone = (zid) => {
+          const zc = (cc || []).find(c => zoneIdOf(c) === zid);
+          return zc?.crop_type ?? null;
+        };
+        // Merged zone list: parents that have been subdivided (e.g. z1 with
+        // z1_a/z1_b) are replaced by their subzones, so the partition shows in
+        // every view (Now, swiper, select-fields).
+        const mergedZones = mergeZonesWithSubzones(record);
+        const features = subzones.length > 0
+          ? subzones.map(f => ({
+              ...f,
+              properties: { ...f.properties, crop_type: cropForZone(f.properties?.zone_id), activity: f.properties?.activity || 'active' },
+            }))
+          : mergedZones.map(z => ({
+              type: 'Feature',
+              properties: {
+                zone_id: z.zone_id,
+                category: z.category,
+                area_m2: z.area_m2,
+                ...(z.subzone_of ? { subzone_of: z.subzone_of } : {}),
+                ...(z._backdrop ? { backdrop: true } : {}),
+                // Subzones inherit the parent's current crop when they have
+                // no direct match in current_cycle. Backdrops use the parent
+                // id directly.
+                crop_type: cropForZone(z.zone_id) ?? (z.subzone_of ? cropForZone(z.subzone_of) : null),
+                activity: 'active',
+              },
+              geometry: z.geometry,
+            }));
+
         setFieldActivity(prev => ({
           ...prev,
           dominant,
           activeCycle: cc,
+          zones,
+          subzones,
+          zoneCycles,
           dormant: false,
           recordToken: tokenId,
           ...(features.length > 0
@@ -279,12 +389,33 @@ function Wallet({LAND}) {
           meta: { ...prev?.meta, last_scene_date: record.meta?.last_scene_date },
         }));
       } else {
+        // No active cycle — still surface zones so the map shows land-cover.
+        // Use the merged zone list so subzone partitions show in the dormant
+        // view too.
+        const mergedZones = mergeZonesWithSubzones(record);
+        const features = subzones.length > 0 ? subzones : mergedZones.map(z => ({
+          type: 'Feature',
+          properties: {
+            zone_id: z.zone_id,
+            category: z.category,
+            area_m2: z.area_m2,
+            ...(z.subzone_of ? { subzone_of: z.subzone_of } : {}),
+            ...(z._backdrop ? { backdrop: true } : {}),
+          },
+          geometry: z.geometry,
+        }));
         setFieldActivity(prev => ({
           ...prev,
           dominant: [],
           activeCycle: null,
-          dormant: record.clusters?.features?.length === 0,
+          zones,
+          subzones,
+          zoneCycles,
+          dormant: subzones.length === 0 && zones.length === 0,
           recordToken: tokenId,
+          ...(features.length > 0
+            ? { features, geojson: { type: 'FeatureCollection', features }, featurelength: features.length }
+            : {}),
           meta: { ...prev?.meta, last_scene_date: record.meta?.last_scene_date },
         }));
       }
@@ -382,9 +513,9 @@ function Wallet({LAND}) {
     // Derive suggestedBatches: ALL active batches whose cropCode matches the active cycle's crop_type
     useEffect(() => {
       const cc = fieldActivity?.activeCycle;
-      const cropType = cc?.length ? (cc[0]?.crop_type ?? '').toLowerCase() : null;
+      const cropType = cc?.length ? normalizeCropType(cc[0]?.crop_type) : null;
       const matches = cropType && activeBatches.length
-        ? activeBatches.filter(b => (CROP_CODE_NAMES[b.cropCode] ?? '').toLowerCase() === cropType)
+        ? activeBatches.filter(b => (CROP_CODE_NAMES[b.cropCode] ?? '').toLowerCase() === (cropType ?? '').toLowerCase())
         : [];
       const matchIds  = matches.map(b => b.id).join(',');
       const existingIds = (fieldActivity?.suggestedBatches ?? (fieldActivity?.suggestedBatch ? [fieldActivity.suggestedBatch] : [])).map(b => b.id).join(',');
@@ -431,14 +562,15 @@ function Wallet({LAND}) {
     const handleFeatureClick = useCallback((feature) => {
         if (!feature || !fieldActivity) return;
 
-        // Select mode: toggle selected state on the clicked cluster
+        // Select mode: toggle selected state on the clicked zone/cluster
         if (feature._toggle && fieldActivity.selectMode) {
-          const cid = feature.properties?.cluster_id;
-          const updated = (fieldActivity.features || []).map(f =>
-            f.properties?.cluster_id === cid
+          const fkey = feature.properties?.zone_id ?? feature.properties?.cluster_id;
+          const updated = (fieldActivity.features || []).map(f => {
+            const mkey = f.properties?.zone_id ?? f.properties?.cluster_id;
+            return mkey === fkey
               ? { ...f, properties: { ...f.properties, selected: !f.properties.selected } }
-              : f
-          );
+              : f;
+          });
           setFieldActivity({
             ...fieldActivity,
             features: updated,
@@ -447,20 +579,49 @@ function Wallet({LAND}) {
           return;
         }
 
-        const clusterId = feature.properties?.cluster_id;
+        // Default zone click: filter features to the clicked zone (map zooms
+        // in via fitBounds on those features), pan the card down, turn on
+        // viewmode so the X button shows. Stash the full feature set on
+        // _featuresBefore so handleClose can restore it.
         const allFeatures = fieldActivity?.geojson?.features || fieldActivity?.features || [];
-        const matched = clusterId !== undefined && clusterId !== null
-          ? allFeatures.filter(f => f.properties?.cluster_id === clusterId)
+        const zid = feature.properties?.zone_id ?? feature.properties?.cluster_id;
+        const matched = zid != null
+          ? allFeatures.filter(f => {
+              const fzid = f.properties?.zone_id ?? f.properties?.cluster_id;
+              // match the clicked zone and any of its subzone overlays (zN_a/_b)
+              return fzid === zid || (typeof fzid === 'string' && fzid.replace(/_(a|b)$/, '') === zid);
+            })
           : [feature];
+        const featuresToSet = matched.length ? matched : [feature];
+
+        // Resolve the containing field name (LAND title metadata.fields[].name)
+        // via point-in-polygon on the clicked feature's centroid. Field rings
+        // are stored as [{lat, lng}, ...] per parseCompactMeta in useLoadETH.
+        const meta = LAND?.current?.LAND?.metadata;
+        let selectedFieldName = null;
+        const c = _featureCentroid(feature);
+        if (c && Array.isArray(meta?.fields)) {
+          for (const fld of meta.fields) {
+            const ring = (fld?.coordinates || []).map(p => [p.lng, p.lat]);
+            if (ring.length >= 3 && _pointInRing(c, ring)) {
+              selectedFieldName = fld.name;
+              break;
+            }
+          }
+        }
+
         setFieldActivity({
             ...fieldActivity,
-            features: matched,
-            geojson: { type: 'FeatureCollection', features: matched },
+            features: featuresToSet,
+            geojson: { type: 'FeatureCollection', features: featuresToSet },
             viewmode: true,
             featurelength: allFeatures.length,
+            _featuresBefore: fieldActivity._featuresBefore ?? allFeatures,
+            selectedZoneId: zid ?? null,
+            selectedFieldName,
         });
         setCardView('mapview');
-    }, [fieldActivity, setFieldActivity, setCardView]);
+    }, [fieldActivity, setFieldActivity, setCardView, LAND]);
 
     const handleTopicScroll = useCallback((p) => {
         // clamp
@@ -555,9 +716,11 @@ function Wallet({LAND}) {
         }))),
         // Generate Active Tokenized cultivations (satellite records + food-token fallback)
         ...(allCultivations.map((d, i) => {
-            const label = typeof d?.crop_type === 'string'
+            const rawLabel = typeof d?.crop_type === 'string'
               ? d.crop_type
               : (d?.crop_type?.dominant?.label || d?.crop_type?.label);
+            // Strip subtype suffix (sugarcane_plant → sugarcane) for the title.
+            const label = rawLabel ? (normalizeCropType(rawLabel) ?? rawLabel) : rawLabel;
             const isFoodTokenHolder = hasActiveFoodTokens;
             const confirmedLabel = (label && label !== 'other' && label !== 'unknown') ? label : (d?.field_name || 'Cultivation');
             const knownCrop = label && label !== 'other' && label !== 'unknown' && label !== 'fallow';
