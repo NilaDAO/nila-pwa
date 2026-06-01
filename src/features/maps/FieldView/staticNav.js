@@ -1,11 +1,12 @@
 import { useEffect, useCallback } from 'react';
 import Maps from './staticMaps';
-import { useDataContext } from '../../../utils/NavigationContext';
+import { useDataContext, useViewModeContext } from '../../../utils/NavigationContext';
 import { XCircleIcon } from '@heroicons/react/24/solid';
 import { setMetaThemeColor } from '../../../utils/metaTheme';
 
 const StaticMapNav = ({LAND, onFeatureClick}) => {
   const { fieldActivity, setFieldActivity } = useDataContext();
+  const { setCardView } = useViewModeContext();
   const metadata = LAND?.current?.LAND?.metadata || LAND?.current?.metadata;
 
   useEffect(() => {
@@ -14,8 +15,33 @@ const StaticMapNav = ({LAND, onFeatureClick}) => {
     }, []);
 
   const handleClose = useCallback(() => {
-    setFieldActivity(prev => prev ? { ...prev, viewmode: false } : prev);
-  }, [setFieldActivity]);
+    // Reset: restore the full feature set (saved before filtering), keep the
+    // card panned down to mapview, and bump a counter so the map re-fits to
+    // the parcel.
+    setFieldActivity(prev => {
+      if (!prev) return prev;
+      const restored = prev._featuresBefore;
+      const restoreFeatures = prev._featuresBefore ?? prev._selectBeforeFeatures;
+      const next = {
+        ...prev,
+        viewmode: false,
+        selectMode: false,
+        selectedZoneId: null,
+        selectedFieldName: null,
+        // only refit when actually restoring a zone-click snapshot
+        ...(restoreFeatures?.length ? { mapRefitNonce: (prev.mapRefitNonce ?? 0) + 1 } : {}),
+      };
+      if (restoreFeatures?.length) {
+        next.features = restoreFeatures;
+        next.geojson = { type: 'FeatureCollection', features: restoreFeatures };
+        next.featurelength = restoreFeatures.length;
+        delete next._featuresBefore;
+        delete next._selectBeforeFeatures;
+      }
+      return next;
+    });
+    setCardView('mapview');
+  }, [setFieldActivity, setCardView]);
 
   // Portfolio mode: clear selected property (go back to list), re-fit map to all
   const handlePortfolioBack = useCallback(() => {
@@ -26,7 +52,18 @@ const StaticMapNav = ({LAND, onFeatureClick}) => {
     (fieldActivity.features || []).some(f => f.properties?.selected);
 
   const handleConfirmSelection = useCallback(() => {
-    setFieldActivity(prev => prev ? { ...prev, selectMode: false } : prev);
+    setFieldActivity(prev => {
+      if (!prev) return prev;
+      const restored = prev._selectBeforeFeatures;
+      const next = { ...prev, selectMode: false };
+      if (restored?.length) {
+        next.features = restored;
+        next.geojson = { type: 'FeatureCollection', features: restored };
+        next.featurelength = restored.length;
+        delete next._selectBeforeFeatures;
+      }
+      return next;
+    });
   }, [setFieldActivity]);
 
   return (

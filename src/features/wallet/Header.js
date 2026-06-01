@@ -3,7 +3,7 @@ import { ClockIcon, DocumentIcon } from '@heroicons/react/24/outline'
 import { useDataContext, useNavContext, useViewModeContext } from '../../utils/NavigationContext'
 
 const Header = ({version, cardShrink}) => {
-    const { txIndex, setTxIndex, fieldActivity, setFieldActivity } = useDataContext();
+    const { txIndex, setTxIndex, fieldActivity, setFieldActivity, db } = useDataContext();
     const { tokenview, setTokenview, setCardView } = useViewModeContext();
     const { ix,setIx,prevIx } = useNavContext();
 
@@ -107,7 +107,12 @@ const Header = ({version, cardShrink}) => {
                 { (ix === 0 && !tokenview) && <div onClick={handlePaymentHistory} className="rounded-full h-10 w-10 m-2 dark:bg-slate-400 bg-gray-300" ><ClockIcon className='text-black h-6 m-2'/></div>}
                 { (ix === null) && <div onClick={handleAllTasks} className="flex flex-grow text-xs mx-6 justify-center items-center rounded-full m-2 dark:text-slate-400 dark:bg-slate-800 font-bold text-darkgrey bg-gray-100 mx-2" ><DocumentIcon className='h-3 w-3 mr-1' />All Tasks</div>}
                 { (ix === undefined) && <h3 className='font-Chains h-8 w-8 text-xl m-3'>a</h3>}
-                { cardShrink >= 0.5 && <div className="flex font-bold text-black dark:text-white m-5 items-center">{cards[ix]}</div>}
+                { ix === 2 && (fieldActivity?.selectedFieldName || db?.farmname) && (
+                    <div className="flex flex-grow font-bold text-black dark:text-white m-5 items-center justify-center truncate">
+                        {fieldActivity?.selectedFieldName || db.farmname}
+                    </div>
+                )}
+                { ix !== 2 && cardShrink >= 0.5 && <div className="flex font-bold text-black dark:text-white m-5 items-center">{cards[ix]}</div>}
                 </>
             :<div className='h-11 w-11' /> }
             { version !== 0 && <div className={`flex z-0 justify-center w-screen`}>
