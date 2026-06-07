@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { WalletIcon, MapPinIcon } from '@heroicons/react/20/solid'
 import { useDataContext, useNavContext, useTxContext } from '../../utils/NavigationContext'
+import useTouch from '../../hooks/useTouch';
 import RippleEffect from './RippleEffect';
 const Tabs = ({ handleOpenForm, toggleScreen, cashOutDisabled, isCollapsed }) => {
   const [shortbuttons, setShortButtons] = useState([]);
   const { stage } = useTxContext()
   const { db } = useDataContext();
   const { ix } = useNavContext();
+  const { enterFieldView } = useTouch();
 
   const handleBack = () => {
     toggleScreen({ ix: null })
@@ -60,7 +62,7 @@ const Tabs = ({ handleOpenForm, toggleScreen, cashOutDisabled, isCollapsed }) =>
             <button className={`p-3 ${ix !== 2 ? 'text-black dark:text-slate-400' : 'text-slate-800'}`} onClick={handleBack}><WalletIcon className="h-7 w-7" /></button>
           </RippleEffect>
           <RippleEffect>
-              <button className={`p-3 ${ix === 2 ? 'text-black dark:text-slate-400' : 'text-slate-800'}`}  onClick={()=> toggleScreen({ ix: 2, i: null})} ><MapPinIcon className="h-7 w-7" /></button>
+              <button className={`p-3 ${ix === 2 ? 'text-black dark:text-slate-400' : 'text-slate-800'}`}  onClick={()=> enterFieldView({ mode: 'overview' })} ><MapPinIcon className="h-7 w-7" /></button>
           </RippleEffect>
       </div>
       </>

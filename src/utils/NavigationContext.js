@@ -9,6 +9,20 @@ export const PAGES = {
   TXNS: 6
 };
 
+// Plan 044 §5.1 — default FieldView state. `selected` (select mode) and
+// `override` (crop correction) are the only genuinely interactive bits; every
+// other view is a pure function of (record, tokenData, view).
+export const DEFAULT_VIEW = Object.freeze({
+  mode: 'overview',     // 'overview' | 'zone' | 'select' | 'season' | 'portfolio'
+  focus: null,          // array of zone ids in focus, the whole group (zone mode)
+  focusZone: null,      // representative single zone id (card per-zone detail)
+  focusName: null,      // containing field name, for display
+  season: null,         // the cycle object for season mode
+  property: null,       // landId (portfolio mode)
+  selected: [],         // zone ids tapped in select mode
+  override: {},         // { [zoneId]: cropType } manual crop correction
+});
+
 export const NavContext = createContext();
 export const TxContext = createContext();
 export const ViewModeContext = createContext();
@@ -81,7 +95,7 @@ export const TxProvider = ({ children }) => {
 }
 
 export const DataProvider = ({ children }) => {
-  const [ tokenData, setTokenData ]   = useState([]);
+  const [ tokenData, setTokenData ]   = useState(null); // null = not yet fetched; [] = fetched, no tokens
   const [ grantData, setGrantData ]   = useState([]);
   const [ unionFunds, setUnionFunds ] = useState();
   const [ debts, setDebts]            = useState([])
@@ -93,6 +107,10 @@ export const DataProvider = ({ children }) => {
   const [ txdetails, setTxDetails ]   = useState()   
   const [ fieldActivity, setFieldActivity ] = useState()
   const [ keyMalformed, setKeyMalformed ]   = useState(false);
+  // Plan 044 §5.1 — the single explicit FieldView state. Replaces the old
+  // implicit flag soup (viewmode/selectMode/selectedZoneId/historical/
+  // portfolioMode). Illegal combinations are unrepresentable.
+  const [ view, setView ] = useState(DEFAULT_VIEW);
 
   return (
     <DataContext.Provider value={{ 
@@ -119,7 +137,9 @@ export const DataProvider = ({ children }) => {
       selectedAsset,
       setSelectedAsset,
       keyMalformed,
-      setKeyMalformed 
+      setKeyMalformed,
+      view,
+      setView
       }}>
       {children}
     </DataContext.Provider> 

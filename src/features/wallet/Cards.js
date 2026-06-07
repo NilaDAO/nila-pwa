@@ -8,6 +8,7 @@ import { useWeightedRates } from '../../hooks/useWeightedRates.js';
 import { motion } from 'framer-motion';
 import { cropColor, phenoColor, cropIconUrl, normalizeCropType } from '../../utils/cropColors.js';
 import { CROP_UNIT, CROP_CODE_NAMES, useFoodTokenBatches } from '../../hooks/useFoodTokenBatches.ts';
+import { sameCropFamily } from '../../utils/foodToken.ts';
 
 const infoText = 'Your cap rate dictates your borrowing terms and grant size: the lower your cap rate, the larger the loan you can access at a lower interest rate. To jump-start your liquidity in union funds, Nila offers grants to eligible newcomers.' 
 const SHRINK_PERC = 0.3
@@ -246,22 +247,75 @@ export const CultivationCard = ({ dominant, cardIndex = 0 }) => {
 
     // ── Crop image (top-left) ─────────────────────────────────────────────────
     const cropCodeNum = Number(
-      Object.entries(CROP_CODE_NAMES).find(([, name]) => name.toLowerCase() === cropLabel.toLowerCase())?.[0] ?? -1
+      Object.entries(CROP_CODE_NAMES).find(([, name]) => sameCropFamily(name, cropLabel))?.[0] ?? -1
     );
 
     // ── Field state ───────────────────────────────────────────────────────────
     // State 4: food-token only (no active satellite cycle)
     // State 3: active cycle + food token → show alerts
     // State 2: active cycle, no food token → show "join batch" if one matches
-    const ft = (tokenData ?? []).find(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0);
+    // Match the food token to THIS card — by zone first (once new-codec tokens carry a real
+    // fieldNumber), then by crop. Previously this grabbed the FIRST food token for every card,
+    // so unrelated cards (maize, green_gram) showed the sugarcane token's batch + value.
+    const cardZoneNum = (() => {
+      const m = String(dominant?.zone_id ?? '').match(/(\d+)/);
+      return m ? Number(m[1]) : null;
+    })();
+    const liveFts = (tokenData ?? []).filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0);
+    const ft =
+      (cardZoneNum != null ? liveFts.find(t => t.fieldNumber === cardZoneNum) : null) ||
+      liveFts.find(t => t.cropCode === cropCodeNum) ||
+      null;
     const isState4 = dominant?.cluster_id?.startsWith('foodtoken-');
     const fieldState = isState4 ? 4 : ft ? 3 : 2;
 
     // ── State-2: batch matching ───────────────────────────────────────────────
-    const { active: activeBatches = [] } = useFoodTokenBatches(db?.union?.address);
+    // useFoodTokenBatches returns a useQuery result; the active list lives on
+    // `data.active` (see assetsList / staticCards / Wallet / OrdersCard usage).
+    const { data: batchSummary } = useFoodTokenBatches(db?.union?.address);
+    const activeBatches = batchSummary?.active ?? [];
     const suggestedBatch = fieldState === 2 && cropCodeNum >= 0
       ? activeBatches.find(b => b.cropCode === cropCodeNum) ?? null
       : null;
+
+    // ── Food-token batch + value (states 3 & 4) ──────────────────────────────
+    // Matches the "part of batch #N" label used in staticCards.js and the
+    // value derivation used in assetsList (price from the matching batch,
+    // not ft.p which is 0 for fresh tokens). Variety wildcard (varietyCode=0)
+    // mirrors assetsList:134.
+    const ftBatch = ft
+      ? activeBatches.find(b =>
+          b.cropCode === ft.cropCode &&
+          (b.varietyCode === 0 || b.varietyCode === ft.varietyCode)
+        )
+      : null;
+    const ftBatchId = ftBatch?.id ?? null;
+    // pricePerKgUsdt is a bigint with 6 decimals; ft.bal is already unit-
+    // denominated (kg or whatever CROP_UNIT specifies). Value uses the same
+    // pricePerKg * t.bal formula as assetsList:displayPrice path.
+    const ftPricePerKgUsdt = ftBatch?.pricePerKgUsdt
+      ? Number(ftBatch.pricePerKgUsdt) / 1e6
+      : 0;
+    const ftValueINR = ftPricePerKgUsdt > 0 && ft
+      ? ftPricePerKgUsdt * ft.bal
+      : 0;
+
+    console.log('[CultivationCard]', {
+      cardIndex,
+      cluster_id: dominant?.cluster_id,
+      cropLabel,
+      fieldState,
+      tokenview,
+      ft: ft ? { cropCode: ft.cropCode, varietyCode: ft.varietyCode, bal: ft.bal, p: ft.p, sym: ft.sym, type: ft.type } : null,
+      batchSummaryLoaded: !!batchSummary,
+      activeBatchesCount: activeBatches.length,
+      activeBatchCropCodes: activeBatches.map(b => b.cropCode),
+      unionAddr: db?.union?.address,
+      ftBatch: ftBatch ? { id: ftBatch.id, cropCode: ftBatch.cropCode, varietyCode: ftBatch.varietyCode, pricePerKgUsdt: String(ftBatch.pricePerKgUsdt) } : null,
+      ftBatchId,
+      ftPricePerKgUsdt,
+      ftValueINR,
+    });
 
     // ── State-3: urgency alerts + yield mismatch ──────────────────────────────
     const adviceBlob = [dominant?.health_description, dominant?.water_advice, dominant?.fertilizer_advice, dominant?.weeding_advice].filter(Boolean).join(' ');
@@ -308,14 +362,28 @@ export const CultivationCard = ({ dominant, cardIndex = 0 }) => {
 
 
               {/* Right panel — state-specific */}
-              <div className="absolute right-0 top-0 bottom-0 w-1/2 z-10 m-3 flex flex-col items-start justify-end gap-1.5 p-3 rounded-2xl bg-black/25">
+              <div className="absolute right-0 top-0 bottom-0 w-1/2 z-10 m-3 flex flex-col items-end justify-between gap-1.5 p-3 rounded-2xl bg-black/25">
 
-                {fieldState === 2 && suggestedBatch && (
-                  <div className="rounded-lg px-3 py-1.5 bg-green-600/80 flex flex-col items-end">
-                    <span className="text-[11px] font-semibold text-white leading-tight">Join batch</span>
-                    <span className="text-[9px] text-green-100 leading-tight">{suggestedBatch.cropName}</span>
+                {ft ? (
+                  <div className="flex flex-col items-end gap-1 leading-tight">
+                    {ftValueINR > 0 && (
+                      <span className="text-xl font-bold text-white leading-tight">
+                        ₹{ftValueINR.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      </span>
+                    )}
+                    {ftBatchId != null && (
+                      <span
+                        className="text-[11px] font-semibold text-white px-1.5 py-0.5 rounded-full"
+                        style={{ backgroundColor: cropHex }}
+                      >
+                        part of batch #{ftBatchId}
+                      </span>
+                    )}
                   </div>
-                )}
+                ) : <span />}
+
+                <div className="flex flex-col items-end gap-1.5">
+
 
                 {fieldState === 3 && (
                   <>
@@ -347,6 +415,7 @@ export const CultivationCard = ({ dominant, cardIndex = 0 }) => {
                     <span className="text-[10px] text-gray-200 font-medium leading-tight">Record updating</span>
                   </div>
                 )}
+                </div>
 
               </div>
             </div>
@@ -536,6 +605,7 @@ export const Card = ({
     title,
     titleDot,
     titleIconCrop,
+    titleAction,           // optional { label, onClick } shown next to the title
     children,
     onClick,
     isCollapsed,
@@ -637,10 +707,10 @@ export const Card = ({
             text-xs
             flex items-center gap-1
             ${type == 'BORROW' || type == 'INVEST' && `dark:text-black ${cardShrink >= 0.5 && 'dark:text-slate-400' }`}
-            ${type == 'ASSETS' && 'dark:text-slate-400'}
+            ${type == 'ASSETS' && 'dark:text-white'}
             ${type == 'DEFAULTED' && 'dark:text-slate-400'}
             ${type == 'MAP' && 'text-white z-10 dark:text-white'}
-            ${type == 'CASH_LIQUIDITY' && 'dark:text-slate-400'}
+            ${type == 'CASH_LIQUIDITY' && 'dark:text-white'}
             ${type == 'ORDERS' && 'text-gray-800 dark:text-white z-10'}
             `}>
             {titleDot && (titleIconCrop
@@ -655,6 +725,15 @@ export const Card = ({
               : <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: titleDot }} />
             )}
             {title}
+            {titleAction?.label && (
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); titleAction.onClick?.(); }}
+                className="ml-2 text-[10px] text-blue-500 dark:text-blue-400 flex-shrink-0"
+              >
+                {titleAction.label}
+              </button>
+            )}
         </h3>
         </div>
         }

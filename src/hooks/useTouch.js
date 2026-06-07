@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { useNavContext, useViewModeContext } from '../utils/NavigationContext';
+import { useNavContext, useViewModeContext, useDataContext, DEFAULT_VIEW } from '../utils/NavigationContext';
 
 // swipe to close/open cards
 
@@ -9,6 +9,7 @@ const useTouch = () => {
     const [isCollapsed, setIsCollapsed] = useState(true);
     const { navRef,tokenview,setTokenview,cardView,setCardView} = useViewModeContext()
     const {ix,setIx, setCardIx,prevIx} = useNavContext()
+    const { setView } = useDataContext()
 
     const handleTouchStart = useCallback((e) => {
         startYRef.current = e.touches[0].clientY;
@@ -67,6 +68,17 @@ const useTouch = () => {
         }
     }, [ix, setIx, setCardIx, setTokenview, setCardView, navRef, prevIx]);
 
+    // Plan 044 §5.4 — the one entry point. Every caller that opens the field
+    // map (cultivation card, tab button, asset "view field") routes through
+    // this so the view state + nav history are always consistent.
+    const enterFieldView = useCallback(({ mode = 'overview', focus = null, focusZone = null, focusName = null, i = null } = {}) => {
+        setView({ ...DEFAULT_VIEW, mode, focus, focusZone, focusName });
+        setCardView('mapview');
+        setIx(2);
+        setCardIx(i);
+        prevIx.current = { ix: 2, i };
+    }, [setView, setCardView, setIx, setCardIx, prevIx]);
+
     const handleCollapse = useCallback((ix) => {
         if (ix === 5){
             setIx(null)
@@ -84,6 +96,7 @@ const useTouch = () => {
         handleTouchMove,
         handleTouchEnd,
         handleToggleView,
+        enterFieldView,
         handleCollapse,
         isCollapsed,
         isDragging,
