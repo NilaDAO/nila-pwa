@@ -15,6 +15,7 @@ import { parseCompactMeta, getCenter, ringsAreaMeters2 } from '../utils/fetch_la
 import { decodeMetadataUri } from '../utils/decodeMetadataUri.ts';
 import { useDataContext } from "../utils/NavigationContext.js";
 import { CROP_CODE_NAMES, CROP_VARIETIES } from './useFoodTokenBatches.ts';
+import { unpackFoodTokenId } from '../utils/foodToken.ts';
 
 const nilaGrantContract = String(process.env.REACT_APP_GRANT_ADDRESS)
 const foodTokenContract = process.env.REACT_APP_FOODTOKEN_ADDRESS || ''
@@ -43,7 +44,7 @@ const LOCAL_TOKENS = [
  * we use indexer and predict pixels based on activity 
  */
 
-export type Bal    = { type: string, id: number, sym: string; bal: number, p: number, cropCode?: number, varietyCode?: number, fieldNumber?: number, areaM2?: number, sosYear?: number, sosTs?: number, harvestTs?: number, status?: number };
+export type Bal    = { type: string, id: number | string, sym: string; bal: number, p: number, cropCode?: number, varietyCode?: number, fieldNumber?: number, fieldsBitmask?: string, areaM2?: number, sosYear?: number, sosTs?: number, harvestTs?: number, status?: number };
 export type Land    = { sym: string; bal: number, p: number, metadata: number[][], id: string };
 export type Enabled = { enabled: boolean }
 
@@ -85,19 +86,9 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
         }
 
         // ── Food tokens: getLandTitleTokens → unpack tokenId + thin mappings ────
-        // Identity (cropCode, varietyCode, fieldNumber, areaM2, sosYear) is
-        // encoded in the tokenId itself — no contract call needed for those.
-        function unpackFoodTokenId(tokenId: bigint) {
-          return {
-            landTitleId: Number(tokenId >> 224n),
-            cropCode:    Number((tokenId >> 214n) & 0x3FFn),
-            varietyCode: Number((tokenId >> 204n) & 0x3FFn),
-            fieldNumber: Number((tokenId >> 197n) & 0x7Fn),
-            areaM2:      Number((tokenId >> 173n) & 0xFFFFFFn),
-            sosYear:     Number((tokenId >> 157n) & 0xFFFFn),
-          };
-        }
-
+        // Identity (crop, variety, zone bitmask, area, FULL planting ts) is encoded
+        // in the tokenId itself — no contract call needed. Decoder lives in
+        // utils/foodToken.ts (canonical layout documented there).
         async function fetchFoodTokens(): Promise<Bal[]> {
           if (!foodTokenContract || !address) return [];
           try {
@@ -114,34 +105,32 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
             console.log('[food] tokenIds for ltId', ltId, ':', tokenIds.map(String));
             if (tokenIds.length === 0) return [];
 
-            // 4 calls per token — identity decoded from tokenId bits, no getToken needed
+            // 3 calls per token — identity (incl. SOS) decoded from tokenId bits, no tokenSos call
             const innerCalls = tokenIds.flatMap(id => [
               { target: foodTokenContract, callData: foodIface.encodeFunctionData("balanceOf",    [address, id]) },
               { target: foodTokenContract, callData: foodIface.encodeFunctionData("tokenStatus",  [id]) },
-              { target: foodTokenContract, callData: foodIface.encodeFunctionData("tokenSos",     [id]) },
               { target: foodTokenContract, callData: foodIface.encodeFunctionData("tokenHarvestTs", [id]) },
             ]);
             const [, foodData] = await mc.aggregate.staticCall(innerCalls);
 
             const items: Bal[] = [];
             tokenIds.forEach((id, i) => {
-              const balN      = foodIface.decodeFunctionResult("balanceOf",     foodData[i * 4])[0] as bigint;
-              const status    = Number(foodIface.decodeFunctionResult("tokenStatus",  foodData[i * 4 + 1])[0]);
-              const sosTs     = Number(foodIface.decodeFunctionResult("tokenSos",     foodData[i * 4 + 2])[0]);
-              const harvestTs = Number(foodIface.decodeFunctionResult("tokenHarvestTs", foodData[i * 4 + 3])[0]);
+              const balN      = foodIface.decodeFunctionResult("balanceOf",     foodData[i * 3])[0] as bigint;
+              const status    = Number(foodIface.decodeFunctionResult("tokenStatus",  foodData[i * 3 + 1])[0]);
+              const harvestTs = Number(foodIface.decodeFunctionResult("tokenHarvestTs", foodData[i * 3 + 2])[0]);
 
               // status 0 = never minted, 4 = cancelled — skip both
               if (balN === 0n || status === 0 || status === 4) return;
 
-              const { cropCode, varietyCode, fieldNumber, areaM2, sosYear } = unpackFoodTokenId(id);
+              const { cropCode, varietyCode, fieldNumber, fieldsBitmask, areaM2, sosYear, sosTs } = unpackFoodTokenId(id);
               const cropName  = CROP_CODE_NAMES[cropCode] ?? `Crop ${cropCode}`;
               const varName   = CROP_VARIETIES[cropCode]?.find(v => v.code === varietyCode)?.name ?? `Var ${varietyCode}`;
 
               items.push({
-                type: 'ERC1155', id: Number(id),
+                type: 'ERC1155', id: id.toString(),
                 sym: `${cropName}-${varName}`,
                 bal: Number(balN), p: 0,
-                cropCode, varietyCode, fieldNumber, areaM2, sosYear, sosTs, harvestTs, status,
+                cropCode, varietyCode, fieldNumber, fieldsBitmask, areaM2, sosYear, sosTs, harvestTs, status,
               });
             });
             return items;
@@ -327,7 +316,7 @@ export function useLandTitle(
         // set farm name we got from metadata
         StoreName(meta.farm)
         // only perform this if meta has v (version 1 or more)
-        const { outlineRings, fieldRings, centroid, bbox } = parseCompactMeta(meta);
+        const { outlineRings, fieldRings, centroid, bbox, gpsQuality } = parseCompactMeta(meta);
         const area_m2 = Number(ringsAreaMeters2(outlineRings).toFixed(2));
         console.log('outlineRings', outlineRings)
         console.log('fieldRings', fieldRings)
@@ -360,7 +349,8 @@ export function useLandTitle(
             'centroid': centroid,
             'bbox': bbox,
             'farm': meta.farm,
-            'area_m2': area_m2 }, 
+            'area_m2': area_m2,
+            'gps_quality': gpsQuality },
           id: id.toString() 
         };
 
