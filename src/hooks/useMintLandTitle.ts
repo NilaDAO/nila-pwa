@@ -114,45 +114,41 @@ export function useMintFoodToken(
         }
       )
 
-    const burnFoodToken = (tokenId: number) => 
+    const burnFoodToken = (tokenId: bigint | number | string) =>
       runTx(
         async () => {
           // move to forms to remove maps background
           handleToggleView({ ix: 0, i: 0  }) // WE are not directing to the specific debt card, debts.length - 1 ??? (just assume only 1 loan)
           if (!foodTokenContract || !wallet) throw new Error('Wallet or contracts not ready')
 
-          const burnAddress = '0x7857abD70878cE660f4eC3E7a2EBEd975193Ed8A' //'0x000000000000000000000000000000000000dEaD'
-          console.log('wallet.address', wallet.address)
-          console.log('tokenId', tokenId)
+          const id = BigInt(tokenId)
+          console.log('tokenId', id)
 
-          // ─── 1. find how many of each id the wallet owns ────────────────────────────
-          const amounts = await foodTokenContract.balanceOfBatch.staticCall(
-            [wallet.address],
-            [tokenId],
-          )                                          // → bigint[]
-
-          console.log('amounts', BigInt(amounts))
-          // nothing to burn? bail early
-          if (amounts.every((a : any) => a === 0n)) throw new Error('Zero balance for all ids')
-
-          // ─── 2. torch them in one tx ────────────────────────────────────────────────
-          return foodTokenContract.safeBatchTransferFrom(
-            wallet.address,
-            burnAddress,
-            [BigInt(tokenId)],
-            [BigInt(amounts)],
-            '0x' as `0x${string}`,                  // data
-          )
+          // Real on-chain burn: clears the token's field bit so the same field can be
+          // re-minted in the same season. A plain transfer to a sink leaves the field
+          // claimed forever (→ FieldAlreadyClaimed on re-mint). burnOwnToken is
+          // permissionless for the land-title owner, restricted to status==1 tokens.
+          return foodTokenContract.burnOwnToken(id)
         },
         {
-          onSuccess: () => {
+          onSuccess: async () => {
             // reset the card data and remove the reload item
             deleteItem('reload','Init')
-            // do a hard reload, or expire reload cache. 
+            // Drop the cached land record on burn. The backend regenerates the
+            // record JSON, re-pins it to IPFS and writes the new hash on-chain,
+            // so the next load must re-fetch the fresh record from IPFS instead
+            // of serving the stale cached copy (which still carried the burned
+            // token's food-token fill).
+            try {
+              const landTitleId = Number(BigInt(tokenId) >> 224n)
+              await deleteItem(`recordHash_${landTitleId}`, 'FarmData')
+            } catch (e) {
+              console.warn('[burn] record cache clear failed', e)
+            }
             // refresh balances/fund data
             qc.invalidateQueries({ queryKey: ["balances", wallet?.address] })
-            qc.invalidateQueries({ queryKey: ["land", chainId, wallet?.address] }) 
-            // perform a hard reload after burn
+            qc.invalidateQueries({ queryKey: ["land", chainId, wallet?.address] })
+            // perform a hard reload after burn — re-fetches the record from IPFS
             window.location.reload();
           }
         }

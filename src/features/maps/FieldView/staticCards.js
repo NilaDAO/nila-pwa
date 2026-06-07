@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useDataContext, useNavContext, useViewModeContext } from '../../../utils/NavigationContext';
 import { cropColor, cropIconUrl, normalizeCropType } from '../../../utils/cropColors.js';
 import { mergeZonesWithSubzones } from '../../../utils/recordZones.js';
+import { sameCropFamily } from '../../../utils/foodToken.ts';
 import { motion, useDragControls, AnimatePresence, useAnimation } from 'framer-motion';
 import { RateSlider, ClaimButton, DropdownButton } from '../../../components/UI/buttons';
 import { ChevronDownIcon, TagIcon } from '@heroicons/react/24/solid';
@@ -26,6 +27,25 @@ const _ftAddr = process.env.REACT_APP_FOODTOKEN_ADDRESS;
 const _ltAbi = (landTitleArtifact).abi ?? landTitleArtifact;
 const _ltAddr = process.env.REACT_APP_LAND_TITLE_MAIN;
 const CROPS_DATA = Object.entries(CROP_CODE_NAMES).map(([code, name]) => [code, name]);
+
+// Full selector list — all entries are on-chain food token crop codes.
+const CROP_DISPLAY_OVERRIDES = { 'Cassava': 'Cassava/Tapioca' };
+const SELECTOR_CROPS = CROPS_DATA.map(([, name]) => [CROP_DISPLAY_OVERRIDES[name] ?? name, null]);
+
+// Coconut intercrop candidates (crops grown under a coconut canopy).
+const INTERCROP_CANDIDATES = [
+  'Banana', 'Cocoa', 'Nutmeg', 'Black pepper', 'Pineapple',
+  'Turmeric', 'Ginger', 'Elephant foot yam', 'Colocasia', 'Fodder grasses',
+];
+
+// Sugarcane planting type — pan-India plain-English pair.
+// "Seedling" = first plant crop from setts; "Regrowth" = ratoon from stubble.
+const SUGARCANE_SUBTYPES = [
+  { key: 'plant',  label: 'Seedling' },
+  { key: 'ratoon', label: 'Regrowth' },
+];
+
+const cropBase = (name) => String(name ?? '').toLowerCase().split('/')[0].trim();
 const CERT_IMAGES = ['/images/label-01.webp', '/images/label-04.webp', '/images/label-02.webp', '/images/label-03.webp', '/images/label-05.webp'];
 
 const clusterKeyOf = (feature, idx) => {
@@ -653,6 +673,10 @@ const PortfolioCards = () => {
       dragListener={false}
       dragControls={controls}
       dragElastic={0.05}
+      onUpdate={(latest) => {
+        const lifted = (latest?.y ?? 0) < -20;
+        setFieldActivity(prev => (prev && !!prev.cardLifted !== lifted) ? { ...prev, cardLifted: lifted } : prev);
+      }}
       onDragEnd={(_, info) => { if (info.offset.y > 100) close(); }}
       transition={{ type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 }}
       className="flex flex-col py-4"
@@ -798,7 +822,7 @@ export const StaticCards = ({ LAND }) => {
   const [ showAdvice, setShowAdvice ]          = useState(false)
   const [ showDataInfo, setShowDataInfo ]      = useState(false)
   const [ loading, setLoading ]                = useState(true)
-  const { db, fieldActivity, setFieldActivity, tokenData } = useDataContext();
+  const { db, fieldActivity, setFieldActivity, tokenData, view, setView } = useDataContext();
   const { setIx, cardIx }                      = useNavContext();
   const { setTokenview, setCardView }          = useViewModeContext();
   const qc                                     = useQueryClient();
@@ -812,7 +836,7 @@ export const StaticCards = ({ LAND }) => {
   const springTransition = { type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 };
   useEffect(() => {
     motionAnimate.start({ y: 0, transition: springTransition });
-  }, [fieldActivity?.selectMode]);
+  }, [view?.mode]);
   useEffect(() => {
     if (action === 'season') motionAnimate.start({ y: 0, transition: springTransition });
   }, [action]);
@@ -823,6 +847,7 @@ export const StaticCards = ({ LAND }) => {
       if (fieldActivity?.portfolioMode) {
         setFieldActivity(prev => prev?.portfolioMode ? null : prev);
       }
+      setFieldActivity(prev => (prev && prev.cardLifted) ? { ...prev, cardLifted: false } : prev);
     };
   }, []);
 
@@ -846,8 +871,83 @@ export const StaticCards = ({ LAND }) => {
   const [ activeBatchCert, setActiveBatchCert ] = useState(null);
   const [ showPassportInfo, setShowPassportInfo ] = useState(false);
   const [ showDetailedData, setShowDetailedData ]   = useState(false);
+  const [ showAllCycles, setShowAllCycles ]         = useState(false);
   const [ override, setOverride ]                   = useState(null);
   const [ showOverride, setShowOverride ]            = useState(false);
+  // Two-step override: after a crop is picked we may need a sub-question
+  // (sugarcane → Seedling/Regrowth, coconut → intercrop). overridePending holds
+  // the in-flight selection until the sub-question is answered (or skipped).
+  const [ overridePending, setOverridePending ]      = useState(null);
+  // overridePending shape: { cluster_id, cropName, prevOverride, alternatives } | null
+
+  // True after a crop pick the backend flagged as out-of-alternatives
+  // (requires_union_verification). Join batch is disabled while pending —
+  // cleared when the user switches to a crop that IS in alternatives, or to
+  // the detected crop.
+  const [ cropPendingVerification, setCropPendingVerification ] = useState(false);
+
+  // Apply the user's alternative crop pick. The override is purely local PWA
+  // state — the canonical record is already on chain / IPFS. If the pick is
+  // one of the classifier's listed alternatives we accept silently. When the
+  // classifier offered no alternatives at all we also accept silently — there
+  // is nothing to constrain against, so minting is allowed. Only when the
+  // pick falls outside a non-empty alternatives list do we flag for union
+  // verification and fire-and-forget a log to the node.
+  const submitCropCorrection = (cluster_id, user_corrected, _previousOverride, alternatives, extras = {}) => {
+    const normalize = (s) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, '_');
+    const pick = normalize(user_corrected);
+    const altList = (alternatives ?? []).map(a => ({
+      crop_type: normalize(a?.crop_type),
+      confidence: a?.confidence ?? null,
+    }));
+    const altSet = new Set(altList.map(a => a.crop_type));
+    const inAlternatives = altSet.size === 0 || altSet.has(pick);
+
+    console.log('[correct-crop] pick:', pick, '| inAlternatives:', inAlternatives, '| alternatives:', altList, '| cluster_id:', cluster_id);
+
+    // Persist the pick into the cached record so the change survives reload.
+    // We patch every cycle whose cluster_id or zone_id (with subzone suffix
+    // stripped) matches — same matching used for the optimistic fieldActivity
+    // update above.
+    const zoneMatches = (zid) =>
+      zid === cluster_id || String(zid ?? '').replace(/_(a|b)$/, '') === cluster_id;
+    patchRecord?.((prev) => {
+      const cc = prev?.current_cycle;
+      if (!Array.isArray(cc) || cc.length === 0) return prev;
+      let changed = false;
+      const nextCC = cc.map((c) => {
+        const match = (c.cluster_id && c.cluster_id === cluster_id) || zoneMatches(c.zone_id);
+        if (!match || c.crop_type === pick) return c;
+        changed = true;
+        return { ...c, crop_type: pick };
+      });
+      return changed ? { ...prev, current_cycle: nextCC } : prev;
+    });
+
+    if (inAlternatives) {
+      setCropPendingVerification(false);
+      return;
+    }
+
+    setCropPendingVerification(true);
+    alert("We appreciate your input. We ask your union to confirm your input. You can always change to another crop. Until then you can't join a batch.");
+
+    const land_id = LAND?.current?.LAND?.id;
+    const API = process.env.REACT_APP_API_BASE_URL;
+    if (!land_id || !cluster_id || !API) return;
+    fetch(`${API}/gis/correct-crop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        land_id: Number(land_id),
+        cluster_id: String(cluster_id),
+        user_corrected: pick,
+        caller: db?.address ?? null,
+        ...(extras.subtype   ? { subtype:   extras.subtype   } : {}),
+        ...(extras.intercrop ? { intercrop: extras.intercrop } : {}),
+      }),
+    }).catch(err => console.warn('[correct-crop] log failed:', err));
+  };
 
   useEffect(() => {
     setYieldDraft(1);
@@ -857,7 +957,7 @@ export const StaticCards = ({ LAND }) => {
 
   // CS023: gated property data — log record hash flow for verification
   const tokenId = LAND?.current?.LAND?.id;
-  const { record, commitment, recordHash, fee, isOwner, isApproved, claimableFees, claimViewFees, loading: recordLoading, error: recordError, fetchRecord } = useRecordHash(tokenId);
+  const { record, commitment, recordHash, fee, isOwner, isApproved, claimableFees, claimViewFees, loading: recordLoading, error: recordError, fetchRecord, patchRecord } = useRecordHash(tokenId);
 
   useEffect(() => {
     if (!tokenId || !isOwner && !isApproved && fee === null) return;
@@ -880,153 +980,139 @@ export const StaticCards = ({ LAND }) => {
     if (sos) setForm(prev => prev.sos ? prev : { ...prev, sos });
   }, [record]);
 
-
-  // Build features from the merged zone list (subzones replace their parents).
-  // Stamps `activity: 'active'` + `crop_type` on any zone whose zone_id is in
-  // `activeZoneIds`. For subzones, falls back to the parent's crop lookup when
-  // the subzone itself has no direct classification.
-  const buildZoneFeatures = useCallback((cropByZoneId, activeZoneIds) => {
-    const merged = mergeZonesWithSubzones(record);
-    // If a subdivided parent zone id was passed in activeZoneIds, expand it
-    // to its subzone ids so the partition pieces all light up.
-    const activeSet = activeZoneIds instanceof Set
-      ? new Set(activeZoneIds)
-      : new Set(activeZoneIds || []);
-    for (const z of merged) {
-      if (z.subzone_of && activeSet.has(z.subzone_of)) activeSet.add(z.zone_id);
-    }
-    const cropFor = (z) => {
-      const direct = cropByZoneId?.(z.zone_id);
-      if (direct) return direct;
-      // Subzones with no classification inherit the parent zone's crop so
-      // the live current_cycle still drives the color.
-      if (z.subzone_of) return cropByZoneId?.(z.subzone_of) ?? null;
-      return null;
-    };
-    return merged.map(z => {
-      const isActive = activeSet.has(z.zone_id);
-      return {
-        type: 'Feature',
-        properties: {
-          zone_id: z.zone_id,
-          category: z.category,
-          area_m2: z.area_m2,
-          ...(z.subzone_of ? { subzone_of: z.subzone_of } : {}),
-          ...(z._backdrop ? { backdrop: true } : {}),
-          ...(isActive ? { crop_type: cropFor(z) ?? null, activity: 'active' } : {}),
-        },
-        geometry: z.geometry,
-      };
+  // Optimistic list + map update: when the user picks an override crop, patch
+  // the matching active cycle's crop_type and the matching geojson feature
+  // properties so the cycles table and zone fill color reflect the pick
+  // immediately, without waiting for a record refetch.
+  useEffect(() => {
+    const cropOverride = override?.cropType;
+    const clusterId = override?.clusterId;
+    if (!cropOverride || !clusterId) return;
+    const zoneMatches = (zid) =>
+      zid === clusterId || String(zid ?? '').replace(/_(a|b)$/, '') === clusterId;
+    // Map color: record the override on the view so featuresFor recolors the
+    // zone immediately (Plan 044 §5.1). Features are derived — never patched.
+    setView(prev => ({ ...prev, override: { ...(prev.override ?? {}), [clusterId]: cropOverride } }));
+    // Card title/table: patch the model fields the card reads (activeCycle +
+    // dominant) so the cycles table and CultivationCard title update at once.
+    setFieldActivity(prev => {
+      if (!prev) return prev;
+      const activeCycle = (prev.activeCycle ?? []).map(c =>
+        ((c.cluster_id && c.cluster_id === clusterId) || zoneMatches(c.zone_id))
+          ? { ...c, crop_type: cropOverride }
+          : c
+      );
+      const dominant = (prev.dominant ?? []).map(d => {
+        const dCid = d?.cluster_id ?? '';
+        const dZid = d?.zone_id;
+        if (zoneMatches(dZid) || dCid === clusterId || dCid.endsWith(`-${clusterId}`)) {
+          return { ...d, crop_type: cropOverride };
+        }
+        return d;
+      });
+      return { ...prev, activeCycle, dominant };
     });
-  }, [record]);
+  }, [override?.cropType, override?.clusterId, setFieldActivity, setView]);
 
-  const handleCycleChange = useCallback((cycle) => {
-    // Open cycles render like "Now" — all zones get filled with their
-    // respective crop colors (this cycle's zone uses this cycle's crop).
-    // Closed historical cycles only fill the cycle's own zone; subzone
-    // cycles ("zN_a"/"zN_b") add their partition polygon on top of the parent.
-    const cc = record?.current_cycle ?? [];
-    const zoneIdOf = (c) => c?.zone_id ?? c?.cluster_id;  // pipeline writes one or the other
-    let features;
-    if (cycle?.is_open) {
-      const cropForZone = (zid) => {
-        if (zid === cycle?.zone_id) return cycle?.crop_type ?? null;
-        const zc = cc.find(c => zoneIdOf(c) === zid);
-        return zc?.crop_type ?? null;  // unknown → cropColor returns grey
-      };
-      const allZoneIds = mergeZonesWithSubzones(record).map(z => z.zone_id);
-      features = buildZoneFeatures(cropForZone, allZoneIds);
-    } else {
-      // Closed historical cycle: fill all zones with whatever each zone was
-      // growing during this cycle's time window (sos..eos). The cycle's own
-      // zone uses its own crop. Subzone cycles (zN_a/_b) keep their partition
-      // polygon as an overlay on top of the parent.
-      const tgtSos = cycle?.sos || '';
-      const tgtEos = cycle?.eos || tgtSos;
-      const allCycles = Array.isArray(record?.cycles) ? record.cycles : Object.values(record?.cycles || {});
-      // Pick the cycle most overlapping the target window for each zone slot.
-      const overlapDays = (c) => {
-        const a = c?.sos || '';
-        const b = c?.eos || c?.sos || '';
-        if (!a || !tgtSos) return -1;
-        const s = a > tgtSos ? a : tgtSos;
-        const e = (b && tgtEos && b < tgtEos) ? b : tgtEos;
-        return s && e && e >= s ? Math.max(0, (new Date(e) - new Date(s)) / 86400000) : -1;
-      };
-      const cropForZone = (zid) => {
-        if (zid === cycle?.zone_id) return cycle?.crop_type ?? null;
-        // For zoneN that has a subzone partition during this window, prefer
-        // the parent-zone match by stripping the _a/_b suffix.
-        const matches = allCycles
-          .filter(c => {
-            const cz = c?.zone_id || '';
-            const root = cz.replace(/_(a|b)$/, '');
-            return (cz === zid || root === zid) && overlapDays(c) > 0;
-          })
-          .sort((a, b) => overlapDays(b) - overlapDays(a));
-        return matches[0]?.crop_type ?? null;
-      };
-      // Merged zone list already includes subzones; pass both parent and
-      // subzone ids in active set so the partition pieces light up too.
-      const merged = mergeZonesWithSubzones(record);
-      const allZoneIds = merged.map(z => z.zone_id);
-      features = buildZoneFeatures(cropForZone, allZoneIds);
+
+  // Food-token cycle fill: a minted food token is the farmer's self-attestation
+  // that a crop is growing on the zones it covers. For any covered zone that the
+  // satellite record left fallow (or detected as a different crop), inject an open
+  // current_cycle entry with the token's crop — the same source-of-truth approach
+  // as submitCropCorrection, so the map fill, the season table, and the card's
+  // active-cycle recognition all follow. Mint packs zone zN at bit (N+1).
+  useEffect(() => {
+    if (!record || !patchRecord) return;
+    const fts = (tokenData ?? []).filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0);
+    if (!fts.length) return;
+
+    const cover = new Map(); // zone_id → { crop, sos }
+    for (const t of fts) {
+      const name = CROP_CODE_NAMES[t.cropCode];
+      if (!name) continue;
+      const crop = name.toLowerCase();
+      const sos  = t.sosTs ? new Date(t.sosTs * 1000).toISOString().slice(0, 10) : null;
+      let mask = 0n; try { mask = BigInt(t.fieldsBitmask ?? '0'); } catch { mask = 0n; }
+      if ((mask & 1n) === 1n) continue; // entire property — no per-zone fill
+      for (let p = 1n; p < 128n; p++) if (((mask >> p) & 1n) === 1n) {
+        const zid = 'z' + (p - 1n);
+        if (!cover.has(zid)) cover.set(zid, { crop, sos });
+      }
     }
-    setFieldActivity(prev => ({
-      ...prev,
-      features,
-      geojson: { type: 'FeatureCollection', features },
-      featurelength: features.length,
-      dormant: false,
-      historical: true,
-      historicalCycle: cycle,
-      activeCycle: null,
-      meta: { ...prev?.meta, last_scene_date: record?.meta?.last_scene_date },
-    }));
-  }, [setFieldActivity, record, buildZoneFeatures]);
+    if (!cover.size) return;
 
-  // Restore current (live) state when navigating back to "Current"
+    // sugarcane ~ sugarcane_ratoon / sugarcane_plant: treat same family as a match.
+    const sameFamily = (a, b) => {
+      const x = String(a || '').toLowerCase(), y = String(b || '').toLowerCase();
+      return !!x && !!y && (x === y || x.startsWith(y) || y.startsWith(x));
+    };
+    // Plan 044 §5.3 — a food token NEVER overwrites a satellite-detected crop.
+    // The satellite record is truth; the token is the farmer's self-attestation.
+    // Only fill zones the satellite left genuinely empty (fallow/unknown). A
+    // stale token (e.g. last season's sugarcane) must not wipe the correct crop
+    // (e.g. this season's green_gram). Distinct sources are surfaced by
+    // buildCultivations, not by mutating the record.
+    const cc = Array.isArray(record.current_cycle) ? record.current_cycle : [];
+    const isEmptyCrop = (ct) => !ct || ct === 'fallow' || ct === 'unknown';
+    const toFill = [];
+    for (const [zid, { crop, sos }] of cover) {
+      const existing = cc.find(c => (c.zone_id ?? c.cluster_id) === zid);
+      if (existing && !isEmptyCrop(existing.crop_type)) continue; // satellite has a real crop — leave it
+      if (existing && sameFamily(existing.crop_type, crop)) continue; // already growing it
+      toFill.push({ zid, crop, sos });
+    }
+    if (!toFill.length) return; // idempotent — nothing to add, avoids a patch loop
+
+    patchRecord((prev) => {
+      const pcc = Array.isArray(prev?.current_cycle) ? [...prev.current_cycle] : [];
+      let changed = false;
+      for (const { zid, crop, sos } of toFill) {
+        const i = pcc.findIndex(c => (c.zone_id ?? c.cluster_id) === zid);
+        if (i >= 0) {
+          // Only fill fallow/unknown slots — never clobber a real detected crop.
+          if (isEmptyCrop(pcc[i].crop_type)) { pcc[i] = { ...pcc[i], crop_type: crop, is_open: true, _from_food_token: true }; changed = true; }
+        } else {
+          pcc.push({ zone_id: zid, crop_type: crop, sos, is_open: true, _from_food_token: true });
+          changed = true;
+        }
+      }
+      return changed ? { ...prev, current_cycle: pcc } : prev;
+    });
+    // Plan 044 §5.2 — no optimistic fieldActivity feature patch. The map is
+    // derived by featuresFor from (record, tokenData, view); patching the
+    // record above is enough — buildCultivations + the derive effect pick it up.
+  }, [record, tokenData, patchRecord]);
+
+  // Plan 044 §5.2 — cycle navigation just flips the view. The season's
+  // features are derived by featuresFor(record, …, { mode:'season', season })
+  // and the live overview by { mode:'overview' }. No feature building here.
+  const handleCycleChange = useCallback((cycle) => {
+    setView(prev => ({ ...prev, mode: 'season', season: cycle }));
+  }, [setView]);
+
+  // Back to live ("Now"): overview mode. Refresh dormant status — that's model
+  // data the map's outline/labels read, not part of the derived feature array.
   const handleCurrentRestore = useCallback(() => {
-    const cc = record?.current_cycle;
-    const hasActiveCycle = (cc?.length ?? 0) > 0;
-    if (hasActiveCycle) {
-      const zoneIdOf = (c) => c?.zone_id ?? c?.cluster_id;
-      const cropForZone = (zid) => {
-        const zc = (cc || []).find(c => zoneIdOf(c) === zid);
-        return zc?.crop_type ?? null;  // unknown → cropColor returns grey
-      };
-      const allZoneIds = mergeZonesWithSubzones(record).map(z => z.zone_id);
-      const features = buildZoneFeatures(cropForZone, allZoneIds);
-      setFieldActivity(prev => ({
-        ...prev,
-        ...(features.length > 0
-          ? { features, geojson: { type: 'FeatureCollection', features }, featurelength: features.length }
-          : {}),
-        dormant: false,
-        historical: false,
-        historicalCycle: null,
-        activeCycle: cc,
-      }));
-    } else {
+    const hasActiveCycle = (record?.current_cycle?.length ?? 0) > 0;
+    if (!hasActiveCycle) {
       const status = record ? deriveDormantStatus(record) : null;
       const isDormant = record && !record.current_cycle && record.clusters?.features?.length === 0;
-      setFieldActivity(prev => ({
+      setFieldActivity(prev => prev ? ({
         ...prev,
-        features: [],
-        geojson: { type: 'FeatureCollection', features: [] },
-        featurelength: 0,
-        historical: false,
-        historicalCycle: null,
-        activeCycle: null,
         dormant: isDormant,
         dormantColor: isDormant && status ? dormantColor(status.ndvi) : null,
         dormantStatus: isDormant ? status : null,
-      }));
+      }) : prev);
     }
-  }, [setFieldActivity, record, buildZoneFeatures]);
+    setView(prev => ({ ...prev, mode: 'overview', season: null }));
+  }, [setView, setFieldActivity, record]);
 
-  const selectedZoneId = fieldActivity?.selectedZoneId ?? null;
+  const selectedZoneId = view?.focusZone ?? null;
   const cycleNav = useCycleNav(record, selectedZoneId, handleCycleChange, handleCurrentRestore);
+
+  // Reset the cycle-table truncation when switching between zones, so each new
+  // zone starts collapsed to the first 5 rows.
+  useEffect(() => { setShowAllCycles(false); }, [selectedZoneId]);
 
   // Open form immediately when arriving via "Join batch" from CultivationCard or task list
   useEffect(() => {
@@ -1051,9 +1137,20 @@ export const StaticCards = ({ LAND }) => {
     setFieldActivity(prev => prev ? { ...prev, pendingCropForm: false } : prev);
   }, [fieldActivity?.pendingCropForm]);
 
-  // Sync selected clusters from map into form (select mode)
+  // Open the crop-type override dropdown when arriving via the "Not {crop}?"
+  // link from CultivationCard's title in the wallet listing.
   useEffect(() => {
-    if (!fieldActivity?.selectMode && form.coverage === 'partial') {
+    if (!fieldActivity?.pendingOverride) return;
+    setShowOverride(true);
+    setOverrideCropOpen(true);
+    setCardView('default');
+    setFieldActivity(prev => prev ? { ...prev, pendingOverride: false } : prev);
+  }, [fieldActivity?.pendingOverride, setFieldActivity, setCardView]);
+
+  // Sync selected zones (view.selected) into the join-batch form (select mode)
+  useEffect(() => {
+    const inSelect = view?.mode === 'select';
+    if (!inSelect && form.coverage === 'partial') {
       // Select mode ended (confirm was clicked) — bring card back up
       setCardView('default');
       setForm(prev => ({ ...prev, coverage: 'confirmed' }));
@@ -1063,12 +1160,9 @@ export const StaticCards = ({ LAND }) => {
       }, 400);
       return;
     }
-    if (!fieldActivity?.selectMode) return;
-    const sel = (fieldActivity.features || [])
-      .filter(f => f.properties?.selected)
-      .map(f => f.properties.zone_id ?? f.properties.cluster_id);
-    setForm(prev => ({ ...prev, selectedClusters: sel }));
-  }, [fieldActivity?.selectMode, fieldActivity?.features]);
+    if (!inSelect) return;
+    setForm(prev => ({ ...prev, selectedClusters: view?.selected ?? [] }));
+  }, [view?.mode, view?.selected]);
 
   const features = fieldActivity?.geojson?.features || fieldActivity?.features || []
   const clusterGroups = useMemo(() => {
@@ -1093,19 +1187,18 @@ export const StaticCards = ({ LAND }) => {
 
     return Array.from(groups.values()).sort((a, b) => a.clusterNumber - b.clusterNumber);
   }, [features, db?.farmname]);
-  const featureLength = fieldActivity?.featurelength || features.length
   const land_v2 = LAND.current.LAND?.metadata?.v ? true : false
 
   const activeCropType = normalizeCropType(fieldActivity?.activeCycle?.[0]?.crop_type)?.toLowerCase();
   const hasTokenForActiveCrop = activeCropType
-    ? (tokenData ?? []).some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && CROP_CODE_NAMES[t.cropCode]?.toLowerCase() === activeCropType)
+    ? (tokenData ?? []).some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && sameCropFamily(CROP_CODE_NAMES[t.cropCode], activeCropType))
     : false;
   const activeCropTokenBal = hasTokenForActiveCrop
-    ? (tokenData ?? []).filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && CROP_CODE_NAMES[t.cropCode]?.toLowerCase() === activeCropType)
+    ? (tokenData ?? []).filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && sameCropFamily(CROP_CODE_NAMES[t.cropCode], activeCropType))
         .reduce((s, t) => s + t.bal, 0)
     : 0;
   const activeCropTokenCode = hasTokenForActiveCrop
-    ? (tokenData ?? []).find(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && CROP_CODE_NAMES[t.cropCode]?.toLowerCase() === activeCropType)?.cropCode
+    ? (tokenData ?? []).find(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && sameCropFamily(CROP_CODE_NAMES[t.cropCode], activeCropType))?.cropCode
     : null;
   const activeCropUnit = activeCropTokenCode != null ? (CROP_UNIT[activeCropTokenCode] ?? { label: 'kg', toKg: 1 }) : { label: 'kg', toKg: 1 };
   const activeCropBalDisplay = activeCropTokenCode != null
@@ -1153,38 +1246,6 @@ export const StaticCards = ({ LAND }) => {
     'unknown': 'Classification pending.',
   }
 
-  const handleCheckMark = (clusterKey) => {
-    setAction(null)
-    setSelected((prev) => {
-      const next = prev.includes(clusterKey)
-        ? prev.filter((k) => k !== clusterKey)
-        : [...prev, clusterKey];
-      const selectedSet = new Set(next);
-      const sliced = features.filter((feature, idx) => selectedSet.has(clusterKeyOf(feature, idx)));
-      setFieldActivity({
-        ...fieldActivity,
-        features: sliced,
-        geojson: { type: 'FeatureCollection', features: sliced },
-        viewmode: true,
-        featurelength: featureLength
-      });
-      setCardView('mapview');
-      return next;
-    });
-  };
-
-  const handleViewSingleArea = (group) => {
-    setFieldActivity({
-      ...fieldActivity,
-      features: group.features,
-      geojson: { type: 'FeatureCollection', features: group.features },
-      viewmode: true,
-      featurelength: featureLength
-    })
-    setCardView('mapview');
-    setAction(null)
-  }
-
   // Portfolio mode: render portfolio view instead of single property
   if (fieldActivity?.portfolioMode) return <PortfolioCards />;
 
@@ -1198,9 +1259,13 @@ export const StaticCards = ({ LAND }) => {
         dragListener={false}
         dragControls={controls}
         dragElastic={0.05}
+        onUpdate={(latest) => {
+          const lifted = (latest?.y ?? 0) < -20;
+          setFieldActivity(prev => (prev && !!prev.cardLifted !== lifted) ? { ...prev, cardLifted: lifted } : prev);
+        }}
         onDragEnd={(_, info) => {
-          if (fieldActivity?.selectMode && info.offset.y < -50) {
-            setFieldActivity(prev => prev ? { ...prev, selectMode: false } : prev);
+          if (view?.mode === 'select' && info.offset.y < -50) {
+            setView(prev => ({ ...prev, mode: 'overview' }));
           }
           if (info.offset.y > 100 && (action || showAdvice)) {
             setAction(null);
@@ -1242,8 +1307,12 @@ export const StaticCards = ({ LAND }) => {
             ? (fieldActivity?.activeCycle?.length ? fieldActivity.activeCycle : (record?.current_cycle ?? []))
             : [];
           const hasActiveCycle = activeCycles.length > 0;
-          // ac: primary active cycle (for header / single-zone compat)
-          const ac = activeCycles[0] ?? null;
+          // ac: active cycle to drive the cycleNav header. When a zone is selected
+          // (card click or map click), pick that zone's cycle so the title and
+          // crop-icon match. Otherwise fall back to the first cycle.
+          const ac = (selectedZoneId
+            ? activeCycles.find(c => (c.zone_id ?? c.cluster_id) === selectedZoneId)
+            : activeCycles[0]) ?? activeCycles[0] ?? null;
           // When swiper is on a historical season group, use the primary (first) cycle for header display
           const primaryHist = cycleNav.currentGroup?.cycles[0] ?? null;
           const effectiveAc = primaryHist ? {
@@ -1267,11 +1336,26 @@ export const StaticCards = ({ LAND }) => {
           const visibleFoodTokens = cardIx != null ? activeFoodTokens.slice(cardIx, cardIx + 1) : activeFoodTokens;
           const recordCropLower = normalizeCropType(ac?.crop_type)?.toLowerCase() ?? null;
 
+          // The selected zone is a "food zone" (→ token/monitoring panel, no
+          // correction) ONLY when a held token covers it AND attests the same crop
+          // as the zone's cycle (or the zone has no satellite crop yet). A stale
+          // sugarcane token must NOT turn a green_gram zone into a food zone, else
+          // its batch recommendation + "Not {crop}?" correction vanish. Plan 044 §5.3.
+          const selZoneCropFam = selectedZoneId ? normalizeCropType(ac?.crop_type) : null;
+          const selectedIsFoodZone = !!selectedZoneId && (tokenData ?? []).some(t => {
+            if (t.type !== 'ERC1155' || !((t.bal ?? 0) > 0)) return false;
+            let mask = 0n; try { mask = BigInt(t.fieldsBitmask ?? '0'); } catch { mask = 0n; }
+            const zn = Number(String(selectedZoneId).replace(/_(a|b)$/, '').replace(/\D/g, ''));
+            const coversZone = (mask & 1n) === 1n || (Number.isFinite(zn) && ((mask >> BigInt(zn + 1)) & 1n) === 1n);
+            if (!coversZone) return false;
+            return !selZoneCropFam || sameCropFamily(CROP_CODE_NAMES[t.cropCode], selZoneCropFam);
+          });
+
           // fieldState for non-food-token paths only (states 1 and 2).
           // When on a historical group, force state 2 from the group data —
           // don't trust record.current_cycle which may still carry a stale is_open cycle.
           let fieldState;
-          if (selectedZoneId) fieldState = 2;
+          if (selectedZoneId && !selectedIsFoodZone) fieldState = 2;
           else if (anyFoodToken) fieldState = 'food';
           else if (!cycleNav.isCurrent && cycleNav.currentGroup) fieldState = 2;
           else if (hasActiveCycle) fieldState = 2;
@@ -1303,12 +1387,18 @@ export const StaticCards = ({ LAND }) => {
           const effectiveAcres = areaAcres * 0.85;
 
           const effectiveCropType = normalizeCropType((cycleNav.isCurrent ? override?.cropType : null) ?? effectiveAc?.crop_type);
+          // Is THIS card's crop already tokenised? (hasTokenForActiveCrop keys off
+          // activeCycle[0] — the field's first cycle — so it's wrong per-card.)
+          // Correction is offered for every state except a food-token-backed crop.
+          const effectiveCropTokenized = !!effectiveCropType && (tokenData ?? []).some(t =>
+            t.type === 'ERC1155' && (t.bal ?? 0) > 0 && sameCropFamily(CROP_CODE_NAMES[t.cropCode], effectiveCropType)
+          );
           const isManual = cycleNav.isCurrent && !!override?.cropType;
           const overrideCropCode = isManual
             ? (CROPS_DATA.find(([, n]) => n === override.cropType)?.[0] ?? null)
             : null;
           const matchingBatches = (batchSummary?.active ?? [])
-            .filter(b => (CROP_CODE_NAMES[b.cropCode] ?? '').toLowerCase() === (effectiveCropType ?? '').toLowerCase())
+            .filter(b => sameCropFamily(CROP_CODE_NAMES[b.cropCode], effectiveCropType))
             .filter(b => isBatchFeasible(b))
             .sort((a, bb) => Number(bb.pricePerKgUsdt ?? 0) - Number(a.pricePerKgUsdt ?? 0));
           const bestBatch = matchingBatches[0] ?? null;
@@ -1330,7 +1420,7 @@ export const StaticCards = ({ LAND }) => {
               {loading && <Spinner size='small' stages={'loading latest records'} />}
 
               {/* ── State 1: Fallow — available batches with earnings ── */}
-              {fieldState === 1 && !fieldActivity?.historical && !selectedZoneId && (
+              {fieldState === 1 && view?.mode !== 'season' && !selectedZoneId && (
                 <div className="px-4 pt-3 flex flex-col gap-2">
                   <DormantCard record={record} />
                   {/* Season table including fallow rows — mirrors the state-2
@@ -1424,7 +1514,7 @@ export const StaticCards = ({ LAND }) => {
                                     WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
                                     WebkitMaskSize: 'contain', maskSize: 'contain',
                                     WebkitMaskPosition: 'center', maskPosition: 'center',
-                                    backgroundColor: 'black',
+                                    backgroundColor: 'white',
                                   }} />
                                 )}
                               </div>
@@ -1471,22 +1561,145 @@ export const StaticCards = ({ LAND }) => {
                           <span>{override?.cropType ?? `detected: ${ac?.crop_type ?? '—'}`}</span>
                           <ChevronDownIcon className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${overrideCropOpen ? 'rotate-180' : ''}`} />
                         </button>
-                        {overrideCropOpen && (
+                        {overrideCropOpen && !overridePending && (
                           <div className="absolute left-0 right-0 mt-1 z-10 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-lg overflow-auto max-h-48">
                             <button
                               key="__detected__"
                               onPointerDown={e => e.stopPropagation()}
-                              onClick={() => { setOverride(prev => { const n = { ...(prev ?? {}) }; delete n.cropType; return Object.keys(n).length ? n : null; }); setOverrideCropOpen(false); setShowOverride(false); }}
+                              onClick={() => { setOverride(prev => { const n = { ...(prev ?? {}) }; delete n.cropType; return Object.keys(n).length ? n : null; }); setOverrideCropOpen(false); setShowOverride(false); setCropPendingVerification(false); }}
                               className={`w-full text-left text-xs px-3 py-1.5 dark:text-white ${!override?.cropType ? 'bg-gray-100 dark:bg-slate-600 font-semibold' : 'active:bg-gray-50 dark:active:bg-slate-600'}`}
                             >detected: {ac?.crop_type ?? '—'}</button>
-                            {CROPS_DATA.map(([code, name]) => (
+                            {Array.isArray(ac?.alternatives) && ac.alternatives.length > 0 && (
+                              <>
+                                <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-gray-400 dark:text-slate-500 bg-gray-50 dark:bg-slate-800/50">
+                                  Suggested
+                                </div>
+                                {ac.alternatives.map(({ crop_type, confidence }) => {
+                                  const display = String(crop_type ?? '').split('_').map(w => w ? w[0].toUpperCase() + w.slice(1) : '').join(' ');
+                                  const conf = Math.round((confidence ?? 0) * 100);
+                                  return (
+                                    <button
+                                      key={`alt-${crop_type}`}
+                                      onPointerDown={e => e.stopPropagation()}
+                                      onClick={() => {
+                                        const prevOverride = override;
+                                        const cid = ac?.cluster_id ?? ac?.zone_id;
+                                        setOverride(prev => ({ ...(prev ?? {}), cropType: display, clusterId: cid }));
+                                        setOverrideCropOpen(false);
+                                        setShowOverride(false);
+                                        submitCropCorrection(cid, crop_type, prevOverride, ac?.alternatives);
+                                      }}
+                                      className={`w-full text-left text-xs px-3 py-1.5 dark:text-white flex items-center justify-between ${override?.cropType === display ? 'bg-gray-100 dark:bg-slate-600 font-semibold' : 'active:bg-gray-50 dark:active:bg-slate-600'}`}
+                                    >
+                                      <span>{display}</span>
+                                      <span className="text-[9px] text-gray-400 dark:text-slate-500">{conf}%</span>
+                                    </button>
+                                  );
+                                })}
+                                <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-gray-400 dark:text-slate-500 bg-gray-50 dark:bg-slate-800/50">
+                                  Other crops
+                                </div>
+                              </>
+                            )}
+                            {SELECTOR_CROPS.map(([name]) => {
+                              const base = cropBase(name);
+                              const needsSubQuestion = base === 'sugarcane' || base === 'coconut';
+                              return (
+                                <button
+                                  key={name}
+                                  onPointerDown={e => e.stopPropagation()}
+                                  onClick={() => {
+                                    const prevOverride = override;
+                                    const cid = ac?.cluster_id ?? ac?.zone_id;
+                                    if (needsSubQuestion) {
+                                      // Defer commit until sub-question answered.
+                                      setOverridePending({
+                                        cluster_id: cid,
+                                        cropName: name,
+                                        prevOverride,
+                                        alternatives: ac?.alternatives,
+                                      });
+                                      return;
+                                    }
+                                    setOverride(prev => ({ ...(prev ?? {}), cropType: name, clusterId: cid }));
+                                    setOverrideCropOpen(false);
+                                    setShowOverride(false);
+                                    submitCropCorrection(cid, name, prevOverride, ac?.alternatives);
+                                  }}
+                                  className={`w-full text-left text-xs px-3 py-1.5 dark:text-white flex items-center justify-between ${override?.cropType === name ? 'bg-gray-100 dark:bg-slate-600 font-semibold' : 'active:bg-gray-50 dark:active:bg-slate-600'}`}
+                                >
+                                  <span>{name}</span>
+                                  {needsSubQuestion && <span className="text-[9px] text-gray-400 dark:text-slate-500">→</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {overrideCropOpen && overridePending && cropBase(overridePending.cropName) === 'sugarcane' && (
+                          <div className="absolute left-0 right-0 mt-1 z-10 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-lg p-2">
+                            <p className="text-[10px] text-gray-500 dark:text-slate-400 px-1 pb-2">How was the sugarcane planted?</p>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {SUGARCANE_SUBTYPES.map(({ key, label }) => (
+                                <button
+                                  key={key}
+                                  onPointerDown={e => e.stopPropagation()}
+                                  onClick={() => {
+                                    const p = overridePending;
+                                    const labelled = `${p.cropName} (${label})`;
+                                    setOverride(prev => ({ ...(prev ?? {}), cropType: labelled, clusterId: p.cluster_id }));
+                                    setOverridePending(null);
+                                    setOverrideCropOpen(false);
+                                    setShowOverride(false);
+                                    submitCropCorrection(p.cluster_id, p.cropName, p.prevOverride, p.alternatives, { subtype: key });
+                                  }}
+                                  className="text-xs px-2 py-2 rounded-md border border-gray-200 dark:border-slate-600 dark:text-white active:bg-gray-50 dark:active:bg-slate-600"
+                                >{label}</button>
+                              ))}
+                            </div>
+                            <button
+                              onPointerDown={e => e.stopPropagation()}
+                              onClick={() => setOverridePending(null)}
+                              className="w-full text-[10px] text-gray-400 dark:text-slate-500 pt-2"
+                            >← back</button>
+                          </div>
+                        )}
+                        {overrideCropOpen && overridePending && cropBase(overridePending.cropName) === 'coconut' && (
+                          <div className="absolute left-0 right-0 mt-1 z-10 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-lg p-2 max-h-72 overflow-auto">
+                            <p className="text-[10px] text-gray-500 dark:text-slate-400 px-1 pb-2">Anything growing under the canopy?</p>
+                            <button
+                              onPointerDown={e => e.stopPropagation()}
+                              onClick={() => {
+                                const p = overridePending;
+                                setOverride(prev => ({ ...(prev ?? {}), cropType: p.cropName, clusterId: p.cluster_id }));
+                                setOverridePending(null);
+                                setOverrideCropOpen(false);
+                                setShowOverride(false);
+                                submitCropCorrection(p.cluster_id, p.cropName, p.prevOverride, p.alternatives);
+                              }}
+                              className="w-full text-left text-xs px-2 py-1.5 rounded-md dark:text-white active:bg-gray-50 dark:active:bg-slate-600"
+                            >No intercrop</button>
+                            <div className="border-t border-gray-100 dark:border-slate-600 my-1" />
+                            {INTERCROP_CANDIDATES.map(ic => (
                               <button
-                                key={code}
+                                key={ic}
                                 onPointerDown={e => e.stopPropagation()}
-                                onClick={() => { setOverride(prev => ({ ...(prev ?? {}), cropType: name })); setOverrideCropOpen(false); setShowOverride(false); }}
-                                className={`w-full text-left text-xs px-3 py-1.5 dark:text-white ${override?.cropType === name ? 'bg-gray-100 dark:bg-slate-600 font-semibold' : 'active:bg-gray-50 dark:active:bg-slate-600'}`}
-                              >{name}</button>
+                                onClick={() => {
+                                  const p = overridePending;
+                                  const labelled = `${p.cropName} + ${ic}`;
+                                  setOverride(prev => ({ ...(prev ?? {}), cropType: labelled, clusterId: p.cluster_id }));
+                                  setOverridePending(null);
+                                  setOverrideCropOpen(false);
+                                  setShowOverride(false);
+                                  submitCropCorrection(p.cluster_id, p.cropName, p.prevOverride, p.alternatives, { intercrop: ic.toLowerCase().replace(/\s+/g, '_') });
+                                }}
+                                className="w-full text-left text-xs px-2 py-1.5 rounded-md dark:text-white active:bg-gray-50 dark:active:bg-slate-600"
+                              >{ic}</button>
                             ))}
+                            <button
+                              onPointerDown={e => e.stopPropagation()}
+                              onClick={() => setOverridePending(null)}
+                              className="w-full text-[10px] text-gray-400 dark:text-slate-500 pt-2"
+                            >← back</button>
                           </div>
                         )}
                       </div>
@@ -1508,11 +1721,13 @@ export const StaticCards = ({ LAND }) => {
                           {isManual ? 'manual' : 'est.'}
                         </span>
                       </div>
-                      <button
-                        onPointerDown={e => e.stopPropagation()}
-                        onClick={() => setShowOverride(v => !v)}
-                        className="text-[10px] text-blue-500 dark:text-blue-400 flex-shrink-0"
-                      >Not {effectiveCropType}?</button>
+                      {!effectiveCropTokenized && (
+                        <button
+                          onPointerDown={e => e.stopPropagation()}
+                          onClick={() => setShowOverride(v => !v)}
+                          className="text-[10px] text-blue-500 dark:text-blue-400 flex-shrink-0"
+                        >Not {effectiveCropType}?</button>
+                      )}
                     </div>
                   )}
                   <div className="pt-1">
@@ -1526,6 +1741,12 @@ export const StaticCards = ({ LAND }) => {
                         .filter(c => (c.zone_id ?? c.cluster_id) === selectedZoneId)
                         .sort((a, b) => (b.sos ?? '') > (a.sos ?? '') ? 1 : -1);
                       const zoneActive = activeCycles.find(c => (c.zone_id ?? c.cluster_id) === selectedZoneId) ?? null;
+                      // Collapse historical rows past 5 behind a "Show more"
+                      // toggle. The active row (when present) is always shown
+                      // and doesn't count against the limit.
+                      const ROW_LIMIT = 5;
+                      const visibleCycles = showAllCycles ? allCycles : allCycles.slice(0, ROW_LIMIT);
+                      const hiddenCount = Math.max(0, allCycles.length - visibleCycles.length);
                       return (
                         <table className="w-full text-[10px]">
                           <thead>
@@ -1551,7 +1772,7 @@ export const StaticCards = ({ LAND }) => {
                                 <td className="py-0.5 text-right font-bold dark:text-white whitespace-nowrap">{zoneActive.expected_yield_kg_acre ? `${zoneActive.expected_yield_kg_acre} kg/ac` : '—'}</td>
                               </tr>
                             )}
-                            {allCycles.map(c => {
+                            {visibleCycles.map(c => {
                               const cropKey = normalizeCropType(c.crop_type) ?? 'unknown';   // for color
                               const cropDisplay = (c.crop_type ?? 'unknown').replace(/_/g, ' ');  // for label
                               const yieldVal = c.yield_kg_per_acre ?? c.expected_yield_kg_acre ?? null;
@@ -1569,6 +1790,17 @@ export const StaticCards = ({ LAND }) => {
                                 </tr>
                               );
                             })}
+                            {(hiddenCount > 0 || (showAllCycles && allCycles.length > ROW_LIMIT)) && (
+                              <tr className="border-t border-gray-100 dark:border-slate-700">
+                                <td colSpan={4} className="py-1 text-center">
+                                  <button
+                                    onPointerDown={e => e.stopPropagation()}
+                                    onClick={() => setShowAllCycles(v => !v)}
+                                    className="text-[10px] text-blue-500 dark:text-blue-400"
+                                  >{showAllCycles ? 'Show less' : `Show ${hiddenCount} more`}</button>
+                                </td>
+                              </tr>
+                            )}
                             {zoneAreaM2 > 0 && (
                               <tr className="border-t border-gray-100 dark:border-slate-700">
                                 <td className="py-0.5 text-gray-500 dark:text-slate-400">Size</td>
@@ -1651,8 +1883,27 @@ export const StaticCards = ({ LAND }) => {
                               const isRatoon = !isFallow && /ratoon/i.test(crop);
                               const avgYield = yields.length ? Math.round(yields.reduce((s, v) => s + v, 0) / yields.length) : null;
                               const sizeM2 = isFallow ? (_fallowSize ?? 0) : (cropAreaMap[crop] ?? 0);
+                              const onRowClick = () => {
+                                const zoneIds = isFallow
+                                  ? mergedZones
+                                      .filter(z => !coveredZones.has(z.zone_id) && !(z.subzone_of && coveredZones.has(z.subzone_of)))
+                                      .map(z => z.zone_id)
+                                  : (rawCycles || [])
+                                      .filter(c => (c.crop_type ?? 'unknown') === crop)
+                                      .map(c => c?.zone_id ?? c?.cluster_id)
+                                      .filter(Boolean);
+                                if (!zoneIds.length) return;
+                                // Plan 044 §5.1 — focus the row's zones; features derive.
+                                setView(prev => ({ ...prev, mode: 'zone', focus: zoneIds, focusZone: zoneIds[0] }));
+                                setCardView('mapview');
+                              };
                               return (
-                                <tr key={crop} className="border-t border-gray-100 dark:border-slate-700">
+                                <tr
+                                  key={crop}
+                                  className="border-t border-gray-100 dark:border-slate-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/40"
+                                  onPointerDown={e => e.stopPropagation()}
+                                  onClick={onRowClick}
+                                >
                                   <td className="py-0.5">
                                     <div className="flex items-center gap-1.5">
                                       {icon
@@ -1664,7 +1915,14 @@ export const StaticCards = ({ LAND }) => {
                                             <div style={{ width: 10, height: 10, WebkitMaskImage:`url(${icon})`, maskImage:`url(${icon})`, WebkitMaskRepeat:'no-repeat', maskRepeat:'no-repeat', WebkitMaskSize:'contain', maskSize:'contain', WebkitMaskPosition:'center', maskPosition:'center', backgroundColor: col }} />
                                           </span>
                                         )
-                                        : <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:col, flexShrink:0 }} />
+                                        : (
+                                          <span
+                                            className="inline-flex items-center justify-center flex-shrink-0"
+                                            style={{ width: 14, height: 14 }}
+                                          >
+                                            <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:col }} />
+                                          </span>
+                                        )
                                       }
                                       <span className="capitalize dark:text-white">{crop.replace(/_/g, ' ')}</span>
                                     </div>
@@ -1679,14 +1937,8 @@ export const StaticCards = ({ LAND }) => {
                         </table>
                       );
                     })()}
-                    {isManual && (
-                      <p className="text-[10px] text-gray-400 dark:text-slate-300 leading-relaxed flex gap-1.5 pt-1">
-                        <span className="flex-shrink-0">⚠️</span>
-                        <span>Thanks for the update. We will review our prediction as soon as possible.</span>
-                      </p>
-                    )}
                   </div>
-                  {cycleNav.isCurrent && !selectedZoneId && <div className="mt-2 flex flex-col gap-2">
+                  {cycleNav.isCurrent && <div className="mt-2 flex flex-col gap-2">
                     {bestBatch ? (() => {
                       const feasible = isBatchFeasible(bestBatch);
                       const typicalKg = (!isManual && effectiveAc?.expected_yield_kg_acre)
@@ -1723,7 +1975,7 @@ export const StaticCards = ({ LAND }) => {
                                   WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
                                   WebkitMaskSize: 'contain', maskSize: 'contain',
                                   WebkitMaskPosition: 'center', maskPosition: 'center',
-                                  backgroundColor: 'black',
+                                  backgroundColor: 'white',
                                 }} />
                               )}
                             </div>
@@ -1766,7 +2018,7 @@ export const StaticCards = ({ LAND }) => {
               )}
 
               {/* ── Food token states: one panel per token (state 3 = matches satellite, state 4 = no match) ── */}
-              {fieldState === 'food' && !selectedZoneId && visibleFoodTokens.map(tok => {
+              {fieldState === 'food' && (!selectedZoneId || selectedIsFoodZone) && visibleFoodTokens.map(tok => {
                 const tokCropName = CROP_CODE_NAMES[tok.cropCode] ?? tok.sym?.split('-')[0] ?? 'Crop';
                 const tokMatchesSatellite = hasActiveCycle && tokCropName.toLowerCase() === recordCropLower;
                 const tokUnit = CROP_UNIT[tok.cropCode] ?? { label: 'kg', toKg: 1 };
@@ -2168,36 +2420,12 @@ export const StaticCards = ({ LAND }) => {
                       >Entire property</button>
                       <button
                         onClick={() => {
+                          // Plan 044 §5.1 — enter select mode via the view. The
+                          // selectable outlines are derived by featuresFor; the
+                          // tapped set lives in view.selected (no snapshot stack).
                           setForm(prev => ({...prev, coverage: 'partial', selectedClusters: []}));
                           setCardView('mapview');
-                          // Use the merged zone list so subzones (z0_a/z0_b/…)
-                          // are first-class selectable areas, not their parent.
-                          // Subdivided parents come through as `_backdrop`
-                          // entries — skip those in select mode.
-                          const zones = mergeZonesWithSubzones(record).filter(z => !z._backdrop);
-                          const allFeats = zones.map(z => ({
-                            type: 'Feature',
-                            properties: {
-                              zone_id: z.zone_id,
-                              area_m2: z.area_m2,
-                              ...(z.subzone_of ? { subzone_of: z.subzone_of } : {}),
-                              activity: 'selectable',
-                              selected: false,
-                            },
-                            geometry: z.geometry,
-                          }));
-                          if (allFeats.length) {
-                            setFieldActivity(prev => ({
-                              ...prev,
-                              features: allFeats,
-                              geojson: { type: 'FeatureCollection', features: allFeats },
-                              featurelength: allFeats.length,
-                              dormant: false,
-                              historical: false,
-                              selectMode: true,
-                              _selectBeforeFeatures: prev?.geojson?.features ?? prev?.features ?? [],
-                            }));
-                          }
+                          setView(prev => ({ ...prev, mode: 'select', selected: [] }));
                         }}
                         className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${(form.coverage === 'partial' || form.coverage === 'confirmed') ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-semibold' : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white'}`}
                       >Select fields</button>
@@ -2211,7 +2439,7 @@ export const StaticCards = ({ LAND }) => {
                       </p>
                     )}
                     {form.coverage === 'full' && (
-                      <p className="text-[10px] text-green-600 dark:text-green-400">
+                      <p className="text-[10px] text-green-600 dark:text-amber-400">
                         {((record?.meta?.parcel_area_m2 ?? 0) / 4046.86).toFixed(1)} ac — entire property
                       </p>
                     )}
@@ -2292,57 +2520,46 @@ export const StaticCards = ({ LAND }) => {
                     : null;
                   const todayStr = new Date().toISOString().slice(0, 10);
                   const minSosStr = new Date(Date.now() - 270 * 86400000).toISOString().slice(0, 10);
-                  const confirmed = hasCaseA && form.sos === oracleSos && !form.sosEditing;
+                  const sosDraft = form.sosDraft ?? form.sos ?? oracleSos ?? todayStr;
+                  const sosForDisplay = form.sos || oracleSos;
+                  const sosDisplayFormatted = sosForDisplay
+                    ? new Date(sosForDisplay + 'T00:00:00Z').toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
+                    : null;
 
                   return (
                     <>
                       <p className="text-xs dark:text-slate-300">Start of season</p>
 
-                      {hasCaseA && !form.sosEditing ? (
+                      {!form.sosEditing ? (
                         <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-slate-700/50">
                           <p className="text-xs dark:text-white">
-                            We detected planting on <span className="font-semibold">{oracleSosFormatted}</span>
-                            {oracleDaysAgo != null ? ` — ${oracleDaysAgo}d ago` : ''}
+                            {form.sos && form.sos !== oracleSos
+                              ? <>You set planting to <span className="font-semibold">{sosDisplayFormatted}</span></>
+                              : hasCaseA
+                                ? <>We detected planting on <span className="font-semibold">{oracleSosFormatted}</span>{oracleDaysAgo != null ? ` — ${oracleDaysAgo}d ago` : ''}</>
+                                : <span className="text-gray-500 dark:text-slate-400">When did you plant?</span>}
                           </p>
-                          <div className="flex gap-2">
-                            <button
-                              onPointerDown={e => e.stopPropagation()}
-                              onClick={() => setForm(prev => ({ ...prev, sosEditing: true }))}
-                              className="text-xs px-3 py-1 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white active:scale-95"
-                            >Correct date</button>
-                            <button
-                              onPointerDown={e => e.stopPropagation()}
-                              onClick={() => setForm(prev => ({ ...prev, sos: oracleSos, sosEditing: false }))}
-                              className={`text-xs px-3 py-1 rounded-lg active:scale-95 ${confirmed ? 'bg-green-600 text-white' : 'border border-green-600 text-green-700 dark:text-green-400 bg-white dark:bg-slate-700'}`}
-                            >{confirmed ? '✓ Confirmed' : 'Confirm ✓'}</button>
-                          </div>
+                          <button
+                            onPointerDown={e => e.stopPropagation()}
+                            onClick={() => setForm(prev => ({ ...prev, sosEditing: true }))}
+                            className="text-[10px] text-blue-500 dark:text-blue-400 flex-shrink-0 self-start"
+                          >Change date</button>
                         </div>
                       ) : (
-                        <div className="flex flex-col gap-1.5">
-                          {!hasCaseA && <p className="text-[10px] text-gray-500 dark:text-slate-400">When did you plant?</p>}
-                          <div className="flex gap-2">
-                            <button
-                              onPointerDown={e => e.stopPropagation()}
-                              onClick={() => setForm(prev => ({ ...prev, sos: todayStr, sosEditing: false }))}
-                              className={`text-xs px-3 py-1.5 rounded-lg border active:scale-95 flex-shrink-0 ${form.sos === todayStr ? 'bg-black dark:bg-white text-white dark:text-gray-800 border-black dark:border-white font-semibold' : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white'}`}
-                            >Today</button>
-                            <input
-                              type="date"
-                              value={form.sos}
-                              max={todayStr}
-                              min={minSosStr}
-                              onPointerDown={e => e.stopPropagation()}
-                              onChange={e => setForm(prev => ({ ...prev, sos: e.target.value, sosEditing: false }))}
-                              className="flex-1 text-xs rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white dark:[color-scheme:dark] px-3 py-1.5"
-                            />
-                          </div>
-                          {hasCaseA && form.sosEditing && (
-                            <button
-                              onPointerDown={e => e.stopPropagation()}
-                              onClick={() => setForm(prev => ({ ...prev, sos: oracleSos, sosEditing: false }))}
-                              className="text-[10px] text-gray-400 dark:text-slate-500 underline text-left"
-                            >← Back to oracle date</button>
-                          )}
+                        <div className="px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-slate-700/50">
+                          <input
+                            type="date"
+                            value={form.sos || oracleSos || todayStr}
+                            max={todayStr}
+                            min={minSosStr}
+                            onPointerDown={e => e.stopPropagation()}
+                            onChange={e => {
+                              if (e.target.value) {
+                                setForm(prev => ({ ...prev, sos: e.target.value, sosEditing: false }));
+                              }
+                            }}
+                            className="w-full text-xs rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white dark:[color-scheme:dark] px-3 py-1.5"
+                          />
                         </div>
                       )}
 
@@ -2390,7 +2607,7 @@ export const StaticCards = ({ LAND }) => {
                   const yieldConfirmed    = hasEstimate || form.yieldUnits != null;
                   const effectiveYieldUnits = form.yieldUnits ?? estimatedYieldUnits;
                   const effectiveYieldKg  = Math.max(1, Math.round(effectiveYieldUnits * unit.toKg));
-                  const canJoin           = (!varietyRequired || !!form.var) && !!form.sos && (form.coverage === 'full' || form.coverage === 'confirmed');
+                  const canJoin           = (!varietyRequired || !!form.var) && !!form.sos && (form.coverage === 'full' || form.coverage === 'confirmed') && !cropPendingVerification;
 
                   const hasPrice          = form.selectedBatch.pricePerKgUsdt > 0n;
                   const priceINRperKg     = hasPrice ? Number(form.selectedBatch.pricePerKgUsdt) / 1e6 : 0;
@@ -2406,22 +2623,27 @@ export const StaticCards = ({ LAND }) => {
                       return;
                     }
 
-                    // Compute field codex — fieldNumber=0 means entire property
-                    let fieldNum = 0;
+                    // Compute field codex bitmask — bit 0 = entire property; zone zN → bit (N+1).
+                    // The contract stores `yearFieldBitmask[landTitleId][year] |= fieldsBitmask`,
+                    // so this must be a real bitfield (bit i set ⇒ field i claimed), NOT a zone index.
+                    let fieldsBitmask = 1n; // default: entire property
                     let fieldAreaM2 = 0;
                     if (form.coverage === 'confirmed' && form.selectedClusters?.length > 0) {
                       const sel = new Set(form.selectedClusters);
                       const pickedZones = mergeZonesWithSubzones(record)
                         .filter(z => !z._backdrop && sel.has(z.zone_id));
                       fieldAreaM2 = Math.round(pickedZones.reduce((s, z) => s + (z.area_m2 ?? 0), 0));
-                      // fieldNum: numeric index of first selected zone (z0→0, z1_a→1, …)
-                      const zoneNums = pickedZones.map(z => parseInt(String(z.zone_id).match(/(\d+)/)?.[1] ?? '0', 10));
-                      fieldNum = zoneNums.length > 0 ? Math.min(...zoneNums) : 0;
+                      // zone zN (and its subzones zN_a, …) → bit (N+1); OR all picked zones together
+                      const mask = pickedZones.reduce((m, z) => {
+                        const idx = parseInt(String(z.zone_id).match(/(\d+)/)?.[1] ?? '0', 10);
+                        return m | (1n << BigInt(idx + 1));
+                      }, 0n);
+                      fieldsBitmask = mask === 0n ? 1n : mask; // fall back to entire property if none resolved
                     } else {
-                      fieldNum = 0;
+                      fieldsBitmask = 1n; // entire property
                       fieldAreaM2 = Math.round(record?.meta?.parcel_area_m2 ?? 0);
                     }
-                    console.log('[joinBatch] field codex', { fieldNum, fieldAreaM2, coverage: form.coverage });
+                    console.log('[joinBatch] field codex', { fieldsBitmask: '0b' + fieldsBitmask.toString(2), fieldAreaM2, coverage: form.coverage });
                     const varPart = form.var ? ` variety ${form.var[1]}` : '';
                     const msg = `I confirm I am growing ${form.selectedBatch.cropName}${varPart} on the selected fields.`;
                     if (!window.confirm(msg)) return;
@@ -2455,7 +2677,7 @@ export const StaticCards = ({ LAND }) => {
                         const nonce = await wallet.provider.send('eth_getTransactionCount', [wallet.address, 'pending']);
                         console.log('[joinBatch] mintForBatchMember nonce:', nonce, 'yieldKg:', effectiveYieldKg);
                         const farmerVarietyCode = form.var ? Number(form.var[0]) : 0;
-                        return foodToken.mintForBatchMember(form.selectedBatch.id, landTitleId, harvestTs, effectiveYieldKg, fieldNum, fieldAreaM2, farmerVarietyCode, sosTs, { nonce });
+                        return foodToken.mintForBatchMember(form.selectedBatch.id, landTitleId, harvestTs, effectiveYieldKg, fieldsBitmask, fieldAreaM2, farmerVarietyCode, sosTs, { nonce });
                       },
                       {
                         onSuccess: (receipt) => {
@@ -2572,7 +2794,7 @@ export const StaticCards = ({ LAND }) => {
                       onClick={handleJoinBatch}
                       className={`w-full py-3 rounded-xl text-sm font-bold mt-3 transition-opacity ${canJoin ? 'bg-black dark:bg-white text-white dark:text-gray-800 active:scale-95' : 'bg-black dark:bg-white text-white dark:text-gray-800 opacity-30 cursor-not-allowed'}`}
                     >
-                      {joining ? 'Joining…' : canJoin ? 'Join batch' : !form.coverage ? 'Select area above' : form.coverage === 'partial' ? 'Confirm field selection' : !form.sos ? 'Add start of season' : 'Select variety to continue'}
+                      {joining ? 'Joining…' : canJoin ? 'Join batch' : cropPendingVerification ? 'Awaiting union confirmation' : !form.coverage ? 'Select area above' : form.coverage === 'partial' ? 'Confirm field selection' : !form.sos ? 'Add start of season' : 'Select variety to continue'}
                     </button>
                   )}
                   </>

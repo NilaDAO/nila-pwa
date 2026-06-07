@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef, memo } from 'react'
 import { GoogleMap, useJsApiLoader, Polygon } from '@react-google-maps/api';
-import { useNavContext, useDataContext } from '../../../utils/NavigationContext';
+import { useDataContext } from '../../../utils/NavigationContext';
 import { cropColor, normalizeCropType } from '../../../utils/cropColors.js';
-import { CROP_CODE_NAMES } from '../../../hooks/useFoodTokenBatches.ts';
+import { cropName, sameCropFamily, heldFoodTokens } from '../../../utils/foodToken.ts';
 
 const containerStyle = {
   position: 'absolute',  
@@ -57,20 +57,17 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
   const [portfolioPrevOutlines, setPortfolioPrevOutlines] = useState([])
   const portfolioMarkersRef                 = useRef([])
   const portfolioBoundsRef                  = useRef(null)
-  const preZoneViewRef                      = useRef(null) // { zoom, center } saved before zone-click fit
-  const { cardIx }                          = useNavContext()
-  const { setFieldActivity, tokenData }     = useDataContext()
+  const { setFieldActivity, tokenData, view } = useDataContext()
 
   // Food token priority: user self-attested a crop; unconfirmed until oracle matches it
-  const ft            = (tokenData ?? []).find(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0)
-  const ftCropName    = ft ? (CROP_CODE_NAMES[ft.cropCode] ?? null) : null
+  const ft            = heldFoodTokens(tokenData)[0] ?? null
+  const ftCropName    = ft ? (cropName(ft.cropCode) || null) : null
   const ftCropColor   = ftCropName ? cropColor(ftCropName) : null
   const satelliteCrop = fieldActivity?.activeCycle?.[0]?.crop_type?.toLowerCase() ?? null
-  const ftConfirmed   = !!(ftCropName && satelliteCrop && ftCropName.toLowerCase() === satelliteCrop)
+  const ftConfirmed   = !!(ftCropName && satelliteCrop && sameCropFamily(ftCropName, satelliteCrop))
   const ftUnconfirmed = !!(ftCropName && !ftConfirmed)
   const features                            = fieldActivity?.geojson?.features || fieldActivity?.features || []
-  const dominant                            = fieldActivity?.dominant
-  const featureIds                          = cardIx !== null ? (dominant?.[cardIx]?.geometry_indices ?? Array.from({length: features.length}, (_, i) => i)) : Array.from({length: features.length}, (_, i) => i)
+  const isSelectMode                        = view?.mode === 'select'
 
   const { isLoaded } = useJsApiLoader({
     id: 'script-loader',
@@ -82,6 +79,9 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
 
   const onLoad = useCallback((map) => setMap(map), []);
   const onUnmount = useCallback(() => setMap(null), []);
+
+  // Plan 044 §5.2 — no unmount feature-restore. Features are derived from
+  // (record, tokenData, view); leaving the map and returning recomputes them.
 
   // ------------------ ACTIVITY LAYER -------------------------
   /*
@@ -121,30 +121,24 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
   setOutline(polygons);
 }, [map, metadata, fieldActivity?.portfolioMode]);
 
-  // ------------------ map fit (single source of truth) -------------------------
-  // Cases handled:
-  //   1. Initial open / metadata change → fit to parcel outline.
-  //   2. Zone clicked (viewmode=true)  → save pre-zone view, fit to filtered features.
-  //   3. X button after zone click     → restore saved pre-zone view (no fitBounds bounce).
-  //   4. X button / mapRefitNonce with no saved view → fit to parcel outline.
-  // Cycle navigation (features change without viewmode) does not refit — the
-  // user stays oriented on the parcel while flipping through seasons.
+  // ------------------ map fit -------------------------
+  // Plan 044 §5.2 — refit on the two transitions that reposition the map:
+  //   • zone mode → fit to the focused cultivation's features.
+  //   • any other mode (overview/season/select, incl. "back") → fit to parcel.
+  // Re-keyed on view.mode/view.focus so season flips (view.season) DON'T refit
+  // — the user stays oriented while paging through past seasons. There is no
+  // saved-zoom restore: "back" just refits to the parcel.
   useEffect(() => {
     if (!map || fieldActivity?.portfolioMode) return;
 
-    const wantFeatureFit = fieldActivity?.viewmode && features.length > 0;
+    const wantFeatureFit = view?.mode === 'zone' && features.length > 0;
 
     if (wantFeatureFit) {
-      // Save current view before zooming into zone so we can restore it on X
-      preZoneViewRef.current = { zoom: map.getZoom(), center: map.getCenter()?.toJSON() };
-
       const target = new window.google.maps.LatLngBounds();
       for (const f of features) {
         const coords = f.geometry?.coordinates;
         if (!coords) continue;
-        const rings = f.geometry.type === 'MultiPolygon'
-          ? coords.flatMap(p => p)
-          : coords;
+        const rings = f.geometry.type === 'MultiPolygon' ? coords.flatMap(p => p) : coords;
         for (const ring of rings) {
           for (const pt of ring) {
             if (Array.isArray(pt) && Number.isFinite(pt[0]) && Number.isFinite(pt[1])) {
@@ -157,50 +151,36 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
       map.fitBounds(target, 20);
       const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
         const z = map.getZoom();
-        map.setZoom(Math.min(20, (z ?? 17) + 1));
-        const center = map.getCenter();
-        const span = map.getBounds()?.toSpan();
-        if (span) map.panTo({ lat: center.lat() - span.lat() * 0.2, lng: center.lng() });
-      });
-      return () => window.google.maps.event.removeListener(listener);
-
-    } else if (preZoneViewRef.current) {
-      // Returning from zone click — restore saved view directly, no fitBounds dance
-      const saved = preZoneViewRef.current;
-      preZoneViewRef.current = null;
-      map.setZoom(saved.zoom);
-      map.panTo(saved.center);
-
-    } else {
-      // Initial open (metadata change) or explicit refit (mapRefitNonce)
-      if (!metadata?.outline) return;
-      const target = new window.google.maps.LatLngBounds();
-      for (const poly of metadata.outline) {
-        for (const p of poly) {
-          const lat = Number(p.lat), lng = Number(p.lng);
-          if (Number.isFinite(lat) && Number.isFinite(lng)) {
-            target.extend(new window.google.maps.LatLng(lat, lng));
-          }
-        }
-      }
-      if (target.isEmpty()) return;
-      map.fitBounds(target, 20);
-      const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
-        // One zoom bump (fitBounds is conservative on small parcels), then a
-        // small vertical pan so the polygon isn't hidden behind the bottom card.
-        const z = map.getZoom();
-        map.setZoom(Math.min(20, (z ?? 17) + 1));
+        map.setZoom(Math.min(20, (z ?? 17) + 0.2));
         const center = map.getCenter();
         const span = map.getBounds()?.toSpan();
         if (span) map.panTo({ lat: center.lat() - span.lat() * 0.2, lng: center.lng() });
       });
       return () => window.google.maps.event.removeListener(listener);
     }
-    // Re-fit only on the three transitions that should reposition the map:
-    // open/metadata change, zone click (selectedZoneId), and X click
-    // (mapRefitNonce). Feature changes from cycle navigation are intentionally
-    // excluded so the user's view doesn't jump while flipping seasons.
-  }, [map, metadata, fieldActivity?.viewmode, fieldActivity?.selectedZoneId, fieldActivity?.mapRefitNonce, fieldActivity?.portfolioMode]);
+
+    // Overview / season / select / back → fit to parcel outline.
+    if (!metadata?.outline) return;
+    const target = new window.google.maps.LatLngBounds();
+    for (const poly of metadata.outline) {
+      for (const p of poly) {
+        const lat = Number(p.lat), lng = Number(p.lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          target.extend(new window.google.maps.LatLng(lat, lng));
+        }
+      }
+    }
+    if (target.isEmpty()) return;
+    map.fitBounds(target, 20);
+    const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+      const z = map.getZoom();
+      map.setZoom(Math.min(20, (z ?? 17) - 0.5));
+      const center = map.getCenter();
+      const span = map.getBounds()?.toSpan();
+      if (span) map.panTo({ lat: center.lat() - span.lat() * 0.2, lng: center.lng() });
+    });
+    return () => window.google.maps.event.removeListener(listener);
+  }, [map, metadata, view?.mode, view?.focus, fieldActivity?.mapRefitNonce, fieldActivity?.portfolioMode]);
 
   // ------------------ one field-name label per field -------------------------
   // Group zones by which field (metadata.fields) contains their centroid, then
@@ -300,23 +280,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     const markers = [];
     const labelStyle = 'background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);color:white;padding:8px 14px;border-radius:12px;font-size:11px;line-height:1.6;white-space:nowrap;';
 
-    if (ftUnconfirmed && ftCropName && outline.length) {
-      // Food token declared but oracle hasn't confirmed — show crop name only, no monitoring info
-      const poly = outline[0];
-      if (!poly?.latLngs?.length) return;
-      const center = poly.latLngs.reduce(
-        (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
-        { lat: 0, lng: 0 }
-      );
-      center.lat /= poly.latLngs.length;
-      center.lng /= poly.latLngs.length;
-      if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng)) return;
-      const el = document.createElement('div');
-      el.style.cssText = labelStyle;
-      el.innerHTML = `<span class="animate-pulse" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ftCropColor};margin-right:6px;vertical-align:middle;"></span><b>${ftCropName}</b><br><span style="font-size:9px;color:rgba(255,255,255,0.6);">Oracle is confirming your claim</span>`;
-      markers.push(addMarkerLabel(map, center, el));
-
-    } else if (fieldActivity?.dormant && !fieldActivity?.historical && outline.length) {
+    if (fieldActivity?.dormant && view?.mode !== 'season' && outline.length) {
       // Current state: fallow / dormant — single label at outline centroid
       const poly = outline[0];
       if (!poly?.latLngs?.length) return;
@@ -344,7 +308,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     }
 
     return () => markers.forEach(m => { if (m) m.map = null; });
-  }, [map, fieldActivity?.dormant, fieldActivity?.activeCycle, fieldActivity?.historical, fieldActivity?.historicalCycle, features, outline, ftUnconfirmed, ftCropName, ftCropColor]);
+  }, [map, fieldActivity?.dormant, fieldActivity?.activeCycle, view?.mode, view?.season, features, outline, ftUnconfirmed, ftCropName, ftCropColor]);
 
   // ------------------ portfolio outlines + labels -------------------------
   useEffect(() => {
@@ -472,12 +436,12 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
             options={{
               fillColor: ftUnconfirmed
                 ? ftCropColor
-                : (fieldActivity?.dormant && !fieldActivity?.historical) ? fieldActivity.dormantColor : "#9ca3af",
+                : (fieldActivity?.dormant && view?.mode !== 'season') ? fieldActivity.dormantColor : "#9ca3af",
               fillOpacity: ftUnconfirmed ? 0.15
-                : (fieldActivity?.dormant && !fieldActivity?.historical) ? 0.5 : 0.4,
+                : (fieldActivity?.dormant && view?.mode !== 'season') ? 0.5 : 0.4,
               strokeColor: ftUnconfirmed
                 ? ftCropColor
-                : (fieldActivity?.dormant && !fieldActivity?.historical) ? "#5C4A1E" : "#9ca3af",
+                : (fieldActivity?.dormant && view?.mode !== 'season') ? "#5C4A1E" : "#9ca3af",
               strokeOpacity: 1,
               strokeWeight: 1,
               clickable: false,
@@ -523,13 +487,12 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
         })}
         // ------------------ Dominant features -------------------------
         {/* Activity / Select mode */}
-        {features && features.filter((_f, i) => featureIds.includes(i)).flatMap((f, i) => {
+        {features && features.flatMap((f, i) => {
           // Skip features with missing/empty geometry — upstream filters may
           // strip whole zones (e.g. sub-threshold noise) and leave bare metadata.
           const gtype = f?.geometry?.type;
           if (!gtype || !f.geometry.coordinates?.length) return [];
           const isBorderArea = f.properties?.activity === 'border_area' || f.properties?.cluster_id === 0;
-          const isSelectMode = fieldActivity?.selectMode;
           const isSelected = f.properties?.selected;
           // Backdrop = the subdivided parent zone rendered under its subzones
           // to fill any rendering gaps between adjacent partition polygons.
@@ -563,6 +526,11 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
             } else {
               fillColor = GREY_SHADES[Number(zIdx) % GREY_SHADES.length];
               fillOpacity = 0.7;
+            }
+            // Perennial zones get an extra opacity bump so they read as more
+            // saturated/established than the surrounding crop zones.
+            if (f.properties?.category === 'perennial') {
+              fillOpacity = Math.min(0.95, fillOpacity + 0.25);
             }
             strokeWeight = isBorderArea ? 0.5 : 1;
           }

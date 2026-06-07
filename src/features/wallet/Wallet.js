@@ -1,11 +1,12 @@
-import { useEffect,useState, useRef, useCallback } from "react";
+import { useEffect,useState, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence, useAnimation, scroll } from 'framer-motion';
 import useTouch from "../../hooks/useTouch";
 import { FieldRegProvider } from '../../utils/FieldRegContext';
 import { FieldRegControllerProvider } from '../maps/FieldRegistration/FieldRegController';
 import { useDataContext, useNavContext, useViewModeContext, useTxContext} from '../../utils/NavigationContext';
 import { cropColor, zoneColor, normalizeCropType } from '../../utils/cropColors.js';
-import { mergeZonesWithSubzones } from '../../utils/recordZones.js';
+import { buildCultivations, featuresFor } from '../maps/FieldView/fieldViewModel.js';
+import { sameCropFamily } from '../../utils/foodToken.ts';
 
 // Ray-cast point-in-polygon for tagging subzones with their containing zone.
 // Used as a fallback when feature properties don't already carry zone_id.
@@ -78,6 +79,7 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, save
     const { cardView, setCardView } = useViewModeContext();
     const { ix, cardIx, setIx }    = useNavContext();
     const { debts, db, fieldActivity } = useDataContext();
+    const { enterFieldView }       = useTouch();
     const controls                 = useAnimation();
     const scrollRef                = useRef(null);
     const rafRef                   = useRef(0);
@@ -144,7 +146,7 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, save
             animate={controls} 
             transition={{ type: "spring", stiffness: 300, damping: 30, bounce: 0.5 }}
             >
-            { ix === 0 ? <Assets LAND={LAND} handleOpenForm={handleOpenForm} onViewField={() => { setIx(2); setCardView('mapview'); }} />
+            { ix === 0 ? <Assets LAND={LAND} handleOpenForm={handleOpenForm} onViewField={() => enterFieldView({ mode: 'overview' })} />
             : ix === 1 ? <Investments LAND={LAND} funds={funds} CAP={CAP} sums={sums} /> 
             : ix === 2 ? (LAND.current.hasLand || fieldActivity?.portfolioMode) ? <StaticCards LAND={LAND} />
               : LAND.current?.pendingMint ? (
@@ -232,7 +234,7 @@ const TxProgress = () => {
                 </a>
             )}
         </div>
-        { txMessage && <ClaimButton disabled={false} title={remaining > 7000 ? 'close' : `closing in ${(remaining / 1000).toFixed(0)}s..`} handleClick={() => setStage(false)} />}
+        { txMessage && remaining <= 7000 && <ClaimButton disabled={false} title={`closing in ${(remaining / 1000).toFixed(0)}s..`} handleClick={() => setStage(false)} />}
     </motion.div>
     )
 }
@@ -254,7 +256,7 @@ function Wallet({LAND}) {
      *      - total infungible amounts (LAND)
      *      - status invest/borrow
      */
-    const { setTxIndex, setTxDetails, debts, db, unionFunds, tokenData, fieldActivity, setFieldActivity } = useDataContext()
+    const { setTxIndex, setTxDetails, debts, db, unionFunds, tokenData, fieldActivity, setFieldActivity, view, setView } = useDataContext()
     const funds                                                                           = !unionFunds ? [] : unionFunds //?.map(f => f[0])
     const { stage }                                                                       = useTxContext()
     const [ cardShrink, setShrinkProgress]                                                = useState(0); 
@@ -266,6 +268,7 @@ function Wallet({LAND}) {
         handleTouchMove,
         handleTouchEnd,
         handleToggleView,
+        enterFieldView,
         handleCollapse,
         isCollapsed,
         isDragging,
@@ -317,63 +320,35 @@ function Wallet({LAND}) {
       });
 
       if (hasActive) {
-        const primary = zoneCycles[0] || cc[0] || {};
         const parcelArea = Number(record.meta?.parcel_area_m2) || 0;
-        const dominant = [{
-          cluster_id: `active-${tokenId}`,
-          crop_type: primary.crop_type,
-          stage: primary.stage,
-          activity: 'active',
-          signals: { status: primary.health === 'stressed' ? 'POSSIBLE_STRESS' : 'ACTIVE_GOOD' },
-          yield_kg_per_acre: primary.expected_yield_kg_acre || primary.yield_kg_per_acre || 0,
-          yield_index: primary.crop_confidence || 0,
-          area_m2: parcelArea,
-          harvest_window: primary.predicted_eos ? { earliest: primary.predicted_eos[0], latest: primary.predicted_eos[1] } : null,
-          health: primary.health ?? null,
-          health_description: primary.health_description ?? null,
-          water_advice: primary.water_advice ?? null,
-          fertilizer_advice: primary.fertilizer_advice ?? null,
-          weeding_advice: primary.weeding_advice ?? null,
-          zone_id: primary.zone_id ?? null,
-        }];
-        // Map features: use zone-tagged subzones if present, else fall back to
-        // zone polygons so the map isn't blank when clusters[] is empty.
-        // Per-zone crop lookup from current_cycle entries. The pipeline writes
-        // the zone identifier as either `zone_id` or `cluster_id` depending on
-        // the code path; both refer to the same zN slot. Returns null for
-        // zones without a matching entry — the map renders those as "unknown"
-        // grey rather than inheriting some other zone's crop.
-        const zoneIdOf = (c) => c?.zone_id ?? c?.cluster_id;
-        const cropForZone = (zid) => {
-          const zc = (cc || []).find(c => zoneIdOf(c) === zid);
-          return zc?.crop_type ?? null;
-        };
-        // Merged zone list: parents that have been subdivided (e.g. z1 with
-        // z1_a/z1_b) are replaced by their subzones, so the partition shows in
-        // every view (Now, swiper, select-fields).
-        const mergedZones = mergeZonesWithSubzones(record);
-        const features = subzones.length > 0
-          ? subzones.map(f => ({
-              ...f,
-              properties: { ...f.properties, crop_type: cropForZone(f.properties?.zone_id), activity: f.properties?.activity || 'active' },
-            }))
-          : mergedZones.map(z => ({
-              type: 'Feature',
-              properties: {
-                zone_id: z.zone_id,
-                category: z.category,
-                area_m2: z.area_m2,
-                ...(z.subzone_of ? { subzone_of: z.subzone_of } : {}),
-                ...(z._backdrop ? { backdrop: true } : {}),
-                // Subzones inherit the parent's current crop when they have
-                // no direct match in current_cycle. Backdrops use the parent
-                // id directly.
-                crop_type: cropForZone(z.zone_id) ?? (z.subzone_of ? cropForZone(z.subzone_of) : null),
-                activity: 'active',
-              },
-              geometry: z.geometry,
-            }));
-
+        const zoneAreaById = new Map(zones.map(z => [z.zone_id, Number(z.area_m2) || 0]));
+        const cycles = (zoneCycles.length ? zoneCycles : (cc || []))
+          .filter(c => c?.is_open !== false);
+        const dominant = cycles.map((cyc, i) => {
+          const zid = cyc.zone_id ?? cyc.cluster_id ?? null;
+          return {
+            cluster_id: `active-${tokenId}-${zid ?? i}`,
+            crop_type: cyc.crop_type,
+            crop_confidence: cyc.crop_confidence ?? null,
+            alternatives: cyc.alternatives ?? [],
+            stage: cyc.stage,
+            activity: 'active',
+            signals: { status: cyc.health === 'stressed' ? 'POSSIBLE_STRESS' : 'ACTIVE_GOOD' },
+            yield_kg_per_acre: cyc.expected_yield_kg_acre || cyc.yield_kg_per_acre || 0,
+            yield_index: cyc.crop_confidence || 0,
+            area_m2: zoneAreaById.get(zid) || parcelArea,
+            harvest_window: cyc.predicted_eos ? { earliest: cyc.predicted_eos[0], latest: cyc.predicted_eos[1] } : null,
+            health: cyc.health ?? null,
+            health_description: cyc.health_description ?? null,
+            water_advice: cyc.water_advice ?? null,
+            fertilizer_advice: cyc.fertilizer_advice ?? null,
+            weeding_advice: cyc.weeding_advice ?? null,
+            zone_id: zid,
+          };
+        });
+        // Plan 044 §5.2 — features are no longer built or stored here. They are
+        // derived from (record, tokenData, view) by the single effect below.
+        // This effect only owns the data model the card reads.
         setFieldActivity(prev => ({
           ...prev,
           dominant,
@@ -383,27 +358,10 @@ function Wallet({LAND}) {
           zoneCycles,
           dormant: false,
           recordToken: tokenId,
-          ...(features.length > 0
-            ? { features, geojson: { type: 'FeatureCollection', features }, featurelength: features.length }
-            : {}),
           meta: { ...prev?.meta, last_scene_date: record.meta?.last_scene_date },
         }));
       } else {
-        // No active cycle — still surface zones so the map shows land-cover.
-        // Use the merged zone list so subzone partitions show in the dormant
-        // view too.
-        const mergedZones = mergeZonesWithSubzones(record);
-        const features = subzones.length > 0 ? subzones : mergedZones.map(z => ({
-          type: 'Feature',
-          properties: {
-            zone_id: z.zone_id,
-            category: z.category,
-            area_m2: z.area_m2,
-            ...(z.subzone_of ? { subzone_of: z.subzone_of } : {}),
-            ...(z._backdrop ? { backdrop: true } : {}),
-          },
-          geometry: z.geometry,
-        }));
+        // No active cycle — model only; features (land-cover zones) are derived.
         setFieldActivity(prev => ({
           ...prev,
           dominant: [],
@@ -413,13 +371,31 @@ function Wallet({LAND}) {
           zoneCycles,
           dormant: subzones.length === 0 && zones.length === 0,
           recordToken: tokenId,
-          ...(features.length > 0
-            ? { features, geojson: { type: 'FeatureCollection', features }, featurelength: features.length }
-            : {}),
           meta: { ...prev?.meta, last_scene_date: record.meta?.last_scene_date },
         }));
       }
     }, [record, tokenData]);
+
+    // Plan 044 §5.3 — the merged per-crop cultivation model (satellite + food
+    // token folded together, source/confirmed kept distinct). One source of
+    // truth for the map's feature fill and the food-token cards.
+    const cultivations = useMemo(() => buildCultivations(record, tokenData), [record, tokenData]);
+
+    // Plan 044 §5.2 — THE single feature selector. Features are derived from
+    // (record, tokenData, view) and nothing else writes them. This replaces the
+    // old ~11 in-place mutation sites + the _featuresBefore/_selectBeforeFeatures
+    // snapshot stacks + the food-token fill effect. "Back" = view.mode flips to
+    // 'overview' and this recomputes.
+    useEffect(() => {
+      if (!record || fieldActivity?.portfolioMode) return;
+      const features = featuresFor(record, tokenData, view, cultivations);
+      setFieldActivity(prev => prev ? ({
+        ...prev,
+        features,
+        geojson: { type: 'FeatureCollection', features },
+        featurelength: features.length,
+      }) : prev);
+    }, [record, tokenData, view, cultivations, fieldActivity?.portfolioMode, setFieldActivity]);
 
     // Wait for record before deciding MapCard vs CultivationCard
     // If no tokenId (no land title), skip waiting — show MapCard immediately
@@ -447,11 +423,20 @@ function Wallet({LAND}) {
             .filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0)
             .reduce((acc, t) => {
               const key = t.cropCode ?? t.sym;
+              // Zones this token covers — so clicking the card filters the map like open-cycle cards do.
+              const tokenZoneIds = (() => {
+                let mask = 0n; try { mask = BigInt(t.fieldsBitmask ?? '0'); } catch { mask = 0n; }
+                if ((mask & 1n) === 1n) return [];                 // entire property → no single zone
+                const zs = [];
+                for (let p = 1n; p < 128n; p++) if (((mask >> p) & 1n) === 1n) zs.push('z' + (p - 1n));
+                if (!zs.length && t.fieldNumber != null) zs.push('z' + t.fieldNumber);
+                return zs;
+              })();
               if (!acc[key]) {
                 const cropName = CROP_CODE_NAMES[t.cropCode] ?? t.sym?.split('-')[0] ?? 'Crop';
                 const matchesSatellite = activeSatelliteCycle &&
                   cropName.toLowerCase() === activeSatelliteCycle.crop_type?.toLowerCase();
-                acc[key] = matchesSatellite
+                const base = matchesSatellite
                   ? {
                       cluster_id:        `active-${tokenId}`,
                       crop_type:         cropName,
@@ -481,14 +466,73 @@ function Wallet({LAND}) {
                       area_m2:           0,
                       harvest_window:    null,
                     };
+                acc[key] = { ...base, zone_id: tokenZoneIds[0] ?? null, zone_ids: [...tokenZoneIds] };
+              } else {
+                // Same crop, another token → accumulate its zones for the map filter
+                for (const z of tokenZoneIds) if (!acc[key].zone_ids.includes(z)) acc[key].zone_ids.push(z);
+                if (acc[key].zone_id == null) acc[key].zone_id = tokenZoneIds[0] ?? null;
               }
               return acc;
             }, {})
         )
       : []
 
-    // If the user has food tokens, show those cards; satellite dominant is only shown when no tokens
-    const allCultivations = hasActiveFoodTokens ? foodTokenDominants : ActiveCultivations
+    // Show food-token cards AND open-cycle cards for zones not yet tokenised.
+    // A satellite cycle is hidden (shown as the token card instead) ONLY when a
+    // held token of the SAME crop family covers its zone. Plan 044 §5.3: a token
+    // is self-attestation for ITS crop — a stale/different token (e.g. last
+    // season's sugarcane) must NOT hide the correct satellite crop (e.g. this
+    // season's green_gram). Hiding by zone alone wiped the other cycles.
+    const zoneNumOf = (zid) => {
+      const m = String(zid ?? '').match(/(\d+)/);
+      return m ? Number(m[1]) : null;
+    };
+    const heldFts = (tokenData ?? []).filter(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0);
+    const tokenCoversCycle = (d) => {
+      const zn = zoneNumOf(d?.zone_id);
+      return heldFts.some(t => {
+        let mask = 0n; try { mask = BigInt(t.fieldsBitmask ?? '0'); } catch { mask = 0n; }
+        const entire = (mask & 1n) === 1n;
+        const coversZone = entire || (zn != null && ((mask >> BigInt(zn + 1)) & 1n) === 1n);
+        // Same crop family → this cycle IS the tokenised one; different crop →
+        // leave the satellite cycle visible.
+        return coversZone && sameCropFamily(CROP_CODE_NAMES[t.cropCode], d?.crop_type);
+      });
+    };
+    const uncommittedCultivations = ActiveCultivations.filter(d => !tokenCoversCycle(d));
+    // Merge same-crop zones into a single card; preserve all zone_ids for map highlight.
+    const rawCultivations = hasActiveFoodTokens
+      ? [...foodTokenDominants, ...uncommittedCultivations]
+      : ActiveCultivations
+    const allCultivations = Object.values((rawCultivations || []).reduce((acc, d) => {
+      // Key by crop FAMILY so sugarcane_ratoon / sugarcane_plant / a corrected
+      // "sugarcane" all merge into ONE card — otherwise correcting a zone to an
+      // existing crop spawns a duplicate cultivation card.
+      const key = normalizeCropType(String(d?.crop_type ?? '__unknown__')) || '__unknown__';
+      if (!acc[key]) {
+        const seed = d?.zone_ids?.length ? [...d.zone_ids] : (d?.zone_id != null ? [d.zone_id] : []);
+        acc[key] = { ...d, zone_ids: seed };
+        return acc;
+      }
+      const g = acc[key];
+      const incoming = d?.zone_ids?.length ? d.zone_ids : (d?.zone_id != null ? [d.zone_id] : []);
+      for (const z of incoming) if (!g.zone_ids.includes(z)) g.zone_ids.push(z);
+      g.area_m2 = (Number(g.area_m2) || 0) + (Number(d?.area_m2) || 0);
+      // Promote the zone with highest crop_confidence as the group's "primary"
+      // — drives crop_confidence, alternatives, advisories, default click zone.
+      if ((d?.crop_confidence ?? 0) > (g.crop_confidence ?? 0)) {
+        g.crop_confidence = d.crop_confidence;
+        g.alternatives = d.alternatives;
+        g.zone_id = d.zone_id;
+        g.cluster_id = d.cluster_id;
+        g.health = d.health;
+        g.health_description = d.health_description;
+        g.water_advice = d.water_advice;
+        g.fertilizer_advice = d.fertilizer_advice;
+        g.weeding_advice = d.weeding_advice;
+      }
+      return acc;
+    }, {}))
     const CAP                                                                             = useRef()
     const inArrays                                                                        = debts.some(d => d.defaulted)
     const meta = LAND.current?.LAND?.metadata || LAND.current?.metadata;
@@ -515,7 +559,7 @@ function Wallet({LAND}) {
       const cc = fieldActivity?.activeCycle;
       const cropType = cc?.length ? normalizeCropType(cc[0]?.crop_type) : null;
       const matches = cropType && activeBatches.length
-        ? activeBatches.filter(b => (CROP_CODE_NAMES[b.cropCode] ?? '').toLowerCase() === (cropType ?? '').toLowerCase())
+        ? activeBatches.filter(b => sameCropFamily(CROP_CODE_NAMES[b.cropCode], cropType))
         : [];
       const matchIds  = matches.map(b => b.id).join(',');
       const existingIds = (fieldActivity?.suggestedBatches ?? (fieldActivity?.suggestedBatch ? [fieldActivity.suggestedBatch] : [])).map(b => b.id).join(',');
@@ -560,68 +604,43 @@ function Wallet({LAND}) {
         }, [ix]);
 
     const handleFeatureClick = useCallback((feature) => {
-        if (!feature || !fieldActivity) return;
+        if (!feature) return;
+        const zid = feature.properties?.zone_id ?? feature.properties?.cluster_id;
 
-        // Select mode: toggle selected state on the clicked zone/cluster
-        if (feature._toggle && fieldActivity.selectMode) {
-          const fkey = feature.properties?.zone_id ?? feature.properties?.cluster_id;
-          const updated = (fieldActivity.features || []).map(f => {
-            const mkey = f.properties?.zone_id ?? f.properties?.cluster_id;
-            return mkey === fkey
-              ? { ...f, properties: { ...f.properties, selected: !f.properties.selected } }
-              : f;
-          });
-          setFieldActivity({
-            ...fieldActivity,
-            features: updated,
-            geojson: { type: 'FeatureCollection', features: updated },
+        // Plan 044 §5.1 — select mode: toggle the zone in view.selected. The
+        // feature array is derived; we never mutate it here.
+        if (feature._toggle && view?.mode === 'select') {
+          if (zid == null) return;
+          setView(prev => {
+            const cur = new Set(prev.selected || []);
+            cur.has(zid) ? cur.delete(zid) : cur.add(zid);
+            return { ...prev, selected: [...cur] };
           });
           return;
         }
 
-        // Default zone click: filter features to the clicked zone (map zooms
-        // in via fitBounds on those features), pan the card down, turn on
-        // viewmode so the X button shows. Stash the full feature set on
-        // _featuresBefore so handleClose can restore it.
-        const allFeatures = fieldActivity?.geojson?.features || fieldActivity?.features || [];
-        const zid = feature.properties?.zone_id ?? feature.properties?.cluster_id;
-        const matched = zid != null
-          ? allFeatures.filter(f => {
-              const fzid = f.properties?.zone_id ?? f.properties?.cluster_id;
-              // match the clicked zone and any of its subzone overlays (zN_a/_b)
-              return fzid === zid || (typeof fzid === 'string' && fzid.replace(/_(a|b)$/, '') === zid);
-            })
-          : [feature];
-        const featuresToSet = matched.length ? matched : [feature];
+        // Default zone click → focus the WHOLE cultivation that contains the
+        // tapped zone (not just the one zone). featuresFor filters the overview
+        // to view.focus; the map fits to it.
+        const cult = (cultivations || []).find(c =>
+          c.zone_ids.some(z => z === zid || String(z).replace(/_(a|b)$/, '') === zid)
+        );
+        const group = cult ? cult.zone_ids : (zid != null ? [zid] : []);
 
-        // Resolve the containing field name (LAND title metadata.fields[].name)
-        // via point-in-polygon on the clicked feature's centroid. Field rings
-        // are stored as [{lat, lng}, ...] per parseCompactMeta in useLoadETH.
+        // Resolve the containing field name via point-in-polygon for display.
         const meta = LAND?.current?.LAND?.metadata;
-        let selectedFieldName = null;
+        let focusName = null;
         const c = _featureCentroid(feature);
         if (c && Array.isArray(meta?.fields)) {
           for (const fld of meta.fields) {
             const ring = (fld?.coordinates || []).map(p => [p.lng, p.lat]);
-            if (ring.length >= 3 && _pointInRing(c, ring)) {
-              selectedFieldName = fld.name;
-              break;
-            }
+            if (ring.length >= 3 && _pointInRing(c, ring)) { focusName = fld.name; break; }
           }
         }
 
-        setFieldActivity({
-            ...fieldActivity,
-            features: featuresToSet,
-            geojson: { type: 'FeatureCollection', features: featuresToSet },
-            viewmode: true,
-            featurelength: allFeatures.length,
-            _featuresBefore: fieldActivity._featuresBefore ?? allFeatures,
-            selectedZoneId: zid ?? null,
-            selectedFieldName,
-        });
+        setView(prev => ({ ...prev, mode: 'zone', focus: group, focusZone: zid ?? null, focusName }));
         setCardView('mapview');
-    }, [fieldActivity, setFieldActivity, setCardView, LAND]);
+    }, [view, setView, setCardView, LAND, cultivations]);
 
     const handleTopicScroll = useCallback((p) => {
         // clamp
@@ -721,34 +740,77 @@ function Wallet({LAND}) {
               : (d?.crop_type?.dominant?.label || d?.crop_type?.label);
             // Strip subtype suffix (sugarcane_plant → sugarcane) for the title.
             const label = rawLabel ? (normalizeCropType(rawLabel) ?? rawLabel) : rawLabel;
-            const isFoodTokenHolder = hasActiveFoodTokens;
             const confirmedLabel = (label && label !== 'other' && label !== 'unknown') ? label : (d?.field_name || 'Cultivation');
             const knownCrop = label && label !== 'other' && label !== 'unknown' && label !== 'fallow';
             const rawUnion = db?.union?.name;
             const unionName = rawUnion && rawUnion.length > 12
               ? (rawUnion.lastIndexOf(' ', 12) > 0 ? rawUnion.slice(0, rawUnion.lastIndexOf(' ', 12)) : rawUnion.slice(0, 12))
               : rawUnion;
-            const hasBatch = Boolean(fieldActivity?.suggestedBatch);
-            const batchCropName = fieldActivity?.suggestedBatch?.cropName ?? null;
-            const cardTitle = isFoodTokenHolder
+            // Per-card batch check: only show "Join the {crop} batch" when an active
+            // batch exists for THIS card's crop. The field-level suggestedBatch is
+            // computed against the first cycle only, which mis-labels other cards.
+            const hasBatch = Boolean(label) && activeBatches.some(b =>
+              sameCropFamily(CROP_CODE_NAMES[b.cropCode], label)
+            );
+            const batchCropName = label;
+            // Crop code + token state for THIS card's crop. The "already tokenised"
+            // gate must be PER-CROP: holding a sugarcane token must not suppress the
+            // recommendation / correction link on the green_gram card (Plan 044 §5.3).
+            const cardZoneNum = (() => { const m = String(d?.zone_id ?? '').match(/(\d+)/); return m ? Number(m[1]) : null; })();
+            const cardCropCode = Number(Object.entries(CROP_CODE_NAMES).find(([, n]) => sameCropFamily(n, label))?.[0] ?? -1);
+            // This card's crop is tokenised (same crop family held on-chain).
+            const cardCropTokenized = cardCropCode >= 0 && (tokenData ?? []).some(t =>
+              t.type === 'ERC1155' && (t.bal ?? 0) > 0 && t.cropCode === cardCropCode
+            );
+            // Icon colour also lights up for a token sitting on this exact zone.
+            const cardHasFoodToken = cardCropTokenized || (tokenData ?? []).some(t =>
+              t.type === 'ERC1155' && (t.bal ?? 0) > 0 && cardZoneNum != null && t.fieldNumber === cardZoneNum
+            );
+            const cardTitle = cardCropTokenized
               ? confirmedLabel
               : hasBatch && knownCrop
                 ? (unionName ? `Join the ${unionName} ${label} batch` : `Join a ${label} batch`)
                 : hasBatch
                   ? (unionName ? `Join the ${unionName} batch` : 'Join a cycle batch')
                   : (knownCrop ? confirmedLabel : 'Cycle detected');
-            const titleCrop = isFoodTokenHolder ? label : (hasBatch && batchCropName ? batchCropName : null);
+            const titleCrop = knownCrop ? label : null;
+            // "Not {crop}?" link in the card title — opens the map and triggers
+            // the crop-type override dropdown in staticCards via pendingOverride.
+            // Hidden only once a token FOR THIS CROP exists (on-chain confirmed);
+            // a token for a different crop must not hide it.
+            const titleAction = (knownCrop && !cardCropTokenized) ? {
+              label: `Not ${label}?`,
+              onClick: () => {
+                setFieldActivity(prev => prev ? { ...prev, pendingOverride: true } : { pendingOverride: true });
+                handleToggleView({ ix: 2, i: i });
+              },
+            } : null;
             return {
               key: `tokenized-${i}-${d?.cluster_id ?? ''}`,
               type: 'MAP',
               show: ix === null,
               title: cardTitle,
-              titleDot: titleCrop ? cropColor(titleCrop) : 'rgba(255,255,255,0.45)',
+              titleDot: (titleCrop && cardHasFoodToken) ? cropColor(titleCrop) : 'rgba(255,255,255,0.45)',
               titleIconCrop: titleCrop,
-              onClick: () => { handleToggleView({ ix: 2, i: i }); },
+              titleAction,
+              onClick: () => {
+                // Plan 044 §5.4 — focus the WHOLE cultivation (every zone it
+                // covers), routed through the one entry primitive. featuresFor
+                // derives the map; no feature mutation, no _featuresBefore.
+                const cult = (cultivations || []).find(c => sameCropFamily(c.crop_family, d?.crop_type));
+                const zids = (cult?.zone_ids?.length
+                  ? cult.zone_ids
+                  : (d?.zone_ids ?? (d?.zone_id ? [d.zone_id] : []))
+                ).filter(z => z != null);
+                enterFieldView(
+                  zids.length
+                    ? { mode: 'zone', focus: zids, focusZone: zids[0], i }
+                    : { mode: 'overview', i }
+                );
+              },
               content: <CultivationCard dominant={d} cardIndex={i} />
             };
-          }) || []),      
+          }) || []),
       ];
     
     // reshuffle the cards to have the defaulted card on top in case of defaulted debt
@@ -761,7 +823,7 @@ function Wallet({LAND}) {
 
     const content = (
         <div className="flex flex-col h-[var(--app-height)] bg-gradient-to-b dark:from-darkgrey dark:to-slate-800 from-white to-slate-100 pb-[calc(48px+env(safe-area-inset-bottom))]">
-            { ix === 2 && LAND.current && <MapNav LAND={LAND} onFeatureClick={handleFeatureClick} cardView={cardView} portfolioMode={fieldActivity?.portfolioMode} />}
+            { ix === 2 && LAND.current && !stage && <MapNav LAND={LAND} onFeatureClick={handleFeatureClick} cardView={cardView} cardShrink={cardShrink} portfolioMode={fieldActivity?.portfolioMode} />}
             <Header version={0} className="flex-shrink-0 sticky" cardShrink={cardShrink} />
             { stage ? // pending onchain transaction
                 <TxProgress />
@@ -793,7 +855,7 @@ function Wallet({LAND}) {
                         onTouchEnd={handleTouchEnd}
                         >
                         <AnimatePresence >
-                            {visibleCards.map(({ key, type, title, titleDot, titleIconCrop, onClick, content, props = {} }, index) => (
+                            {visibleCards.map(({ key, type, title, titleDot, titleIconCrop, titleAction, onClick, content, props = {} }, index) => (
                                 <Card
                                     key={key}
                                     i={index}
@@ -801,6 +863,7 @@ function Wallet({LAND}) {
                                     title={title}
                                     titleDot={titleDot}
                                     titleIconCrop={titleIconCrop}
+                                    titleAction={titleAction}
                                     onClick={onClick}
                                     inArrays={inArrays}
                                     isCollapsed={isCollapsed}
