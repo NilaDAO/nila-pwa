@@ -191,7 +191,7 @@ export const InvestmentCard = ({CAP, sums, cardShrink, inArrays }) => {
                                 <tr className='flex flex-col flex-grow'>
                                     
                                     <td className="text-left text-xs flex items-center gap-1">
-                                        <span className="text-[10px] text-gray-400 dark:text-slate-900">{isRefetching ? 'refetching' : 'You invested'}</span>
+                                        <span className="text-[10px] text-gray-800 dark:text-slate-900">{isRefetching ? 'refetching' : 'You invested'}</span>
                                     </td>
                                     <td className={`text-left font-bold text-lg mb-3 ${isRefetching ? 'animate-pulse' : ''}`}>nIN {totalInvestedByUser.toLocaleString('en-IN', { maximumFractionDigits: 0 })}/-</td>
                                 </tr>
@@ -423,7 +423,18 @@ export const CultivationCard = ({ dominant, cardIndex = 0 }) => {
         </>
     );
     };
-    
+
+// Flashing placeholder shown in the CultivationCard's slot while the IPFS
+// record.json is still being fetched. Mirrors the real card's outer geometry
+// (inset overlay + right panel) so the layout doesn't jump when data lands.
+export const CultivationCardSkeleton = () => {
+    const { tokenview } = useViewModeContext();
+    if (tokenview) return null;
+    return (
+        <div className="no-card-shadow absolute inset-0 rounded-3xl overflow-hidden animate-pulse pointer-events-none bg-slate-200 dark:bg-slate-800" />
+    );
+};
+
 export const AssetCard = ({ cardShrink }) => {
     const qc = useQueryClient();
     const { tokenview } = useViewModeContext();
@@ -599,6 +610,33 @@ export const OrdersSummaryCard = ({ activeBatches = [], cardShrink, onRefresh })
     );
 };
 
+// ── Donation card summary ─────────────────────────────────────────────────────
+// Shown only when the backend returns active donation programs for this union
+// (gating happens server-side — see useDonationPrograms). Two figures: number of
+// open programs + the union's anonymous ₹ total. Detail opens at Topic ix=8.
+export const DonationCard = ({ programs = [], cardShrink }) => {
+    const { ix }          = useNavContext();
+    const { isCollapsed } = useTouch();
+    const count           = programs.length;
+    const unionTotalInr   = programs.reduce((s, p) => s + (p.unionTotalInr || 0), 0);
+
+    return (
+        <div className="flex flex-col h-full w-full pt-4">
+            { cardShrink < SHRINK_PERC && (ix || isCollapsed) && count > 0 &&
+            <div className="flex flex-col">
+                <span className="text-[10px] text-gray-600 dark:text-gray-700">
+                    {count} {count > 1 ? 'programs' : 'program'}
+                </span>
+                <span className="text-left font-bold text-lg text-black dark:text-black">
+                    ₹{unionTotalInr.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                </span>
+                <span className="text-xs text-gray-700 dark:text-gray-800">raised by your union</span>
+            </div>
+            }
+        </div>
+    );
+};
+
 export const Card = ({
     i,
     type,
@@ -637,9 +675,10 @@ export const Card = ({
         BORROW: 'bg-red dark:bg-red_dark',
         DEFAULTED: 'bg-gray-100 dark:bg-gray-700 border-2 dark:border-slate-400',
         INVEST: 'bg-green dark:bg-green_dark',
-        MAP: 'bg-darkgrey',
+        MAP: 'bg-slate-50 dark:bg-darkgrey',
         CASH_LIQUIDITY: 'bg-indigo-50 dark:bg-slate-700',
         ORDERS: 'bg-gray-300 dark:bg-slate-800',
+        DONATE: 'bg-green_light dark:bg-green_dark_light',
     }
     const variants = {
         stacked: (custom) => ({
@@ -707,11 +746,12 @@ export const Card = ({
             text-xs
             flex items-center gap-1
             ${type == 'BORROW' || type == 'INVEST' && `dark:text-black ${cardShrink >= 0.5 && 'dark:text-slate-400' }`}
+            ${type == 'DONATE' && 'text-black dark:text-black'}
             ${type == 'ASSETS' && 'dark:text-white'}
             ${type == 'DEFAULTED' && 'dark:text-slate-400'}
             ${type == 'MAP' && 'text-white z-10 dark:text-white'}
             ${type == 'CASH_LIQUIDITY' && 'dark:text-white'}
-            ${type == 'ORDERS' && 'text-gray-800 dark:text-white z-10'}
+            ${type == 'ORDERS' && 'dark:text-white z-10'}
             `}>
             {titleDot && (titleIconCrop
               ? <div className="w-5 h-5 mb-1 flex-shrink-0" style={{

@@ -15,6 +15,7 @@ import { ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { IndividualExchangeButton, ClaimButton } from '../../components/UI/buttons.js';
 import { useActiveLoans, useActiveLoansChainSync } from '../../hooks/useActiveLoans';
 import { useContactBook } from '../../hooks/useContactBook';
+import { useLoanAcceptance } from '../../hooks/useLoanAcceptance';
 import ActiveLoansCard from './ActiveLoansCard';
 import { setDBitem } from '../../utils/db';
 import { useLPCashOnHand } from '../../hooks/useLPCashOnHand';
@@ -167,6 +168,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
   const { deposit, withdraw } = useUnionTreasury();
   const { data: loansData } = useActiveLoans(unionAddr, !!db?.union?.leader);
   const { refreshFromChain, isFetching: chainSyncing } = useActiveLoansChainSync(unionAddr, !!db?.union?.leader);
+  const { handleAcceptLoan, handleCancelLoan } = useLoanAcceptance();
   const { provider } = useProvider();
 
   // Fetch the union's collectDeadline once — used by ActiveLoansCard to gate
@@ -694,7 +696,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
           <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide">Union Cash Reserve</p>
           <button
             onClick={() => { setTreasuryExpanded(e => !e); setTreasuryStep('input'); setTreasuryAmount(0n); }}
-            className={`active:scale-95 ${treasuryExpanded ? 'text-gray-400 dark:text-slate-400 text-sm px-1' : 'text-xs px-3 py-1.5 rounded-full font-semibold bg-gray-100 dark:bg-slate-600 dark:text-white text-gray-700'}`}
+            className={`active:scale-95 ${treasuryExpanded ? 'text-gray-400 dark:text-slate-400 text-sm px-1' : 'text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white font-bold whitespace-nowrap'}`}
           >{treasuryExpanded ? '✕' : 'Adjust'}</button>
         </div>
 
@@ -830,22 +832,21 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
 
             {/* ── Primary actions ── */}
             <div className="flex gap-2 mt-1">
-              <button
-                data-tour="cash-in"
-                onClick={() => handleOpenForm('cashIn')}
-                className="flex-1 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-gray-800 text-sm font-bold active:scale-95"
-              >
-                Cash In
-              </button>
-              <button
-                data-tour="cash-out"
-                onClick={() => handleOpenForm('cashOut')}
+              <ClaimButton
+                fullWidth
+                dataTour="cash-in"
+                handleClick={() => handleOpenForm('cashIn')}
+                title="Cash In"
+              />
+              <ClaimButton
+                fullWidth
+                color="white"
+                dataTour="cash-out"
+                handleClick={() => handleOpenForm('cashOut')}
                 disabled={settlementShortfall > 0n}
-                title={settlementShortfall > 0n ? 'Blocked during settlement — LP funds are reserved for investor exits' : undefined}
-                className="flex-1 py-3 rounded-xl bg-gray-100 dark:bg-slate-600 dark:text-white text-sm font-bold active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Cash Out
-              </button>
+                tooltip={settlementShortfall > 0n ? 'Blocked during settlement — LP funds are reserved for investor exits' : undefined}
+                title="Cash Out"
+              />
             </div>
 
             {/* ── Settle countdown ── */}
@@ -1107,11 +1108,29 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
           cashOutDisabled={settlementShortfall > 0n}
           onCashIn={(loan) => handleOpenForm('cashIn', { memberAddress: loan.borrower })}
           onCashOut={(loan) => handleOpenForm('cashOut', { memberAddress: loan.borrower })}
-          onViewMap={(loansWithLand) => {
+          onAcceptPending={(loan) =>
+            handleAcceptLoan(
+              loan.union ?? unionAddr,
+              loan.id,
+              resolveName(loan.borrower),
+              loan.borrower,
+              loan.amount,
+            )
+          }
+          onDenyPending={(loan) =>
+            handleCancelLoan(
+              loan.union ?? unionAddr,
+              loan.id,
+              resolveName(loan.borrower),
+              loan.txHash,
+            )
+          }
+          onViewMap={(loansWithLand, opts) => {
             if (savedFieldActivity) savedFieldActivity.current = fieldActivity;
             setFieldActivity({
               portfolioMode: true,
               portfolioLoans: loansWithLand,
+              outlinesOnly: opts?.outlinesOnly ?? false,
               features: [],
               geojson: { type: 'FeatureCollection', features: [] },
             });

@@ -16,18 +16,28 @@ export const CROP_CODE_NAMES: Record<number, string> = {
   5: 'Onion',
   6: 'Sesame',
   7: 'Cassava',
+  8: 'Maize',
+  9: 'Green Gram',
+  10: 'Horse Gram',
+  11: 'Black Gram',
+  12: 'Coconut',
 };
 
 // Measurement unit per crop. toKg: multiplier to convert user-entered units → kg for on-chain storage.
 export const CROP_UNIT: Record<number, { label: string; toKg: number }> = {
-  0: { label: 'quintal', toKg: 100  },  // Paddy
-  1: { label: 'quintal', toKg: 100  },  // Groundnut
-  2: { label: 'MT',      toKg: 1000 },  // Sugarcane
-  3: { label: 'quintal', toKg: 100  },  // Banana
-  4: { label: 'quintal', toKg: 100  },  // Potato
-  5: { label: 'quintal', toKg: 100  },  // Onion
-  6: { label: 'kg',      toKg: 1    },  // Sesame
-  7: { label: 'MT',      toKg: 1000 },  // Cassava
+  0:  { label: 'quintal', toKg: 100  },  // Paddy
+  1:  { label: 'quintal', toKg: 100  },  // Groundnut
+  2:  { label: 'MT',      toKg: 1000 },  // Sugarcane
+  3:  { label: 'quintal', toKg: 100  },  // Banana
+  4:  { label: 'quintal', toKg: 100  },  // Potato
+  5:  { label: 'quintal', toKg: 100  },  // Onion
+  6:  { label: 'kg',      toKg: 1    },  // Sesame
+  7:  { label: 'MT',      toKg: 1000 },  // Cassava
+  8:  { label: 'quintal', toKg: 100  },  // Maize
+  9:  { label: 'quintal', toKg: 100  },  // Green Gram
+  10: { label: 'quintal', toKg: 100  },  // Horse Gram
+  11: { label: 'quintal', toKg: 100  },  // Black Gram
+  12: { label: 'kg',      toKg: 1    },  // Coconut
 };
 
 // varietyCode 0 = "any variety" (valid for all crops)
@@ -87,18 +97,58 @@ export const CROP_VARIETIES: Record<number, Array<{ code: number; name: string }
     { code: 2, name: 'M-4' },
     { code: 3, name: 'CO-1' },
   ],
+  8: [ // Maize
+    { code: 0, name: 'Any variety' },
+    { code: 1, name: 'CO-6' },
+    { code: 2, name: 'NK-6240' },
+    { code: 3, name: 'Pioneer P3522' },
+    { code: 4, name: 'Bio-9544' },
+  ],
+  9: [ // Green Gram
+    { code: 0, name: 'Any variety' },
+    { code: 1, name: 'VBN-2' },
+    { code: 2, name: 'VBN-3' },
+    { code: 3, name: 'CO-6' },
+    { code: 4, name: 'K-851' },
+  ],
+  10: [ // Horse Gram
+    { code: 0, name: 'Any variety' },
+    { code: 1, name: 'Paiyur-1' },
+    { code: 2, name: 'Paiyur-2' },
+    { code: 3, name: 'K-2' },
+    { code: 4, name: 'CO-1' },
+  ],
+  11: [ // Black Gram
+    { code: 0, name: 'Any variety' },
+    { code: 1, name: 'VBN-6' },
+    { code: 2, name: 'VBN-8' },
+    { code: 3, name: 'ADT-5' },
+    { code: 4, name: 'T-9' },
+  ],
+  12: [ // Coconut
+    { code: 0, name: 'Any variety' },
+    { code: 1, name: 'West Coast Tall' },
+    { code: 2, name: 'Chandra Sankara' },
+    { code: 3, name: 'VPM-3' },
+    { code: 4, name: 'Dwarf Orange' },
+  ],
 };
 
 // cropCode → cropColors key (lowercase, matches cropColors.js keys)
 export const CROP_CODE_COLOR_KEY: Record<number, string> = {
-  0: 'paddy',
-  1: 'groundnut',
-  2: 'sugarcane',
-  3: 'banana',
-  4: 'potato',
-  5: 'onion',
-  6: 'sesame',
-  7: 'cassava',
+  0:  'paddy',
+  1:  'groundnut',
+  2:  'sugarcane',
+  3:  'banana',
+  4:  'potato',
+  5:  'onion',
+  6:  'sesame',
+  7:  'cassava',
+  8:  'maize',
+  9:  'green_gram',
+  10: 'horse_gram',
+  11: 'black_gram',
+  12: 'coconut',
 };
 
 /** Display code: cropCode.padStart(3,'0') + varietyCode.padStart(3,'0')
@@ -277,9 +327,7 @@ export function useFoodTokenBatches(unionAddr?: string) {
       const ids = Array.from({ length: Number(nextId) }, (_, i) => i + 1);
       const results = await Promise.all(
         ids.map(id =>
-          foodToken!.getBatch(id).catch((e: any) => {
-            return null;
-          })
+          foodToken!.getBatch(id).catch(() => null)
         )
       );
 
@@ -288,9 +336,7 @@ export function useFoodTokenBatches(unionAddr?: string) {
         if (!raw) continue;
 
         const batchUnion = (raw.union_ ?? raw[0] ?? '').toLowerCase();
-        if (batchUnion !== unionAddr!.toLowerCase()) {
-          continue;
-        }
+        if (batchUnion !== unionAddr!.toLowerCase()) continue;
 
         const cropCode    = Number(raw.cropCode    ?? raw[1]);
         const varietyCode = Number(raw.varietyCode ?? raw[2]);

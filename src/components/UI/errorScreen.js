@@ -29,7 +29,13 @@ const ErrorScreen = ({ error, errorInfo }) => {
       <ClaimButton
         disabled={false}
         title="Reload"
-        handleClick={hardReload}
+        handleClick={() => {
+          // Don't return the promise to ClaimButton — an error screen must never
+          // trap the user in a 'Working…' spinner. Fire the SW-aware reload and
+          // guarantee a fallback hard reload if it doesn't navigate in time.
+          Promise.resolve(hardReload()).catch(() => {});
+          setTimeout(() => window.location.reload(), 3000);
+        }}
         className="mt-4"
       />
     </div>

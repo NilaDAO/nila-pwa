@@ -85,6 +85,21 @@ const erc20Err = new Interface([
   "error BadNonce()",
   "error BadRatio()",
   "error MaxLoanAmount()",
+  // FOOD TOKEN ERRORS (FoodTokenUpgradeable)
+  "error NotOracle()",
+  "error BatchNotActive()",
+  "error EntirePropertyClaimed()",
+  "error FieldAlreadyClaimed()",
+  "error TokenNotFound()",
+  "error AlreadyMember()",
+  "error NotMember()",
+  "error NotCertified()",
+  "error NotLandOwner()",
+  "error NoOracleRecord()",
+  "error AlreadyHarvested()",
+  "error FieldNumberTooLarge()",
+  "error InvalidSosDate()",
+  "error SosTooOld()",
   // ERC20Permit ERRORS (from NilaNINV2 — bubble up through drawLoanWithVoucher)
   "error ERC2612InvalidSigner(address signer, address owner)",
   "error ERC2612ExpiredSignature(uint256 deadline)",
@@ -278,6 +293,26 @@ export function useTx() {
                 msg = 'Nothing to claim yet — your unbond request may not have matured.';
               } else if (parsed.name === 'BadRatio') {
                 msg = 'Withdrawal would breach the junior/senior ratio limit. Wait for more deposits or for loans to mature.';
+              } else if (parsed.name === 'SosTooOld') {
+                msg = 'This cycle started more than 270 days ago, so a food token can no longer be minted for it. Long-cycle crops like sugarcane will be supported once the per-crop window is enabled on the contract.';
+              } else if (parsed.name === 'InvalidSosDate') {
+                msg = 'The start-of-season date for this cycle is missing or in the future. Confirm the SOS in the field record before minting.';
+              } else if (parsed.name === 'FieldAlreadyClaimed') {
+                msg = 'A food token has already been minted for this field this season. Pick a different field or wait until next season.';
+              } else if (parsed.name === 'EntirePropertyClaimed') {
+                msg = 'The whole property has already been claimed for this season — individual fields cannot be added on top.';
+              } else if (parsed.name === 'FieldNumberTooLarge') {
+                msg = 'Field number is out of range (must be 0–127). Re-select the field and try again.';
+              } else if (parsed.name === 'NotCertified') {
+                msg = 'You are not yet certified for this batch. The buyer/oracle needs to certify your batch membership before you can mint.';
+              } else if (parsed.name === 'NotLandOwner') {
+                msg = 'This land title is not held by your wallet. Mint from the wallet that owns the land NFT.';
+              } else if (parsed.name === 'NoOracleRecord') {
+                msg = 'The oracle has not yet published a record for this field. Wait for the next pipeline run and try again.';
+              } else if (parsed.name === 'BatchNotActive') {
+                msg = 'This batch is closed or its target quantity is already filled. Pick another open batch.';
+              } else if (parsed.name === 'AlreadyHarvested') {
+                msg = 'This token has already been marked harvested and cannot be re-minted.';
               } else {
                 msg = `Sorry, the transaction failed (${parsed.name}).`;
               }

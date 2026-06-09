@@ -8,6 +8,8 @@ import { ClipboardIcon as ClipboardSolid, ArrowPathIcon } from '@heroicons/react
 import { ClaimButton, EnableNotifications,DisableNotifications } from '../../components/UI/buttons';
 import LPSignup from '../settings/LPSignup';
 import { useLPProfile } from '../../hooks/useLPProfile';
+import { useDonationsEnabled, setDonationsEnabled } from '../../hooks/useDonationPrograms.ts';
+import { useQueryClient } from '@tanstack/react-query';
 
 const getInitialNotificationPermission = () => {
     if (typeof window === 'undefined') return 'default';
@@ -22,9 +24,14 @@ function Settings({ handleOpenForm, LAND }) {
     const landReady = LAND?.current !== null && typeof LAND?.current?.hasLand === 'boolean';
     const isLeader = Boolean(db?.union?.leader);
     const { profile: lpProfile, refetch: refetchLP } = useLPProfile();
+    const qc = useQueryClient();
+    const { data: donationsEnabledQuery = false } = useDonationsEnabled(db?.union);
+    const [donationsOverride, setDonationsOverride] = useState(null);
+    const donationsEnabled = donationsOverride ?? donationsEnabledQuery;
     const [isCollapsed, setIsCollapsed] = useState();
     const [copyAddress, setCopyAddress] = useState(false);
     const [notificationPermission, setNotificationPermission] = useState(() => getInitialNotificationPermission());
+    const [theme, setTheme] = useState(() => (typeof localStorage !== 'undefined' && localStorage.getItem('theme')) || 'system'); // 'light' | 'dark' | 'system'
     const { setIx } = useNavContext();
     const { setTokenview, setCardView } = useViewModeContext();
     const hardReload = useHardReload();
@@ -54,6 +61,24 @@ function Settings({ handleOpenForm, LAND }) {
         }
     };
 
+    // Theme cycle: light → dark → system. Mirrors the bootstrap script in public/index.html —
+    // 'system' clears the override and follows prefers-color-scheme; light/dark force the class.
+    const applyTheme = (next) => {
+        setTheme(next);
+        if (next === 'system') {
+            localStorage.removeItem('theme');
+            const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.documentElement.classList.toggle('dark', sysDark);
+        } else {
+            localStorage.setItem('theme', next);
+            document.documentElement.classList.toggle('dark', next === 'dark');
+        }
+    };
+    const cycleTheme = () => {
+        const order = ['light', 'dark', 'system'];
+        applyTheme(order[(order.indexOf(theme) + 1) % order.length]);
+    };
+
     const handleCopy = (wallet) => {
         navigator.clipboard.writeText(wallet === 0 ? db['address'] : db['union'].address);
         setCopyAddress(true);
@@ -75,7 +100,7 @@ function Settings({ handleOpenForm, LAND }) {
     const settings = [
         { t: 'Farm name',      data: db['farmname'] || 'mint a land title' },
         { t: 'Currency',       data: ['INR'] },
-        { t: 'Theme',          data: ['Light'] },
+        { t: 'Theme',          data: theme },
         { t: 'Phone number',   data: db['phone'] },
         { t: 'Chain id',       data: db['chain'] },
         { t: 'Chain name',     data: getChainName() },
@@ -111,14 +136,30 @@ function Settings({ handleOpenForm, LAND }) {
 
     const handleSkipWaiting = () => { hardReload(); };
 
+    // Leader-only, union-wide switch: turning this on shows the donate card to
+    // every member of the union. Stored server-side so members pick it up.
+    const toggleDonations = async () => {
+        if (!db?.union?.address) return;
+        const next = !donationsEnabled;
+        setDonationsOverride(next);
+        await setDonationsEnabled(db.union.address, next);
+        qc.invalidateQueries({ queryKey: ['donationsEnabled'] });
+        qc.invalidateQueries({ queryKey: ['donationPrograms'] });
+    };
+
     const handleLogout = () => {
         try {
             localStorage.removeItem('fields');
             localStorage.removeItem('positions');
             document.cookie = "offsite=; Max-Age=0; path=/;";
         } catch (_) {}
+        // Reset Account is a destructive wipe + hard reload. Don't route through
+        // useHardReload — it's the gentle SW-update path and early-returns without
+        // reloading when a worker is waiting. Fire the delete (it stays `blocked`
+        // while APPDB is open) and reload unconditionally; the reload closes the
+        // open connection, which unblocks deleteDB.
         deleteAllItems();
-        hardReload();
+        window.location.reload();
     };
 
     const SectionLabel = ({ label }) => (
@@ -184,11 +225,11 @@ function Settings({ handleOpenForm, LAND }) {
                 onTouchEnd={(e) => e.stopPropagation()}
             >
                 {/* YOUR CREDIT UNION */}
-                <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl shadow-bottom my-2 py-6 px-4 gap-3">
+                <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl shadow-bottom py-6 px-4 gap-3">
                     <SectionLabel label="Your Credit Union" />
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col divide-y divide-gray-100 dark:divide-slate-700">
                         {union.map((s, i) => (
-                            <div key={i} className="flex justify-between items-center">
+                            <div key={i} className="flex justify-between items-center py-2">
                                 <span className="text-xs text-gray-500 dark:text-slate-400">{s.t}</span>
                                 <div className="flex items-center gap-1.5">
                                     <span className="text-xs font-bold dark:text-white">{s.data}</span>
@@ -203,35 +244,71 @@ function Settings({ handleOpenForm, LAND }) {
                             </div>
                         ))}
                     </div>
-                    <ClaimButton disabled={false} handleClick={handleChangeUnion} title={'Change Union'} />
+                    <ClaimButton compact disabled={false} handleClick={handleChangeUnion} title={'Change Union'} />
                 </div>
+
+                {/* UNION LEADER (leaders only) */}
+                {isLeader && (
+                    <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl shadow-bottom my-2 py-6 px-4 gap-3">
+                        <SectionLabel label="Union member settings" />
+                        <div className="flex justify-between items-center gap-3">
+                            <span className="text-xs text-gray-500 dark:text-slate-400">Show members a card to collect donations through the app.</span>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={donationsEnabled}
+                                onClick={toggleDonations}
+                                className={`relative shrink-0 w-10 h-6 rounded-full transition-colors ${donationsEnabled ? 'bg-green_light dark:bg-green_dark_light' : 'bg-gray-300 dark:bg-slate-600'}`}
+                            >
+                                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${donationsEnabled ? 'translate-x-4' : ''}`} />
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* LIQUIDITY (leaders + non-landholders) */}
                 {(!hasLand || isLeader) && (
                     <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl shadow-bottom my-2 py-6 px-4 gap-3">
                         <SectionLabel label="Liquidity" />
-                        <LPSignup lpProfile={lpProfile} onRegistered={refetchLP} onBrowse={() => handleOpenForm('lp-offers')} />
+                        <LPSignup
+                            lpProfile={lpProfile}
+                            onRegistered={refetchLP}
+                            notificationsEnabled={notificationPermission === 'granted'}
+                            onEnableNotifications={handleNotificationPermissionChange}
+                            address={db?.address}
+                        />
                     </div>
                 )}
 
                 {/* NOTIFICATIONS */}
                 <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl shadow-bottom my-2 py-6 px-4 gap-3">
                     <SectionLabel label="Notifications" />
-                    {notificationPermission !== 'granted'
-                        ? <EnableNotifications autoResolve={false} onAdd={handleNotificationPermissionChange} address={db?.address} />
-                        : <DisableNotifications onAdd={handleNotificationPermissionChange} address={db?.address} />
-                    }
+                    <div className="rounded-xl bg-gray-50 dark:bg-slate-700/40 border border-gray-200 dark:border-slate-600 px-3 py-2.5">
+                        {notificationPermission !== 'granted'
+                            ? <EnableNotifications compact autoResolve={false} onAdd={handleNotificationPermissionChange} address={db?.address} />
+                            : <DisableNotifications compact onAdd={handleNotificationPermissionChange} address={db?.address} />
+                        }
+                    </div>
                 </div>
 
                 {/* SETTINGS */}
                 <div className="flex flex-col bg-white dark:bg-gray-700 rounded-3xl shadow-bottom my-2 py-6 px-4 gap-3">
                     <SectionLabel label="Settings" />
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col divide-y divide-gray-100 dark:divide-slate-700">
                         {settings.map((s, i) => (
-                            <div key={i} className="flex justify-between items-center">
+                            <div key={i} className="flex justify-between items-center py-2">
                                 <span className="text-xs text-gray-500 dark:text-slate-400">{s.t}</span>
                                 <div className="flex items-center gap-1.5">
-                                    <span className="text-xs font-bold dark:text-white">{settings[i].data}</span>
+                                    {s.t === 'Theme' ? (
+                                        <button
+                                            onClick={cycleTheme}
+                                            className="text-xs font-semibold text-gray-700 dark:text-white capitalize px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-slate-600 active:scale-95"
+                                        >
+                                            {theme}
+                                        </button>
+                                    ) : (
+                                        <span className="text-xs font-bold dark:text-white">{settings[i].data}</span>
+                                    )}
                                     {i === 6 && (
                                         <>
                                             {copyAddress
@@ -247,7 +324,7 @@ function Settings({ handleOpenForm, LAND }) {
                 </div>
 
                 <div className="py-4">
-                    <ClaimButton disabled={false} handleClick={handleLogout} title={'Reset Account'} />
+                    <ClaimButton compact disabled={false} handleClick={handleLogout} title={'Reset Account'} />
                 </div>
             </div>
         </motion.div>

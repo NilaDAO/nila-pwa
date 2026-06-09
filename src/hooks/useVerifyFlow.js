@@ -44,7 +44,7 @@ const useVerifyFlow = (LAND = null) => {
   const { setIx }                            = useNavContext();
   const reloadDB                             = useReloadDB();
 
-  const { positions,approvedFields, remote, property } = fieldReg
+  const { positions, approvedFields, remote, property } = fieldReg
 
   const animateToMapView = () => {
     // If we're already in mapview, toggling through transactionview guarantees
@@ -90,7 +90,7 @@ const useVerifyFlow = (LAND = null) => {
     }
 
     // Polygon wrapped in one ring: [[[lat,lng], ...]]
-    if (Array.isArray(rawOutline[0]) && rawOutline[0].every(isPointTuple)) {
+    if (rawOutline.length === 1 && Array.isArray(rawOutline[0]) && rawOutline[0].every(isPointTuple)) {
       return {
         outline: toLatLngObjects(rawOutline[0]),
         mp: false,
@@ -268,7 +268,7 @@ const useVerifyFlow = (LAND = null) => {
                 flow: 10,
                 property: ({
                   ...prev.property,
-                  shape: [mp ? (normalizedOutline[0] || []) : normalizedOutline],
+                  shape: mp ? normalizedOutline : [normalizedOutline],
                   address: db.address,
                   metadata: normalizedMetadata,
                   outline: normalizedOutline,

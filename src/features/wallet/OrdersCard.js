@@ -6,7 +6,10 @@
  *   2. Create new batch form (expandable)
  */
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
+import { driver } from 'driver.js';
+import 'driver.js/dist/driver.css';
 import {
   useFoodTokenBatches,
   CROP_CODE_NAMES,
@@ -14,14 +17,14 @@ import {
   CROP_UNIT,
   batchDisplayCode,
 } from '../../hooks/useFoodTokenBatches.ts';
-import { useUnionPrices, useSetUnionPrice } from '../../hooks/useUnionPrices.ts';
+import { useUnionPrices } from '../../hooks/useUnionPrices.ts';
 import { useUnionCertCounts } from '../../hooks/useUnionCertCounts.ts';
 import { useContactBook } from '../../hooks/useContactBook';
 import { useContract, useWallet } from '../../hooks/useWallet.ts';
 import { useTx } from '../../hooks/useTx.ts';
 import { useDataContext } from '../../utils/NavigationContext';
 import { IndividualExchangeButton } from '../../components/UI/buttons.js';
-import { cropColor } from '../../utils/cropColors.js';
+import { cropColor, cropIconUrl } from '../../utils/cropColors.js';
 import foodTokenArtifact from '../../components/ABI/FoodTokens.json';
 import Spinner from '../../components/UI/spinner';
 
@@ -74,10 +77,12 @@ function dateDisplay(unix) {
 }
 
 // ── BatchRow ──────────────────────────────────────────────────────────────────
-function BatchRow({ batch, isOpen, onToggle, localPriceData, onPriceChange, onChainPriceUpdate, onArchive }) {
+function BatchRow({ batch, isOpen, onToggle, localPriceData, onChainPriceUpdate, onArchive }) {
+  const { resolveName } = useContactBook({ enabled: false });
   const [editing, setEditing]   = useState(false);
   const [draft, setDraft]       = useState('');
   const [saving, setSaving]     = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [activeCert, setActiveCert] = useState(null);
   const [dx, setDx]             = useState(0);
   const [confirming, setConfirming] = useState(false);
@@ -114,7 +119,7 @@ function BatchRow({ batch, isOpen, onToggle, localPriceData, onPriceChange, onCh
   const removePct = Math.min(1, Math.max(0, dx / SWIPE_THRESHOLD));
 
   const batchUnit         = CROP_UNIT[batch.cropCode] ?? { label: 'kg', toKg: 1 };
-  const localPricePerKg   = localPriceData?.price_inr_per_kg ?? null;
+  const localPricePerKg   = localPriceData?.price_usdt_per_kg ?? null;
   const localPricePerUnit = localPricePerKg != null ? localPricePerKg * batchUnit.toKg : null;
 
   const filled = batch.targetQtyKg > 0n
@@ -128,10 +133,14 @@ function BatchRow({ batch, isOpen, onToggle, localPriceData, onPriceChange, onCh
       : null;
 
   const dot = cropColor(batch.cropColorKey);
+  const iconUrl = cropIconUrl(batch.cropColorKey);
 
   const startEdit = (e) => {
     e.stopPropagation();
-    setDraft(localPricePerUnit != null ? String(localPricePerUnit.toFixed(0)) : '');
+    const onChainPerUnit = batch.pricePerKgUsdt > 0n
+      ? Number(batch.pricePerKgUsdt) / 1e6 * batchUnit.toKg
+      : null;
+    setDraft(onChainPerUnit != null ? String(onChainPerUnit.toFixed(0)) : localPricePerUnit != null ? String(localPricePerUnit.toFixed(0)) : '');
     setEditing(true);
   };
 
@@ -140,12 +149,14 @@ function BatchRow({ batch, isOpen, onToggle, localPriceData, onPriceChange, onCh
     const v = parseFloat(draft);
     if (isNaN(v) || v <= 0) { setEditing(false); return; }
     setSaving(true);
+    setSaveError(null);
     try {
-      onPriceChange(batch.cropCode, v / batchUnit.toKg);
       await onChainPriceUpdate?.(batch.id, v / batchUnit.toKg);
+      setEditing(false);
+    } catch (err) {
+      setSaveError(err?.reason ?? err?.message ?? 'Transaction failed');
     } finally {
       setSaving(false);
-      setEditing(false);
     }
   };
 
@@ -189,32 +200,55 @@ function BatchRow({ batch, isOpen, onToggle, localPriceData, onPriceChange, onCh
         <div className="py-3">
           {/* Crop + price row */}
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-2 cursor-pointer" onClick={onToggle}>
-              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: dot }} />
-              <span className="font-semibold text-sm dark:text-white">{batch.cropName}</span>
-              <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono">{batch.displayCode}</span>
+            <span className="flex items-center gap-2 cursor-pointer flex-shrink-0" onClick={onToggle}>
+              {iconUrl ? (
+                <span
+                  className="w-5 h-5 flex-shrink-0"
+                  style={{
+                    background: dot,
+                    WebkitMaskImage: `url(${iconUrl})`,
+                    maskImage: `url(${iconUrl})`,
+                    WebkitMaskRepeat: 'no-repeat',
+                    maskRepeat: 'no-repeat',
+                    WebkitMaskPosition: 'center',
+                    maskPosition: 'center',
+                    WebkitMaskSize: 'contain',
+                    maskSize: 'contain',
+                  }}
+                />
+              ) : (
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: dot }} />
+              )}
+              <span className="font-semibold text-sm dark:text-white whitespace-nowrap">{batch.cropName}</span>
+              <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono whitespace-nowrap">{batch.displayCode}</span>
             </span>
             {batch.hasOrder && (
-              <span className="text-[10px] bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full font-medium">Order</span>
+              <span className="text-[10px] bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap flex-shrink-0">Order</span>
             )}
             <span className="flex-1" />
             {editing ? (
-              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                <input
-                  type="number"
-                  className="w-20 text-xs border border-gray-300 dark:border-slate-600 rounded px-1 py-0.5 dark:bg-slate-800 dark:text-white"
-                  value={draft}
-                  onChange={e => setDraft(e.target.value)}
-                  autoFocus
-                  onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false); }}
-                />
-                <span className="text-[10px] text-gray-400 dark:text-slate-500">{batchUnit.label}</span>
-                <button onClick={handleSave} disabled={saving} className="text-xs text-blue-500 dark:text-blue-400 font-bold ml-1">{saving ? '…' : 'Save'}</button>
+              <div className="flex flex-col items-end gap-0.5" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    className="w-20 text-xs border border-gray-300 dark:border-slate-600 rounded px-1 py-0.5 dark:bg-slate-800 dark:text-white"
+                    value={draft}
+                    onChange={e => { setDraft(e.target.value); setSaveError(null); }}
+                    autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false); }}
+                  />
+                  <span className="text-[10px] text-gray-400 dark:text-slate-500">{batchUnit.label}</span>
+                  <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 text-xs text-blue-500 dark:text-blue-400 font-bold ml-1">
+                    {saving ? <Spinner size="small" /> : 'Save'}
+                  </button>
+                  {!saving && <button onClick={() => { setEditing(false); setSaveError(null); }} className="text-[10px] text-gray-400 dark:text-slate-500 ml-0.5">✕</button>}
+                </div>
+                {saveError && <span className="text-[10px] text-red-500 dark:text-red-400 max-w-[160px] text-right">{saveError}</span>}
               </div>
             ) : (
               <>
-                <span className="text-xs text-gray-500 dark:text-slate-400">{priceDisplay ?? '—'}</span>
-                <button onClick={startEdit} className="text-[10px] text-blue-500 dark:text-blue-400 font-medium ml-1.5">Update</button>
+                <span className="text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">{priceDisplay ?? '—'}</span>
+                <button onClick={startEdit} className="text-[10px] text-blue-500 dark:text-blue-400 font-medium ml-1.5 flex-shrink-0">Update</button>
               </>
             )}
             <button
@@ -268,6 +302,22 @@ function BatchRow({ batch, isOpen, onToggle, localPriceData, onPriceChange, onCh
                 />
               </div>
             </div>
+            {/* Variety + drop-off */}
+            <div className="flex flex-col gap-0.5 text-xs mb-2">
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-slate-400">Variety</span>
+                <span className="font-bold dark:text-white">
+                  {batch.varietyCode === 0
+                    ? 'Any variety'
+                    : (CROP_VARIETIES[batch.cropCode]?.find(v => v.code === batch.varietyCode + 1)?.name ?? `Var ${batch.varietyCode}`)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-slate-400">Drop-off</span>
+                <span className="font-bold dark:text-white">{resolveName(batch.union)}</span>
+              </div>
+            </div>
+
             {/* Delivery date */}
             {batch.deliveryDate > 0 && (
               <span
@@ -448,12 +498,16 @@ function ContactSelect({ value, onChange, unionAddr }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const GROWER_SELF = '0x0000000000000000000000000000000000000000';
+  const growerOption = { address: GROWER_SELF, name: 'Grower handles delivery', system: true };
+
   const options = useMemo(() => {
-    const list = contactList.filter(c => c.address && c.address !== '0x0000000000000000000000000000000000000000');
+    const list = contactList.filter(c => c.address && c.address !== GROWER_SELF);
     // ensure union is always first
     const unionEntry = list.find(c => c.address?.toLowerCase() === unionAddr?.toLowerCase());
     const rest = list.filter(c => c.address?.toLowerCase() !== unionAddr?.toLowerCase());
-    return unionEntry ? [unionEntry, ...rest] : list;
+    const ordered = unionEntry ? [unionEntry, ...rest] : list;
+    return [...ordered, growerOption];
   }, [contactList, unionAddr]);
 
   const selectedName = options.find(c => c.address?.toLowerCase() === value?.toLowerCase())?.name
@@ -480,9 +534,11 @@ function ContactSelect({ value, onChange, unionAddr }) {
               onMouseDown={() => { onChange(c.address); setOpen(false); }}
             >
               <span className="font-medium">{c.name}</span>
-              <span className="ml-2 text-[10px] text-gray-400 dark:text-slate-500 font-mono">
-                {c.address.slice(0, 6)}…{c.address.slice(-4)}
-              </span>
+              {c.address !== GROWER_SELF && (
+                <span className="ml-2 text-[10px] text-gray-400 dark:text-slate-500 font-mono">
+                  {c.address.slice(0, 6)}…{c.address.slice(-4)}
+                </span>
+              )}
             </li>
           ))}
         </ul>
@@ -632,8 +688,10 @@ function CreateForm({ unionAddr, onCreated, onClose }) {
   const preview      = batchDisplayCode(cropCode, varietyCode);
   const cropName     = CROP_CODE_NAMES[cropCode] ?? `Crop ${cropCode}`;
   const varietyName  = (CROP_VARIETIES[cropCode] ?? []).find(v => v.code === varietyCode)?.name ?? 'Any variety';
-  const dropOffName  = contactList.find(c => c.address?.toLowerCase() === dropOff?.toLowerCase())?.name
-                       ?? (dropOff ? `${dropOff.slice(0,6)}…${dropOff.slice(-4)}` : 'Union');
+  const dropOffName  = dropOff === '0x0000000000000000000000000000000000000000'
+                       ? 'Grower handles delivery'
+                       : contactList.find(c => c.address?.toLowerCase() === dropOff?.toLowerCase())?.name
+                         ?? (dropOff ? `${dropOff.slice(0,6)}…${dropOff.slice(-4)}` : 'Union');
   const unionName    = db?.union?.name ?? 'the Union';
   const memberAddrs  = useMemo(
     () => contactList.filter(c => !c.system && c.address).map(c => c.address),
@@ -763,7 +821,7 @@ function CreateForm({ unionAddr, onCreated, onClose }) {
 
   // ── Form screen ──────────────────────────────────────────────────────────────
   return (
-    <div className="pt-4 space-y-3">
+    <div data-tour="orders-form" className="pt-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wide">
           New batch
@@ -775,7 +833,7 @@ function CreateForm({ unionAddr, onCreated, onClose }) {
         </button>
       </div>
 
-      <div>
+      <div data-tour="orders-form-crop">
         <label className="text-xs text-gray-500 dark:text-slate-400 mb-0.5 block">Crop</label>
         <CropSelect value={cropCode} onChange={handleCropChange} />
       </div>
@@ -789,15 +847,15 @@ function CreateForm({ unionAddr, onCreated, onClose }) {
         Batch code: <span className="text-gray-600 dark:text-slate-300">{preview}</span>
       </p>
 
-      <div>
+      <div data-tour="orders-form-dropoff">
         <label className="text-xs text-gray-500 dark:text-slate-400 mb-0.5 block">Drop-off point</label>
         <ContactSelect value={dropOff} onChange={setDropOff} unionAddr={unionAddr} />
       </div>
 
       {!buyer.trim() && !buyerInfoDismissed && (
-        <div className="rounded-xl border border-amber-200 dark:border-amber-700 bg-green/80 dark:bg-amber-900/20 px-3 py-2.5 text-xs text-gray-800 dark:text-amber-300 space-y-1.5">
+        <div data-tour="orders-form-buyerinfo" className="rounded-xl border border-amber-200 dark:border-amber-700 bg-green/80 dark:bg-amber-900/20 px-3 py-2.5 text-xs text-gray-800 dark:text-amber-300 space-y-1.5">
           <ul className="space-y-1 list-none">
-            <li>Only fill in the target and delivery if <span className="font-semibold">{unionName}</span> will be responsible for the entire batch, including collection, quality control and any post-harvest activities. <b>Otherwise, leave black.</b></li>
+            <li>Only fill in the target and delivery if <span className="font-semibold">{unionName}</span> will be responsible for the entire batch, including collection, quality control and any post-harvest activities. <b>Otherwise, leave blank.</b></li>
           </ul>
           <button
             type="button"
@@ -814,7 +872,7 @@ function CreateForm({ unionAddr, onCreated, onClose }) {
           <label className="text-xs text-gray-500 dark:text-slate-400 mb-0.5 block">Target ({unit.label})</label>
           <input
             type="number" placeholder="optional"
-            className="w-full text-sm border border-gray-200 dark:border-slate-600 rounded-lg px-2 py-1.5 dark:bg-slate-800 dark:text-white"
+            className="w-full text-sm border border-gray-200 dark:border-slate-600 rounded-lg px-2 py-1.5 dark:bg-slate-800 dark:text-white dark:[color-scheme:dark]"
             value={targetKg} onChange={e => setTargetKg(e.target.value)}
           />
         </div>
@@ -822,13 +880,13 @@ function CreateForm({ unionAddr, onCreated, onClose }) {
           <label className="text-xs text-gray-500 dark:text-slate-400 mb-0.5 block">Delivery date</label>
           <input
             type="date"
-            className="w-full text-sm border border-gray-200 dark:border-slate-600 rounded-lg px-2 py-1.5 dark:bg-slate-800 dark:text-white"
+            className="w-full text-sm border border-gray-200 dark:border-slate-600 rounded-lg px-2 py-1.5 dark:bg-slate-800 dark:text-white dark:[color-scheme:dark]"
             value={delivery} onChange={e => setDelivery(e.target.value)}
           />
         </div>
       </div>
 
-      <div>
+      <div data-tour="orders-form-price">
         <label className="text-xs text-gray-500 dark:text-slate-400 mb-0.5 block">
           Actual local price in INR / {unit.label}*
         </label>
@@ -838,13 +896,16 @@ function CreateForm({ unionAddr, onCreated, onClose }) {
           value={priceUsdt} onChange={e => setPriceUsdt(e.target.value)}
         />
         <label className="text-[10px] text-gray-500 dark:text-slate-400 m-3 block">
-          * Sets the reference price members see for this crop. Update it as local rates change until a buyer confirms a final price. 
+          * Sets the reference price members see for this crop. Update it as local rates change until a buyer confirms a final price.
         </label>
       </div>
 
-      <CertRequirementsSelect value={requiredCerts} onChange={setRequiredCerts} certCounts={certCounts} memberCount={memberCount} />
+      <div data-tour="orders-form-certs">
+        <CertRequirementsSelect value={requiredCerts} onChange={setRequiredCerts} certCounts={certCounts} memberCount={memberCount} />
+      </div>
 
       <button
+        data-tour="orders-form-submit"
         onClick={() => { setDepositNin(collateralPrefill); setReview(true); }}
         disabled={!foodToken || !priceUsdt}
         className="w-full py-2 rounded-xl bg-green dark:bg-amber-600 text-black dark:text-white text-sm font-bold disabled:opacity-40"
@@ -876,8 +937,133 @@ export default function OrdersCard({ unionAddr }) {
 
   const { data: batchSummary, isLoading, refetch } = useFoodTokenBatches(unionAddr);
   const { data: prices = [] } = useUnionPrices(unionAddr);
-  const { mutate: setPrice }  = useSetUnionPrice(unionAddr);
   const active                = batchSummary?.active ?? [];
+
+  // Always keep one batch expanded: default to the first, and re-home the
+  // selection if the currently-open batch drops out of the list.
+  useEffect(() => {
+    if (active.length === 0) return;
+    if (!active.some(b => b.id === expandedId)) setExpandedId(active[0].id);
+  }, [active, expandedId]);
+
+  // ── Tour (mirrors UnionReserve's "Cash & Liquidity" tutorial) ───────────────
+  // First run shows a centered "Take a tour" pill; after completion shrinks to
+  // a "?" on the right. State persists per browser via localStorage.
+  const TOUR_SEEN_KEY = 'unionOrders_tourSeen';
+  const [tourSeen, setTourSeen] = useState(() => {
+    try { return localStorage.getItem(TOUR_SEEN_KEY) === '1'; } catch { return false; }
+  });
+
+  const startTour = useCallback(() => {
+    // Capture the form's pre-tour state so we can restore it when the tour
+    // closes (if the user wasn't already in the form, collapse it back).
+    const wasFormOpen = showCreate;
+
+    const allSteps = [
+      {
+        element: '[data-tour="orders-card"]',
+        popover: {
+          title: 'Buy orders & pricing',
+          description: 'This is the union\'s pricing desk. Each batch defines a (un)limited batch of food assets that a members can collect by growing the crop.  ',
+        },
+      },
+      {
+        element: '[data-tour="orders-list"]',
+        popover: {
+          title: 'Active batches',
+          description: 'Each crop batch you define provide discounts or presale opportunities for your members. Batches can be open and closed, depending on the requirements you set.',
+        },
+        // Expand the first batch on entry so the tour highlights the full
+        // detail panel rather than just the collapsed row. flushSync forces
+        // React to commit synchronously so driver.js measures the open box.
+        onHighlightStarted: () => {
+          const firstId = active[0]?.id;
+          if (firstId != null) {
+            flushSync(() => setExpandedId(firstId));
+          }
+        },
+        onDeselected: () => {
+          setExpandedId(null);
+        },
+      },
+      {
+        element: '[data-tour="orders-form"]',
+        popover: {
+          title: 'Open a new batch',
+          description: 'Create new orders for crops when opportunities are available; ranging from input discounts to full post-harvest orders with agreed buyers. Together with Nila you monitor progress.',
+        },
+        // Open the form here, not at tour start. flushSync commits before
+        // driver.js measures the highlight target so the just-mounted form
+        // node is in the DOM when the popover positions itself.
+        onHighlightStarted: () => {
+          if (!showCreate) {
+            flushSync(() => setShowCreate(true));
+          }
+        },
+      },
+      {
+        element: '[data-tour="orders-form-crop"]',
+        popover: {
+          title: 'Crop & variety',
+          description: 'Pick the crop (e.g. coconut, paddy) and an optional variety.',
+        },
+      },
+      {
+        element: '[data-tour="orders-form-dropoff"]',
+        popover: {
+          title: 'Drop-off point',
+          description: 'Where members deliver the harvest. Defaults self-delivery, but you can pick any contact (e.g. a buyer\'s warehouse or a processing partner). The point will be recorded so payment is dependent on members delivering to the right place.',
+        },
+      },
+      {
+        element: '[data-tour="orders-form-buyerinfo"]',
+        popover: {
+          title: 'Target & delivery',
+          description: 'Only fill in a target quantity and delivery date when the union takes responsibility for the whole batch — collection, quality control, and post-harvest handling. Otherwise leave them blank; the batch stays open-ended and members join as they\'re ready.',
+        },
+      },
+      {
+        element: '[data-tour="orders-form-price"]',
+        popover: {
+          title: 'Local price',
+          description: 'The reference price members see for this crop, in INR per unit. Update it as local rates change until a buyer confirms a final price — at that point the on-chain price is locked.',
+        },
+      },
+      {
+        element: '[data-tour="orders-form-certs"]',
+        popover: {
+          title: 'Required certifications',
+          description: 'Optional gates that members must meet to join the batch (Fair Pay, Farm Identity, Soil & Water Care, Chemical Free, Clean Harvest). The counters show how many of your members already qualify — pick the ones the buyer requires.',
+        },
+      },
+      {
+        element: '[data-tour="orders-form-submit"]',
+        popover: {
+          title: 'Review & post',
+          description: 'When the details are right, review and deposit collateral. Members can then join the batch and start producing for it.',
+        },
+      },
+    ];
+    // Don't filter by DOM presence — the form sub-steps (orders-form-*) live
+    // inside <CreateForm>, which only mounts after step 3 opens the form via
+    // onHighlightStarted. Step 3's flushSync ensures the form is in the DOM
+    // before driver.js measures the next step's target.
+    driver({
+      showProgress: true,
+      nextBtnText: 'Next',
+      prevBtnText: 'Back',
+      doneBtnText: 'Got it',
+      steps: allSteps,
+      onDestroyed: () => {
+        try { localStorage.setItem(TOUR_SEEN_KEY, '1'); } catch {}
+        setTourSeen(true);
+        // Restore form to its pre-tour state. If the user already had the
+        // form open before clicking "?", leave it alone (don't blow away
+        // their input).
+        if (!wasFormOpen) setShowCreate(false);
+      },
+    }).drive();
+  }, [active, showCreate]);
 
   const handleArchive = async (batchId) => {
     if (!foodToken) return;
@@ -891,15 +1077,11 @@ export default function OrdersCard({ unionAddr }) {
   };
 
   const handleChainPriceUpdate = async (batchId, pricePerKg) => {
-    if (!foodToken) return;
+    if (!foodToken) throw new Error('Wallet not connected');
     const priceWei = BigInt(Math.round(pricePerKg * 1e6));
-    try {
-      const tx = await foodToken.setBatchPrice(batchId, priceWei);
-      await tx.wait();
-      refetch();
-    } catch (e) {
-      console.error('[setBatchPrice]', e?.reason ?? e?.message);
-    }
+    const tx = await foodToken.setBatchPrice(batchId, priceWei);
+    await tx.wait();
+    refetch();
   };
 
   const localPriceMap = useMemo(() => {
@@ -909,55 +1091,78 @@ export default function OrdersCard({ unionAddr }) {
   }, [prices]);
 
   return (
-    <div className="flex flex-col w-full mb-[220px] my-6 bg-white dark:bg-gray-800 rounded-3xl shadow-bottom overflow-hidden">
-      <div className="px-6 pt-6 pb-2">
-        <p className="text-xs text-gray-400 dark:text-slate-400 mt-0.5">
-          Manage buy orders, delivery dates and set local prices.
-        </p>
+    <div className="flex flex-col w-full mb-[220px] my-6 gap-4">
+
+      {/* ── Tour trigger: pill on first run, "?" on the right after completion ── */}
+      <div className={`flex ${tourSeen ? 'justify-end pr-2' : 'justify-center'}`}>
+        {tourSeen ? (
+          <button
+            onClick={startTour}
+            aria-label="Take the tour"
+            className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold text-gray-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-white active:scale-95"
+          >
+            ?
+          </button>
+        ) : (
+          <button
+            onClick={startTour}
+            className="text-xs px-4 py-1.5 rounded-full font-semibold bg-white dark:bg-slate-700 text-gray-700 dark:text-white border border-gray-200 dark:border-slate-600 shadow-bottom-light active:scale-95"
+          >
+            ✨ Take a tour
+          </button>
+        )}
       </div>
 
-      <div className="px-6">
-        {!showCreate && (
-          isLoading ? (
-            <div className="flex justify-center py-8"><Spinner size="small" /></div>
-          ) : active.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-slate-500 py-6 text-center">
-              No active batches. Create one below.
-            </p>
-          ) : (
-            <div>
-              {active.map(batch => (
-                <BatchRow
-                  key={batch.id}
-                  batch={batch}
-                  isOpen={expandedId === batch.id}
-                  onToggle={() => setExpandedId(prev => prev === batch.id ? null : batch.id)}
-                  localPriceData={localPriceMap[batch.cropCode] ?? null}
-                  onPriceChange={(code, price) => setPrice({ crop_code: code, price_inr_per_kg: price })}
-                  onChainPriceUpdate={handleChainPriceUpdate}
-                  onArchive={handleArchive}
-                />
-              ))}
-            </div>
-          )
-        )}
+      <div data-tour="orders-card" className="flex flex-col w-full bg-white dark:bg-gray-800 rounded-3xl shadow-bottom overflow-hidden">
+        <div className="px-6 pt-6 pb-2">
+          <p className="text-xs text-gray-400 dark:text-slate-400 mt-0.5">
+            Manage buy orders, delivery dates and set local prices.
+          </p>
+        </div>
 
-        <div className="py-4">
+        <div className="px-6">
           {!showCreate && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="w-full py-2 rounded-xl border border-dashed border-gray-300 dark:border-slate-600 text-sm text-gray-500 dark:text-slate-400 font-medium"
-            >
-              + New batch
-            </button>
+            isLoading ? (
+              <div className="flex justify-center py-8"><Spinner size="small" /></div>
+            ) : active.length === 0 ? (
+              <p data-tour="orders-list" className="text-sm text-gray-400 dark:text-slate-500 py-6 text-center">
+                No active batches. Create one below.
+              </p>
+            ) : (
+              <div data-tour="orders-list">
+                {active.map(batch => (
+                  <BatchRow
+                    key={batch.id}
+                    batch={batch}
+                    isOpen={expandedId === batch.id}
+                    onToggle={() => setExpandedId(batch.id)}
+                    localPriceData={localPriceMap[batch.cropCode] ?? null}
+                    onChainPriceUpdate={handleChainPriceUpdate}
+                    onArchive={handleArchive}
+                  />
+                ))}
+              </div>
+            )
           )}
-          {showCreate && (
-            <CreateForm
-              unionAddr={unionAddr}
-              onCreated={() => { setShowCreate(false); refetch(); }}
-              onClose={() => setShowCreate(false)}
-            />
-          )}
+
+          <div className="py-4">
+            {!showCreate && (
+              <button
+                data-tour="orders-new"
+                onClick={() => setShowCreate(true)}
+                className="w-full py-2 rounded-xl border border-dashed border-gray-300 dark:border-slate-600 text-sm text-gray-500 dark:text-slate-400 font-medium"
+              >
+                + New batch
+              </button>
+            )}
+            {showCreate && (
+              <CreateForm
+                unionAddr={unionAddr}
+                onCreated={() => { setShowCreate(false); refetch(); }}
+                onClose={() => setShowCreate(false)}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

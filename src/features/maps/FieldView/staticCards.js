@@ -13,7 +13,7 @@ import { useMintFoodToken, useBurnLandTitle } from '../../../hooks/useMintLandTi
 import { useRecordHash } from '../../../hooks/useRecordHash.ts'
 import { CROP_CODE_NAMES, CROP_VARIETIES, CROP_UNIT, CROP_CODE_COLOR_KEY, useFoodTokenBatches } from '../../../hooks/useFoodTokenBatches.ts'
 import { CROP_IMG } from '../../../hooks/useFilterTasks.js'
-import { readItem } from '../../../utils/db.js'
+import { readItem, setDBitem } from '../../../utils/db.js'
 import { decodeMetadataUri } from '../../../utils/decodeMetadataUri.ts'
 import { useWallet, useContract } from '../../../hooks/useWallet.ts'
 import { useTx } from '../../../hooks/useTx.ts'
@@ -556,8 +556,26 @@ const PortfolioCards = () => {
   const loans = fieldActivity?.portfolioLoans || [];
 
   const [resolvedIds, setResolvedIds] = useState([]);
+  const [activeIds, setActiveIds] = useState([]); // landIds with a currently-active (drawn) loan → coloured blue
   const [cachedHashes, setCachedHashes] = useState(null);
   const [metadata, setMetadata] = useState(null); // { landId: { farm, outline, centroid, bounds } }
+  const [expandedLid, setExpandedLid] = useState(null); // accordion: which row is open
+  const [showAll, setShowAll] = useState(false); // reveal non-active (other known) properties
+
+  // Seed from the persistent property-metadata cache so ALL known properties
+  // (every member we've ever resolved, not just this session's active loans)
+  // render their outlines immediately — chain fetches below only fill gaps.
+  useEffect(() => {
+    let cancelled = false;
+    readItem('propertyMeta', 'FarmData').then(cached => {
+      const cache = cached?.value;
+      if (!cancelled && cache && Object.keys(cache).length) {
+        setMetadata(prev => ({ ...cache, ...(prev || {}) }));
+        console.log(`[portfolio] seeded ${Object.keys(cache).length} properties from cache`);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const close = () => {
     setFieldActivity(null);
@@ -571,18 +589,21 @@ const PortfolioCards = () => {
     let cancelled = false;
     (async () => {
       const ids = [];
+      const active = new Set();
       const seen = new Set();
+      const isActive = (l) => l.drawdownTs && l.active && !l.chainClosed;
       for (const l of loans) {
-        if (l.landId && !seen.has(l.landId)) {
-          seen.add(l.landId);
-          ids.push(l.landId);
-        } else if (!l.landId && l.borrower && !seen.has(l.borrower)) {
+        if (l.landId) {
+          if (!seen.has(l.landId)) { seen.add(l.landId); ids.push(l.landId); }
+          if (isActive(l)) active.add(String(l.landId));
+        } else if (l.borrower && !seen.has(l.borrower)) {
           seen.add(l.borrower);
           try {
             const bal = await landTitle.balanceOf(l.borrower);
             if (bal > 0n) {
               const tid = Number(await landTitle.tokenOfOwnerByIndex(l.borrower, 0));
               if (!seen.has(tid)) { seen.add(tid); ids.push(tid); }
+              if (isActive(l)) active.add(String(tid));
               console.log(`[portfolio] chain: ${l.borrower.slice(0,8)}… → ${tid}`);
             }
           } catch (e) {
@@ -591,8 +612,9 @@ const PortfolioCards = () => {
         }
       }
       if (!cancelled) {
-        console.log(`[portfolio] resolved ${ids.length} land IDs from ${loans.length} loans`);
+        console.log(`[portfolio] resolved ${ids.length} land IDs (${active.size} active) from ${loans.length} loans`);
         setResolvedIds(ids);
+        setActiveIds([...active]);
       }
     })();
     return () => { cancelled = true; };
@@ -634,7 +656,17 @@ const PortfolioCards = () => {
         landId: lid, farm: m.farm, centroid: m.centroid?.join(', '),
         fields: m.fieldNames.length,
       })));
-      setMetadata(meta);
+      // Persist into the property-metadata cache (union of everything ever seen)
+      // so future portfolio opens render all known outlines without a chain round-trip.
+      try {
+        const cached = await readItem('propertyMeta', 'FarmData');
+        const persisted = { ...(cached?.value || {}), ...meta };
+        await setDBitem('propertyMeta', persisted, 'FarmData');
+      } catch (e) {
+        console.warn('[portfolio] propertyMeta cache write failed:', e?.message);
+      }
+      if (cancelled) return;
+      setMetadata(prev => ({ ...(prev || {}), ...meta }));
     })();
     return () => { cancelled = true; };
   }, [landTitle, resolvedIds]);
@@ -647,6 +679,11 @@ const PortfolioCards = () => {
       return { ...prev, portfolioProperties: metadata };
     });
   }, [metadata, setFieldActivity]);
+
+  // Tell the map which properties have a live loan → coloured blue, rest grey.
+  useEffect(() => {
+    setFieldActivity(prev => prev?.portfolioMode ? { ...prev, portfolioActiveIds: activeIds } : prev);
+  }, [activeIds, setFieldActivity]);
 
   // Lazy: read purchased hashes from IndexedDB (for later record.json enrichment)
   useEffect(() => {
@@ -669,7 +706,7 @@ const PortfolioCards = () => {
       initial={{ y: -300 }}
       animate={{ y: 0 }}
       drag="y"
-      dragConstraints={{ top: -300, bottom: 150 }}
+      dragConstraints={{ top: -500, bottom: 150 }}
       dragListener={false}
       dragControls={controls}
       dragElastic={0.05}
@@ -689,13 +726,14 @@ const PortfolioCards = () => {
         >
           <span className="h-1 w-16 rounded-full bg-slate-300 dark:bg-slate-500" />
         </div>
-        <div className="flex flex-col px-6 pb-6 gap-3">
+        <div className="flex flex-col px-6 pb-2 gap-3">
           <div className="flex items-center justify-between px-4">
             <div>
-              <h3 className="font-bold dark:text-white">Portfolio view</h3>
-              <p className="text-[10px] dark:text-slate-500">{resolvedIds.length} properties</p>
+              <h3 className="font-bold dark:text-white">Members</h3>
+              <p className="text-[10px] dark:text-slate-500">{metadata ? Object.keys(metadata).length : resolvedIds.length} properties · {activeIds.length} active{fieldActivity?.outlinesOnly ? ' · outlines only' : ''}</p>
             </div>
             <button
+              onPointerDown={e => e.stopPropagation()}
               onClick={() => setFieldActivity(prev => prev ? { ...prev, portfolioLabels: !prev.portfolioLabels } : prev)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-medium transition-colors ${
                 fieldActivity?.portfolioLabels !== false
@@ -710,34 +748,74 @@ const PortfolioCards = () => {
 
           {!metadata && (
             <div className="flex justify-center py-4">
-              <Spinner />
+              <Spinner size='small' />
             </div>
           )}
 
-          {metadata && (
-            <div className="flex flex-col gap-2 px-4">
-              {Object.entries(metadata).map(([lid, m]) => {
-                const h = cachedHashes?.find(r => String(r.landId) === String(lid));
-                return (
-                  <div key={lid} className="flex flex-col gap-0.5 py-1.5 border-b border-slate-100 dark:border-slate-600 last:border-0">
-                    <div className="flex justify-between text-xs">
-                      <span className="font-semibold dark:text-white">{m.farm}</span>
+          {metadata && (() => {
+            const isActive = (lid) => activeIds.some(id => String(id) === String(lid));
+            const entries = Object.entries(metadata);
+            const activeEntries = entries.filter(([lid]) => isActive(lid));
+            const otherEntries = entries.filter(([lid]) => !isActive(lid));
+
+            const renderRow = ([lid, m]) => {
+              const h = cachedHashes?.find(r => String(r.landId) === String(lid));
+              const expanded = String(expandedLid) === String(lid);
+              const nFields = m.fieldNames?.length || 0;
+              return (
+                <div key={lid} className="border-b border-slate-100 dark:border-slate-600 last:border-0">
+                  <button
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={() => {
+                      setExpandedLid(prev => String(prev) === String(lid) ? null : lid);
+                      setFieldActivity(prev => prev ? { ...prev, portfolioSelected: lid } : prev);
+                    }}
+                    className="flex w-full items-center justify-between py-1.5 text-xs"
+                  >
+                    <span className="font-semibold dark:text-white truncate text-left">{m.farm}</span>
+                    <span className="flex items-center gap-1.5 shrink-0 ml-2">
+                      {nFields > 0 && <span className="text-gray-400 dark:text-slate-500 text-[10px]">{nFields} field{nFields > 1 ? 's' : ''}</span>}
                       <span className="text-gray-400 dark:text-slate-500 text-[10px]">#{lid}</span>
+                      <ChevronDownIcon className={`h-3 w-3 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                    </span>
+                  </button>
+                  {expanded && (
+                    <div className="pb-2 pl-1 flex flex-col gap-0.5">
+                      {nFields > 0 && (
+                        <p className="text-[10px] text-gray-500 dark:text-slate-400">{m.fieldNames.join(', ')}</p>
+                      )}
+                      {!fieldActivity?.outlinesOnly && h && !h.stored && (
+                        <p className="text-[10px] text-amber-500">no viewing key</p>
+                      )}
                     </div>
-                    {m.fieldNames?.length > 0 && (
-                      <p className="text-[10px] text-gray-500 dark:text-slate-400">
-                        {m.fieldNames.length} field{m.fieldNames.length > 1 ? 's' : ''}: {m.fieldNames.join(', ')}
-                      </p>
-                    )}
-                    {h && !h.stored && (
-                      <p className="text-[10px] text-amber-500">no viewing key</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  )}
+                </div>
+              );
+            };
+
+            return (
+              <div className="flex flex-col px-4">
+                {activeEntries.map(renderRow)}
+                {showAll && otherEntries.map(renderRow)}
+                {otherEntries.length > 0 && (
+                  <button
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={() => setShowAll(s => !s)}
+                    className="self-start text-[11px] text-blue-700 dark:text-blue-300 font-medium mt-2 active:scale-95"
+                  >
+                    {showAll ? 'Hide other properties' : `Show all known properties (${otherEntries.length})`}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </div>
+        {/* draggable bottom grab zone — generous surface to pull the card up */}
+        <div
+          onPointerDown={(e) => controls.start(e)}
+          style={{ touchAction: 'none' }}
+          className="h-14 w-full select-none cursor-grab active:cursor-grabbing"
+        />
       </div>
     </motion.div>
   );

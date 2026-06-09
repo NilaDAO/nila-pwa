@@ -65,6 +65,9 @@ export function CashOutForm({ handleOpenForm }) {
   );
   const [memberAddress,  setMemberAddress] = useState(prefillAddress);
   const [feeBP,          setFeeBP]         = useState(100); // 1% default
+  const [amountStep,     setAmountStep]    = useState('choose'); // active-loan sub-step: 'choose' | 'breakdown'
+  const [amountMode,     setAmountMode]    = useState('full');   // 'full' | 'available' | 'manual'
+  const [showLpDetails,  setShowLpDetails] = useState(false);    // LP-bonus disclosure in breakdown step
   const [offerId,        setOfferId]       = useState(null);
   const [redeemOrderId,  setRedeemOrderId] = useState(null);
   const [stagedUsdtOut,  setStagedUsdtOut] = useState(null); // set after redeemFarmerNin mines — prevents re-burn on retry
@@ -85,7 +88,12 @@ export function CashOutForm({ handleOpenForm }) {
   const [cashOutInput, setCashOutInput]           = useState('');       // leader-entered amount (string for input)
   const fxAddress = process.env.REACT_APP_FX_POOL_MAIN;
   // Reset the input only when the scanned member changes — not on every balance refresh.
-  useEffect(() => { setCashOutInput(''); }, [memberAddress]);
+  useEffect(() => {
+    setCashOutInput('');
+    setAmountStep('choose');
+    setAmountMode('full');
+    setShowLpDetails(false);
+  }, [memberAddress]);
   useEffect(() => {
     if (!memberAddress || !getNinBalance || !getNinAllowance || !fxAddress) {
       setNinBalanceRaw(0n); setNinAllowanceRaw(0n); setNinBalanceFetched(false); return;
@@ -206,6 +214,12 @@ export function CashOutForm({ handleOpenForm }) {
   const fromLPRaw      = payoutRaw - fromEscrowRaw;
   const fromEscrow     = Number(fromEscrowRaw / 10n ** 18n);              // for display
   const fromLP         = Number(fromLPRaw / 10n ** 18n);                  // for display
+
+  // Total escrow nIN available right now, independent of the chosen payout — the most
+  // the leader can hand over without waiting on an LP. Drives the "Available now" preset.
+  const escrowTotalRaw = allEscrows.reduce((a, e) => a + e.ninAmount, 0n);
+  const availableNowRaw = escrowTotalRaw < effectiveMaxRaw ? escrowTotalRaw : effectiveMaxRaw;
+  const availableNow   = Number(availableNowRaw / 10n ** 18n);
 
   // Poll CashOffer status (LP deposits USDT path)
   const { data: offer } = useCashOffer(offerId ?? undefined);
@@ -539,44 +553,106 @@ export function CashOutForm({ handleOpenForm }) {
               )
             ) : (
               <>
-                {/* Existing open RedeemOrders for this farmer */}
-                {existingFarmerOrders.length > 0 && (
-                  <div className="rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 flex flex-col gap-1">
-                    <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
-                      {existingFarmerOrders.length} open LP request{existingFarmerOrders.length > 1 ? 's' : ''}
-                    </p>
-                    {existingFarmerOrders.map(o => (
-                      <p key={String(o.id)} className="text-xs text-amber-600 dark:text-amber-400">
-                        ₹{Number(o.inrValue).toLocaleString('en-IN')} · {Number(o.inrValue).toLocaleString('en-IN')} nIN · Awaiting LP
-                      </p>
-                    ))}
-                    <p className="text-xs text-amber-500 dark:text-amber-500">
-                      Remaining available: ₹{maxPayout.toLocaleString('en-IN')}
-                    </p>
+                {/* ── Sub-step A: choose how much to cash out ── */}
+                {amountStep === 'choose' && (
+                  <div className="flex flex-col gap-3">
+                    {/* Existing open RedeemOrders for this farmer */}
+                    {existingFarmerOrders.length > 0 && (
+                      <div className="rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 flex flex-col gap-1">
+                        <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                          {existingFarmerOrders.length} open LP request{existingFarmerOrders.length > 1 ? 's' : ''}
+                        </p>
+                        {existingFarmerOrders.map(o => (
+                          <p key={String(o.id)} className="text-xs text-amber-600 dark:text-amber-400">
+                            ₹{Number(o.inrValue).toLocaleString('en-IN')} · {Number(o.inrValue).toLocaleString('en-IN')} nIN · Awaiting LP
+                          </p>
+                        ))}
+                        <p className="text-xs text-amber-500 dark:text-amber-500">
+                          Remaining available: ₹{maxPayout.toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-500 dark:text-slate-400">How much to cash out?</p>
+
+                    {/* Full */}
+                    <button
+                      onClick={() => { setAmountMode('full'); setCashOutInput(''); }}
+                      className={`flex items-center justify-between px-4 py-3 rounded-xl border active:scale-[0.99] ${amountMode === 'full' ? 'border-black dark:border-white bg-gray-100 dark:bg-slate-800' : 'border-gray-200 dark:border-slate-700'}`}
+                    >
+                      <div className="flex flex-col items-start">
+                        <span className="text-sm font-bold dark:text-white">Full amount</span>
+                        <span className="text-xs text-gray-400 dark:text-slate-500">everything still owed</span>
+                      </div>
+                      <span className="text-sm font-bold dark:text-white">₹{maxPayout.toLocaleString('en-IN')}</span>
+                    </button>
+
+                    {/* Available now — escrow covers it, no LP wait */}
+                    {availableNow > 0 && availableNow < maxPayout && (
+                      <button
+                        onClick={() => { setAmountMode('available'); setCashOutInput(String(availableNow)); }}
+                        className={`flex items-center justify-between px-4 py-3 rounded-xl border active:scale-[0.99] ${amountMode === 'available' ? 'border-black dark:border-white bg-gray-100 dark:bg-slate-800' : 'border-gray-200 dark:border-slate-700'}`}
+                      >
+                        <div className="flex flex-col items-start">
+                          <span className="text-sm font-bold dark:text-white">Available now</span>
+                          <span className="text-xs text-gray-400 dark:text-slate-500">covered by escrow — no wait</span>
+                        </div>
+                        <span className="text-sm font-bold dark:text-white">₹{availableNow.toLocaleString('en-IN')}</span>
+                      </button>
+                    )}
+
+                    {/* Manual */}
+                    <button
+                      onClick={() => setAmountMode('manual')}
+                      className={`flex items-center justify-between px-4 py-3 rounded-xl border active:scale-[0.99] ${amountMode === 'manual' ? 'border-black dark:border-white bg-gray-100 dark:bg-slate-800' : 'border-gray-200 dark:border-slate-700'}`}
+                    >
+                      <div className="flex flex-col items-start">
+                        <span className="text-sm font-bold dark:text-white">Manual amount</span>
+                        <span className="text-xs text-gray-400 dark:text-slate-500">type how much</span>
+                      </div>
+                      <span className="text-xs text-gray-400 dark:text-slate-500">up to ₹{maxPayout.toLocaleString('en-IN')}</span>
+                    </button>
+
+                    {amountMode === 'manual' && (
+                      <div className="rounded-xl bg-gray-100 dark:bg-slate-800 px-4 py-3 flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-bold dark:text-white">₹</span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            autoFocus
+                            placeholder={maxPayout.toString()}
+                            value={cashOutInput}
+                            onChange={(e) => setCashOutInput(e.target.value)}
+                            className="flex-1 bg-transparent text-lg font-bold dark:text-white outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          {cashOutInput && (
+                            <button onClick={() => setCashOutInput('')} className="text-xs text-gray-400 dark:text-slate-500 underline">clear</button>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 dark:text-slate-500">
+                          Permitted: ₹{maxPayout.toLocaleString('en-IN')} nIN
+                        </p>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => setAmountStep('breakdown')}
+                      disabled={payoutRaw === 0n || escrowLoading}
+                      className="w-full py-3.5 rounded-2xl bg-black dark:bg-white text-white dark:text-black font-bold text-sm active:scale-[0.98] disabled:opacity-40"
+                    >
+                      See cash plan → ₹{principal.toLocaleString('en-IN')}
+                    </button>
                   </div>
                 )}
 
-                {/* Amount input — leader can choose partial payout */}
-                <div className="rounded-xl bg-gray-100 dark:bg-slate-800 px-4 py-3 flex flex-col gap-1">
-                  <label className="text-xs text-gray-500 dark:text-slate-400">Cash out amount</label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold dark:text-white">₹</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      placeholder={maxPayout.toString()}
-                      value={cashOutInput}
-                      onChange={(e) => setCashOutInput(e.target.value)}
-                      className="flex-1 bg-transparent text-lg font-bold dark:text-white outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    {cashOutInput && (
-                      <button onClick={() => setCashOutInput('')} className="text-xs text-gray-400 dark:text-slate-500 underline">max</button>
-                    )}
+                {/* ── Sub-step B: what the amount means + count bills ── */}
+                {amountStep === 'breakdown' && (
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => setAmountStep('choose')} className="text-xs text-gray-400 dark:text-slate-500 underline active:scale-95">← change amount</button>
+                    <span className="text-xs text-gray-500 dark:text-slate-400">Cashing out ₹{principal.toLocaleString('en-IN')}</span>
                   </div>
-                  <p className="text-xs text-gray-400 dark:text-slate-500">
-                    Permitted: ₹{maxPayout.toLocaleString('en-IN')} nIN
-                  </p>
-                </div>
 
                 {/* Cash breakdown card */}
                 {escrowLoading ? (
@@ -660,22 +736,38 @@ export function CashOutForm({ handleOpenForm }) {
                   </div>
                 )}
 
-                {/* LP fee slider — when LP portion > 0 (with or without existing escrow) */}
+                {/* Plain-language explainer for the escrow path */}
+                {escrowId != null && !escrowLoading && (
+                  <p className="text-xs text-gray-500 dark:text-slate-400 px-1">
+                    {fromLP === 0
+                      ? `₹${fromEscrow.toLocaleString('en-IN')} is ready in escrow — hand it all over now.`
+                      : `₹${fromEscrow.toLocaleString('en-IN')} is ready now; an LP brings the remaining ₹${fromLP.toLocaleString('en-IN')} and the member returns to collect it.`}
+                  </p>
+                )}
+
+                {/* LP bonus — tucked behind a disclosure so the screen stays light */}
                 {!escrowLoading && fromLP > 0 && (
-                  <div className="rounded-xl bg-gray-100 dark:bg-slate-800 px-4 py-3 flex flex-col gap-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs dark:text-slate-300">LP fee bonus</span>
-                      <span className="text-xs font-bold dark:text-white">{(feeBP / 100).toFixed(2)}%</span>
-                    </div>
-                    <input
-                      type="range" min={0} max={500} step={10} value={feeBP}
-                      onChange={(e) => setFeeBP(Number(e.target.value))}
-                      className="w-full accent-black dark:accent-white"
-                    />
-                    <p className="text-xs text-gray-400 dark:text-slate-500 text-center">
-                      LP receives {fromLP.toLocaleString('en-IN')} nIN
-                      {feeBP > 0 && ` + ${Math.round(fromLP * feeBP / 10000)} bonus`}
-                    </p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => setShowLpDetails((v) => !v)}
+                      className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-slate-800 active:scale-[0.99]"
+                    >
+                      <span className="text-xs dark:text-slate-300">LP bonus — {(feeBP / 100).toFixed(2)}%</span>
+                      <span className="text-xs text-gray-400 dark:text-slate-500 underline">{showLpDetails ? 'hide' : 'adjust'}</span>
+                    </button>
+                    {showLpDetails && (
+                      <div className="rounded-xl bg-gray-100 dark:bg-slate-800 px-4 py-3 flex flex-col gap-2">
+                        <input
+                          type="range" min={0} max={500} step={10} value={feeBP}
+                          onChange={(e) => setFeeBP(Number(e.target.value))}
+                          className="w-full accent-black dark:accent-white"
+                        />
+                        <p className="text-xs text-gray-400 dark:text-slate-500 text-center">
+                          LP receives {fromLP.toLocaleString('en-IN')} nIN
+                          {feeBP > 0 && ` + ${Math.round(fromLP * feeBP / 10000)} bonus`}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -696,6 +788,8 @@ export function CashOutForm({ handleOpenForm }) {
                     Request LP cash → ₹{principal.toLocaleString('en-IN')}
                   </button>
                 ))}
+                </div>
+                )}
               </>
             )}
           </motion.div>
@@ -719,7 +813,7 @@ export function CashOutForm({ handleOpenForm }) {
               </p>
             </div>
             <button
-              onClick={() => handleOpenForm(null)}
+              onClick={closeSheet}
               className="w-full py-3.5 rounded-2xl bg-gray-100 dark:bg-slate-800 dark:text-white font-bold text-sm active:scale-[0.98]"
             >
               Close
@@ -799,7 +893,7 @@ export function CashOutForm({ handleOpenForm }) {
             <p className="text-sm font-bold dark:text-white">Cash Out complete!</p>
             <p className="text-xs text-gray-400 dark:text-slate-500 text-center">USDT has been released to the LP.</p>
             <button
-              onClick={() => handleOpenForm(null)}
+              onClick={closeSheet}
               className="mt-4 px-6 py-2 rounded-xl bg-gray-100 dark:bg-slate-800 dark:text-white text-xs font-bold active:scale-95"
             >
               Close

@@ -4,10 +4,15 @@ import { useDataContext } from '../../../utils/NavigationContext';
 import FarmNameForm from '../../../components/Forms/farmName';
 import { useFieldRegController } from './FieldRegController';
 import useVerifyFlow from '../../../hooks/useVerifyFlow';
-import { ClaimButton, EnableNotifications } from '../../../components/UI/buttons';
+import { EnableNotifications } from '../../../components/UI/buttons';
 import { TrashIcon } from '@heroicons/react/24/outline';
 import { ViewfinderCircleIcon } from '@heroicons/react/24/solid';
-import { useHandleOffsiteTrackingCookie } from './fieldRegRemoteCookie';
+import { useHandleOffsiteTrackingCookie } from './fieldRegRemoteCookie'
+import { rectangularize, sharpenCorners } from '../../../hooks/useRegFlow';
+
+const btnClass = "px-4 py-2 rounded-2xl bg-black dark:bg-white text-white dark:text-black font-bold text-sm active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100";
+const panBtnClass = "px-8 py-3 my-2 rounded-2xl bg-black dark:bg-white text-white dark:text-black font-bold text-sm active:scale-[0.98]";
+const deleteBtnClass = "px-4 py-3 my-2 rounded-2xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-black dark:text-white font-bold text-sm active:scale-95 flex items-center gap-2";
 
 const messages = [
     'Walk as close to the center of the field.',
@@ -74,7 +79,7 @@ export const InputList = () => {
               onChange={(e) => handleInputChange(index, e)}
               className="h-9 text-sm px-3 m-3 font-bold w-full text-gray-900 bg-slate-100 dark:text-white dark:bg-slate-700 border border-slate-400 rounded-lg" 
             />
-            <ViewfinderCircleIcon onClick={() => updateFieldReg({ polygons: field.shape, panMode: index + 1 })} className="h-8 w-8 dark:text-white px-1" />
+            <ViewfinderCircleIcon onClick={() => updateFieldReg({ polygons: field.shape, panMode: index + 1, rectStrength: 0, cornerStrength: 0 })} className="h-8 w-8 dark:text-white px-1" />
             <TrashIcon onClick={() => handleRemoveInput(index)} className="h-8 w-8 dark:text-white px-1" />
           </div>
         </div>
@@ -102,15 +107,16 @@ export const ObjectVerification = () => {
   )
 };
 
+
 const FieldReg_cards = ({ LAND }) => {
     const { regFlow }                                                             = useFieldRegController();
     const { handleTryAgain, handleCorrect, handleDeleteApprovedFields, handleStopPolling, geoPerm }   = regFlow;
-    const { db }                                                                   = useDataContext();  
+    const { db }                                                                   = useDataContext();
     const { handleVerify, handleGenerateLandTitle, handleObjectPlaced, handleBackToBordering } = useVerifyFlow(LAND)
     const { fieldReg, updateFieldReg }                                             = useFieldRegContext()
     const [ notificationPermission, setNotificationPermission ]                    = useState(Notification.permission);
     const handleAddCookie                                                          = useHandleOffsiteTrackingCookie();
-    const { approvedFields, flow, positions, panMode, marker, property, tcAccept, alts } = fieldReg
+    const { approvedFields, flow, positions, panMode, marker, property, tcAccept, alts, rectStrength, cornerStrength, polygons } = fieldReg
 
     console.log('message set', fieldReg.messages)
 
@@ -125,36 +131,17 @@ const FieldReg_cards = ({ LAND }) => {
       }
     }
 
-    const getClaimButtonProps = () => {
-      const canSubmitPostVerify = Boolean(
-        property.name &&
-        tcAccept &&
-        (flow === 10 || (flow > 11 && marker))
-      );
+    const canSubmitPostVerify = Boolean(property.name && tcAccept && (flow === 10 || (flow > 11 && marker)));
+    const claimDisabled = !(
+      (approvedFields.length > 0 && flow < 10) ||
+      (canSubmitPostVerify && flow >= 10) ||
+      (flow === 11)
+    );
+    const claimClick = flow < 10 ? handleVerify : flow === 11 ? handleObjectPlaced : handleGenerateLandTitle;
+    const claimTitle = flow <= 9 ? "Verify your property" : flow === 11 ? "Confirm" : "Generate land title";
 
-      const disabled = !(
-        (approvedFields.length > 0 && flow < 10) || // verify button when registering fields
-        (canSubmitPostVerify && flow >= 10) ||
-        (flow === 11) // confirm sheets have been placed
-      );
-    
-      const handleClick = flow < 10
-        ? handleVerify
-        : flow === 11
-          ? handleObjectPlaced
-          : handleGenerateLandTitle;
-
-      const title = flow <= 9
-        ? "Verify your property"
-        : flow === 11
-          ? "Confirm"
-          : "Generate land title";
-    
-      return { disabled, handleClick, title };
-    };
-    
     return (
-        <div className={`pointer-events-auto flex flex-col bg-white dark:bg-gray-700 dark:text-white rounded-3xl w-full mb-[220px] py-4 my-6 rounded-bx-3xl shadow-bottom`}> 
+        <div className={`pointer-events-auto flex flex-col bg-white dark:bg-gray-700 dark:text-white rounded-3xl w-full mb-[220px] py-4 my-6 rounded-bx-3xl shadow-bottom`}>
             { flow === 0 ?
             <div className="flex flex-row justify-evenly p-8">
                 <h3 className={`font-bold p-4`}>{approvedFields.length > 0 ? `You have ${approvedFields.length} fields registered.` : 'Walk to your first field...'}</h3>
@@ -184,15 +171,29 @@ const FieldReg_cards = ({ LAND }) => {
                 { /* validate fields */}
                 {  flow < 10 && !panMode && (flow === 5 || alts.length > 0) &&
                     <>
+                    <div className="flex flex-col px-8 pb-2 gap-1">
+                        <div className="flex flex-row justify-between text-xs text-gray-400 dark:text-gray-400">
+                            <span>organic</span><span>rectangular</span>
+                        </div>
+                        <input type="range" min="0" max="1" step="0.05" value={rectStrength}
+                            onChange={e => updateFieldReg({ rectStrength: parseFloat(e.target.value) })}
+                            className="w-full accent-yellow-400" />
+                        <div className="flex flex-row justify-between text-xs text-gray-400 dark:text-gray-400">
+                            <span>rounded</span><span>sharp corners</span>
+                        </div>
+                        <input type="range" min="0" max="1" step="0.05" value={cornerStrength}
+                            onChange={e => updateFieldReg({ cornerStrength: parseFloat(e.target.value) })}
+                            className="w-full accent-yellow-400" />
+                    </div>
                     <div className="flex flex-row justify-evenly pb-4">
-                        <ClaimButton disabled={false} handleClick={handleTryAgain} title='Try again'/> 
-                        <ClaimButton disabled={false} handleClick={handleCorrect} title='Looks good'/> 
+                        <button className={btnClass} onClick={handleTryAgain}>Try again</button>
+                        <button className={btnClass} onClick={handleCorrect}>Looks good</button>
                     </div>
                     </>
                 }    
                 { flow === 4 && !panMode &&
                     <div className="flex flex-row justify-evenly pb-4">
-                        <ClaimButton disabled={false} handleClick={handleStopPolling} title='Stop' />
+                        <button className={btnClass} onClick={handleStopPolling}>Stop</button>
                     </div>
                 }
             </div>
@@ -200,12 +201,41 @@ const FieldReg_cards = ({ LAND }) => {
             { approvedFields.length != 0 && flow >= 2 ? 
                 <>
                 {flow === 11 ? <ObjectVerification /> : (flow <= 9 && !panMode) ? <InputList /> : (flow > 9 && !panMode) && <FarmNameForm /> }
-                <div className="flex flex-row justify-evenly pb-4">
-                    { panMode && <ClaimButton disabled={false} handleClick={()=> updateFieldReg({ panMode: null, polygons: [] })} title={'back'}/> }
-                    { (flow === 10 || flow === 11) && <ClaimButton disabled={approvedFields.length > 0 ? false: true} handleClick={() => handleBackToBordering()} title={'Edit'}/> }
+                { panMode &&
+                    <div className="flex flex-col px-8 pb-2 gap-1">
+                        <div className="flex flex-row justify-between text-xs text-gray-400 dark:text-gray-400">
+                            <span>organic</span><span>rectangular</span>
+                        </div>
+                        <input type="range" min="0" max="1" step="0.05" value={rectStrength}
+                            onChange={e => updateFieldReg({ rectStrength: parseFloat(e.target.value) })}
+                            className="w-full accent-yellow-400" />
+                        <div className="flex flex-row justify-between text-xs text-gray-400 dark:text-gray-400">
+                            <span>rounded</span><span>sharp corners</span>
+                        </div>
+                        <input type="range" min="0" max="1" step="0.05" value={cornerStrength}
+                            onChange={e => updateFieldReg({ cornerStrength: parseFloat(e.target.value) })}
+                            className="w-full accent-yellow-400" />
+                    </div>
+                }
+                <div className="flex flex-row justify-evenly items-center py-8">
+                    { panMode && <button className={panBtnClass} onClick={() =>
+                        updateFieldReg({ panMode: null, polygons: [] })
+                    }>back</button> }
+                    { panMode && <button className={panBtnClass} onClick={() => {
+                        const adjusted = sharpenCorners(rectangularize(polygons, rectStrength), cornerStrength);
+                        updateFieldReg({
+                            panMode: null, polygons: [],
+                            approvedFields: approvedFields.map((f, i) => i === panMode - 1 ? { ...f, shape: adjusted } : f)
+                        });
+                    }}>accept</button> }
+                    { panMode && <button className={deleteBtnClass} onClick={() => {
+                        if (confirm('Remove this field?')) {
+                            updateFieldReg({ approvedFields: approvedFields.filter((_, i) => i !== panMode - 1), panMode: null, polygons: [] });
+                        }
+                    }}><TrashIcon className="h-4 w-4" />delete</button> }
+                    { (flow === 10 || flow === 11) && <button className={btnClass} disabled={approvedFields.length === 0} onClick={() => handleBackToBordering()}>Edit</button> }
                     { (flow === 12 && notificationPermission === 'default') ? <EnableNotifications onAdd={(status) => handleNotificationPermission(status)} address={db.address}/>
-                      :
-                      !panMode && <ClaimButton {...getClaimButtonProps() }/> 
+                      : !panMode && <button className={btnClass} disabled={claimDisabled} onClick={claimClick}>{claimTitle}</button>
                     }
                 </div>                
                 { flow === 11 && <div className={"flex text-xs flex-row justify-evenly pb-8"} onClick={handleDeleteApprovedFields} >Remove all fields. Let's try on-site again.</div> }

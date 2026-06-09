@@ -7,6 +7,7 @@ const Header = ({version, cardShrink}) => {
     const { tokenview, setTokenview, setCardView } = useViewModeContext();
     const { ix,setIx,prevIx } = useNavContext();
 
+    console.log('header render', {version, cardShrink, tokenview, ix, txIndex, fieldActivity})
     const handleSettings = () => {
         setCardView('transactionview')
         setTokenview(true) // set to true to remove touch swipe
@@ -26,6 +27,7 @@ const Header = ({version, cardShrink}) => {
         'cashCounter': 'Cash Counter',
         'transfer': 'Transfer Loans',
         'receipts': 'History',
+        'donate': 'Donate',
         'tasks': 'All Tasks'
     }
 
@@ -37,6 +39,8 @@ const Header = ({version, cardShrink}) => {
         4: 'Settings',
         5: TITLES[txIndex],
         6: 'Cash & Liquidity',
+        7: 'Orders & Post-harvest',
+        8: 'Donate',
     }
 
     const handleBack = () => {
@@ -107,9 +111,9 @@ const Header = ({version, cardShrink}) => {
                 { (ix === 0 && !tokenview) && <div onClick={handlePaymentHistory} className="rounded-full h-10 w-10 m-2 dark:bg-slate-400 bg-gray-300" ><ClockIcon className='text-black h-6 m-2'/></div>}
                 { (ix === null) && <div onClick={handleAllTasks} className="flex flex-grow text-xs mx-6 justify-center items-center rounded-full m-2 dark:text-slate-400 dark:bg-slate-800 font-bold text-darkgrey bg-gray-100 mx-2" ><DocumentIcon className='h-3 w-3 mr-1' />All Tasks</div>}
                 { (ix === undefined) && <h3 className='font-Chains h-8 w-8 text-xl m-3'>a</h3>}
-                { ix === 2 && (fieldActivity?.selectedFieldName || db?.farmname) && (
-                    <div className="flex flex-grow font-bold text-black dark:text-white m-5 items-center justify-center truncate">
-                        {fieldActivity?.selectedFieldName || db.farmname}
+                { ix === 2 && (fieldActivity?.portfolioMode ? db?.union?.name : (fieldActivity?.selectedFieldName || db?.farmname)) && (
+                    <div className="flex flex-grow font-bold text-white m-5 items-center justify-center truncate">
+                        {fieldActivity?.portfolioMode ? db?.union?.name : (fieldActivity?.selectedFieldName || db.farmname)}
                     </div>
                 )}
                 { ix !== 2 && cardShrink >= 0.5 && <div className="flex font-bold text-black dark:text-white m-5 items-center">{cards[ix]}</div>}

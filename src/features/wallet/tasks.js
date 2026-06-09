@@ -57,7 +57,13 @@ const TaskMessage = ({ LAND, CAP, inArrays }) => {
                                         <div className="absolute inset-0 border-4 border-transparent border-l-green/75 rounded-full animate-spin delay-450" />
                                       </>
                                     )}
-                                    <img src={t.img} className="h-10 w-10" alt="Logo" />
+                                    {t.cropImg ? (
+                                      <div className={`h-10 w-10 rounded-full flex items-center justify-center ${t.iconBg || 'bg-green'} flex-shrink-0`}>
+                                        <div className="w-8 h-8" style={{ WebkitMaskImage: `url(${t.img})`, maskImage: `url(${t.img})`, WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskSize: 'contain', maskSize: 'contain', WebkitMaskPosition: 'center', maskPosition: 'center', backgroundColor: 'black' }} />
+                                      </div>
+                                    ) : (
+                                      <img src={t.img} className="h-10 w-10" alt="Logo" />
+                                    )}
                                   </div>
                                 </div>
                                 <div className='flex flex-row justify-center'>

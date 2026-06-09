@@ -28,6 +28,128 @@ export const parsePolygons = (features) =>
     f.geometry.coordinates.flat().map(([lng, lat]) => ({ lat, lng }))
   );
 
+function _cross(O, A, B) {
+  return (A[0]-O[0])*(B[1]-O[1]) - (A[1]-O[1])*(B[0]-O[0]);
+}
+function _convexHull(pts) {
+  const s = [...pts].sort((a,b) => a[0]-b[0] || a[1]-b[1]);
+  const lo = [], hi = [];
+  for (const p of s) {
+    while (lo.length >= 2 && _cross(lo[lo.length-2], lo[lo.length-1], p) <= 0) lo.pop();
+    lo.push(p);
+  }
+  for (let i = s.length-1; i >= 0; i--) {
+    const p = s[i];
+    while (hi.length >= 2 && _cross(hi[hi.length-2], hi[hi.length-1], p) <= 0) hi.pop();
+    hi.push(p);
+  }
+  hi.pop(); lo.pop();
+  return lo.concat(hi);
+}
+function _minAreaRect(pts) {
+  const hull = _convexHull(pts);
+  const n = hull.length;
+  if (n < 2) return null;
+  let minArea = Infinity, best = null;
+  for (let i = 0; i < n; i++) {
+    const a = hull[i], b = hull[(i+1)%n];
+    const dx = b[0]-a[0], dy = b[1]-a[1];
+    const len = Math.sqrt(dx*dx+dy*dy);
+    if (len === 0) continue;
+    const ux = dx/len, uy = dy/len, vx = -uy, vy = ux;
+    let u0=Infinity,u1=-Infinity,v0=Infinity,v1=-Infinity;
+    for (const p of hull) {
+      const u=(p[0]-a[0])*ux+(p[1]-a[1])*uy;
+      const v=(p[0]-a[0])*vx+(p[1]-a[1])*vy;
+      if(u<u0)u0=u; if(u>u1)u1=u; if(v<v0)v0=v; if(v>v1)v1=v;
+    }
+    const area = (u1-u0)*(v1-v0);
+    if (area < minArea) {
+      minArea = area;
+      best = [
+        [a[0]+u0*ux+v0*vx, a[1]+u0*uy+v0*vy],
+        [a[0]+u1*ux+v0*vx, a[1]+u1*uy+v0*vy],
+        [a[0]+u1*ux+v1*vx, a[1]+u1*uy+v1*vy],
+        [a[0]+u0*ux+v1*vx, a[1]+u0*uy+v1*vy],
+      ];
+    }
+  }
+  return best;
+}
+function _nearestOnSeg(p, a, b) {
+  const abx=b[0]-a[0], aby=b[1]-a[1], l2=abx*abx+aby*aby;
+  if (l2===0) return [...a];
+  const t = Math.max(0, Math.min(1, ((p[0]-a[0])*abx+(p[1]-a[1])*aby)/l2));
+  return [a[0]+t*abx, a[1]+t*aby];
+}
+export function rectangularize(polygon, strength) {
+  if (!polygon || polygon.length < 3 || !strength) return polygon;
+  const pts = polygon.map(p => [p.lng, p.lat]);
+  const rect = _minAreaRect(pts);
+  if (!rect) return polygon;
+  return polygon.map((_, i) => {
+    const p = pts[i];
+    let best = null, bestD = Infinity;
+    for (let j = 0; j < 4; j++) {
+      const n = _nearestOnSeg(p, rect[j], rect[(j+1)%4]);
+      const d = (p[0]-n[0])**2+(p[1]-n[1])**2;
+      if (d < bestD) { bestD = d; best = n; }
+    }
+    return { lat: p[1]*(1-strength)+best[1]*strength, lng: p[0]*(1-strength)+best[0]*strength };
+  });
+}
+
+export function sharpenCorners(polygon, strength = 0) {
+  if (!polygon || polygon.length < 4 || !strength) return polygon;
+
+  const pts = polygon.map(p => [p.lng, p.lat]);
+  const n = pts.length;
+
+  // Auto-scale epsilon to the polygon: half of avg edge length at strength=1
+  let perimeter = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    perimeter += Math.hypot(b[0] - a[0], b[1] - a[1]);
+  }
+  const epsilon = (perimeter / n) * strength * 0.5;
+
+  // Point-to-segment distance
+  function segDist(p, a, b) {
+    const abx = b[0]-a[0], aby = b[1]-a[1], len2 = abx*abx+aby*aby;
+    if (len2 === 0) return Math.hypot(p[0]-a[0], p[1]-a[1]);
+    const t = Math.max(0, Math.min(1, ((p[0]-a[0])*abx + (p[1]-a[1])*aby) / len2));
+    return Math.hypot(p[0]-(a[0]+t*abx), p[1]-(a[1]+t*aby));
+  }
+
+  function dp(seg) {
+    if (seg.length <= 2) return seg;
+    let maxD = 0, maxI = 0;
+    for (let i = 1; i < seg.length - 1; i++) {
+      const d = segDist(seg[i], seg[0], seg[seg.length - 1]);
+      if (d > maxD) { maxD = d; maxI = i; }
+    }
+    if (maxD > epsilon) {
+      const l = dp(seg.slice(0, maxI + 1));
+      const r = dp(seg.slice(maxI));
+      return [...l.slice(0, -1), ...r];
+    }
+    return [seg[0], seg[seg.length - 1]];
+  }
+
+  // Start D-P from the vertex farthest from the centroid (most likely a real corner)
+  const cx = pts.reduce((s, p) => s + p[0], 0) / n;
+  const cy = pts.reduce((s, p) => s + p[1], 0) / n;
+  const startIdx = pts.reduce((best, p, i) => {
+    const d = Math.hypot(p[0] - cx, p[1] - cy);
+    return d > best.d ? { i, d } : best;
+  }, { i: 0, d: -1 }).i;
+
+  const rotated = [...pts.slice(startIdx), ...pts.slice(0, startIdx)];
+  const reduced = dp([...rotated, rotated[0]]).slice(0, -1);
+
+  return reduced.length >= 3 ? reduced.map(p => ({ lng: p[0], lat: p[1] })) : polygon;
+}
+
 export const isPointInPolygon = (point, vs) => {
   // ray-casting algorithm based on
   // https://wrf.ecse.rpi.edu/Research/Short_Notes/pnpoly.html
@@ -115,15 +237,16 @@ const useRegFlow = () => {
     if (alts.length > 0) {
       // user rejected current alternative; drop it and clear state
       const nextNeighbours = neighbours.filter((_, idx) => idx !== alts[0]);
-      updateFieldReg(prev => ({ 
-         ...prev, 
-         alts: [], 
-         neighbours: nextNeighbours, // new array so state updates
+      updateFieldReg(prev => ({
+         ...prev,
+         alts: [],
+         neighbours: nextNeighbours,
          polygons: [],
          results: null,
          messages: 1,
          flow: 2,
-         track: true
+         track: true,
+         suppressPolygonUntil: prev.positions.length + 3
       }));
       return;
     }
@@ -134,9 +257,10 @@ const useRegFlow = () => {
       alts: [],
       polygons: [],
       results: null,
-      messages: 10, // "move to center and try again" style prompt
+      messages: 10,
       flow: 2,
-      track: true
+      track: true,
+      suppressPolygonUntil: prev.positions.length + 3
     }));
   }
 
@@ -171,7 +295,8 @@ const useRegFlow = () => {
      * reset flow and messages, remove polygon and move to approvedfields,set polygon as object
     */
 
-    const fields = { 'name':  `field ${approvedFields.length + 1}`, 'shape': alts.length > 0 ? alts[1][0] : fieldReg.polygons}  
+    const rawShape = alts.length > 0 ? alts[1][0] : fieldReg.polygons;
+    const fields = { 'name': `field ${approvedFields.length + 1}`, 'shape': sharpenCorners(rectangularize(rawShape, fieldReg.rectStrength), fieldReg.cornerStrength) }
     console.log('added field', fields)
     updateFieldReg(prev => ({ 
         ...prev,
@@ -334,6 +459,7 @@ const useRegFlow = () => {
     // ------------- PROCESS POLLING RESULTS
     if (flow === 4){
       console.log('[fencing] results raw', results);
+      console.log('[fencing] primary candidate:', results?.principal ?? 'null — waiting');
       if (results && results.principal){
         const PRIMARY = results.principal
         const NEIGBOURS = results.alternatives;
@@ -344,12 +470,14 @@ const useRegFlow = () => {
         const primary_object = parsePolygons([PRIMARY])
         console.log('[fencing] PRIMARY parsed', primary_object);
         console.log('[fencing] last requested point', positions.at(-1));
-        updateFieldReg(prev => ({ 
+        updateFieldReg(prev => ({
           ...prev,
           flow: 5,
           messages: 8,
-          polygons: primary_object[0], 
-          neighbours: [...prev.neighbours, ...NEIGBOURS],  
+          polygons: primary_object[0],
+          rectStrength: 0.5,
+          cornerStrength: 0,
+          neighbours: [...prev.neighbours, ...NEIGBOURS],
           }))
       }}
   

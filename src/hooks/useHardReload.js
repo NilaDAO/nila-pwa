@@ -14,8 +14,15 @@ export function useHardReload() {
     try {
       const reg = await navigator.serviceWorker?.getRegistration();
       if (reg) {
-        // Ask the SW to look for a new build.
-        try { await reg.update(); } catch (e) { /* offline / network error — ignore */ }
+        // Ask the SW to look for a new build. Bound it — a slow/hung network
+        // must not trap callers (e.g. the ErrorScreen Reload button, which awaits
+        // this via ClaimButton's pending state) in a permanent 'Working…'.
+        try {
+          await Promise.race([
+            reg.update(),
+            new Promise((resolve) => setTimeout(resolve, 2000)),
+          ]);
+        } catch (e) { /* offline / network error — ignore */ }
 
         // If a new SW is waiting, hand control over. The existing
         // controllerchange listener will reload the page once it takes over.

@@ -4,7 +4,7 @@ import { useDataContext, useViewModeContext } from '../utils/NavigationContext';
 import { ethers } from 'ethers';
 import { useActiveLoans } from './useActiveLoans';
 import { useContactBook } from './useContactBook';
-import { useAcceptLoan, useRemoveLoan } from './useLoadFunds.ts';
+import { useLoanAcceptance } from './useLoanAcceptance';
 import { useSwitchMain, useTopUpGas, useProvider} from './useWallet.ts';
 import useTouch from './useTouch';
 import { subscribeUser } from '../features/apis/pushManager';
@@ -14,6 +14,7 @@ import { useLPProfile } from './useLPProfile';
 import { useFxPool } from './useWallet.ts';
 import { useLoadFundsData } from './useLoadFunds.ts';
 import { useCertRegistry } from './useCertRegistry.ts';
+import { useDonationPrograms, useDonationsEnabled } from './useDonationPrograms.ts';
 
 export function usePolBalance(address, provider) {
   return useQuery({
@@ -36,7 +37,7 @@ export const CERT_IMG = [
 ];
 
 export const CROP_IMG = {
-  0: 'images/paddy.png',
+  0: 'images/crop_icons/paddy.svg',
   1: 'images/groundnut.png',
   2: 'images/sugarcane.png',
   3: 'images/label-06.webp',
@@ -62,10 +63,8 @@ export function useFilterTasks(LAND, CAP) {
   const { data: giveOffers = [], isPending: giveOffersPending } = useGlobalOpenCashOffers();
   const { topUpGas }                 = useTopUpGas();
   const { switchToMain }             = useSwitchMain();
-  const { acceptLoan }               = useAcceptLoan();
-  const { removeLoan }               = useRemoveLoan();
   const { handleToggleView }         = useTouch();
-  const { lpFillRedeemOrder, commitCashRequest, redeemFarmerNin, postRedeemOrder, postCashOffer, confirmCashOfferDelivered, confirmCashDelivery, cancelRedeemOrder } = useFxPool();
+  const { lpFillRedeemOrder, commitCashRequest, postCashOffer, confirmCashOfferDelivered, confirmCashDelivery, cancelRedeemOrder } = useFxPool();
   const { data: fundsData = [] } = useLoadFundsData(
     db?.union?.address ?? '',
     unionFunds ?? [],
@@ -77,6 +76,11 @@ export function useFilterTasks(LAND, CAP) {
   const { data: filledCashOffers = [] } = usePendingFilledCashOffers(
     isLeader ? db?.union?.address : undefined
   );
+  // Donations — task shows only when the union leader enabled donations AND there
+  // are active programs. Swipe-right dismisses for the session (local, like LP offers).
+  const { data: donationPrograms = [] } = useDonationPrograms(db?.union);
+  const { data: donationsEnabled = false } = useDonationsEnabled(db?.union);
+  const [donateDismissed, setDonateDismissed] = useState(false);
   const getNotificationPermission = () => {
     if (typeof window === 'undefined') return 'default';
     const override = localStorage.getItem('notificationPermissionOverride');
@@ -86,6 +90,9 @@ export function useFilterTasks(LAND, CAP) {
   const [notificationPermission, setNotificationPermission] = useState(getNotificationPermission);
 
   const [dismissedLoans, setDismissedLoans] = useState(new Set());
+  const { handleAcceptLoan, handleCancelLoan } = useLoanAcceptance({
+    onDismiss: (id) => setDismissedLoans(prev => new Set(prev).add(id)),
+  });
   const filteredTransferables = loansData?.allItems?.filter(l => !l.fastDraw && !l.drawdownTs && l.txHash && !dismissedLoans.has(l.id)) ?? [];
   const hasTransferables = filteredTransferables.length > 0;
 
@@ -140,32 +147,6 @@ export function useFilterTasks(LAND, CAP) {
     if (!raw) return 0;
     return Number(ethers.formatUnits(raw, 18));
   }, [reserveData]);
-
-  const handleAcceptLoan = async (union, id, borrower, borrowerAddr, amount, lpOpts) => {
-    if (!confirm(`Accept the loan of ${Math.round(amount).toLocaleString('en-IN')} nIN to ${borrower}?`)) return;
-    setDismissedLoans(prev => new Set(prev).add(id));
-    await acceptLoan(union, id);
-
-    if (lpOpts?.sendLP && lpOpts.amount > 0) {
-      try {
-        const amountRaw = ethers.parseUnits(String(lpOpts.amount), 18);
-        const usdtOut = await redeemFarmerNin(borrowerAddr, amountRaw);
-        await postRedeemOrder(union, borrowerAddr, BigInt(lpOpts.amount), usdtOut, amountRaw, 100);
-        queryClient.invalidateQueries({ queryKey: ['globalOpenCashOffers'] });
-        queryClient.invalidateQueries({ queryKey: ['globalOpenRedeemOrders'] });
-      } catch (e) { console.error('LP offer creation failed:', e); }
-    }
-  };
-
-  const handleCancelLoan = async (union, id, borrower, txHash) => {
-    if (confirm(`Cancel the loan request from ${borrower}?`)) {
-      setDismissedLoans(prev => new Set(prev).add(id));
-      if (txHash) await removeLoan(union, id);
-      await fetch(`${process.env.REACT_APP_API_BASE_URL}/filter_events/loan/${union}/${id}`, {
-        method: 'DELETE',
-      });
-    }
-  };
 
   // Mirrors UnionReserve.handleSettle: posts a CashOffer at 1% LP fee per escrow.
   // The leader settles via an LP provider, not directly from the treasury.
@@ -286,6 +267,9 @@ export function useFilterTasks(LAND, CAP) {
       !!fieldActivity?.dormant,
       batchRequiredMask,
       certsAllMet,
+      donationsEnabled,
+      donationPrograms.length,
+      donateDismissed,
     ],
     // useFilterTasks is a pure derivation over upstream hooks — no network call.
     // Treat the composed list as never-stale: when an upstream signal changes the
@@ -354,9 +338,26 @@ export function useFilterTasks(LAND, CAP) {
           swipeRightLabel: 'Invest ✓',
           swipeHint: 'Swipe to invest',
         },
+        { i: 700,
+          active: donationsEnabled && donationPrograms.length > 0 && !donateDismissed,
+          img: "images/gift.svg",
+          cropImg: true,
+          iconBg: "bg-green_light dark:bg-green_dark_light",   // match the donate card
+          tx_nmb: { ix: 8 },
+          swipeable: true,
+          // SwipeCard maps swipe-right → click (success), swipe-left → click2.
+          click:  () => handleToggleView({ ix: 8 }),     // swipe right → donate page
+          click2: () => setDonateDismissed(true),        // swipe left  → remove task
+          title: `Donate to ${donationPrograms[0]?.name ?? 'a project'}`,
+          subtitle: `Support a project your union backs.`,
+          swipeRightLabel: 'Donate ✓',
+          swipeLeftLabel:  '✕ Dismiss',
+          swipeHint: 'Swipe right to donate · left to dismiss',
+        },
         { i: 5,
           active: fallowFields,
-          img: "images/paddy.png",
+          img: "images/crop_icons/paddy.svg",
+          cropImg: true,
           tx_nmb: { ix: 2, i: 0 },
           click: () => { setFieldActivity(prev => prev ? { ...prev, pendingCropForm: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
           title: `Start a new cultivation`,
@@ -540,7 +541,8 @@ export function useFilterTasks(LAND, CAP) {
         // Batch match: open batch (no cert requirement) → swipe right to join
         { i: 600,
           active: hasActiveCycle && openBatch !== null && !tokenData?.some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && t.cropCode === openBatch?.cropCode),
-          img: CROP_IMG[openBatch?.cropCode] ?? 'images/paddy.png',
+          img: CROP_IMG[openBatch?.cropCode] ?? 'images/crop_icons/paddy.svg',
+          cropImg: true,
           tx_nmb: { ix: 2, i: 0 },
           click: () => { setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
           btn2: true,
@@ -575,7 +577,8 @@ export function useFilterTasks(LAND, CAP) {
         // Cert-required batch: farmer is missing the required cert → prompt to apply.
         { i: 601,
           active: hasActiveCycle && certBatch !== null && !certsAllMet,
-          img: missingCerts[0]?.index != null ? CERT_IMG[missingCerts[0].index] : (CROP_IMG[certBatch?.cropCode] ?? 'images/paddy.png'),
+          img: missingCerts[0]?.index != null ? CERT_IMG[missingCerts[0].index] : (CROP_IMG[certBatch?.cropCode] ?? 'images/crop_icons/paddy.svg'),
+          cropImg: missingCerts[0]?.index == null,
           tx_nmb: { ix: 0 },
           click: () => { navRef.current.assetTab = false; handleToggleView({ ix: 0 }); },
           title: `${db?.union?.name} needs farmers with a ${missingCerts[0]?.name} certification.`,
@@ -588,7 +591,8 @@ export function useFilterTasks(LAND, CAP) {
         // Cert-required batch: farmer already holds all required certs → join directly.
         { i: 602,
           active: hasActiveCycle && certBatch !== null && certsAllMet && !tokenData?.some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && t.cropCode === certBatch?.cropCode),
-          img: CROP_IMG[certBatch?.cropCode] ?? 'images/paddy.png',
+          img: CROP_IMG[certBatch?.cropCode] ?? 'images/crop_icons/paddy.svg',
+          cropImg: true,
           tx_nmb: { ix: 2, i: 0 },
           click: () => { setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
           btn2: true,

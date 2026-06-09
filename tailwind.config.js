@@ -73,6 +73,8 @@ module.exports = {
       colors: {
         green: "#D4CF5A" ,
         green_dark: "#d4a634ff" ,
+        green_light: "#DFDB83" ,        // donate card (light theme) — slightly lighter than green
+        green_dark_light: "#DFBC67" ,   // donate card (dark theme) — slightly lighter than green_dark
         red: "#E69283",
         red_dark: "#6492b3ff",
         grey: "#979797",
