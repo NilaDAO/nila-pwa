@@ -12,7 +12,12 @@
  * to the parent's crop when the subzone has no direct classification.
  */
 export function mergeZonesWithSubzones(record) {
-  const baseZones = Array.isArray(record?.zones) ? record.zones : [];
+  // Urban / unused zones are excluded from the PWA's zone list — they're not
+  // classified by the pipeline and shouldn't appear on the map, in the
+  // fallow table, or as selectable areas in the join-batch flow.
+  const SKIP_CATEGORIES = new Set(['urban', 'unused']);
+  const baseZones = (Array.isArray(record?.zones) ? record.zones : [])
+    .filter((z) => !SKIP_CATEGORIES.has(z?.category));
   const cycles = Array.isArray(record?.cycles)
     ? record.cycles
     : Object.values(record?.cycles || {});

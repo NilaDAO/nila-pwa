@@ -10,7 +10,7 @@ async function fetchWeightedRates(baseUrl, pairs) {
   if (!pairs?.length) return { count: 0, items: [] };
   const body = { items: pairs, include_history: true };
 
-  let r = await fetch(`${baseUrl}/filter_events/weightedRate`, {
+  let r = await fetch(`${baseUrl}/stats/weighted-rate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

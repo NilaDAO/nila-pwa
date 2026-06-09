@@ -13,6 +13,7 @@ type CompactMeta = {
   s: number;                 // scale (e.g. 1e5)
   c?: [number, number];      // centroid [lat, lng] * s
   b?: [number, number, number, number]; // bbox [minLat,minLng,maxLat,maxLng] * s
+  q?: number;                // GPS walk quality 0-6 (absent on pre-q titles)
 };
 
 const EARTH_RADIUS_M = 6378137;
@@ -154,5 +155,5 @@ export function parseCompactMeta(metaLike: string | CompactMeta) {
     ? { minLat: m.b[0] / s, minLng: m.b[1] / s, maxLat: m.b[2] / s, maxLng: m.b[3] / s }
     : undefined;
 
-  return { version: m.v, outlineRings, fieldRings, centroid, bbox, scale: s };
+  return { version: m.v, outlineRings, fieldRings, centroid, bbox, scale: s, gpsQuality: m.q ?? null };
 }

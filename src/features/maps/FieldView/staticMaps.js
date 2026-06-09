@@ -465,22 +465,27 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
             }}
           />
         ))}
-        {/* Portfolio outlines — amber, clickable, highlight selected */}
+        {/* Portfolio outlines — blue = active loan, grey = other known property; clickable, highlight selected */}
         {portfolioOutlines.map((poly, i) => {
           const isSelected = String(fieldActivity?.portfolioSelected) === String(poly.lid);
+          const isActive = (fieldActivity?.portfolioActiveIds || []).some(id => String(id) === String(poly.lid));
           return (
             <Polygon
               key={`pf-${poly.lid}-${i}`}
               paths={poly.latLngs}
               onClick={() => setFieldActivity(prev => prev ? { ...prev, portfolioSelected: poly.lid } : prev)}
               options={{
-                fillColor: isSelected ? 'rgba(245,158,11,0.35)' : 'rgba(245,158,11,0.15)',
+                fillColor: isActive
+                  ? (isSelected ? 'rgba(59,130,246,0.35)' : 'rgba(59,130,246,0.15)')
+                  : (isSelected ? 'rgba(156,163,175,0.30)' : 'rgba(156,163,175,0.12)'),
                 fillOpacity: 1,
-                strokeColor: isSelected ? '#D97706' : '#F59E0B',
+                strokeColor: isActive
+                  ? (isSelected ? '#1D4ED8' : '#3B82F6')
+                  : (isSelected ? '#6B7280' : '#9CA3AF'),
                 strokeOpacity: 0.95,
                 strokeWeight: isSelected ? 2.5 : 1.5,
                 clickable: true,
-                zIndex: isSelected ? 4 : 2,
+                zIndex: isSelected ? 5 : (isActive ? 3 : 2),
               }}
             />
           );

@@ -114,7 +114,7 @@ const PinCodeInput = ({ handleChange, backpage }) => {
 };
 
 
-export const DisableNotifications = ({ onAdd, address }) => { 
+export const DisableNotifications = ({ onAdd, address, compact = false }) => {
   
   const handleSubscriptionSignoff = async () => {
     console.log('unsubscribe user from notifications')
@@ -132,7 +132,14 @@ export const DisableNotifications = ({ onAdd, address }) => {
     }
   }
 
-  return (
+  return compact ? (
+    <div className="flex flex-col gap-2">
+      <p className="font-bold text-xs dark:text-white text-left">Your union can send you notifications.</p>
+      <div className="flex gap-3 justify-center my-3">
+        <button onClick={handleSubscriptionSignoff} className="px-4 py-2 rounded-2xl bg-black dark:bg-white text-white dark:text-black text-xs font-bold active:scale-[0.98]">Disable</button>
+      </div>
+    </div>
+  ) : (
     <div className="flex flex-col items-center mx-6 my-6 h-full justify-center">
           <p className='b-3 dark:text-white'>Your union can send you notifications.</p>
           <ClaimButton handleClick={handleSubscriptionSignoff} title={'disable'} />
@@ -140,7 +147,7 @@ export const DisableNotifications = ({ onAdd, address }) => {
   )
 }
 
-export const EnableNotifications = ({ onAdd, address, autoResolve = true }) => { 
+export const EnableNotifications = ({ onAdd, address, autoResolve = true, compact = false }) => {
   // Optionally auto-resolve on mount (skip if caller wants to keep user on this page)
   useEffect(() => {
     if (!autoResolve) return;
@@ -191,7 +198,15 @@ export const EnableNotifications = ({ onAdd, address, autoResolve = true }) => {
     }
   };
 
-  return (
+  return compact ? (
+    <div className="flex flex-col gap-2">
+      <p className="font-bold text-xs dark:text-white text-left">Your union would like to send you updates.</p>
+      <div className="flex gap-3 justify-center my-3">
+        <button onClick={handleSubscriptionSignup} className="px-4 py-2 rounded-2xl bg-black dark:bg-white text-white dark:text-black text-xs font-bold active:scale-[0.98]">Enable</button>
+        <button onClick={handleSkipNotifications} className="px-4 py-2 rounded-2xl bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 text-black dark:text-white text-xs font-bold active:scale-[0.98]">Skip</button>
+      </div>
+    </div>
+  ) : (
     <div className="flex flex-col items-center m-12 justify-center">
       <p className='b-3 dark:text-white' >Your union would like to send you updates.</p>
       <ClaimButton handleClick={handleSubscriptionSignup} title={'enable'} />
@@ -366,6 +381,10 @@ export const ClaimButton = ({
   title,
   color,
   extrasmall,
+  compact,
+  fullWidth,
+  tooltip,
+  dataTour,
   pendingTitle = 'Working...',
   successTitle,
   successDurationMs = 1200,
@@ -400,13 +419,15 @@ export const ClaimButton = ({
   const label = showSuccess ? successTitle : pending ? pendingTitle : title;
 
   return (
-    <div className={`flex justify-center mt-4 max-h-12`}>
+    <div className={fullWidth ? 'flex flex-1' : `flex justify-center ${compact ? 'my-2' : 'mt-4'} max-h-12`}>
       <button
         hidden={hidden}
         disabled={disabled || pending}
         onClick={runClick}
         aria-busy={pending}
-        className={`mb-2 ${disabled || pending ? 'opacity-40' : ''} ${color === 'white' ? 'text-black bg-white dark:bg-slate-400' : 'text-white dark:text-black bg-black dark:bg-slate-400'} ${extrasmall ? 'text-xs' : 'text-sm'} font-bold rounded-3xl px-6 py-2 no-wrap inline-flex items-center justify-center gap-2 active:scale-[0.98]`}
+        title={tooltip}
+        data-tour={dataTour}
+        className={`mb-2 ${fullWidth ? 'w-full' : ''} ${disabled || pending ? 'opacity-40 cursor-not-allowed' : ''} ${color === 'white' ? 'text-black dark:text-white bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600' : 'text-white dark:text-black bg-black dark:bg-white'} ${compact ? 'text-xs px-4 py-2' : `${extrasmall ? 'text-xs' : 'text-sm'} px-6 py-2`} font-bold rounded-2xl no-wrap inline-flex items-center justify-center gap-2 active:scale-[0.98]`}
       >
         {pending && (
           <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />

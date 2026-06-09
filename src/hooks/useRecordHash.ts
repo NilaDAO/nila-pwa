@@ -9,19 +9,18 @@
  * Usage:
  *   const { record, commitment, loading, error, fetchRecord } = useRecordHash(tokenId);
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ethers } from "ethers";
 import { useWallet, useContract } from "./useWallet.ts";
 import { runTx } from "../utils/runTx.ts";
 import { setDBitem, readItem } from "../utils/db.js";
-import axios from "axios";
+import { fetchRecordFromIPFS } from "../utils/ipfsCid.ts";
 
 import landTitleArtifact from "../components/ABI/NilaLandTitleWithName.json";
 
 const landTitleAbi = (landTitleArtifact as any).abi ?? landTitleArtifact;
 const LAND_TITLE_ADDR = process.env.REACT_APP_LAND_TITLE_MAIN!;
 const NIN_ADDR = process.env.REACT_APP_NIN_MAIN!;
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
 const erc20Abi = [
   "function allowance(address owner, address spender) view returns (uint256)",
@@ -29,6 +28,12 @@ const erc20Abi = [
 ];
 
 const DB_STORE = "FarmData";
+
+// Cross-instance sync: when one useRecordHash instance patches its record
+// (e.g. user crop correction in staticCards), other instances of the hook
+// mounted with the same tid (e.g. the one in Wallet.js that drives
+// CultivationCard + map fill via `dominant`) need to pick up the change.
+const PATCH_EVENT = "nila:record-patched";
 
 type RecordHashState = {
   /** The full record.json object, or null if not yet fetched. */
@@ -120,6 +125,60 @@ export function useRecordHash(tokenId: number | string | null) {
     checkAccess();
   }, [checkAccess]);
 
+  // ── Locally patch the cached record (e.g. user crop correction) ──
+  // Updates state immediately and writes the patched record back into the
+  // same IndexedDB entry so the change survives reload. The on-chain
+  // commitment is untouched; if it later changes upstream the normal stale
+  // path will overwrite the patch on the next fetch.
+  //
+  // Read current state via a ref so the side effects (setDBitem + window
+  // dispatchEvent) live OUTSIDE the setState updater — otherwise the dispatch
+  // synchronously triggers another instance's setState during the calling
+  // component's update, which React warns about ("Cannot update a component
+  // while rendering a different component").
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const patchRecord = useCallback(
+    (updater: (prev: any) => any) => {
+      const s = stateRef.current;
+      if (!s.record) return;
+      const next = updater(s.record);
+      if (!next || next === s.record) return;
+      // Guarded update: only commit if state hasn't already moved past the
+      // record we read from the ref.
+      setState((prev) => (prev.record === s.record ? { ...prev, record: next } : prev));
+      if (tid != null) {
+        const cacheKey = `recordHash_${tid}`;
+        setDBitem(
+          cacheKey,
+          { commitment: s.commitment, recordHash: s.recordHash, record: next },
+          DB_STORE,
+        ).catch((err) => console.warn("[useRecordHash] patch cache failed:", err));
+        // Notify every other useRecordHash instance bound to the same tid
+        // so dominant/features in fieldActivity (built off Wallet's record)
+        // pick up the change without waiting for a remount + cache reload.
+        window.dispatchEvent(
+          new CustomEvent(PATCH_EVENT, { detail: { tid: tid.toString(), record: next } }),
+        );
+      }
+    },
+    [tid],
+  );
+
+  // Listen for patches dispatched by other instances for the same tid.
+  useEffect(() => {
+    if (tid == null) return;
+    const key = tid.toString();
+    const onPatch = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || detail.tid !== key || !detail.record) return;
+      setState((s) => (s.record === detail.record ? s : { ...s, record: detail.record }));
+    };
+    window.addEventListener(PATCH_EVENT, onPatch);
+    return () => window.removeEventListener(PATCH_EVENT, onPatch);
+  }, [tid]);
+
   // ── Claim accumulated view fees ────────────────────────────
 
   const claimViewFees = useCallback(async () => {
@@ -146,7 +205,9 @@ export function useRecordHash(tokenId: number | string | null) {
   // ── Main fetch: commitment → getRecordHash → backend → verify
 
   const fetchRecord = useCallback(async () => {
+    console.log("[useRecordHash] fetchRecord called", { tid, wallet: wallet?.address, hasLandTitle: !!landTitle });
     if (!landTitle || !wallet || tid == null) {
+      console.warn("[useRecordHash] preconditions not met", { tid, hasWallet: !!wallet, hasLandTitle: !!landTitle });
       setState((s) => ({ ...s, error: "Wallet or contract not ready" }));
       return;
     }
@@ -154,48 +215,62 @@ export function useRecordHash(tokenId: number | string | null) {
     setState((s) => ({ ...s, loading: true, error: null }));
 
     try {
-      // 1. Check IndexedDB cache first — skip all chain calls if fresh
+      // 1. Check IndexedDB cache first — skip all chain calls if fresh.
+      // setDBitem wraps writes as { id, value: <payload> } (the FarmData store
+      // uses keyPath: 'id'), so the real payload lives at cached.value.
       const cacheKey = `recordHash_${tid}`;
       const cached = await readItem(cacheKey, DB_STORE);
-      if (cached?.record && cached?.commitment) {
+      const cachedVal = cached?.value;
+      console.log("[useRecordHash] cache lookup", { cacheKey, hit: !!cachedVal?.record, stale: cachedVal?.stale });
+      if (cachedVal?.record && cachedVal?.commitment) {
         setState((s) => ({
           ...s,
-          record: cached.record,
-          recordHash: cached.recordHash,
-          commitment: cached.commitment,
+          record: cachedVal.record,
+          recordHash: cachedVal.recordHash,
+          commitment: cachedVal.commitment,
           loading: false,
         }));
         // Background: check if commitment changed
         readCommitment().then((live) => {
-          if (live && live !== cached.commitment) {
+          if (live && live !== cachedVal.commitment) {
             console.log("[useRecordHash] commitment changed — will refresh next load");
-            setDBitem(cacheKey, { ...cached, stale: true }, DB_STORE);
+            setDBitem(cacheKey, { ...cachedVal, stale: true }, DB_STORE);
           }
         });
-        if (!cached.stale) return;
+        if (!cachedVal.stale) {
+          console.log("[useRecordHash] returning cached record");
+          return;
+        }
       }
 
       // 2. Read commitment from chain
       const commitment = await readCommitment();
+      console.log("[useRecordHash] commitment from chain", { commitment });
       setState((s) => ({ ...s, commitment }));
 
       // 3. Get the actual hash via the gated function
       const owner: string = await landTitle.ownerOf(tid);
       const isOwner = owner.toLowerCase() === wallet.address.toLowerCase();
+      console.log("[useRecordHash] ownership", { owner, isOwner });
 
       let recordHash: string;
       if (isOwner) {
         recordHash = await landTitle.getRecordHash.staticCall(tid);
+        console.log("[useRecordHash] hash (owner path)", { recordHash });
       } else {
         const fee: bigint = await landTitle.quoteViewFee(tid, wallet.address);
+        console.log("[useRecordHash] viewFee", { fee: fee.toString() });
         if (fee > 0n) {
           await ensureAllowance(fee);
         }
         recordHash = await landTitle.getRecordHash.staticCall(tid);
+        console.log("[useRecordHash] hash (viewer path, static)", { recordHash });
         await runTx(() => landTitle.getRecordHash(tid));
+        console.log("[useRecordHash] viewFee paid on chain");
       }
 
       if (!recordHash || recordHash === ethers.ZeroHash) {
+        console.warn("[useRecordHash] no record hash set", { recordHash });
         setState((s) => ({
           ...s,
           recordHash: null,
@@ -207,29 +282,28 @@ export function useRecordHash(tokenId: number | string | null) {
         return;
       }
 
-      // 4. Fetch record.json from backend by hash
-      const { data: record } = await axios.get(
-        `${API_BASE_URL}/gis/record-by-hash/${recordHash}`
-      );
-
-      // 5. Verify integrity
-      const embeddedHash = record?.report_hash_bytes32;
-      if (embeddedHash && embeddedHash !== recordHash) {
-        console.warn(
-          `[useRecordHash] integrity mismatch: embedded=${embeddedHash} on-chain=${recordHash}`
-        );
+      // 4+5. Fetch the record from Pinata/IPFS by CID derived from the on-chain hash.
+      let record: any;
+      try {
+        record = await fetchRecordFromIPFS(recordHash);
+      } catch (err: any) {
+        console.error("[useRecordHash] record fetch failed", { recordHash, err: err?.message ?? err });
+        // Keep the cached record on screen — a failed refresh must not blank the UI.
+        // Only surface an error when we have nothing cached to fall back to.
+        const fallback = cachedVal?.record ?? null;
         setState((s) => ({
           ...s,
-          record,
           recordHash,
           commitment,
+          record: fallback ?? s.record ?? null,
           loading: false,
-          error: "Record integrity check failed — data may have been tampered with",
+          error: fallback ? null : (err?.message || "Failed to fetch record"),
         }));
         return;
       }
 
       // 6. Cache in IndexedDB
+      console.log("[useRecordHash] caching record + setting state", { land_id: record?.land_id });
       await setDBitem(cacheKey, { commitment, recordHash, record }, DB_STORE);
 
       setState((s) => ({
@@ -251,5 +325,6 @@ export function useRecordHash(tokenId: number | string | null) {
     fetchRecord,
     checkAccess,
     claimViewFees,
+    patchRecord,
   };
 }

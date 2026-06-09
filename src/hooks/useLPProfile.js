@@ -13,6 +13,10 @@ export function saveLPLocal(data) {
     localStorage.setItem(LP_STORAGE_KEY, JSON.stringify(data));
 }
 
+export function removeLPLocal() {
+    localStorage.removeItem(LP_STORAGE_KEY);
+}
+
 export function useLPProfile() {
     const [profile, setProfile] = useState(() => loadLocal());
 

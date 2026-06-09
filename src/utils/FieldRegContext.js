@@ -24,7 +24,10 @@ export const FieldRegProvider = ({ children }) => {
     'sufficientGas': undefined,
     'alts': [],
     'neighbours': [],
-    'messages': 0
+    'messages': 0,
+    'suppressPolygonUntil': 0,
+    'rectStrength': 0.5,
+    'cornerStrength': 0
   }) // field registration flow  
 
   const updateFieldReg = (updates) => {

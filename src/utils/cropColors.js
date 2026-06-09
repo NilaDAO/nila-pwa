@@ -39,7 +39,9 @@ export const CROP_COLORS = {
   // --- root / tuber (red-brown family) ---
   tapioca:     "#d85a3a", cassava:      "#d85a3a",
   sweet_potato:"#c84a2a", potato:       "#b84020",
-  yam:         "#e86a4a", elephant_yam: "#c85030",
+  yam:         "#e86a4a", elephant_yam: "#c85030", elephant_foot_yam: "#c85030",
+  colocasia:   "#a8602a", taro:         "#a8602a",
+  fodder_grass:"#7aa848", fodder_grasses:"#7aa848",
   turmeric:    "#e8a020", ginger:       "#d89030",
   onion:       "#c87050", garlic:       "#b86848",
   carrot:      "#e87040", beetroot:     "#a83848",
@@ -111,4 +113,54 @@ export const cropColor = (cropType) => {
 export const phenoColor = (stage) => {
   if (!stage) return PHENO_COLORS.unknown;
   return PHENO_COLORS[String(stage).toLowerCase()] || PHENO_COLORS.unknown;
+};
+
+/**
+ * Returns the public URL for a crop SVG icon, or null if no crop type given.
+ */
+/**
+ * Strips oracle subtype qualifiers (e.g. sugarcane_ratoon → sugarcane,
+ * sugarcane_plant → sugarcane) while preserving legitimate multi-word crops
+ * (black_gram, green_gram, bitter_gourd, etc.) that exist in CROP_COLORS.
+ */
+export const normalizeCropType = (cropType) => {
+  if (!cropType) return cropType;
+  const key = String(cropType).toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
+  if (CROP_COLORS[key]) return key;
+  const base = key.split('_').slice(0, -1).join('_');
+  return (base && CROP_COLORS[base]) ? base : key;
+};
+
+export const cropIconUrl = (cropType) => {
+  if (!cropType) return null;
+  const key = normalizeCropType(cropType);
+  return `/images/crop_icons/${key}.svg`;
+};
+
+// Stable palette indexed by zone_id slot (z0..z9, plus wrap-around).
+// Used to color zone polygons + subzones (clusters) tagged with their zone_id.
+export const ZONE_PALETTE = [
+  "#e76f51", // 0  — coral
+  "#2a9d8f", // 1  — teal
+  "#e9c46a", // 2  — sand
+  "#264653", // 3  — slate
+  "#f4a261", // 4  — amber
+  "#8ecae6", // 5  — sky
+  "#b56576", // 6  — dusty rose
+  "#73d216", // 7  — green
+  "#9d4edd", // 8  — violet
+  "#ff9f1c", // 9  — orange
+];
+
+export const zoneColor = (zoneId) => {
+  if (zoneId === null || zoneId === undefined) return "#999999";
+  // Accept "z0", "z1", ... or raw integers
+  let idx = -1;
+  if (typeof zoneId === 'number') idx = zoneId;
+  else {
+    const m = String(zoneId).match(/(\d+)/);
+    if (m) idx = parseInt(m[1], 10);
+  }
+  if (idx < 0 || Number.isNaN(idx)) return "#999999";
+  return ZONE_PALETTE[idx % ZONE_PALETTE.length];
 };
