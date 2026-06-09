@@ -54,7 +54,8 @@ const _resolveZoneId = (feature, zones) => {
 import Assets from '../assets/assets'
 import DebtsActive from '../lending/debtsActive';
 import Investments from '../lending/investments';
-import { InvestmentCard, DebtCard, Card, AssetCard,CultivationCard,MapCard, CashLiquidityCard, OrdersSummaryCard } from "./Cards";
+import { InvestmentCard, DebtCard, Card, AssetCard,CultivationCard,CultivationCardSkeleton,MapCard, CashLiquidityCard, OrdersSummaryCard, DonationCard } from "./Cards";
+import { useDonationPrograms, useDonationsEnabled } from "../../hooks/useDonationPrograms.ts";
 import OrdersCard from './OrdersCard';
 import { useFoodTokenBatches, CROP_CODE_NAMES } from '../../hooks/useFoodTokenBatches.ts';
 import MapNav from '../maps/mapsNav';
@@ -64,6 +65,7 @@ import Header from './Header';
 import TaskMessage from "./tasks";
 import Settings from './Settings';
 import Forms from '../../components/Forms/forms';
+import Donate from '../../components/Forms/Donate';
 import Tabs from './tabs';
 import UnionReserve from './UnionReserve';
 import { useUnionCashReserve } from '../../hooks/useUnionCashReserve.ts';
@@ -160,7 +162,8 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, save
             : ix === 4 ? <Settings handleOpenForm={handleOpenForm} LAND={LAND} />
             : ix === 5 ? <Forms LAND={LAND} CAP={CAP} handleOpenForm={handleOpenForm} />
             : ix === 6 ? <UnionReserve handleOpenForm={handleOpenForm} savedFieldActivity={savedFieldActivity} />
-            : ix === 7 && <OrdersCard unionAddr={db?.union?.leader ? db?.union?.address : undefined} />
+            : ix === 7 ? <OrdersCard unionAddr={db?.union?.leader ? db?.union?.address : undefined} />
+            : ix === 8 && <Donate />
             }
         </motion.div>
         </div> 
@@ -547,6 +550,11 @@ function Wallet({LAND}) {
 
     const cashOutDisabled = (reserveData?.settlementShortfall ?? 0n) > 0n;
 
+    // Donation programs — card shows only when the union leader has turned
+    // donations on AND there are active programs for the union.
+    const { data: donationPrograms = [] } = useDonationPrograms(db?.union);
+    const { data: donationsEnabled = false } = useDonationsEnabled(db?.union);
+
     // Orders & Pricing — leaders only
     const { data: batchSummary, refetch: refetchBatches } = useFoodTokenBatches(db?.union?.address);
     const activeBatches      = batchSummary?.active          ?? [];
@@ -690,6 +698,16 @@ function Wallet({LAND}) {
           onClick: () => handleToggleView({ ix: 1}),
           content: <InvestmentCard CAP={CAP} sums={sums} cardShrink={cardShrink} inArrays={inArrays} />
         },
+        // Donation programs — directly under Investment. Shown only when the union
+        // leader enabled donations AND there are active programs.
+        ...((donationsEnabled && donationPrograms.length > 0) ? [{
+          key: 'donate',
+          type: 'DONATE',
+          show: ix === 8 || ix === null,
+          title: 'Donate',
+          onClick: () => handleToggleView({ ix: 8 }),
+          content: <DonationCard programs={donationPrograms} cardShrink={cardShrink} />,
+        }] : []),
         ...(db?.union?.leader ? [{
           key: 'union-reserve',
           type: 'CASH_LIQUIDITY',
@@ -811,6 +829,17 @@ function Wallet({LAND}) {
               content: <CultivationCard dominant={d} cardIndex={i} />
             };
           }) || []),
+        // While the IPFS record is still loading, hold the cultivation slot with a
+        // flashing placeholder so the real card fades in instead of popping in.
+        // Placed at the end so it takes the same stack position the cultivation
+        // card will occupy once the record lands.
+        ...((tokenId && !recordReady) ? [{
+          key: 'cultivation-loading',
+          type: 'MAP',
+          show: ix === null,
+          title: '',
+          content: <CultivationCardSkeleton />,
+        }] : []),
       ];
     
     // reshuffle the cards to have the defaulted card on top in case of defaulted debt

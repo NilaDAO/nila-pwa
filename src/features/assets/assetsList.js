@@ -163,7 +163,7 @@ const AssetList = ({ data, handleTokenView, LAND, handleOpenForm, onViewField })
                                         maskSize: 'contain',
                                         WebkitMaskPosition: 'center',
                                         maskPosition: 'center',
-                                        backgroundColor: 'black',
+                                        backgroundColor: 'white',
                                     }} />
                                 )}
                             </div>

@@ -3,6 +3,7 @@ import { WalletIcon, MapPinIcon } from '@heroicons/react/20/solid'
 import { useDataContext, useNavContext, useTxContext } from '../../utils/NavigationContext'
 import useTouch from '../../hooks/useTouch';
 import RippleEffect from './RippleEffect';
+import { ClaimButton } from '../../components/UI/buttons.js';
 const Tabs = ({ handleOpenForm, toggleScreen, cashOutDisabled, isCollapsed }) => {
   const [shortbuttons, setShortButtons] = useState([]);
   const { stage } = useTxContext()
@@ -38,19 +39,19 @@ const Tabs = ({ handleOpenForm, toggleScreen, cashOutDisabled, isCollapsed }) =>
           className="fixed inset-x-0 z-40"
           style={{ bottom: 'calc(48px + env(safe-area-inset-bottom))' }}
         >
-          <div className="w-full overflow-x-auto my-1 pb-1">
+          <div className="w-full overflow-x-auto m-1">
             <div className="flex gap-4 px-1 whitespace-nowrap">
               {shortbuttons.map((btn, index) => {
                 const isDisabled = btn[1] === 'cashOut' && cashOutDisabled;
                 return (
-                  <button
+                  <ClaimButton
                     key={index}
-                    onClick={() => !isDisabled && handleOpenForm(btn[1])}
+                    compact
+                    color={btn[1] === 'cashOut' ? 'white' : undefined}
                     disabled={isDisabled}
-                    className="flex-shrink-0 mx-1 dark:bg-slate-400 bg-gray-200 text-sm font-bold rounded-3xl py-2 no-wrap px-5 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {btn[0]}
-                  </button>
+                    handleClick={() => handleOpenForm(btn[1])}
+                    title={btn[0]}
+                  />
                 );
               })}
             </div>

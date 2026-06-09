@@ -265,9 +265,9 @@ function App({installAvailable}) {
         console.log('land', land)
         setTokenData(bal);
         setGrantData(grant);
-        // If chain says no land but IndexedDB has a pending mint, preserve that state
+        // pendingMint in IndexedDB always wins over stale RQ cache
         const storedLand = db?.reload?.land;
-        LAND.current = (!land?.hasLand && storedLand?.pendingMint) ? storedLand : land;
+        LAND.current = storedLand?.pendingMint ? storedLand : land;
         setBootStage('ready');
       }
 

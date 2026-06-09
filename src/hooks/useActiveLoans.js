@@ -44,6 +44,8 @@ const mapBackendItem = (i, union) => ({
   fastDraw: Boolean(i.fast_draw ?? i.fastDraw ?? false),
   landId: i.land_id ?? null,
   farmName: i.farm_name ?? null,
+  farmerScore: i.farmer_score ?? null,
+  foodTokenId: i.food_token_id ?? null,
   // chain sync metadata — not yet verified
   chainVerified: false,
   chainClosed: false,
@@ -89,6 +91,8 @@ export function useActiveLoans(unionAddress, enabled) {
             active: true,
             land_id: l.landId ?? null,
             farm_name: l.farmName ?? null,
+            farmer_score: l.farmerScore ?? null,
+            food_token_id: l.foodTokenId ?? null,
           }));
 
         const res = await fetch(`${API}/loans/sync`, {

@@ -2,7 +2,7 @@ import React, { memo } from 'react'
 import StaticMapNav from './FieldView/staticNav';
 import FieldRegNav from './FieldRegistration/fieldRegNav';
 
-const MapNav = ({ LAND, onFeatureClick, cardView, portfolioMode }) => {
+const MapNav = ({ LAND, onFeatureClick, cardView, cardShrink, portfolioMode }) => {
   const hasLand = Boolean(LAND?.current?.hasLand);
   const hasPendingMint = Boolean(LAND?.current?.pendingMint);
   const hasPendingMetadata = Boolean(LAND?.current?.metadata || LAND?.current?.LAND?.metadata);
@@ -17,7 +17,7 @@ const MapNav = ({ LAND, onFeatureClick, cardView, portfolioMode }) => {
       <div className="pointer-events-none inset-0 bg-gradient-to-b from-white to-slate-100" />
       {/* Nav (clickable) sits *above* the gradient, but still below the card */}
       {showStaticNav ? (
-        <StaticMapNav LAND={LAND} onFeatureClick={onFeatureClick} cardView={cardView} className="absolute inset-0 z-30" />
+        <StaticMapNav LAND={LAND} onFeatureClick={onFeatureClick} cardView={cardView} cardShrink={cardShrink} className="absolute inset-0 z-30" />
       ) : showFieldRegNav ? (
         <FieldRegNav className="absolute inset-0 z-30" />
       ) : null}

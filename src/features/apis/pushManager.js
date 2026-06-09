@@ -81,6 +81,7 @@ export async function subscribeUser(address) {
   const registration = await navigator.serviceWorker.ready;
   console.log('serviceWorker ready?', registration)
   try {
+    if (!VAPID_PUBLIC_KEY) throw new Error('REACT_APP_VAPID_PUBLIC_KEY is not set');
     const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,

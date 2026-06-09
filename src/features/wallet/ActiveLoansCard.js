@@ -7,15 +7,20 @@ import {
   ExclamationTriangleIcon,
   XCircleIcon,
 } from '@heroicons/react/20/solid';
+import { ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { ClaimButton } from '../../components/UI/buttons';
 import { useWallet, useContract } from '../../hooks/useWallet.ts';
 import { runTx } from '../../utils/runTx.ts';
 import { setDBitem } from '../../utils/db.js';
 import { ethers } from 'ethers';
 import landTitleArtifact from '../../components/ABI/NilaLandTitleWithName.json';
+import foodTokenArtifact from '../../components/ABI/FoodTokens.json';
+import { CROP_CODE_NAMES } from '../../hooks/useFoodTokenBatches.ts';
 
 const _ltAbi = (landTitleArtifact).abi ?? landTitleArtifact;
+const _ftAbi = (foodTokenArtifact).abi ?? foodTokenArtifact;
 const _ltAddr = process.env.REACT_APP_LAND_TITLE_MAIN;
+const _ftAddr = process.env.REACT_APP_FOODTOKEN_ADDRESS;
 const _ninAddr = process.env.REACT_APP_NIN_MAIN;
 const _erc20Abi = [
   "function allowance(address owner, address spender) view returns (uint256)",
@@ -155,6 +160,8 @@ export default function ActiveLoansCard({
   onDeepSync,
   onCashIn,
   onCashOut,
+  onAcceptPending,
+  onDenyPending,
   onViewMap,
   collectDeadline,
   unionAddress,
@@ -168,14 +175,15 @@ export default function ActiveLoansCard({
   const fundRef = useRef(null);
   const [syncStep, setSyncStep] = useState(0);
   const [syncing, setSyncing] = useState(false);
-  const [gisData, setGisData] = useState({});     // { loanId: { ...summary } }
   const [keyMode, setKeyMode] = useState(null);   // null | 'confirm'
   const [keysPurchased, setKeysPurchased] = useState(false);
   const [quotedFee, setQuotedFee] = useState(null); // per-token fee in wei, null = not yet quoted
   const { wallet } = useWallet();
   const landTitle = useContract(_ltAddr, _ltAbi, wallet);
+  const foodToken = useContract(_ftAddr, _ftAbi, wallet);
   const nin = useContract(_ninAddr, _erc20Abi, wallet);
-  const [gisLoading, setGisLoading] = useState({}); // { loanId: bool }
+  const [ftData, setFtData] = useState({}); // { loanId: { cropName, kg, sosTs, harvestTs } }
+  const [copiedId, setCopiedId] = useState(null);
 
   // Per-loan collect-deadline window check.
   // Within window (drawdownTs + collectDeadline > now): swipe right → cash-out (DISBURSE more).
@@ -185,6 +193,12 @@ export default function ActiveLoansCard({
     const nowSec = Math.floor(Date.now() / 1000);
     return nowSec - Number(loan.drawdownTs) < Number(collectDeadline);
   }, [collectDeadline]);
+
+  // Pending = slow-draw loan claimed on-chain but not yet approved by the union
+  // (drawdownTs is null/0). Swipe right → accept, swipe left → deny.
+  const isPending = useCallback((loan) => (
+    loan?.active && !loan?.chainClosed && !loan?.drawdownTs && !loan?.fastDraw
+  ), []);
 
   // Swipe: left = repay (only outside window), right = cash-out (only inside window)
   const [swipe, setSwipe] = useState({ id: null, dx: 0 });
@@ -201,16 +215,19 @@ export default function ActiveLoansCard({
   ), []);
 
   const onSwipeTouchStart = useCallback((e, loan) => {
+    const pending = isPending(loan);
     const inWindow      = isInCollectWindow(loan);
     const fullyCashedOut = isFullyCashedOut(loan);
     swipeRef.current = {
       startX: e.touches[0].clientX,
       id: loan.id,
       dragging: false,
-      allowLeft:  !inWindow || fullyCashedOut,                    // repay enabled outside window OR once fully drained
-      allowRight: inWindow && !fullyCashedOut && !cashOutDisabled, // cash-out only while window open AND wallet has nIN AND not settling
+      // Pending row: right = accept, left = deny — both always allowed.
+      // Drawn row: same as before (repay outside window, cash-out inside).
+      allowLeft:  pending ? Boolean(onDenyPending)   : (!inWindow || fullyCashedOut),
+      allowRight: pending ? Boolean(onAcceptPending) : (inWindow && !fullyCashedOut && !cashOutDisabled),
     };
-  }, [isInCollectWindow, isFullyCashedOut]);
+  }, [isPending, isInCollectWindow, isFullyCashedOut, onDenyPending, onAcceptPending, cashOutDisabled]);
 
   const onSwipeTouchMove = useCallback((e) => {
     const { startX, id } = swipeRef.current;
@@ -228,12 +245,16 @@ export default function ActiveLoansCard({
   const onSwipeTouchEnd = useCallback((loan) => {
     const dx = swipeDxRef.current;
     const { allowLeft, allowRight } = swipeRef.current;
+    const pending = isPending(loan);
     swipeRef.current = { startX: null, id: null, dragging: false, allowLeft: false, allowRight: false };
     swipeDxRef.current = 0;
     setSwipe({ id: null, dx: 0 });
-    if (dx < -SWIPE_TRIGGER && allowLeft)  onCashIn?.(loan);
-    else if (dx >  SWIPE_TRIGGER && allowRight) onCashOut?.(loan);
-  }, [onCashIn, onCashOut]);
+    if (dx < -SWIPE_TRIGGER && allowLeft) {
+      if (pending) onDenyPending?.(loan); else onCashIn?.(loan);
+    } else if (dx > SWIPE_TRIGGER && allowRight) {
+      if (pending) onAcceptPending?.(loan); else onCashOut?.(loan);
+    }
+  }, [isPending, onCashIn, onCashOut, onAcceptPending, onDenyPending]);
 
   // Close fund dropdown on outside click
   useEffect(() => {
@@ -266,19 +287,21 @@ export default function ActiveLoansCard({
     return Array.from(keys);
   }, [loans]);
 
-  // Split into active vs flagged, filtered by selected fund
-  const { active, flagged } = useMemo(() => {
-    const a = [], f = [];
+  // Split into pending (claimed, awaiting leader approval), active (drawn), flagged (closed).
+  const { pending, active, flagged } = useMemo(() => {
+    const p = [], a = [], f = [];
     for (const l of loans) {
       if (selectedFund !== 'all' && normFund(l.fund) !== selectedFund) continue;
       if (l.chainClosed) { f.push(l); }
+      else if (l.active && !l.drawdownTs && !l.fastDraw) { p.push(l); }
       else if (l.drawdownTs && l.active) { a.push(l); }
     }
-    return { active: a, flagged: f };
+    return { pending: p, active: a, flagged: f };
   }, [loans, selectedFund]);
 
   const enriched = useMemo(() =>
-    [...active, ...flagged].map((l) => {
+    [...pending, ...active, ...flagged].map((l) => {
+      const _isPending = isPending(l);
       const eos = eosMap.get(l.id);
       // Primary: maturityTs from chain. Fallback: EOS from satellite API.
       const maturityDate = l.maturityTs
@@ -303,6 +326,7 @@ export default function ActiveLoansCard({
         landId,
         hasContact,
         displayName,
+        isPending: _isPending,
         // l.amount already equals chain `outstanding` (principal + accrued interest)
         // from useActiveLoans chain sync — don't add interest on top.
         totalAmount: l.amount,
@@ -318,7 +342,7 @@ export default function ActiveLoansCard({
         eosSource: satelliteEos ? 'satellite' : maturityDate ? 'contract' : predictedEarliest ? 'predicted' : null,
       };
     }),
-    [active, flagged, resolveName, eosMap]
+    [pending, active, flagged, resolveName, eosMap, isPending]
   );
 
   // Check IndexedDB on mount — if viewing keys cached, show "View on map"
@@ -330,6 +354,40 @@ export default function ActiveLoansCard({
       }).catch(() => {});
     }).catch(() => {});
   }, []);
+
+  // When a row is expanded and it carries a foodTokenId, fetch on-chain crop / kg / SOS / harvest.
+  useEffect(() => {
+    if (!expandedId || !foodToken) return;
+    const loan = (loans || []).find((l) => l.id === expandedId);
+    const tokenId = loan?.foodTokenId;
+    if (!tokenId || ftData[expandedId]) return;
+    (async () => {
+      try {
+        const [unpacked, bal, harvestTs] = await Promise.all([
+          foodToken.unpackTokenId(tokenId),
+          foodToken.balanceOf(loan.borrower, tokenId),
+          foodToken.tokenHarvestTs(tokenId),
+        ]);
+        // SOS is now packed in the tokenId itself; cropCode is the 6-digit codex (family*1000 + variety)
+        const combined   = Number(unpacked?.cropCode ?? unpacked?.[1] ?? 0);
+        const cropFamily = Math.floor(combined / 1000);
+        const variety    = combined % 1000;
+        const sosTs      = Number(unpacked?.sosTs ?? unpacked?.[2] ?? 0);
+        setFtData((prev) => ({
+          ...prev,
+          [expandedId]: {
+            cropName: CROP_CODE_NAMES[cropFamily] ?? `Crop ${cropFamily}`,
+            variety,
+            kg: Number(bal),
+            sosTs,
+            harvestTs: Number(harvestTs),
+          },
+        }));
+      } catch (e) {
+        console.warn('[foodToken] read failed:', e.message);
+      }
+    })();
+  }, [expandedId, foodToken, loans, ftData]);
 
   // Read view fee from contract when user opens the confirm panel
   useEffect(() => {
@@ -390,32 +448,6 @@ export default function ActiveLoansCard({
     }
     return results;
   }, [active, fundLentMap, fundMap]);
-
-  const API = process.env.REACT_APP_API_BASE_URL;
-
-  const handleCheckCrop = useCallback(async (loan) => {
-    if (!loan.borrower) return;
-    setGisLoading((prev) => ({ ...prev, [loan.id]: true }));
-    try {
-      const opts = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ borrowers: [loan.borrower] }),
-      };
-      const [sosRes, eosRes] = await Promise.all([
-        fetch(`${API}/gis/sos`, opts),
-        fetch(`${API}/gis/eos`, opts),
-      ]);
-      const sosJson = sosRes.ok ? await sosRes.json() : null;
-      const eosJson = eosRes.ok ? await eosRes.json() : null;
-      const sos = sosJson?.results?.[loan.borrower] ?? null;
-      const eos = eosJson?.results?.[loan.borrower] ?? null;
-      setGisData((prev) => ({ ...prev, [loan.id]: { sos, eos } }));
-    } catch (err) {
-      console.error('[GIS] check crop failed:', err);
-    }
-    setGisLoading((prev) => ({ ...prev, [loan.id]: false }));
-  }, [API]);
 
   const hasMismatch = accounting.some((a) => !a.match);
 
@@ -485,7 +517,9 @@ export default function ActiveLoansCard({
         <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide">
           Active Loans
           <span className="font-normal ml-1">
-            ({active.length}{flagged.length > 0 ? ` + ${flagged.length} closed` : ''})
+            ({active.length}
+            {pending.length > 0 ? ` + ${pending.length} awaiting` : ''}
+            {flagged.length > 0 ? ` + ${flagged.length} closed` : ''})
           </span>
         </p>
         <button
@@ -533,11 +567,19 @@ export default function ActiveLoansCard({
             className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 whitespace-nowrap"
           >View on map</button>
         ) : (
+          <>
+          <button
+            onClick={() => onViewMap?.(enriched, { outlinesOnly: true })}
+            disabled={!active.length}
+            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
+            title="See property outlines only — free, no records"
+          >Outlines</button>
           <button
             onClick={() => setKeyMode('confirm')}
             disabled={!active.length}
-            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
-          >Buy viewing keys</button>
+            className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
+          >Buy keys</button>
+          </>
         )}
         </div>
       )}
@@ -552,8 +594,15 @@ export default function ActiveLoansCard({
             >✕</button>
           </div>
           <p className="text-[10px] dark:text-slate-300">
-            Pay up to <span className="font-bold dark:text-white">{quotedFee != null ? `${ethers.formatEther(quotedFee * BigInt(active.length))} nIN` : '...'}</span> to view harvest timing, yield and crop health for {active.length} members ({quotedFee != null ? `${ethers.formatEther(quotedFee)}/property` : 'quoting...'}). Properties without farm data on-chain are skipped automatically. 80% of the revenue goes directly to the farmer.
+            A viewing key unlocks each member's <span className="font-bold dark:text-white">real-life farm record</span> — harvest timing, yield and crop health, verified from the field and satellite imagery. Property outlines are always free to view (see below).
           </p>
+          <p className="text-[10px] dark:text-slate-300">
+            Pay up to <span className="font-bold dark:text-white">{quotedFee != null ? `${ethers.formatEther(quotedFee * BigInt(active.length))} nIN` : '...'}</span> for {active.length} members ({quotedFee != null ? `${ethers.formatEther(quotedFee)}/property` : 'quoting...'}). Properties without farm data on-chain are skipped automatically. 80% of the revenue goes directly to the farmer.
+          </p>
+          <button
+            onClick={() => { setKeyMode(null); onViewMap?.(enriched, { outlinesOnly: true }); }}
+            className="self-start text-[11px] text-gray-500 dark:text-slate-400 underline active:scale-95"
+          >See property outlines only (free)</button>
           <ClaimButton
             title={quotedFee != null ? `Pay up to ${ethers.formatEther(quotedFee * BigInt(active.length))} nIN` : 'Quoting...'}
             pendingTitle="Signing..."
@@ -656,45 +705,55 @@ export default function ActiveLoansCard({
             {(() => {
               const isTarget = swipe.id === loan.id;
               const dx = isTarget ? swipe.dx : 0;
-              const leftPct  = Math.min(1, Math.max(0, -dx / SWIPE_REVEAL)); // swiping left → repay
-              const rightPct = Math.min(1, Math.max(0,  dx / SWIPE_REVEAL)); // swiping right → cash-out
+              const leftPct  = Math.min(1, Math.max(0, -dx / SWIPE_REVEAL));
+              const rightPct = Math.min(1, Math.max(0,  dx / SWIPE_REVEAL));
+              const pendingRow     = loan.isPending;
               const inWindow       = isInCollectWindow(loan);
               const fullyCashedOut = isFullyCashedOut(loan);
-              const repayAllowed   = !inWindow || fullyCashedOut;
-              const cashOutAllowed = inWindow && !fullyCashedOut && !cashOutDisabled;
-              // Disabled actions get a muted gray bar with an "unavailable" hint.
-              const repayBg   = repayAllowed
-                ? `rgba(34,197,94,${leftPct * 0.9})`     // green
-                : `rgba(107,114,128,${leftPct * 0.9})`;  // gray
-              const cashOutBg = cashOutAllowed
-                ? `rgba(59,130,246,${rightPct * 0.9})`   // blue
-                : `rgba(107,114,128,${rightPct * 0.9})`; // gray
-              const repayLabel   = repayAllowed   ? 'Repay'    : 'Repay later';
-              const cashOutLabel = cashOutAllowed
-                ? 'Cash out'
-                : cashOutDisabled ? 'Settling'
-                : (fullyCashedOut ? 'Cashed out' : 'Cash-out closed');
+              // Pending: right=accept (green), left=deny (red). Both always enabled.
+              // Drawn: right=cash-out (blue) when in window, left=repay (green) outside window.
+              const leftAllowed  = pendingRow ? Boolean(onDenyPending)   : (!inWindow || fullyCashedOut);
+              const rightAllowed = pendingRow ? Boolean(onAcceptPending) : (inWindow && !fullyCashedOut && !cashOutDisabled);
+              const leftBg = pendingRow
+                ? `rgba(239,68,68,${leftPct * 0.9})`      // red — deny
+                : (leftAllowed
+                    ? `rgba(34,197,94,${leftPct * 0.9})`     // green — repay
+                    : `rgba(107,114,128,${leftPct * 0.9})`); // gray
+              const rightBg = pendingRow
+                ? `rgba(34,197,94,${rightPct * 0.9})`     // green — accept
+                : (rightAllowed
+                    ? `rgba(59,130,246,${rightPct * 0.9})`   // blue — cash out
+                    : `rgba(107,114,128,${rightPct * 0.9})`); // gray
+              const leftLabel  = pendingRow
+                ? 'Deny'
+                : (leftAllowed ? 'Repay' : 'Repay later');
+              const rightLabel = pendingRow
+                ? 'Accept'
+                : (rightAllowed
+                    ? 'Cash out'
+                    : cashOutDisabled ? 'Settling'
+                    : (fullyCashedOut ? 'Cashed out' : 'Cash-out closed'));
               return (
-              <div className={`relative overflow-hidden rounded-lg ${loan.maturityTs && !loan.chainClosed ? 'bg-red/25' : ''}`}>
-                {/* Repay reveal (right side, shown when swiping left) */}
+              <div className={`relative overflow-hidden rounded-lg ${loan.maturityTs && !loan.chainClosed && !pendingRow ? 'bg-red/25' : ''}`}>
+                {/* Left reveal — repay (drawn) / deny (pending) */}
                 {leftPct > 0 && (
                   <div
                     className="absolute right-0 top-0 bottom-0 flex items-center justify-end pr-3 rounded-lg"
-                    style={{ width: 100, backgroundColor: repayBg }}
+                    style={{ width: 100, backgroundColor: leftBg }}
                   >
                     <span className="text-white text-[10px] font-bold text-right leading-tight" style={{ opacity: leftPct }}>
-                      {repayLabel}
+                      {leftLabel}
                     </span>
                   </div>
                 )}
-                {/* Cash-out reveal (left side, shown when swiping right) */}
+                {/* Right reveal — cash-out (drawn) / accept (pending) */}
                 {rightPct > 0 && (
                   <div
                     className="absolute left-0 top-0 bottom-0 flex items-center justify-start pl-3 rounded-lg"
-                    style={{ width: 110, backgroundColor: cashOutBg }}
+                    style={{ width: 110, backgroundColor: rightBg }}
                   >
                     <span className="text-white text-[10px] font-bold leading-tight" style={{ opacity: rightPct }}>
-                      {cashOutLabel}
+                      {rightLabel}
                     </span>
                   </div>
                 )}
@@ -735,25 +794,31 @@ export default function ActiveLoansCard({
                 ₹{loan.totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
               </span>
 
-              {/* EOS date */}
-              <span className={`text-[10px] font-mono text-right whitespace-nowrap ${
-                loan.daysToMaturity != null && loan.daysToMaturity < -14
-                  ? 'text-red dark:text-red font-bold'
-                  : loan.daysToMaturity != null && loan.daysToMaturity < 0
-                    ? 'text-orange-600 dark:text-orange-400 font-bold'
-                    : loan.satelliteEos
-                      ? 'text-black dark:text-white'
-                      : (loan.eosSource === 'predicted' || loan.daysToEos != null && loan.daysToEos < 0)
-                        ? 'text-blue-400 dark:text-blue-300'
-                        : 'text-gray-500 dark:text-slate-300' 
-              }`}>
-                {loan.eosDate
-                  ? formatEosDate(loan.eosDate)
-                  : formatPredictedRange(loan.predictedEarliest, loan.predictedLatest)}
-              </span>
+              {/* EOS date — or "pending" label for unapproved slow-draw loans */}
+              {loan.isPending ? (
+                <span className="text-[10px] font-bold uppercase tracking-wide text-right text-amber-600 dark:text-amber-300">
+                  awaiting
+                </span>
+              ) : (
+                <span className={`text-[10px] font-mono text-right whitespace-nowrap ${
+                  loan.daysToMaturity != null && loan.daysToMaturity < -14
+                    ? 'text-red dark:text-red font-bold'
+                    : loan.daysToMaturity != null && loan.daysToMaturity < 0
+                      ? 'text-orange-600 dark:text-orange-400 font-bold'
+                      : loan.satelliteEos
+                        ? 'text-black dark:text-white'
+                        : (loan.eosSource === 'predicted' || loan.daysToEos != null && loan.daysToEos < 0)
+                          ? 'text-blue-400 dark:text-blue-300'
+                          : 'text-gray-500 dark:text-slate-300'
+                }`}>
+                  {loan.eosDate
+                    ? formatEosDate(loan.eosDate)
+                    : formatPredictedRange(loan.predictedEarliest, loan.predictedLatest)}
+                </span>
+              )}
 
-              {/* Status icon */}
-              <StatusIcon loan={loan} />
+              {/* Status icon — suppressed for pending rows so column stays clean */}
+              {loan.isPending ? <span /> : <StatusIcon loan={loan} />}
                 </div>
               </div>
               );
@@ -770,82 +835,65 @@ export default function ActiveLoansCard({
                       : ` — ${21 + loan.daysToMaturity} days left before default.`}
                   </p>
                 )}
-                {loan.farmName && (
-                  <DetailRow label="Farm" value={loan.farmName} />
-                )}
-                {loan.landId != null && (
-                  <DetailRow label="Land ID" value={`#${loan.landId}`} />
-                )}
-                <DetailRow label="Address" value={`${loan.borrower.slice(0, 6)}...${loan.borrower.slice(-4)}`} />
-                <DetailRow label="Fund" value={fundMap.get(loan.fund) || loan.fund || '--'} />
-                <DetailRow label="Outstanding" value={`₹${loan.totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
-                <DetailRow label="Principal" value={`₹${(loan.principal ?? loan.amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
-                <DetailRow label="Rate" value={`${(loan.rateBP / 100).toFixed(1)}%`} />
-                <DetailRow label="Maturity (contract)" value={formatDate(loan.maturityTs)} />
-                <DetailRow label="Harvest (satellite)" value={loan.satelliteEos || '--'} />
-                <DetailRow label="Harvest (used)" value={`${loan.eosDate || '--'} ${loan.eosSource ? `(${loan.eosSource})` : ''}`} />
-                <DetailRow label="Harvest window" value={
-                  loan.predictedEarliest && loan.predictedLatest
-                    ? `${loan.predictedEarliest} → ${loan.predictedLatest}`
-                    : loan.predictedEarliest || '--'
-                } />
-                <DetailRow label="Crop stage" value={loan.eosStage ?? '--'} />
-                <DetailRow label="Season" value={loan.isOpen ? 'Open' : 'Closed'} />
-                <DetailRow label="Milestone" value={loan.milestone != null ? `#${loan.milestone}` : '--'} />
-                <DetailRow
-                  label="Chain status"
-                  value={loan.chainClosed ? (loan.defaulted ? 'Defaulted' : 'Closed') : loan.chainVerified ? 'Verified active' : 'Pending verification'}
-                />
                 {loan.chainClosed && (
-                  <p className="text-[10px] text-red dark:text-red mt-1">
+                  <p className="text-[10px] text-red dark:text-red">
                     This loan is {loan.defaulted ? 'defaulted' : 'closed'} on-chain but still in the backend list.
                   </p>
                 )}
 
-                {/* Check crop button + GIS data */}
-                {!loan.chainClosed && (
-                  <div className="mt-2 pt-2 border-t border-gray-200 dark:border-slate-500">
-                    {gisData[loan.id] ? (
-                      <div className="flex flex-col gap-1">
-                        {gisData[loan.id].sos && (
-                          <>
-                            <DetailRow label="Crop" value={gisData[loan.id].sos.crop_type || '--'} />
-                            <DetailRow label="Confidence" value={gisData[loan.id].sos.confidence ? `${(gisData[loan.id].sos.confidence * 100).toFixed(0)}%` : '--'} />
-                            <DetailRow label="SOS" value={gisData[loan.id].sos.sos_date || '--'} />
-                            <DetailRow label="Days since SOS" value={gisData[loan.id].sos.days_since_sos ?? '--'} />
-                            <DetailRow label="Stage" value={gisData[loan.id].sos.stage || '--'} />
-                            <DetailRow label="Health" value={gisData[loan.id].sos.health || '--'} />
-                          </>
-                        )}
-                        {gisData[loan.id].eos && (
-                          <>
-                            <DetailRow label="EOS detected" value={gisData[loan.id].eos.eos_detected ? 'Yes' : 'No'} />
-                            {gisData[loan.id].eos.eos_date && (
-                              <DetailRow label="EOS date" value={gisData[loan.id].eos.eos_date} />
-                            )}
-                            {gisData[loan.id].eos.predicted_eos_earliest && (
-                              <DetailRow label="Predicted harvest" value={`${gisData[loan.id].eos.predicted_eos_earliest} → ${gisData[loan.id].eos.predicted_eos_latest}`} />
-                            )}
-                          </>
-                        )}
-                        {gisData[loan.id].cache_status === 'cold' && (
-                          <p className="text-[10px] text-amber-500 mt-1">Initializing — may take a few minutes...</p>
-                        )}
-                        {gisData[loan.id].farmer_score != null && (
-                          <DetailRow label="Farmer score" value={gisData[loan.id].farmer_score} />
-                        )}
-                      </div>
-                    ) : (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleCheckCrop(loan); }}
-                        disabled={gisLoading[loan.id]}
-                        className="w-full py-1.5 text-[10px] font-semibold rounded-lg bg-gray-200 dark:bg-slate-500 dark:text-white active:scale-95 disabled:opacity-40"
-                      >
-                        {gisLoading[loan.id] ? 'Loading...' : 'Check crop'}
-                      </button>
+                {/* Header: farm name (#landId) + copy address */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold dark:text-white">
+                    {loan.farmName || loan.displayName}
+                    {loan.landId != null && (
+                      <span className="ml-1 text-gray-500 dark:text-slate-400 font-normal">(#{loan.landId})</span>
                     )}
-                  </div>
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigator.clipboard?.writeText(loan.borrower);
+                      setCopiedId(loan.id);
+                      setTimeout(() => setCopiedId((id) => (id === loan.id ? null : id)), 1500);
+                    }}
+                    className={`flex items-center gap-1 text-[10px] active:scale-90 ${
+                      copiedId === loan.id ? 'text-green dark:text-green_dark' : 'text-gray-500 dark:text-slate-300'
+                    }`}
+                    title="Copy wallet address"
+                  >
+                    {copiedId === loan.id ? (
+                      <>
+                        <CheckIcon className="w-4 h-4" />
+                        <span className="font-semibold">Copied</span>
+                      </>
+                    ) : (
+                      <ClipboardIcon className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                <DetailRow label="Farm score" value={loan.farmerScore ?? '--'} />
+
+                <Divider />
+                <DetailRow label="Fund" value={fundMap.get(loan.fund) || loan.fund || '--'} />
+                <DetailRow label="Principal" value={`₹${(loan.principal ?? loan.amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+                <DetailRow label="Rate" value={`${(loan.rateBP / 100).toFixed(1)}%`} />
+
+                {loan.foodTokenId && (
+                  <>
+                    <Divider />
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                      Food token #{String(loan.foodTokenId).slice(0, 6)}…{String(loan.foodTokenId).slice(-4)}
+                    </span>
+                    <DetailRow label="Crop" value={ftData[loan.id]?.cropName ?? '…'} />
+                    <DetailRow label="Committed" value={ftData[loan.id]?.kg != null ? `${ftData[loan.id].kg.toLocaleString('en-IN')} kg` : '…'} />
+                    <DetailRow label="SOS" value={ftData[loan.id]?.sosTs ? formatDate(ftData[loan.id].sosTs) : '…'} />
+                    <DetailRow label="Harvest" value={ftData[loan.id]?.harvestTs ? formatDate(ftData[loan.id].harvestTs) : '…'} />
+                  </>
                 )}
+
+                <Divider />
+                <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">Record</span>
+                <span className="text-[10px] text-gray-400 dark:text-slate-400 italic">No record data yet.</span>
               </div>
             )}
           </div>
@@ -902,4 +950,8 @@ function DetailRow({ label, value }) {
       <span className="text-[10px] font-mono dark:text-white">{value}</span>
     </div>
   );
+}
+
+function Divider() {
+  return <div className="my-1 border-t border-gray-200 dark:border-slate-500" />;
 }

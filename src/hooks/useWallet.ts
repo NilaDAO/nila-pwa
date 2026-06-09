@@ -140,6 +140,16 @@ type FxOptions = {
  * - send USDt → `mintNin`
  * - send nIN  → `redeemNin`
  */
+const _API_BASE = process.env.REACT_APP_API_BASE_URL;
+
+function _notifyLPs(unionAddr: string, offerType: 'cash_offer' | 'redeem_order', inrValue: bigint, offerId: bigint) {
+  fetch(`${_API_BASE}/lp/notify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ union_addr: unionAddr, offer_type: offerType, inr_value: Number(inrValue), offer_id: Number(offerId) }),
+  }).catch(() => {});
+}
+
 export function useFxPool(opts: FxOptions = {}) {
   const { wallet } = useWallet();
   const runTx      = useTx();
@@ -397,6 +407,7 @@ export function useFxPool(opts: FxOptions = {}) {
             if (parsed?.name === 'RedeemOrderPosted') orderId = parsed.args.orderId;
           } catch {}
         }
+        _notifyLPs(unionAddr, 'redeem_order', inrValue, orderId);
         qc.invalidateQueries({ queryKey: ["balances"] });
       },
       onError: (err: any) => { txError = err; console.error("postRedeemOrder failed:", err); },
@@ -453,12 +464,17 @@ export function useFxPool(opts: FxOptions = {}) {
       return fxPool.postCashOffer(unionAddr, escrowId, feeBP, { nonce });
     }, {
       onSuccess: (receipt: any) => {
+        let inrValue = 0n;
         for (const log of receipt?.logs ?? []) {
           try {
             const parsed = fxIface.parseLog(log);
-            if (parsed?.name === 'CashOfferPosted') offerId = parsed.args.offerId;
+            if (parsed?.name === 'CashOfferPosted') {
+              offerId = parsed.args.offerId;
+              inrValue = parsed.args.inrValue;
+            }
           } catch {}
         }
+        _notifyLPs(unionAddr, 'cash_offer', inrValue, offerId);
         qc.invalidateQueries({ queryKey: ["balances"] });
       },
       onError: (err: any) => { console.error("postCashOffer failed:", err); },

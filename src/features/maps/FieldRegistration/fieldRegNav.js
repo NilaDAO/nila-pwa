@@ -12,11 +12,11 @@ const InitiateRegistration = ({ handleDeleteApprovedFields }) => {
   return (
   <div className="pointer-events-auto relative flex flex-col items-center justify-center w-48 h-48" >
               <div onClick={() => updateFieldReg({ track: true, flow: 1 })} className="relative flex items-center justify-center w-32 h-32 aspect-square">
-              { fieldReg.track && 
+              { fieldReg.track &&
                 <>
-                <div className="absolute inset-0 border-4 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
-                <div className="absolute inset-0 border-4 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
-                <div className="absolute inset-0 border-4 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>  
+                <div className="absolute inset-3 border-2 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
+                <div className="absolute inset-3 border-2 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
+                <div className="absolute inset-3 border-2 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>
                 </>
               }
               <ArrowUpCircleIcon className='dark:text-white h-24 w-24'/>
@@ -30,9 +30,9 @@ const InitiateRegistration = ({ handleDeleteApprovedFields }) => {
 const APIOffline = () => (
   <>
     <div className="pointer-events-auto relative flex flex-col items-center justify-center w-32 h-32 aspect-square z-30">
-      <div className="absolute inset-0 border-4 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
-      <div className="absolute inset-0 border-4 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
-      <div className="absolute inset-0 border-4 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>  
+      <div className="absolute inset-3 border-2 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
+      <div className="absolute inset-3 border-2 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
+      <div className="absolute inset-3 border-2 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>
       <NoSymbolIcon className='h-24 w-24 dark:text-white'/>
     </div>
     <p className='font-bold dark:text-white text-xs p-2'>API offline. please try again later.</p>
@@ -42,9 +42,9 @@ const APIOffline = () => (
 const ObjectVerification = () => (
   <>
     <div className="pointer-events-auto relative flex flex-col items-center justify-center w-32 h-32 aspect-square z-30">
-      <div className="absolute inset-0 border-4 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
-      <div className="absolute inset-0 border-4 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
-      <div className="absolute inset-0 border-4 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>  
+      <div className="absolute inset-3 border-2 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
+      <div className="absolute inset-3 border-2 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
+      <div className="absolute inset-3 border-2 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>
       <NoSymbolIcon className='h-24 w-24 dark:text-white'/>
     </div>
     <p className='font-bold dark:text-white text-xs p-2'>Place a plastic sheet in your fields.</p>
@@ -55,9 +55,9 @@ const AllowGeoLocationAccess = ({ getCurrentPosition }) => {
   return (
     <>
       <div onClick={() => getCurrentPosition()} className="pointer-events-auto relative flex flex-col items-center justify-center w-32 h-32 aspect-square z-30">
-        <div className="absolute inset-0 border-4 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
-        <div className="absolute inset-0 border-4 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
-        <div className="absolute inset-0 border-4 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>  
+        <div className="absolute inset-3 border-2 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
+        <div className="absolute inset-3 border-2 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
+        <div className="absolute inset-3 border-2 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>
         <img src="/images/noloc.svg" className='h-24 w-24 dark:text-white' alt="NoLocationAccess" />
       </div>
       <p className='font-bold dark:text-white text-center text-xs p-2'>Tab the icon or access browser settings to permit location sharing.</p>
@@ -79,9 +79,9 @@ const GeoLocationAccess = ({ getCurrentPosition }) => {
   return (
     <>
       <div onClick={handleRetry} className="pointer-events-auto relative flex flex-col items-center justify-center w-32 h-32 aspect-square z-30">
-        <div className="absolute inset-0 border-4 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
-        <div className="absolute inset-0 border-4 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
-        <div className="absolute inset-0 border-4 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>  
+        <div className="absolute inset-3 border-2 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
+        <div className="absolute inset-3 border-2 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
+        <div className="absolute inset-3 border-2 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>
         <div className="relative">
           {retrying ? (
             <ArrowPathIcon className="h-16 w-16 text-white animate-spin" />
@@ -107,9 +107,9 @@ const GPSDataAvailable = () => {
   return (
     <>
     <div onClick={!collectingPositions ? handleAddCookie : handleReset} className="pointer-events-auto relative flex flex-col items-center justify-center w-32 h-32 aspect-square z-30">
-      <div className="absolute inset-0 border-4 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
-      <div className="absolute inset-0 border-4 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
-      <div className="absolute inset-0 border-4 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>  
+      <div className="absolute inset-3 border-2 border-transparent border-t-black dark:border-t-white rounded-full animate-spin"></div>
+      <div className="absolute inset-3 border-2 border-transparent border-r-black dark:border-r-white rounded-full animate-spin delay-150"></div>
+      <div className="absolute inset-3 border-2 border-transparent border-l-black dark:border-l-white rounded-full animate-spin delay-450"></div>
       {!collectingPositions ? <img src="/images/sat.svg" className='w-24 h-24' />: <ArrowUpCircleIcon className='h-24 w-24'/>}
     </div>
     {!collectingPositions && 
@@ -137,9 +137,9 @@ const RequestBorders = ({ timerRef, flow, panMode, updateFieldReg }) => (
         { (flow === 4 || flow === 6) ? 
         <>
           <>
-          <div className="absolute inset-0 border-4 border-transparent border-t-white rounded-full animate-spin"></div>
-          <div className="absolute inset-0 border-4 border-transparent border-r-white rounded-full animate-spin delay-150"></div>
-          <div className="absolute inset-0 border-4 border-transparent border-l-white rounded-full animate-spin delay-450"></div>  
+          <div className="absolute inset-3 border-2 border-transparent border-t-white rounded-full animate-spin"></div>
+          <div className="absolute inset-3 border-2 border-transparent border-r-white rounded-full animate-spin delay-150"></div>
+          <div className="absolute inset-3 border-2 border-transparent border-l-white rounded-full animate-spin delay-450"></div>
           </> 
           <TimerCircle timerRef={timerRef} className={`h-24 w-24 ${flow === 4 || flow === 6 ? '' : 'animate-bounce'} ${navigator.onLine ? 'text-white':'text-black'}`}/>
         </>

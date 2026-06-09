@@ -4,8 +4,8 @@ import { ExchangeButton, ClaimButton, IndividualExchangeButton } from '../../com
 import { useDataContext } from "../../utils/NavigationContext";
 import { useFxPool } from "../../hooks/useWallet.ts";
 import { formatUnits } from 'ethers';
-import { CROP_UNIT } from '../../hooks/useFoodTokenBatches.ts';
-import { CROP_IMG } from '../../hooks/useFilterTasks.js';
+import { CROP_UNIT, CROP_CODE_NAMES } from '../../hooks/useFoodTokenBatches.ts';
+import { cropColor, cropIconUrl } from '../../utils/cropColors.js';
 
 const FEE = 0.998;
 
@@ -172,7 +172,9 @@ export const AssetsView = ({
     // ── ERC1155 food token detail view ──────────────────────────────────────
     if (data?.type === 'ERC1155') {
         const unit         = CROP_UNIT[data.cropCode] ?? { label: 'kg', toKg: 1 };
-        const cropImg      = CROP_IMG[data.cropCode] ?? '/images/paddy.png';
+        const cropIconName = CROP_CODE_NAMES[data.cropCode] ?? cropName.toLowerCase();
+        const cropIconSrc  = cropIconUrl(cropIconName);
+        const itemCropColor = cropColor(cropIconName);
         const _symDash = (data.sym ?? '').indexOf('-');
         const cropName = _symDash >= 0 ? data.sym.slice(0, _symDash) : (data.sym ?? '');
         const varName  = _symDash >= 0 ? data.sym.slice(_symDash + 1) : '';
@@ -194,12 +196,25 @@ export const AssetsView = ({
                 onTouchStart={handletouchstart}
                 onTouchEnd={handletouchend}
             >
-                <img
-                    src={cropImg}
-                    alt={cropName}
+                <div
                     onClick={handlebacktolist}
-                    className="w-[20%] py-6 object-cover"
-                />
+                    className="w-20 h-20 my-4 rounded-full flex items-center justify-center flex-shrink-0 cursor-pointer"
+                    style={{ backgroundColor: itemCropColor }}
+                >
+                    {cropIconSrc && (
+                        <div className="w-14 h-14" style={{
+                            WebkitMaskImage: `url(${cropIconSrc})`,
+                            maskImage: `url(${cropIconSrc})`,
+                            WebkitMaskRepeat: 'no-repeat',
+                            maskRepeat: 'no-repeat',
+                            WebkitMaskSize: 'contain',
+                            maskSize: 'contain',
+                            WebkitMaskPosition: 'center',
+                            maskPosition: 'center',
+                            backgroundColor: 'white',
+                        }} />
+                    )}
+                </div>
                 <h3 className="font-bold pb-4 dark:text-white capitalize whitespace-nowrap">
                     {cropName}{varName ? ` · ${varName}` : ''}
                 </h3>
@@ -243,7 +258,14 @@ export const AssetsView = ({
                         <div className="flex flex-row justify-between">
                             <span className="text-xs text-gray-400 dark:text-slate-400">Field</span>
                             <span className="text-xs font-medium font-mono dark:text-white">
-                                {data.fieldNumber === 0 ? 'entire property' : `#${String(data.fieldNumber).padStart(2, '0')}`}
+                                {(() => {
+                                    let mask = 0n;
+                                    try { mask = BigInt(data.fieldsBitmask ?? '0'); } catch { mask = 0n; }
+                                    if ((mask & 1n) === 1n) return 'entire property';
+                                    const fields = [];
+                                    for (let p = 1n; p < 128n; p++) if (((mask >> p) & 1n) === 1n) fields.push(Number(p));
+                                    return fields.length ? fields.map(f => `#${f}`).join(', ') : 'entire property';
+                                })()}
                             </span>
                         </div>
                         {data.areaM2 > 0 && (
