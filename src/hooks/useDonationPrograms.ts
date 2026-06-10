@@ -80,19 +80,26 @@ export async function recordDonation(union: string, programId: string, amountInr
  * NilaSensingAgent's GET /donations — the caller just renders the Donate card
  * when the returned list is non-empty. Programs are the remote source of truth;
  * this query only caches them transiently.
+ *
+ * Pass `enabled = false` (e.g. the union leader's donations toggle is off) to
+ * skip the network call entirely — the card is hidden anyway, so there is no
+ * reason to hit /donations and log a request for content that won't be shown.
  */
-export function useDonationPrograms(union?: {
-  address?: string;
-  chain?: number | string;
-  location?: [number, number];
-}) {
+export function useDonationPrograms(
+  union?: {
+    address?: string;
+    chain?: number | string;
+    location?: [number, number];
+  },
+  enabled: boolean = true,
+) {
   const unionAddr = union?.address;
   const chain = union?.chain;
   const [lat, lng] = union?.location ?? [];
 
   return useQuery<DonationProgram[]>({
     queryKey: ['donationPrograms', unionAddr ?? null, chain ?? null],
-    enabled: !!API_BASE_URL && !!unionAddr,
+    enabled: !!API_BASE_URL && !!unionAddr && enabled,
     staleTime: FIVE_MIN,
     gcTime: FIVE_MIN,
     queryFn: async () => {

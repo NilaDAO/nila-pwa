@@ -552,8 +552,8 @@ function Wallet({LAND}) {
 
     // Donation programs — card shows only when the union leader has turned
     // donations on AND there are active programs for the union.
-    const { data: donationPrograms = [] } = useDonationPrograms(db?.union);
     const { data: donationsEnabled = false } = useDonationsEnabled(db?.union);
+    const { data: donationPrograms = [] } = useDonationPrograms(db?.union, donationsEnabled);
 
     // Orders & Pricing — leaders only
     const { data: batchSummary, refetch: refetchBatches } = useFoodTokenBatches(db?.union?.address);
