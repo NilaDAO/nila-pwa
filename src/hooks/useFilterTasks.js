@@ -78,8 +78,8 @@ export function useFilterTasks(LAND, CAP) {
   );
   // Donations — task shows only when the union leader enabled donations AND there
   // are active programs. Swipe-right dismisses for the session (local, like LP offers).
-  const { data: donationPrograms = [] } = useDonationPrograms(db?.union);
   const { data: donationsEnabled = false } = useDonationsEnabled(db?.union);
+  const { data: donationPrograms = [] } = useDonationPrograms(db?.union, donationsEnabled);
   const [donateDismissed, setDonateDismissed] = useState(false);
   const getNotificationPermission = () => {
     if (typeof window === 'undefined') return 'default';
