@@ -313,12 +313,16 @@ export const IndividualExchangeButton = ({ disabled_add, disabled_remove, handle
 
   const mode = cnt >= 5 ? last : null
 
+  // primary follows the direction the user is moving; the opposite button is secondary
+  const PRIMARY = 'text-white dark:text-black bg-black dark:bg-white'
+  const SECONDARY = 'text-black dark:text-white bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600'
+
   const MinusBtn = () => (
     <div className="flex flex-col items-center">
       <button
         onClick={() => doAction(1)}
         disabled={disabled_remove}
-        className={`mb-2 ${disabled_remove ? 'opacity-20' : ''} text-white bg-black dark:bg-slate-400 font-bold rounded-full h-11 w-11 mx-1`}
+        className={`mb-2 ${disabled_remove ? 'opacity-40 cursor-not-allowed' : ''} ${last === 'add' ? SECONDARY : PRIMARY} font-bold text-xs rounded-2xl h-11 w-11 mx-1 active:scale-[0.98]`}
       >–</button>
       <p className={`text-sm ${disabled_remove ? 'opacity-40' : ''}`}>{texts.minus}</p>
     </div>
@@ -329,7 +333,7 @@ export const IndividualExchangeButton = ({ disabled_add, disabled_remove, handle
       <button
         onClick={() => doAction(0)}
         disabled={disabled_add}
-        className={`mb-2 ${disabled_add ? 'opacity-20' : ''} text-white bg-black dark:bg-slate-400 font-bold rounded-full h-11 w-11 mx-1`}
+        className={`mb-2 ${disabled_add ? 'opacity-40 cursor-not-allowed' : ''} ${last === 'remove' ? SECONDARY : PRIMARY} font-bold text-xs rounded-2xl h-11 w-11 mx-1 active:scale-[0.98]`}
       >+</button>
       <p className={`text-sm ${disabled_add ? 'opacity-40' : ''}`}>{texts.plus}</p>
     </div>
@@ -340,7 +344,7 @@ export const IndividualExchangeButton = ({ disabled_add, disabled_remove, handle
       <button
         onClick={doMax}
         hidden={mode === 'add' ? disabled_add : disabled_remove}
-        className="mb-2 text-white bg-black dark:bg-slate-400 font-bold rounded-full h-11 w-11 mx-1"
+        className="mb-2 text-white dark:text-black bg-black dark:bg-white font-bold text-xs rounded-2xl h-11 w-11 mx-1 active:scale-[0.98]"
       >
         {mode === 'add' ? '++' : '--'}
       </button>
