@@ -54,7 +54,8 @@
     "start:production": "env-cmd -f .env.production react-app-rewired start",
     "build": "react-app-rewired build",
     "test": "react-app-rewired test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "build:production": "env-cmd -f .env.production react-app-rewired build"
   },
   "eslintConfig": {
     "extends": [
