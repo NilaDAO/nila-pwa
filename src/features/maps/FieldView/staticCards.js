@@ -1472,6 +1472,7 @@ export const StaticCards = ({ LAND }) => {
             t.type === 'ERC1155' && (t.bal ?? 0) > 0 && sameCropFamily(CROP_CODE_NAMES[t.cropCode], effectiveCropType)
           );
           const isManual = cycleNav.isCurrent && !!override?.cropType;
+          const isUnknownCrop = !effectiveCropType || effectiveCropType === 'unknown';
           const overrideCropCode = isManual
             ? (CROPS_DATA.find(([, n]) => n === override.cropType)?.[0] ?? null)
             : null;
@@ -1784,6 +1785,17 @@ export const StaticCards = ({ LAND }) => {
                     </div>
                   )}
                   {cycleNav.isCurrent && (
+                    isUnknownCrop ? (
+                      // Crop couldn't be classified — invite the farmer to tap
+                      // the title to set it themselves. No "Not unknown?" link.
+                      <button
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={() => setShowOverride(v => !v)}
+                        className="text-left active:scale-95"
+                      >
+                        <span className="text-sm font-semibold text-blue-500 dark:text-blue-400">What are you growing?</span>
+                      </button>
+                    ) : (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-4 h-4 flex-shrink-0" style={{
@@ -1807,6 +1819,7 @@ export const StaticCards = ({ LAND }) => {
                         >Not {effectiveCropType}?</button>
                       )}
                     </div>
+                    )
                   )}
                   <div className="pt-1">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 pt-1 pb-1">Season</p>
@@ -2472,9 +2485,17 @@ export const StaticCards = ({ LAND }) => {
               </div>
             )}
 
-            {/* No batches empty state */}
-            {action === 'season' && !form.selectedBatch && batchSummary && batchSummary.active.length === 0 && (
-              <p className="text-xs text-gray-400 dark:text-slate-500 pt-1">Your union has not created any crop batches. Ask them to add a new batch for the crops you are growing.</p>
+            {/* No batches empty state — also covers batchSummary still undefined */}
+            {action === 'season' && !form.selectedBatch && (batchSummary?.active?.length ?? 0) === 0 && (
+              <div className="flex flex-col gap-1">
+                <button disabled className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-600 opacity-50">
+                  <span className="text-xs text-gray-400 dark:text-slate-400">No matching batch available</span>
+                </button>
+                <p className="text-[10px] text-gray-400 dark:text-slate-300 leading-relaxed flex gap-1.5">
+                  <span className="flex-shrink-0">⚠️</span>
+                  <span>Ask your union to create batch orders for the crops you are growing.</span>
+                </p>
+              </div>
             )}
 
             {action === 'season' && (() => {
