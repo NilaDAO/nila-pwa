@@ -7,7 +7,6 @@ const Header = ({version, cardShrink}) => {
     const { tokenview, setTokenview, setCardView } = useViewModeContext();
     const { ix,setIx,prevIx } = useNavContext();
 
-    console.log('header render', {version, cardShrink, tokenview, ix, txIndex, fieldActivity})
     const handleSettings = () => {
         setCardView('transactionview')
         setTokenview(true) // set to true to remove touch swipe

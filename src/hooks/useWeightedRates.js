@@ -63,7 +63,9 @@ export function useWeightedRates(data, sums, unionAddress) {
     const history = {};
     for (const item of query.data?.items || []) {
       if (!item?.fund) continue;
-      const key = pairKey(item.union, item.fund);
+      // API returns the union as `union_addr`; fall back to the requested
+      // address so keys match the `union-fund` form consumers look up by.
+      const key = pairKey(item.union_addr || item.union || unionAddress, item.fund);
       const bp = Number(item?.weighted_rate_bp);
       if (item?.found && Number.isFinite(bp)) {
         rates[key] = bp / 100;

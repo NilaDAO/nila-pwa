@@ -1,11 +1,57 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDataContext,useViewModeContext } from '../../utils/NavigationContext.js';
 import { IndividualExchangeButton, ClaimButton } from '../../components/UI/buttons.js';
 import { useInvestGeneric, useWithdrawGeneric, useWithdrawClaimGeneric } from '../../hooks/useLoadFunds.ts';
 import { usePreviewUnbond } from '../../hooks/useInvest.ts';
 import { useWeightedRates } from '../../hooks/useWeightedRates.js';
-import { ArrowPathIcon } from '@heroicons/react/24/solid';
+import { ArrowPathIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { CountdownCircle } from '../../components/UI/counter.js'
+
+/**
+ * Compact APY-history sparkline. Renders the weighted-rate history (one point
+ * per week) returned by useWeightedRates as a filled line graph. No-ops when
+ * there are fewer than two points to draw a line between.
+ */
+const RateHistoryChart = ({ history }) => {
+    const points = (Array.isArray(history) ? history : [])
+        .filter((h) => Number.isFinite(h?.ratePct))
+        .sort((a, b) => (a.updatedAt > b.updatedAt ? 1 : a.updatedAt < b.updatedAt ? -1 : 0));
+    if (points.length < 2) return null;
+
+    const W = 300, H = 90;
+    const PAD_L = 34, PAD_R = 6, PAD_T = 8, PAD_B = 8;
+    const rates = points.map((p) => p.ratePct);
+    const min = Math.min(...rates);
+    const max = Math.max(...rates);
+    const span = max - min || 1;
+    const n = points.length;
+    const x = (i) => PAD_L + (i / (n - 1)) * (W - PAD_L - PAD_R);   // X axis: one slot per week
+    const y = (r) => PAD_T + (1 - (r - min) / span) * (H - PAD_T - PAD_B); // Y axis: max at top, min at bottom
+
+    const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(p.ratePct).toFixed(1)}`).join(' ');
+    const area = `${line} L ${x(n - 1).toFixed(1)} ${H - PAD_B} L ${x(0).toFixed(1)} ${H - PAD_B} Z`;
+    const last = points[n - 1];
+
+    return (
+        <div className='mx-0 mt-4 px-2 py-3'>
+            <svg viewBox={`0 0 ${W} ${H}`} className='w-full text-green dark:text-green_dark' style={{ height: 96 }}>
+                { /* X-axis week gridlines (one per data point) */ }
+                {points.map((p, i) => (
+                    <line key={i} x1={x(i)} y1={PAD_T} x2={x(i)} y2={H - PAD_B}
+                        stroke='currentColor' strokeOpacity='0.15' strokeWidth='1' vectorEffect='non-scaling-stroke' />
+                ))}
+                { /* Y-axis labels: highest APY at top, lowest at bottom */ }
+                <text x={PAD_L - 5} y={PAD_T + 3} textAnchor='end' fill='currentColor' className='text-gray-400 dark:text-slate-400' style={{ fontSize: 9 }}>{max.toFixed(1)}%</text>
+                <text x={PAD_L - 5} y={H - PAD_B} textAnchor='end' fill='currentColor' className='text-gray-400 dark:text-slate-400' style={{ fontSize: 9 }}>{min.toFixed(1)}%</text>
+                { /* series */ }
+                <path d={area} fill='currentColor' fillOpacity='0.15' />
+                <path d={line} fill='none' stroke='currentColor' strokeWidth='2' vectorEffect='non-scaling-stroke' strokeLinejoin='round' strokeLinecap='round' />
+                <circle cx={x(n - 1)} cy={y(last.ratePct)} r='3' fill='currentColor' />
+            </svg>
+        </div>
+    );
+};
+
 /**
  * Investment List V2. 
  * List of funds of member union (multiple unions possible?), 
@@ -53,8 +99,11 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
     const { withdrawclaimgeneric }                      = useWithdrawClaimGeneric(db?.union?.address,s, token_address)
     const [readyToClaim, setReadyToClaim]               = useState(false);
     const [checkingLiq, setCheckingLiq]                 = useState(false);
+    const [flash, setFlash]                             = useState(false);  // one-shot flash on liquidity-threshold crossing
+    const [showChart, setShowChart]                     = useState(false);  // APY-history graph toggle (collapsed by default)
+    const wasOverLiqRef                                 = useRef(false);
     const unbondEndTs                                   = hasMaturing ? Number(hasMaturing.minWindowTs) : 0;
-    const { rateByPair }                                = useWeightedRates(data, sums, db?.union?.address);
+    const { rateByPair, historyByPair }                 = useWeightedRates(data, sums, db?.union?.address);
 
     const getRatePercent = (fund, idx) => {
         const union = String(db?.union?.address || '').toLowerCase();
@@ -91,6 +140,18 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
         })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [d?.tokens?.[0]?.loanType, db?.address, SENIORITY, s?.senior, s?.junior]);
+
+    // flash the withdraw card once when the amount crosses above available liquidity
+    const overLiquidity = !tab && amount > Math.max(0, (s?.idleCash ?? 0) - (s?.requiredReserve ?? 0));
+    useEffect(() => {
+        if (overLiquidity && !wasOverLiqRef.current) {
+            setFlash(true);
+            const t = setTimeout(() => setFlash(false), 700);
+            wasOverLiqRef.current = true;
+            return () => clearTimeout(t);
+        }
+        if (!overLiquidity) wasOverLiqRef.current = false;
+    }, [overLiquidity]);
 
     const pendingEarnings = Math.round(s?.pending ?? 0);
     const handleSetTab = (bool) => {
@@ -154,8 +215,8 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
     }
 
     const handleWithdrawalPeriodWarning = (amount) => {
-        // covered by idle, 
-        return amount <= attr.invested ? '14 days' : 'more than 3 weeks'
+        // if the requested amount exceeds the fund's available liquidity, payout queues behind loan repayments
+        return amount <= fundAvailable ? '14 days' : 'multiple weeks'
     }
 
     if ((!s || !d)) {
@@ -167,12 +228,15 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
     }
 
     const fundAvailable = Math.max(0, (s?.idleCash ?? 0) - (s?.requiredReserve ?? 0));
+    const histUnion  = String(db?.union?.address || '').toLowerCase();
+    const histFundId = String(d?.tokens?.[0]?.loanType || sums?.funds?.[fundSelected]?.fund_id || '').toLowerCase();
+    const rateHistory = historyByPair?.[`${histUnion}-${histFundId}`];
     const attr = tokenview && {
         frozen: sums.isFrozen,
         type: s.fund_type,
         disabled: false,
         rate: getRatePercent(d, fundSelected),
-        invested: Math.min(s.principal - (hasMaturing ? hasMaturing?.pendingPrincipalSnap : 0), fundAvailable),
+        invested: s.principal - (hasMaturing ? hasMaturing?.pendingPrincipalSnap : 0),
         junior_raw: s.junior,
         senior_raw: s.senior,
         funds: s.totals,
@@ -263,6 +327,18 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                     })()}
                     <h3 className='font-bold z-10 px-6 text-center text-xl bg-gray-200 dark:text-white dark:bg-gray-700 pt-12' >{names[fundSelected]}</h3>
                     <p className='font-bold text-center bg-gray-200 dark:text-slate-400 dark:bg-gray-700 pt-12'>Currently earning {Number(attr.rate || 0).toFixed(2)}% APY</p>
+                    { rateHistory?.length >= 2 && (
+                        <p className='text-center bg-gray-200 dark:bg-gray-700 pt-1'>
+                            <button onClick={() => setShowChart((v) => !v)} className='text-xs font-bold text-blue-500 dark:text-blue-400 underline active:opacity-60'>
+                                {showChart ? 'Close' : 'View interest rate history for this fund'}
+                            </button>
+                        </p>
+                    )}
+                    { showChart && (
+                        <div className='bg-gray-200 dark:bg-gray-700 px-6 pt-3'>
+                            <RateHistoryChart history={rateHistory} />
+                        </div>
+                    )}
                     {handleFundStatus() && <p className='text-center bg-gray-200 dark:text-slate-400 dark:bg-gray-700 text-red pb-12 pt-1'>This fund has low liquidity!</p>}
                 </div>
                 <div className={`flex justify-around px-4 mt-12`}>
@@ -288,8 +364,8 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                         </div>
                     );
                 })() }
-                <div className='flex flex-col w-full mt-5 rounded-3xl bg-gray-200 dark:bg-gray-700 p-6 justify-between'>
-                    
+                <div className={`flex flex-col w-full mt-5 rounded-3xl p-6 justify-between transition-colors duration-300 ${flash ? 'bg-black dark:bg-white' : 'bg-gray-200 dark:bg-gray-700'}`}>
+
                     { !tab &&
                     <>
                         { /* WITHDRAW */ }
@@ -320,7 +396,11 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                                 Get cash instead of USDT
                             </label>
                             )}
-                            <p className='flex text-xs py-3 dark:text-slate-400'>⚠️ Withdrawal from this fund will take {handleWithdrawalPeriodWarning(amount)}.</p>
+                            <p className={`flex items-center gap-1 text-xs py-3 ${amount > fundAvailable ? 'text-red font-semibold' : 'dark:text-slate-400'}`}>
+                                {amount > fundAvailable
+                                    ? <ExclamationTriangleIcon className="w-4 h-4 text-red shrink-0" />
+                                    : '⚠️'} Withdrawal from this fund will take {handleWithdrawalPeriodWarning(amount)}.
+                            </p>
                             <p className='flex text-xs dark:text-slate-400'>⚠️ Earnings are always withdrawn first — they are included in your withdrawal amount.</p>
                         </div>
                         { isFrozen && <p className='flex text-xs py-3 dark:text-white'> ❌ To withdraw, pay off any debts first.</p> }
