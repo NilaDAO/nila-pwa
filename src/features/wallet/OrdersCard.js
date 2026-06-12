@@ -78,7 +78,6 @@ function dateDisplay(unix) {
 
 // ── BatchRow ──────────────────────────────────────────────────────────────────
 function BatchRow({ batch, isOpen, onToggle, localPriceData, onChainPriceUpdate, onArchive }) {
-  const { resolveName } = useContactBook({ enabled: false });
   const [editing, setEditing]   = useState(false);
   const [draft, setDraft]       = useState('');
   const [saving, setSaving]     = useState(false);
@@ -314,7 +313,8 @@ function BatchRow({ batch, isOpen, onToggle, localPriceData, onChainPriceUpdate,
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-slate-400">Drop-off</span>
-                <span className="font-bold dark:text-white">{resolveName(batch.union)}</span>
+                {/* Drop-off is not stored on-chain yet — show the default until it is */}
+                <span className="font-bold dark:text-white">Grower handles delivery</span>
               </div>
             </div>
 
@@ -669,7 +669,7 @@ function CreateForm({ unionAddr, onCreated, onClose }) {
   const handleCropChange = (code) => { setCropCode(code); setVarietyCode(0); setTargetKg(''); setPriceUsdt(''); };
 
   const [buyer, setBuyer]               = useState('');
-  const [dropOff, setDropOff]           = useState(unionAddr ?? '');
+  const [dropOff, setDropOff]           = useState('0x0000000000000000000000000000000000000000'); // default: grower handles delivery
   const [targetKg, setTargetKg]         = useState('');
   const [delivery, setDelivery]         = useState('');
   const [priceUsdt, setPriceUsdt]       = useState('');
