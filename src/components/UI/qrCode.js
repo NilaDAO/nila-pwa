@@ -4,7 +4,7 @@ const QRCode = require('qrcode');
 const QR = ({digitalAddress}) => {
 
     useEffect(() => {
-        QRCode.toDataURL(digitalAddress, { margin: 0, width: window.innerWidth }, (err, url) => {
+        QRCode.toDataURL(digitalAddress, { margin: 0, width: 280 }, (err, url) => {
           if (err) {
             console.error(err);
             return;
