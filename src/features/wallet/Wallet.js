@@ -878,7 +878,8 @@ function Wallet({LAND}) {
                     <CollapseButton handleCollapse={() => handleCollapse(ix)} isCollapsed={isCollapsed} ix={ix} />
                     }
                     <div
-                        className={`relative z-10 ${ix !== null ? 'flex-shrink-0' : 'flex-grow overflow-auto'} pb-[calc(${(ix !== 2 && ix !== 5) && cardShrink < 0.5 ? '64px' : '32px'}+env(safe-area-inset-bottom))]`}
+                        className={`relative z-10 ${ix !== null ? 'flex-shrink-0 overflow-y-auto' : 'flex-grow overflow-auto'}`}
+                        style={{ paddingBottom: `calc(${(ix !== 2 && ix !== 5) && cardShrink < 0.5 ? '64px' : '32px'} + env(safe-area-inset-bottom, 0px))` }}
                         onTouchStart={handleTouchStart}
                         onTouchMove={handleTouchMove}
                         onTouchEnd={handleTouchEnd}
