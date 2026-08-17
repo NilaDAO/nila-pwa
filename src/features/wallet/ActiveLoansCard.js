@@ -451,6 +451,43 @@ export default function ActiveLoansCard({
 
   const hasMismatch = accounting.some((a) => !a.match);
 
+  // Debug: log the accounting breakdown so mismatches can be diagnosed from
+  // the console without another backend round-trip — which loans and which
+  // fund are actually driving the "off" figure.
+  useEffect(() => {
+    if (!accounting.length) return;
+    for (const a of accounting) {
+      console.log(
+        `[accounting] fund=${a.fundName} (${a.fundKey}) chainLent=${a.chainLent} ` +
+        `sumPrincipal=${a.sumPrincipal} diff=${a.diff} match=${a.match}`
+      );
+    }
+    if (hasMismatch) {
+      const byFund = new Map();
+      for (const l of active) {
+        const key = normFund(l.fund) || 'unknown';
+        if (!byFund.has(key)) byFund.set(key, []);
+        const outstanding = (l.principal != null && l.principalRepaid != null)
+          ? l.principal - l.principalRepaid
+          : l.amount ?? 0;
+        byFund.get(key).push({ id: l.id, borrower: l.borrower, outstanding });
+      }
+      for (const [fundKey, rows] of byFund) {
+        console.log(`[accounting] loans in fund=${fundKey}:`, rows);
+      }
+      // Pending (claimed on-chain, not yet drawdownTs-approved) loans are excluded
+      // from `active` and therefore from sumPrincipal above — if the chain's
+      // fund total already counts a claimed-but-undrawn loan, that's exactly
+      // where a persistent gap would come from.
+      if (pending.length) {
+        console.log(
+          '[accounting] pending (excluded from sumPrincipal):',
+          pending.map((l) => ({ id: l.id, borrower: l.borrower, fund: normFund(l.fund), amount: l.amount }))
+        );
+      }
+    }
+  }, [accounting, hasMismatch, active, pending]);
+
   // Reset sync step when mismatch resolves
   useEffect(() => {
     if (!hasMismatch && syncStep > 0) setSyncStep(0);
