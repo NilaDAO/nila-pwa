@@ -1,6 +1,6 @@
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useContract } from './useWallet.ts';
-import { useWallet } from './useWallet.ts';
+import { useContract, useProvider } from './useWallet.ts';
 import nilaFxPoolArtifact from '../components/ABI/NilaFxPool.json';
 import genericFundCoreArtifact from '../components/ABI/genericFundCore.json';
 import genericErc20Artifact from '../components/ABI/genericErc20.json';
@@ -20,23 +20,57 @@ export interface PendingDisburse {
   deadline: number;   // unix ts
 }
 
-export function useUnionCashReserve(unionAddr?: string, loanType?: string) {
-  const { wallet } = useWallet();
+export function useUnionCashReserve(unionAddr?: string) {
+  // Read-only provider, not the decrypted signer — every call this hook
+  // makes is a view call. useWallet()'s wallet/provider both sit behind
+  // useDecryptKey (private-key decrypt, ~1s), which was blocking this card's
+  // first fetch for no reason; useProvider() only needs the RPC URL env var
+  // and is ready immediately (same one useActiveLoansChainSync already uses).
+  const { provider } = useProvider();
   const fxAddress     = process.env.REACT_APP_FX_POOL_MAIN;
   const coreAddr      = process.env.REACT_APP_CORE_MAIN;
   const viewerAddress = process.env.REACT_APP_VIEWER_MAIN;
 
-  const fxPool = useContract(fxAddress,     nilaFxPoolAbi,        wallet);
-  const core   = useContract(coreAddr,      genericFundCoreAbi,   wallet);
-  const viewer = useContract(viewerAddress, genericFundViewerAbi, wallet);
+  const fxPool = useContract(fxAddress,     nilaFxPoolAbi,        provider);
+  const core   = useContract(coreAddr,      genericFundCoreAbi,   provider);
+  const viewer = useContract(viewerAddress, genericFundViewerAbi, provider);
+
+  const enabled = !!unionAddr && !!fxPool && !!core && !!viewer;
+
+  // Trace readiness timeline — should now be near-instant since nothing
+  // here depends on wallet decryption anymore.
+  const mountedAtRef = useRef<number>(Date.now());
+  useEffect(() => {
+    console.log(
+      `[unionCashReserve] readiness @ +${Date.now() - mountedAtRef.current}ms`,
+      { unionAddr, hasProvider: !!provider, hasFxPool: !!fxPool, hasCore: !!core, hasViewer: !!viewer, enabled }
+    );
+  }, [unionAddr, provider, fxPool, core, viewer, enabled]);
 
   return useQuery({
-    queryKey: ['unionCashReserve', unionAddr, loanType],
-    enabled: !!unionAddr && !!fxPool && !!core,
-    refetchInterval: 30_000,
+    queryKey: ['unionCashReserve', unionAddr],
+    enabled,
+    // These figures only change as a result of on-chain actions taken through
+    // this app (cash-in/out, repay, treasury deposit/withdraw, settle, accept
+    // delivery, ...) — every one of those already calls
+    // qc.invalidateQueries(['unionCashReserve', ...]) on success. So this
+    // query only needs to fetch once and then wait to be invalidated, not
+    // poll or refetch on every mount/focus.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
+      console.log(`[unionCashReserve] queryFn FIRED union=${unionAddr} at ${new Date().toISOString()}`);
+      console.trace('[unionCashReserve] fired from');
       const { ethers } = await import('ethers');
-      const lt = loanType ?? ethers.ZeroHash;
+
+      // Resolve the union's primary loan type ourselves rather than trusting
+      // callers to pass it — they didn't consistently: previously 5 of this
+      // hook's 6 call sites omitted it, silently defaulting to ZeroHash and
+      // querying juniorPendingPrincipal/systemHealth for the wrong fund. That
+      // also fragmented the query cache (one entry per distinct loanType
+      // argument), causing this whole expensive fetch to run twice on load.
+      const rawUnion = await viewer!.getUnion(unionAddr!).catch(() => null);
+      const lt = (rawUnion?.[1]?.[0] as string | undefined) ?? ethers.ZeroHash;
 
       const [treasury, rainyDay, activeEscrowNin, usdtTokenAddr, usdtDec, escrowDurationRaw, juniorPendingNin, seniorPendingNin, healthRaw] = await Promise.all([
         core!.unionTreasury(unionAddr!),
@@ -55,7 +89,7 @@ export function useUnionCashReserve(unionAddr?: string, loanType?: string) {
       let usdtBalance: bigint = 0n;
       let usdtDecimals: number = Number(usdtDec);
       try {
-        const usdtToken = new ethers.Contract(usdtTokenAddr as string, erc20Abi, wallet!);
+        const usdtToken = new ethers.Contract(usdtTokenAddr as string, erc20Abi, provider!);
         usdtBalance = await usdtToken.balanceOf(fxAddress!) as bigint;
       } catch {}
 

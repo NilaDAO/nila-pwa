@@ -39,7 +39,7 @@ export function useLoanAcceptance({ onDismiss } = {}) {
     if (!confirm(`Cancel the loan request from ${borrower}?`)) return;
     onDismiss?.(id);
     if (txHash) await removeLoan(union, id);
-    await fetch(`${API}/loans/${union}/${id}`, { method: 'DELETE' });
+    await fetch(`${API}/filter_events/loan/${union}/${id}`, { method: 'DELETE' });
     queryClient.invalidateQueries({ queryKey: ['activeLoans'] });
   };
 

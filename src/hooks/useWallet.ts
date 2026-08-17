@@ -780,7 +780,7 @@ export function useWallet() {
   const rpcUrl = chainId === 137 ? process.env.REACT_APP_RPC_ALCHEMY! : process.env.REACT_APP_RPC!;
 
   const { data: pk } = useDecryptKey(db,address, salt);
-  return useMemo(() => {  
+  return useMemo(() => {
     if (!pk) return { provider: undefined, wallet: undefined } as const;
     try {
       const provider = new ethers.JsonRpcProvider(rpcUrl);

@@ -13,7 +13,7 @@ import genericFundViewerArtifact from '../../components/ABI/genericFundViewer.js
 import { useErc20Balances } from '../../hooks/useLoadETH.ts';
 import { ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { IndividualExchangeButton, ClaimButton } from '../../components/UI/buttons.js';
-import { useActiveLoans, useActiveLoansChainSync } from '../../hooks/useActiveLoans';
+import { useActiveLoans, useActiveLoansChainSync, isKnownClosed } from '../../hooks/useActiveLoans';
 import { useContactBook } from '../../hooks/useContactBook';
 import { useLoanAcceptance } from '../../hooks/useLoanAcceptance';
 import ActiveLoansCard from './ActiveLoansCard';
@@ -200,11 +200,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
     return m;
   }, [unionFunds]);
 
-  const primaryLoanType = useMemo(
-    () => [...fundMap.keys()][0] ?? ethers.encodeBytes32String('GENERIC'),
-    [fundMap]
-  );
-  const { data, isLoading } = useUnionCashReserve(unionAddr, primaryLoanType);
+  const { data, isLoading } = useUnionCashReserve(unionAddr);
 
   // settlementShortfall — sourced from useUnionCashReserve (systemHealth embedded there)
   const settlementShortfall = data?.settlementShortfall ?? 0n;
@@ -377,7 +373,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
         console.log(`[DeepSync] no diff — seeding IndexedDB from ${data.active.length} active loans`);
         for (const l of data.active) {
           const id = l.loan_id ?? l.id;
-          if (id) {
+          if (id && !isKnownClosed(unionAddr, id)) {
             try { await setDBitem(id, l, 'ActiveLoans'); } catch (_) {}
           }
         }
