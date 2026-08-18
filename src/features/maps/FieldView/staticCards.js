@@ -689,6 +689,17 @@ const PortfolioCards = () => {
     });
   }, [metadata, resolvedIds, loans.length, setFieldActivity]);
 
+  // Single-property mode: auto-expand + select the one resolved property
+  // instead of waiting for the user to tap it — otherwise the map fits to
+  // the same (already-scoped) bounds twice: once on open, again when the
+  // row is manually expanded.
+  useEffect(() => {
+    if (loans.length !== 1 || resolvedIds.length !== 1) return;
+    const lid = resolvedIds[0];
+    setExpandedLid(lid);
+    setFieldActivity(prev => prev?.portfolioMode ? { ...prev, portfolioSelected: lid } : prev);
+  }, [loans.length, resolvedIds, setFieldActivity]);
+
   // Tell the map which properties have a live loan → coloured blue, rest grey.
   useEffect(() => {
     setFieldActivity(prev => prev?.portfolioMode ? { ...prev, portfolioActiveIds: activeIds } : prev);
