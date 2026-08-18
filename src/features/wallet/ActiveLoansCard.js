@@ -925,6 +925,13 @@ export default function ActiveLoansCard({
                     )}
                   </button>
                 </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewMap?.([loan], { outlinesOnly: true });
+                  }}
+                  className="self-start text-[10px] font-semibold text-blue-500 dark:text-blue-400 active:scale-95"
+                >View property outline</button>
                 <DetailRow label="Farm score" value={loan.farmerScore ?? '--'} />
 
                 <Divider />
