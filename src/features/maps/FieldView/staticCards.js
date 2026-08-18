@@ -560,7 +560,10 @@ const PortfolioCards = () => {
   const [cachedHashes, setCachedHashes] = useState(null);
   const [metadata, setMetadata] = useState(null); // { landId: { farm, outline, centroid, bounds } }
   const [expandedLid, setExpandedLid] = useState(null); // accordion: which row is open
-  const [showAll, setShowAll] = useState(false); // reveal non-active (other known) properties
+  // Reveal non-active (other known) properties — lives in shared fieldActivity
+  // (not local state) so the map's X/back button (staticNav.js) can also lift
+  // the single-property scope, not just this card's own toggle button.
+  const showAll = fieldActivity?.portfolioShowAll ?? false;
 
   // Seed from the persistent property-metadata cache so ALL known properties
   // (every member we've ever resolved, not just this session's active loans)
@@ -677,17 +680,19 @@ const PortfolioCards = () => {
   // full cache-seeded history leaks into the labels and bounds-fit below.
   // Portfolio-wide mode (multiple loans) intentionally keeps showing every
   // known property, not just this session's active loans (see cache-seed
-  // effect above) — that behavior is unchanged here.
+  // effect above) — that behavior is unchanged here. "Show all known
+  // properties" lifts the single-property scoping too, so the map matches
+  // what's now visible in the expanded members list.
   useEffect(() => {
     if (!metadata || !Object.keys(metadata).length) return;
-    const scoped = loans.length === 1
+    const scoped = (loans.length === 1 && !showAll)
       ? Object.fromEntries(resolvedIds.filter(lid => metadata[lid]).map(lid => [lid, metadata[lid]]))
       : metadata;
     setFieldActivity(prev => {
       if (!prev?.portfolioMode) return prev;
       return { ...prev, portfolioProperties: scoped };
     });
-  }, [metadata, resolvedIds, loans.length, setFieldActivity]);
+  }, [metadata, resolvedIds, loans.length, showAll, setFieldActivity]);
 
   // Single-property mode: auto-expand + select the one resolved property
   // instead of waiting for the user to tap it — otherwise the map fits to
@@ -820,7 +825,17 @@ const PortfolioCards = () => {
                 {otherEntries.length > 0 && (
                   <button
                     onPointerDown={e => e.stopPropagation()}
-                    onClick={() => setShowAll(s => !s)}
+                    onClick={() => setFieldActivity(prev => {
+                      if (!prev) return prev;
+                      const next = !(prev.portfolioShowAll ?? false);
+                      // Revealing everything: drop the single-property zoom-lock
+                      // so the map fits to all properties instead of staying
+                      // fixed on just the one it opened with.
+                      if (next) setExpandedLid(null);
+                      return next
+                        ? { ...prev, portfolioShowAll: true, portfolioSelected: null }
+                        : { ...prev, portfolioShowAll: false };
+                    })}
                     className="self-start text-[11px] text-blue-700 dark:text-blue-300 font-medium mt-2 active:scale-95"
                   >
                     {showAll ? 'Hide other properties' : `Show all known properties (${otherEntries.length})`}
