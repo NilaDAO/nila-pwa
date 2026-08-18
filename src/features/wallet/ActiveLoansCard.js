@@ -17,8 +17,9 @@ import { setDBitem } from '../../utils/db.js';
 import { ethers } from 'ethers';
 import landTitleArtifact from '../../components/ABI/NilaLandTitleWithName.json';
 import foodTokenArtifact from '../../components/ABI/FoodTokens.json';
-import { CROP_CODE_NAMES } from '../../hooks/useFoodTokenBatches.ts';
+import { CROP_CODE_NAMES, CROP_CODE_COLOR_KEY } from '../../hooks/useFoodTokenBatches.ts';
 import { dismissLoanLocally } from '../../hooks/useActiveLoans.js';
+import { cropColor, cropIconUrl } from '../../utils/cropColors';
 
 const _ltAbi = (landTitleArtifact).abi ?? landTitleArtifact;
 const _ftAbi = (foodTokenArtifact).abi ?? foodTokenArtifact;
@@ -879,7 +880,11 @@ export default function ActiveLoansCard({
             })()}
 
             {/* Expanded detail */}
-            {expandedId === loan.id && (
+            {expandedId === loan.id && (() => {
+              const cropFamily = loan.cropFamily ?? ftData[loan.id]?.cropFamily ?? null;
+              const cropColorKey = cropFamily != null ? CROP_CODE_COLOR_KEY[cropFamily] : null;
+              const cropIcon = cropColorKey ? cropIconUrl(cropColorKey) : null;
+              return (
               <div className="mx-3 mt-1 mb-2 px-3 py-3 rounded-lg bg-gray-100 dark:bg-slate-600 flex flex-col gap-1.5">
                 {!loan.chainClosed && loan.daysToMaturity != null && loan.daysToMaturity < 0 && (
                   <p className={`text-[10px] font-semibold ${loan.daysToMaturity < -14 ? 'text-red dark:text-red' : 'text-orange-600 dark:text-orange-400'}`}>
@@ -942,9 +947,27 @@ export default function ActiveLoansCard({
                 {loan.foodTokenId && (
                   <>
                     <Divider />
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">
-                      Food token #{String(loan.foodTokenId).slice(0, 6)}…{String(loan.foodTokenId).slice(-4)}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {cropIcon && (
+                        <span
+                          className="w-4 h-4 flex-shrink-0"
+                          style={{
+                            background: cropColor(cropColorKey),
+                            WebkitMaskImage: `url(${cropIcon})`,
+                            maskImage: `url(${cropIcon})`,
+                            WebkitMaskRepeat: 'no-repeat',
+                            maskRepeat: 'no-repeat',
+                            WebkitMaskPosition: 'center',
+                            maskPosition: 'center',
+                            WebkitMaskSize: 'contain',
+                            maskSize: 'contain',
+                          }}
+                        />
+                      )}
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                        Food token #{String(loan.foodTokenId).slice(0, 6)}…{String(loan.foodTokenId).slice(-4)}
+                      </span>
+                    </div>
                     <DetailRow label="Crop" value={ftData[loan.id]?.cropName ?? '…'} />
                     <DetailRow label="Committed" value={ftData[loan.id]?.kg != null ? `${ftData[loan.id].kg.toLocaleString('en-IN')} kg` : '…'} />
                     <DetailRow label="SOS" value={ftData[loan.id]?.sosTs ? formatDate(ftData[loan.id].sosTs) : '…'} />
@@ -956,7 +979,8 @@ export default function ActiveLoansCard({
                 <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">Record</span>
                 <span className="text-[10px] text-gray-400 dark:text-slate-400 italic">No record data yet.</span>
               </div>
-            )}
+              );
+            })()}
           </div>
         ))}
       </div>
