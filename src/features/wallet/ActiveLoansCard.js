@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronUpIcon,
   ChevronDownIcon,
@@ -6,6 +7,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   XCircleIcon,
+  XMarkIcon,
 } from '@heroicons/react/20/solid';
 import { ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { ClaimButton } from '../../components/UI/buttons';
@@ -16,6 +18,7 @@ import { ethers } from 'ethers';
 import landTitleArtifact from '../../components/ABI/NilaLandTitleWithName.json';
 import foodTokenArtifact from '../../components/ABI/FoodTokens.json';
 import { CROP_CODE_NAMES } from '../../hooks/useFoodTokenBatches.ts';
+import { dismissLoanLocally } from '../../hooks/useActiveLoans.js';
 
 const _ltAbi = (landTitleArtifact).abi ?? landTitleArtifact;
 const _ftAbi = (foodTokenArtifact).abi ?? foodTokenArtifact;
@@ -179,6 +182,7 @@ export default function ActiveLoansCard({
   const [keysPurchased, setKeysPurchased] = useState(false);
   const [quotedFee, setQuotedFee] = useState(null); // per-token fee in wei, null = not yet quoted
   const { wallet } = useWallet();
+  const queryClient = useQueryClient();
   const landTitle = useContract(_ltAddr, _ltAbi, wallet);
   const foodToken = useContract(_ftAddr, _ftAbi, wallet);
   const nin = useContract(_ninAddr, _erc20Abi, wallet);
@@ -854,8 +858,21 @@ export default function ActiveLoansCard({
                 </span>
               )}
 
-              {/* Status icon — suppressed for pending rows so column stays clean */}
-              {loan.isPending ? <span /> : <StatusIcon loan={loan} />}
+              {/* Status icon — pending rows get a manual-dismiss X instead, for
+                  the case where the loan is already gone on-chain but stuck
+                  locally (chain-sync/backend cleanup lags a few minutes). */}
+              {loan.isPending ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dismissLoanLocally(unionAddress, loan.id, queryClient);
+                  }}
+                  className="justify-self-end text-gray-400 dark:text-slate-400 active:scale-90"
+                  title="Remove — already closed on-chain"
+                >
+                  <XMarkIcon className="w-4 h-4" />
+                </button>
+              ) : <StatusIcon loan={loan} />}
                 </div>
               </div>
               );
