@@ -466,6 +466,12 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
           />
         ))}
         {/* Portfolio outlines — blue = active loan, grey = other known property; clickable, highlight selected */}
+        {portfolioOutlines.length > 0 && console.log('[portfolio] outline coloring', {
+          activeIds: fieldActivity?.portfolioActiveIds,
+          selected: fieldActivity?.portfolioSelected,
+          showAll: fieldActivity?.portfolioShowAll,
+          lids: portfolioOutlines.map(p => p.lid),
+        })}
         {portfolioOutlines.map((poly, i) => {
           const isSelected = String(fieldActivity?.portfolioSelected) === String(poly.lid);
           const isActive = (fieldActivity?.portfolioActiveIds || []).some(id => String(id) === String(poly.lid));
