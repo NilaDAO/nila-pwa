@@ -22,9 +22,12 @@ const StaticMapNav = ({LAND, onFeatureClick, cardShrink = 0}) => {
     setCardView('mapview');
   }, [setView, setCardView]);
 
-  // Portfolio mode: clear selected property (go back to list), re-fit map to all
+  // Portfolio mode: clear selected property (go back to list), re-fit map to
+  // all. Also lifts the single-property scope (portfolioShowAll) — otherwise
+  // "back" from a single-property view just re-fits to that same one property
+  // instead of actually showing everything.
   const handlePortfolioBack = useCallback(() => {
-    setFieldActivity(prev => prev ? { ...prev, portfolioSelected: null } : prev);
+    setFieldActivity(prev => prev ? { ...prev, portfolioSelected: null, portfolioShowAll: true } : prev);
   }, [setFieldActivity]);
 
   const hasSelection = view?.mode === 'select' && (view?.selected?.length ?? 0) > 0;
