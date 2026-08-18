@@ -37,7 +37,7 @@ export function forceLoansResync(unionAddress) {
 // closedAt cleared) and the retention window restarts forever.
 const closedLoanIdsKey = (union) => `nila_loans_closedIds_${union}`;
 
-function markLoanClosedForever(unionAddress, loanId) {
+export function markLoanClosedForever(unionAddress, loanId) {
   try {
     const key = closedLoanIdsKey(unionAddress);
     const ids = new Set(JSON.parse(localStorage.getItem(key) || '[]'));
@@ -51,6 +51,18 @@ export function isKnownClosed(unionAddress, loanId) {
     const ids = JSON.parse(localStorage.getItem(closedLoanIdsKey(unionAddress)) || '[]');
     return ids.includes(loanId);
   } catch (_) { return false; }
+}
+
+/**
+ * Manually remove a loan the UI still shows but that's already gone on-chain
+ * (e.g. a stuck "awaiting" row) — no on-chain call, just local cleanup.
+ * Also permanently suppresses it so a lagging backend /loans/sync merge
+ * can't resurrect it (see closedLoanIdsKey comment above).
+ */
+export async function dismissLoanLocally(unionAddress, loanId, queryClient) {
+  try { await deleteItem(loanId, 'ActiveLoans'); } catch (_) {}
+  markLoanClosedForever(unionAddress, loanId);
+  queryClient.invalidateQueries({ queryKey: ['activeLoans', unionAddress] });
 }
 
 const parseAmount = (raw) => {
@@ -290,8 +302,10 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
           const existing = stored[id] ?? {};
 
           if (!success) {
-            // Call reverted (LoanNotExist) — delete ghost
+            // Call reverted (LoanNotExist) — delete ghost. Record permanently so a
+            // lagging backend /loans/sync merge can't resurrect it (closedLoanIdsKey).
             try { await deleteItem(id, 'ActiveLoans'); } catch (_) {}
+            markLoanClosedForever(unionAddress, id);
             continue;
           }
 
@@ -310,9 +324,13 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
             drawdownTs,
           } = viewerIface.decodeFunctionResult('getBorrowerInfo', returnData);
 
-          // Ghost row: no principal, no drawdown — expired voucher pre-insert
+          // Ghost row: no principal, no drawdown — expired voucher pre-insert.
+          // Record permanently so a lagging backend /loans/sync merge can't
+          // resurrect it (closedLoanIdsKey) — this is exactly the "awaiting"
+          // loan that's already gone on-chain but was still stuck locally.
           if (principal === 0n && drawdownTs === 0n && !closed) {
             try { await deleteItem(id, 'ActiveLoans'); } catch (_) {}
+            markLoanClosedForever(unionAddress, id);
             continue;
           }
 
