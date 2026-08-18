@@ -19,11 +19,11 @@ const TaskMessage = ({ LAND, CAP, inArrays }) => {
     // Treat first-load AND any upstream hook still streaming as "loading" so we
     // don't flash "All tasks completed" while data is on the way.
     const loading = isPending || upstreamLoading;
-    // Fixed min-height matches the tallest task card (a SwipeCard with the
-    // inline LP-options block ≈ 226px including the scroller's my-6). Loading,
-    // empty, and all task variants share the slot so the surrounding card
-    // never shifts on state transitions.
-    const SLOT_CLASSES = "flex justify-center mx-6 min-h-[230px]";
+    // The card stack (below) gets priority for space — it's sized to its own
+    // content and never shrinks. TaskMessage takes whatever's left in the
+    // flex column, down to a small floor (never fully squashed to 0), and
+    // scrolls internally if its content doesn't fit in what's left.
+    const SLOT_CLASSES = "flex justify-center mx-6 flex-1 min-h-[120px] overflow-y-auto";
 
     if (loading) {
         return (

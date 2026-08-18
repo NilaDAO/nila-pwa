@@ -857,11 +857,10 @@ function Wallet({LAND}) {
             { stage ? // pending onchain transaction
                 <TxProgress />
                 :
-                <motion.div // animating the collapse of the card behind each other
+                <motion.div
                     className={`flex flex-col flex-grow mx-2 space-y-2 overflow-hidden`}
-                    animate={{ height: isCollapsed ? '32' : '64' }}
                 >
-                    {/* TaskMessage gets the leftover space */}
+                    {/* Card stack sizes to its own content; TaskMessage gets the leftover space */}
                     {isCollapsed && ix === null &&
                     <TaskMessage
                         key={db.address || 'no-wallet'}
@@ -878,7 +877,7 @@ function Wallet({LAND}) {
                     <CollapseButton handleCollapse={() => handleCollapse(ix)} isCollapsed={isCollapsed} ix={ix} />
                     }
                     <div
-                        className={`relative z-10 ${ix !== null ? 'flex-shrink-0' : 'flex-grow overflow-auto'}`}
+                        className={`relative z-10 flex-shrink-0`}
                         style={{ paddingBottom: `calc(${(ix !== 2 && ix !== 5) && cardShrink < 0.5 ? '64px' : '32px'} + env(safe-area-inset-bottom, 0px))` }}
                         onTouchStart={handleTouchStart}
                         onTouchMove={handleTouchMove}
