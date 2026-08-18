@@ -671,14 +671,23 @@ const PortfolioCards = () => {
     return () => { cancelled = true; };
   }, [landTitle, resolvedIds]);
 
-  // Push metadata into fieldActivity so staticMaps renders outlines immediately
+  // Push metadata into fieldActivity so staticMaps renders outlines immediately.
+  // Single-property mode (exactly one loan — e.g. "View property outline" from
+  // an expanded Active Loans row) scopes to just that property, otherwise the
+  // full cache-seeded history leaks into the labels and bounds-fit below.
+  // Portfolio-wide mode (multiple loans) intentionally keeps showing every
+  // known property, not just this session's active loans (see cache-seed
+  // effect above) — that behavior is unchanged here.
   useEffect(() => {
     if (!metadata || !Object.keys(metadata).length) return;
+    const scoped = loans.length === 1
+      ? Object.fromEntries(resolvedIds.filter(lid => metadata[lid]).map(lid => [lid, metadata[lid]]))
+      : metadata;
     setFieldActivity(prev => {
       if (!prev?.portfolioMode) return prev;
-      return { ...prev, portfolioProperties: metadata };
+      return { ...prev, portfolioProperties: scoped };
     });
-  }, [metadata, setFieldActivity]);
+  }, [metadata, resolvedIds, loans.length, setFieldActivity]);
 
   // Tell the map which properties have a live loan → coloured blue, rest grey.
   useEffect(() => {
