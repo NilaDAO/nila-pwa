@@ -2,6 +2,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ethers } from 'ethers';
 import { useAcceptLoan, useRemoveLoan } from './useLoadFunds.ts';
 import { useFxPool } from './useWallet.ts';
+import { deleteItem } from '../utils/db';
+import { markLoanClosedForever } from './useActiveLoans.js';
 
 /**
  * Shared accept/cancel handlers for slow-draw loans awaiting union approval.
@@ -39,6 +41,12 @@ export function useLoanAcceptance({ onDismiss } = {}) {
     if (!confirm(`Cancel the loan request from ${borrower}?`)) return;
     onDismiss?.(id);
     if (txHash) await removeLoan(union, id);
+    // Clean up locally right away instead of waiting on the async backend
+    // round-trip + next chain-sync to converge — if the loan was already
+    // gone on-chain, removeLoan silently no-ops (runTx swallows errors), so
+    // the async path alone could leave this stuck for up to 10 minutes.
+    try { await deleteItem(id, 'ActiveLoans'); } catch (_) {}
+    markLoanClosedForever(union, id);
     await fetch(`${API}/filter_events/loan/${union}/${id}`, { method: 'DELETE' });
     queryClient.invalidateQueries({ queryKey: ['activeLoans'] });
   };
