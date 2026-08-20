@@ -100,6 +100,12 @@ export function useFilterTasks(LAND, CAP) {
   // user's task list without touching on-chain state).
   const [dismissedGetOffers,  setDismissedGetOffers]  = useState(new Set());
   const [dismissedGiveOffers, setDismissedGiveOffers] = useState(new Set());
+  // Same for filled CashOffers awaiting union confirmation — there's no
+  // on-chain "reject" for a filled offer (NilaFxPool.confirmCashOfferDelivered
+  // is the only state transition out of status=1, gated to msg.sender === the
+  // offer's union), so a task stuck failing that call has no on-chain escape
+  // hatch. Swipe-left just hides it from this session's list.
+  const [dismissedFilledCashOffers, setDismissedFilledCashOffers] = useState(new Set());
 
   // Split matching batches into those the farmer can join immediately vs. those needing a cert.
   const allSuggestedBatches = fieldActivity?.suggestedBatches
@@ -261,6 +267,7 @@ export function useFilterTasks(LAND, CAP) {
       dismissedGiveOffers.size,
       pendingDeliveries.length,
       filledCashOffers.length,
+      dismissedFilledCashOffers.size,
       fieldActivity?.activeCycle?.length ?? 0,
       openBatch?.id ?? null,
       certBatch?.id ?? null,
@@ -471,8 +478,15 @@ export function useFilterTasks(LAND, CAP) {
               swipeLeftLabel:  '✕ Not interested',
             };
           }) : []),
-        // Union leader: LP filled a CashOffer (deposited USDT) — swipe to accept
-        ...(isLeader ? filledCashOffers.map((o, idx) => {
+        // Union leader: LP filled a CashOffer (deposited USDT) — swipe right to
+        // accept. Swipe left dismisses locally only: the contract has no
+        // union-side reject for an already-filled offer (confirmCashOfferDelivered
+        // is the only way out of status=1, and it's gated to the offer's own
+        // union address) — so if Accept keeps reverting (wrong signer, or the
+        // offer is otherwise stuck), this is the only way to clear it from view.
+        ...(isLeader ? filledCashOffers
+          .filter(o => !dismissedFilledCashOffers.has(String(o.id)))
+          .map((o, idx) => {
           const lpName = resolveName(o.lp);
           const inr    = Number(o.inrValue);
           const feeInr = Math.round(inr * (o.feeBP ?? 100) / 10000);
@@ -489,10 +503,14 @@ export function useFilterTasks(LAND, CAP) {
                 queryClient.invalidateQueries({ queryKey: ['unionCashReserve'] });
               } catch (err) { console.error('confirmCashOfferDelivered failed:', err); }
             },
-            title: `${lpName} is collecting ₹${inr.toLocaleString('en-IN')} cash.`,
+            click2: () => setDismissedFilledCashOffers(prev => new Set(prev).add(String(o.id))),
+            title: `${lpName} collects ₹${inr.toLocaleString('en-IN')} cash.`,
             subtitle: `For a ₹${feeInr.toLocaleString('en-IN')} fee.`,
             btn: 'Accept',
+            btn2: 'Not now',
+            swipeable: true,
             swipeRightLabel: 'Accept ✓',
+            swipeLeftLabel: '✕ Not now',
           };
         }) : []),
         // Union leader: LP committed to a RedeemOrder — swipe to accept or deny
