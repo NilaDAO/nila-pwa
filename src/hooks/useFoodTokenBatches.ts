@@ -21,6 +21,7 @@ export const CROP_CODE_NAMES: Record<number, string> = {
   10: 'Horse Gram',
   11: 'Black Gram',
   12: 'Coconut',
+  13: 'Cotton',
 };
 
 // Measurement unit per crop. toKg: multiplier to convert user-entered units → kg for on-chain storage.
@@ -38,7 +39,32 @@ export const CROP_UNIT: Record<number, { label: string; toKg: number }> = {
   10: { label: 'quintal', toKg: 100  },  // Horse Gram
   11: { label: 'quintal', toKg: 100  },  // Black Gram
   12: { label: 'kg',      toKg: 1    },  // Coconut
+  13: { label: 'quintal', toKg: 100  },  // Cotton
 };
+
+// Typical days from drawdown/sowing to harvest, per crop family code.
+// Rough agronomic averages for South Indian cropping — placeholders until
+// confirmed against real field data; used only as a display estimate when
+// no on-chain maturityTs has been reported yet. See DEFAULT_CROP_CYCLE_DAYS
+// for loans whose crop isn't known.
+export const CROP_CYCLE_DAYS: Record<number, number> = {
+  0:  120,  // Paddy
+  1:  110,  // Groundnut
+  2:  365,  // Sugarcane
+  3:  300,  // Banana
+  4:  90,   // Potato
+  5:  120,  // Onion
+  6:  85,   // Sesame
+  7:  270,  // Cassava
+  8:  100,  // Maize
+  9:  65,   // Green Gram
+  10: 90,   // Horse Gram
+  11: 70,   // Black Gram
+  12: 365,  // Coconut — perennial; figure is a rough placeholder, not a real cycle
+  13: 180,  // Cotton
+};
+
+export const DEFAULT_CROP_CYCLE_DAYS = 120; // paddy (code 0) is the fallback assumption
 
 // varietyCode 0 = "any variety" (valid for all crops)
 export const CROP_VARIETIES: Record<number, Array<{ code: number; name: string }>> = {
@@ -132,6 +158,13 @@ export const CROP_VARIETIES: Record<number, Array<{ code: number; name: string }
     { code: 3, name: 'VPM-3' },
     { code: 4, name: 'Dwarf Orange' },
   ],
+  13: [ // Cotton
+    { code: 0, name: 'Any variety' },
+    { code: 1, name: 'MCU-5' },
+    { code: 2, name: 'MCU-7' },
+    { code: 3, name: 'DCH-32' },
+    { code: 4, name: 'Suvin' },
+  ],
 };
 
 // cropCode → cropColors key (lowercase, matches cropColors.js keys)
@@ -149,7 +182,34 @@ export const CROP_CODE_COLOR_KEY: Record<number, string> = {
   10: 'horse_gram',
   11: 'black_gram',
   12: 'coconut',
+  13: 'cotton',
 };
+
+const CROP_NAME_TO_CODE: Record<string, number> = Object.fromEntries(
+  Object.entries(CROP_CODE_COLOR_KEY).map(([code, name]) => [name, Number(code)])
+);
+
+// Satellite record.json crop_type strings that don't literally match a
+// CROP_CODE_COLOR_KEY name (growth-stage suffixes, regional synonyms).
+const SATELLITE_CROP_ALIASES: Record<string, number> = {
+  sugarcane_plant: 2,
+  sugarcane_ratoon: 2,
+  tapioca: 7, // cassava
+};
+
+/**
+ * Maps a satellite-detected crop_type (record.json current_cycle[]/cycles[]
+ * .crop_type) onto the same numeric cropFamily code food tokens use, so a
+ * loan with no food token can still drive CROP_CYCLE_DAYS / CropIcon off a
+ * satellite-observed crop. Returns null for anything unrecognized.
+ */
+export function cropFamilyFromSatelliteType(cropType: string | null | undefined): number | null {
+  if (!cropType) return null;
+  const key = cropType.toLowerCase();
+  if (key in SATELLITE_CROP_ALIASES) return SATELLITE_CROP_ALIASES[key];
+  if (key in CROP_NAME_TO_CODE) return CROP_NAME_TO_CODE[key];
+  return null;
+}
 
 /** Display code: cropCode.padStart(3,'0') + varietyCode.padStart(3,'0')
  *  e.g. cropCode=0, varietyCode=0  → "000000" (paddy, any variety)
