@@ -564,6 +564,11 @@ const PortfolioCards = () => {
   // (not local state) so the map's X/back button (staticNav.js) can also lift
   // the single-property scope, not just this card's own toggle button.
   const showAll = fieldActivity?.portfolioShowAll ?? false;
+  // Members list is paginated rather than left to scroll indefinitely — a
+  // union can have dozens of properties, and an unbounded scroll region
+  // inside this drag-to-dismiss sheet was hard to reverse direction on.
+  const MEMBERS_PAGE_SIZE = 8;
+  const [membersPage, setMembersPage] = useState(0);
 
   // Seed from the persistent property-metadata cache so ALL known properties
   // (every member we've ever resolved, not just this session's active loans)
@@ -818,10 +823,40 @@ const PortfolioCards = () => {
               );
             };
 
+            // A union can have dozens of properties — this list used to rely on
+            // an unbounded scroll region inside the drag-to-dismiss sheet,
+            // which was hard to reverse direction on and fought the sheet's
+            // own drag/translateY. Paginate a fixed page size instead so the
+            // row count (and the sheet's height) stays predictable.
+            const visibleEntries = showAll ? [...activeEntries, ...otherEntries] : activeEntries;
+            const totalPages = Math.max(1, Math.ceil(visibleEntries.length / MEMBERS_PAGE_SIZE));
+            const safePage = Math.min(membersPage, totalPages - 1);
+            const pageEntries = visibleEntries.slice(safePage * MEMBERS_PAGE_SIZE, (safePage + 1) * MEMBERS_PAGE_SIZE);
+
             return (
               <div className="flex flex-col px-4">
-                {activeEntries.map(renderRow)}
-                {showAll && otherEntries.map(renderRow)}
+                {pageEntries.map(renderRow)}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      onPointerDown={e => e.stopPropagation()}
+                      onClick={() => setMembersPage(p => Math.max(0, p - 1))}
+                      disabled={safePage === 0}
+                      className="px-2 py-1 text-[11px] font-medium text-blue-700 dark:text-blue-300 disabled:opacity-30 disabled:text-blue-700 active:scale-95"
+                    >
+                      ‹ Prev
+                    </button>
+                    <span className="text-[10px] text-gray-400 dark:text-slate-500">Page {safePage + 1} of {totalPages}</span>
+                    <button
+                      onPointerDown={e => e.stopPropagation()}
+                      onClick={() => setMembersPage(p => Math.min(totalPages - 1, p + 1))}
+                      disabled={safePage === totalPages - 1}
+                      className="px-2 py-1 text-[11px] font-medium text-blue-700 dark:text-blue-300 disabled:opacity-30 disabled:text-blue-700 active:scale-95"
+                    >
+                      Next ›
+                    </button>
+                  </div>
+                )}
                 {otherEntries.length > 0 && (
                   <button
                     onPointerDown={e => e.stopPropagation()}
@@ -832,6 +867,7 @@ const PortfolioCards = () => {
                       // so the map fits to all properties instead of staying
                       // fixed on just the one it opened with.
                       if (next) setExpandedLid(null);
+                      setMembersPage(0); // the visible set (and page count) just changed
                       return next
                         ? { ...prev, portfolioShowAll: true, portfolioSelected: null }
                         : { ...prev, portfolioShowAll: false };

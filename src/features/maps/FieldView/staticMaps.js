@@ -4,11 +4,19 @@ import { useDataContext } from '../../../utils/NavigationContext';
 import { cropColor, normalizeCropType } from '../../../utils/cropColors.js';
 import { cropName, sameCropFamily, heldFoodTokens } from '../../../utils/foodToken.ts';
 
+// CSS values, not a JS snapshot: window.innerHeight/screen.width were read once
+// at module load and never updated, so on iOS Safari (whose address bar
+// resizes the viewport live) the map could render taller than the actual
+// visible viewport. That inflates the page's scrollable height, which on iOS
+// Safari pins position:fixed children (the bottom Tabs bar) to the taller
+// layout viewport instead of the visible one — hiding them until you scroll.
+// var(--app-height) is the same live viewport height Layout.js already keeps
+// in sync for this exact reason.
 const containerStyle = {
-  position: 'absolute',  
+  position: 'absolute',
   zIndex: 0,
-  width: window.screen.width,
-  height: window.innerHeight
+  width: '100vw',
+  height: 'var(--app-height)',
 };
 
 const GOOGLE_MAP_LIBRARIES = ['maps','marker']

@@ -498,12 +498,15 @@ export const MapCard = ({ db }) => {
 // Shown in the card stack for union leaders who also act as LPs.
 // treasury/available pulled from useUnionCashReserve; lpPending is a count of
 // open LP positions (CashOffers or RedeemOrders where lp === wallet.address).
-export const CashLiquidityCard = ({ treasury = 0n, available = 0n, lpPending = 0, cardShrink }) => {
+export const CashLiquidityCard = ({ treasury = 0n, available = 0n, treasuryEarningsPending = 0, lpPending = 0, cardShrink }) => {
     const { ix }          = useNavContext();
     const { isCollapsed } = useTouch();
     const pct = treasury > 0n ? Number(available) / Number(treasury) : 1;
-    const availableInr = Number(available / 10n ** 18n).toLocaleString('en-IN');
     const treasuryInr  = Number(treasury / 10n ** 18n).toLocaleString('en-IN');
+    // treasuryEarningsPending is already a decimal INR/nIN number
+    // (useLiveTreasuryEarningsPending), not wei — unlike treasury/available
+    // which are raw on-chain bigints.
+    const treasuryEarningsPendingInr = treasuryEarningsPending.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 
     return (
         <div className="flex flex-col h-full w-full pt-4">
@@ -512,8 +515,8 @@ export const CashLiquidityCard = ({ treasury = 0n, available = 0n, lpPending = 0
                 <table className="w-full flex flex-row justify-between">
                     <tbody>
                         <tr className="flex flex-col flex-grow">
-                            <td className="text-[10px] text-gray-400 dark:text-slate-400">Available to cash-in</td>
-                            <td className="text-left font-bold text-lg mb-3 dark:text-white">₹{availableInr}</td>
+                            <td className="text-[10px] text-gray-400 dark:text-slate-400">Treasury earnings pending</td>
+                            <td className="text-left font-bold text-lg mb-3 dark:text-white">₹{treasuryEarningsPendingInr}</td>
                         </tr>
                     </tbody>
                     <tbody>

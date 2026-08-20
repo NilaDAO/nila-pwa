@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { driver } from 'driver.js';
@@ -13,7 +13,8 @@ import genericFundViewerArtifact from '../../components/ABI/genericFundViewer.js
 import { useErc20Balances } from '../../hooks/useLoadETH.ts';
 import { ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { IndividualExchangeButton, ClaimButton } from '../../components/UI/buttons.js';
-import { useActiveLoans, useActiveLoansChainSync, isKnownClosed } from '../../hooks/useActiveLoans';
+import { useActiveLoans, useActiveLoansChainSync, useLiveCumulativeInterest, isKnownClosed } from '../../hooks/useActiveLoans';
+import { CROP_CYCLE_DAYS, DEFAULT_CROP_CYCLE_DAYS } from '../../hooks/useFoodTokenBatches.ts';
 import { useContactBook } from '../../hooks/useContactBook';
 import { useLoanAcceptance } from '../../hooks/useLoanAcceptance';
 import ActiveLoansCard from './ActiveLoansCard';
@@ -205,6 +206,30 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
   // settlementShortfall — sourced from useUnionCashReserve (systemHealth embedded there)
   const settlementShortfall = data?.settlementShortfall ?? 0n;
 
+  // hasOverdueLoans — mirrors NilaSensingAgent's voucher/generic.py req==5 condition
+  // (overdue_loan_grace_days, default 90d) that already blocks new-loan vouchers.
+  // This is a local display echo of that server-side hold, not its own enforcement.
+  // Harvest date priority matches ActiveLoansCard: confirmed maturityTs first,
+  // else drawdownTs + crop-specific cycle days — most loans never get a
+  // manually-verified maturityTs (reportMaturity is email-gated), so skipping
+  // the estimate here would silently never flag anything.
+  const OVERDUE_LOAN_GRACE_DAYS = 90;
+  const hasOverdueLoans = useMemo(() => {
+    const loans = loansData?.activeLoans ?? [];
+    const nowSec = Math.floor(Date.now() / 1000);
+    return loans.some((l) => {
+      if (l.chainClosed) return false;
+      let harvestTs = l.maturityTs ? Number(l.maturityTs) : null;
+      if (!harvestTs) {
+        if (!l.drawdownTs) return false;
+        const cropFamily = l.cropFamily ?? null;
+        const cycleDays = (cropFamily != null ? CROP_CYCLE_DAYS[cropFamily] : null) ?? DEFAULT_CROP_CYCLE_DAYS;
+        harvestTs = Number(l.drawdownTs) + cycleDays * 86400;
+      }
+      return (nowSec - harvestTs) > OVERDUE_LOAN_GRACE_DAYS * 86400;
+    });
+  }, [loansData?.activeLoans]);
+
   // ── EOS / harvest cache helpers (4-hour localStorage TTL) ──
   const EOS_CACHE_KEY = `eos_cache_${unionAddr}`;
   const EOS_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -260,15 +285,6 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
         }
       }
 
-      const existing = qc.getQueryData(['batchEos', unionAddr]);
-      if (existing instanceof Map) {
-        for (const [key, val] of existing) {
-          const hasData = val?.eos_date || val?.predicted_eos_earliest || val?.predicted_eos_latest;
-          const serverHasData = m.get(key)?.eos_date || m.get(key)?.predicted_eos_earliest;
-          if (hasData && !serverHasData) m.set(key, val);
-        }
-      }
-
       writeEosCache(m);
       return m;
     },
@@ -278,54 +294,6 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
-
-  // Auto-fetch EOS for active loans missing satellite data (respects 4h cache)
-  const fetchedEosRef = useRef(new Set());
-  useEffect(() => {
-    const loans = loansData?.activeLoans;
-    if (!loans?.length || !eosMap) return;
-    const API = process.env.REACT_APP_API_BASE_URL;
-
-    const missing = loans.filter((l) => {
-      if (!l.borrower || fetchedEosRef.current.has(l.borrower)) return false;
-      const eos = eosMap.get(l.id);
-      return !eos?.eos_date && !eos?.predicted_eos_earliest && !eos?.predicted_eos_latest;
-    });
-    if (!missing.length) return;
-
-    // If cache is still fresh, don't hit the API for missing entries either
-    const cached = readEosCache();
-    if (cached) return;
-
-    missing.forEach((l) => fetchedEosRef.current.add(l.borrower));
-    const borrowers = [...new Set(missing.map((l) => l.borrower))];
-    const borrowerToLoanIds = new Map();
-    for (const l of missing) {
-      const key = l.borrower?.toLowerCase();
-      if (!borrowerToLoanIds.has(key)) borrowerToLoanIds.set(key, []);
-      borrowerToLoanIds.get(key).push(l.id);
-    }
-    fetch(`${API}/gis/eos`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ borrowers }),
-    })
-      .then((res) => res.json())
-      .then((json) => {
-        console.log('[gis/eos] result:', json);
-        qc.setQueryData(['batchEos', unionAddr], (prev = new Map()) => {
-          const updated = new Map(prev);
-          for (const [borrower, data] of Object.entries(json.results ?? {})) {
-            for (const loanId of (borrowerToLoanIds.get(borrower?.toLowerCase()) ?? [])) {
-              updated.set(loanId, data);
-            }
-          }
-          writeEosCache(updated);
-          return updated;
-        });
-      })
-      .catch(console.error);
-  }, [loansData?.activeLoans, eosMap, unionAddr, qc, readEosCache, writeEosCache]);
 
   // Map fund loanType → total lent (from chain via getFundTotalsByTranche)
   const fundLentMap = useMemo(() => {
@@ -650,15 +618,11 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
   const pct             = treasury > 0n ? Number(available) / Number(treasury) : 1;
   const withdrawCap     = treasuryDir === 'withdraw' ? available : null;
 
-  const cumulativeInterest = useMemo(() => {
-    const loans = loansData?.activeLoans;
-    if (!loans?.length) return 0;
-    return loans.reduce((sum, l) => {
-      const outstanding = l.amount ?? 0;
-      const principal   = l.principal ?? outstanding;
-      return sum + Math.max(0, outstanding - principal);
-    }, 0);
-  }, [loansData?.activeLoans]);
+  // Gross total interest borrowers currently owe (union-wide reporting figure) —
+  // NOT the union's fee share; that's "Treasury earnings pending" on the
+  // collapsed Cash & Liquidity card (Wallet.js), a separate, smaller number.
+  // Live, interpolated between the 20-min chain syncs.
+  const totalInterestPending = useLiveCumulativeInterest(loansData?.activeLoans);
 
   const now = Math.floor(Date.now() / 1000);
 
@@ -780,9 +744,9 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-xs text-gray-500 dark:text-slate-400">Interest pending</span>
+                <span className="text-xs text-gray-500 dark:text-slate-400">Total interest pending</span>
                 <span className="text-xs font-bold dark:text-white">
-                  ₹{cumulativeInterest.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                  ₹{totalInterestPending.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -807,7 +771,8 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-500 dark:text-slate-400">Lending</span>
                 <span className="text-xs font-bold dark:text-white">
-                  <span className={settlementShortfall > 0n ? 'text-red' : 'text-green'}>●</span> {settlementShortfall > 0n ? 'Settling' : 'Active'}
+                  <span className={(settlementShortfall > 0n || hasOverdueLoans) ? 'text-red' : 'text-green'}>●</span>{' '}
+                  {settlementShortfall > 0n ? 'Settling' : hasOverdueLoans ? 'On hold' : 'Active'}
                 </span>
               </div>
             </>)}
@@ -819,7 +784,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
               return (
                 <p className="flex items-center gap-3 text-xs text-white mt-1">
                   <ExclamationTriangleIcon className="w-7 h-7 text-red dark:text-amber-400 animate-icon-pulse" />
-                  Cash-out is disabled. 
+                  Cash-out is disabled.
                   Collect ₹{juniorInr.toLocaleString('en-IN')} cash from borrowers,
                   and settle ₹{settleInr.toLocaleString('en-IN')}.
                 </p>
@@ -844,6 +809,21 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
                 title="Cash Out"
               />
             </div>
+
+            {/* ── Overdue-loan hold notice — same card styling as the escrow settle countdown, minus the timer/settle button ── */}
+            {settlementShortfall === 0n && hasOverdueLoans && (
+              <div className="rounded-lg border border-red animate-border-flash bg-white dark:bg-slate-700 px-3 py-2 flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-red">
+                    <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-xs font-semibold dark:text-white">New loans on hold</span>
+                </div>
+                <p className="text-[10px] text-red leading-snug">
+                  An active loan is over {OVERDUE_LOAN_GRACE_DAYS} days overdue past harvest.
+                </p>
+              </div>
+            )}
 
             {/* ── Settle countdown ── */}
             {pendingDisburse.length > 0 && (() => {

@@ -1,13 +1,32 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ClaimButton } from '../../components/UI/buttons';
 import { useFilterTasks } from '../../hooks/useFilterTasks';
 import SwipeCard from '../../components/UI/SwipeCard';
 import Spinner from '../../components/UI/spinner';
 
+// Below this slot height the roomy layout (icon-on-top, wrapped title,
+// subtitle, swipe hint) no longer fits — the card stack above claims space
+// first (it's flex-shrink-0), so a busy stack can squeeze this slot down to
+// its 120px floor. Compact mode swaps to a smaller icon-left row so content
+// stays legible instead of being clipped.
+const COMPACT_HEIGHT = 190;
+
 const TaskMessage = ({ LAND, CAP, inArrays }) => {
     const [ index, setIndex ] = useState(0);
     const { data, isPending, upstreamLoading } = useFilterTasks(LAND, CAP);
     const scrollerRef         = useRef(null);
+    const slotRef             = useRef(null);
+    const [ compact, setCompact ] = useState(false);
+
+    useEffect(() => {
+        const el = slotRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(([entry]) => {
+            setCompact(entry.contentRect.height < COMPACT_HEIGHT);
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     const onScroll = () => {
         const el = scrollerRef.current;
@@ -27,25 +46,55 @@ const TaskMessage = ({ LAND, CAP, inArrays }) => {
 
     if (loading) {
         return (
-            <div className={SLOT_CLASSES}>
+            <div ref={slotRef} className={SLOT_CLASSES}>
                 <Spinner size="small" />
             </div>
         )
     }
 
     return (
-        <div className={SLOT_CLASSES}>
+        <div ref={slotRef} className={SLOT_CLASSES}>
             { data && data.length > 0 ?
             <div
                 ref={scrollerRef}
                 onScroll={onScroll}
-                className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth my-6 w-full [-ms-overflow-style:none] [scrollbar-width:none]"
+                className={`flex overflow-x-auto snap-x snap-mandatory scroll-smooth w-full [-ms-overflow-style:none] [scrollbar-width:none] ${compact ? 'my-2' : 'my-6'}`}
                 style={{ scrollbarWidth: 'none' }}
             >
                 { data.map((t, k) => (
-                    <div key={t.i ?? k} className="snap-start shrink-0 w-full px-6" style={{ scrollSnapAlign: 'start' }}>
+                    <div key={t.i ?? k} className="snap-start shrink-0 w-full h-full overflow-y-auto px-6" style={{ scrollSnapAlign: 'start' }}>
                         { (t.btn2 || t.swipeable) ? (
-                            <SwipeCard t={t} />
+                            <SwipeCard t={t} compact={compact} />
+                        ) : compact ? (
+                            <div className="flex flex-row items-center gap-3">
+                                <div className="relative flex items-center justify-center h-8 w-8 flex-shrink-0">
+                                    {t.pending && (
+                                      <>
+                                        <div className="absolute inset-0 border-2 border-transparent border-t-green/75 rounded-full animate-spin" />
+                                        <div className="absolute inset-0 border-2 border-transparent border-r-green/75 rounded-full animate-spin delay-150" />
+                                        <div className="absolute inset-0 border-2 border-transparent border-l-green/75 rounded-full animate-spin delay-450" />
+                                      </>
+                                    )}
+                                    {t.cropImg ? (
+                                      <div className={`h-7 w-7 rounded-full flex items-center justify-center ${t.iconBg || 'bg-green'} flex-shrink-0`}>
+                                        <div className="w-5 h-5" style={{ WebkitMaskImage: `url(${t.img})`, maskImage: `url(${t.img})`, WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskSize: 'contain', maskSize: 'contain', WebkitMaskPosition: 'center', maskPosition: 'center', backgroundColor: 'black' }} />
+                                      </div>
+                                    ) : (
+                                      <img src={t.img} className="h-7 w-7" alt="Logo" />
+                                    )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-bold text-xs truncate dark:text-slate-100">{t.title}</p>
+                                    {t.subtitle && <p onClick={() => 'subclick' in t && t.subclick(t.sub_tx_nmb)} className="text-xs truncate dark:text-slate-400 text-gray-400">{t.subtitle}</p>}
+                                </div>
+                                {t.btn && (
+                                  <ClaimButton
+                                    disabled={(inArrays && t.i === 2) ? true : false}
+                                    handleClick={() => t.click(t.tx_nmb)}
+                                    title={t.btn}
+                                  />
+                                )}
+                            </div>
                         ) : (
                             <>
                                 <div className="flex justify-center mb-2">

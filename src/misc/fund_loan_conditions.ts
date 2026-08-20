@@ -26,6 +26,7 @@ export function LoanConditions(minCap: number, smallPropertyFlag: number, thresh
       ['Your property is near the union hub.',                              false, 4, 'Change to a union closer to your fields.'],
       [`Your union invested share must be ${thresholdDisplay}% plus.`,     false, 3, 'Ask your union and members to deposit additional funds.'],
       [`Your property has an area ready to grow crops of minimal ${minArea} m².`, false, 1, 'Make sure you cleared sufficient land.'],
+      ['No active loans in your union are overdue past harvest.',              false, 5, 'Collect or report harvest on overdue loans before taking a new one.'],
       [`You have a cap rate lower then ${minCapDisplay}.`, false, -1,
         'Make sure to invest more nIN in your favorite fund.'],
     ],
