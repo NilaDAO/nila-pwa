@@ -69,6 +69,7 @@ import Donate from '../../components/Forms/Donate';
 import Tabs from './tabs';
 import UnionReserve from './UnionReserve';
 import { useUnionCashReserve } from '../../hooks/useUnionCashReserve.ts';
+import { useActiveLoans, useActiveLoansChainSync, useLiveTreasuryEarningsPending } from '../../hooks/useActiveLoans';
 import { useOpenCashOffers } from '../../hooks/useCashOffer.ts';
 import Spinner from "../../components/UI/spinner";
 import { ClaimButton, CollapseButton } from "../../components/UI/buttons";
@@ -76,7 +77,7 @@ import { useSummary } from "../../hooks/useSummary";
 import { useRecordHash } from "../../hooks/useRecordHash.ts";
 import { setMetaThemeColor } from '../../utils/metaTheme';
 
-const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, savedFieldActivity }) => {
+const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, savedFieldActivity, cardShrink = 0 }) => {
     const [scrolling, setScrolled] = useState(0); // true ⇒ user pulled up
     const { cardView, setCardView } = useViewModeContext();
     const { ix, cardIx, setIx }    = useNavContext();
@@ -112,16 +113,35 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, save
         });
     }, [cardView, handleTopicScroll]);
 
+    // The principal card above (ix != null) is absolutely positioned (Card.js),
+    // so it doesn't push this content down on its own — this div sits right
+    // after a wrapper whose only real flow-height is its paddingBottom (64px
+    // expanded / 32px collapsed, see the wrapper style below). Mirror Card.js's
+    // own BASE/MIN shrink formula here so the resting offset always matches the
+    // card's *current* visible height instead of a constant sized for the
+    // fully-expanded card, which left a dead gap once the card had shrunk.
+    const CARD_BASE = 178, CARD_MIN = 80, CONTENT_GAP = 16;
+    const cardCollapsedView = ix === 2 || ix === 5; // map + forms: wrapper always uses the 32px pad
+    const shrinkP = Math.max(0, Math.min(1, cardShrink));
+    const cardVisibleHeight = cardCollapsedView ? 0 : (cardShrink <= 0.5 ? Math.round(CARD_BASE - (CARD_BASE - CARD_MIN) * shrinkP) : 0);
+    const wrapperPad = (!cardCollapsedView && cardShrink < 0.5) ? 64 : 32;
+    const defaultY = Math.max(0, cardVisibleHeight + CONTENT_GAP - wrapperPad);
+
     const variants = {
-        default:         { y: 220, zIndex: 10 },
+        default:         { y: defaultY, zIndex: 10 },
         transactionview: { y: 0, zIndex: 10 },
         tokenview:       { y: 50, zIndex: 10 },
         // TODO: BetaWarning banner in StaticCards occupies ~50px above the card,
         // so the card sits 50px higher to keep XCircleIcon clear of the banner.
-        // When BetaWarning is removed, revert offset back to: window.screen.height - 400
-        mapview:         { y: window.screen.height - 400, zIndex: 0},
+        // When BetaWarning is removed, revert offset back to: window.innerHeight - 400
+        // window.screen.height is the device's physical screen height, not the
+        // browser viewport — it can be much larger than the visible area (and,
+        // in a resized desktop window, is the host monitor's height), pushing
+        // this card off-screen. window.innerHeight is the live viewport height,
+        // the same one Layout.js already mirrors into --app-height.
+        mapview:         { y: window.innerHeight - 400, zIndex: 0},
     };
-      
+
     useEffect(() => {
         // make sure control is called when cardview is called
         // make sure scroll position is reset on page change (ix)
@@ -129,6 +149,14 @@ const Topic = ({ handleTopicScroll, handleOpenForm, LAND, CAP, funds, sums, save
         controls.start(variants[cardView]);
         handleTopicScroll?.(0);
     }, [cardView]);
+
+    // Re-target (no scroll reset here) whenever the card's live height changes,
+    // so this content tracks the shrinking card in real time instead of only
+    // snapping into place on view switches.
+    useEffect(() => {
+        if (cardView !== 'default') return;
+        controls.start({ y: defaultY, zIndex: 10 });
+    }, [defaultY, cardView]);
 
     useEffect(() => () => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -550,6 +578,17 @@ function Wallet({LAND}) {
 
     const cashOutDisabled = (reserveData?.settlementShortfall ?? 0n) > 0n;
 
+    // Mounted here (not just inside UnionReserve.js) so the "treasury earnings
+    // pending" figure on the collapsed Cash & Liquidity card stays live even
+    // when the full panel isn't open — React Query dedupes the shared
+    // queryKey with UnionReserve.js's own calls, so this doesn't double the
+    // chain sync.
+    const { data: loansData } = useActiveLoans(db?.union?.address, !!db?.union?.leader);
+    useActiveLoansChainSync(db?.union?.address, !!db?.union?.leader);
+    const treasuryEarningsPending = useLiveTreasuryEarningsPending(
+      loansData?.activeLoans, reserveData?.treasuryFeeBP, reserveData?.rainyFeeBP, db?.union?.address
+    );
+
     // Donation programs — card shows only when the union leader has turned
     // donations on AND there are active programs for the union.
     const { data: donationsEnabled = false } = useDonationsEnabled(db?.union);
@@ -717,6 +756,7 @@ function Wallet({LAND}) {
           content: <CashLiquidityCard
             treasury={reserveData?.treasury ?? 0n}
             available={reserveData?.available ?? 0n}
+            treasuryEarningsPending={treasuryEarningsPending}
             lpPending={openOffers}
             cardShrink={cardShrink}
           />,
@@ -858,9 +898,12 @@ function Wallet({LAND}) {
                 <TxProgress />
                 :
                 <motion.div
-                    className={`flex flex-col flex-grow mx-2 space-y-2 overflow-hidden`}
+                    className={`flex flex-col flex-grow mx-2 space-y-2 ${ix === null ? 'overflow-y-auto overscroll-contain' : 'overflow-hidden'}`}
                 >
-                    {/* Card stack sizes to its own content; TaskMessage gets the leftover space */}
+                    {/* Card stack sizes to its own content; TaskMessage gets the leftover space.
+                        This column scrolls (ix === null only) so the stack + spacer can exceed
+                        the viewport without being clipped by a fixed-height ancestor; sub-screens
+                        (ix !== null) keep overflow-hidden here since Topic owns its own scrollRef. */}
                     {isCollapsed && ix === null &&
                     <TaskMessage
                         key={db.address || 'no-wallet'}
@@ -911,6 +954,7 @@ function Wallet({LAND}) {
                         <Topic
                             handleOpenForm={handleOpenForm}
                             handleTopicScroll={handleTopicScroll}
+                            cardShrink={cardShrink}
                             LAND={LAND}
                             CAP={CAP}
                             funds={funds}

@@ -72,7 +72,7 @@ export function useUnionCashReserve(unionAddr?: string) {
       const rawUnion = await viewer!.getUnion(unionAddr!).catch(() => null);
       const lt = (rawUnion?.[1]?.[0] as string | undefined) ?? ethers.ZeroHash;
 
-      const [treasury, rainyDay, activeEscrowNin, usdtTokenAddr, usdtDec, escrowDurationRaw, juniorPendingNin, seniorPendingNin, healthRaw] = await Promise.all([
+      const [treasury, rainyDay, activeEscrowNin, usdtTokenAddr, usdtDec, escrowDurationRaw, juniorPendingNin, seniorPendingNin, healthRaw, treasuryFeeBP, rainyFeeBP] = await Promise.all([
         core!.unionTreasury(unionAddr!),
         core!.unionRainyDay(unionAddr!),
         fxPool!.unionActiveEscrowNin(unionAddr!),
@@ -82,6 +82,13 @@ export function useUnionCashReserve(unionAddr?: string) {
         core!.juniorPendingPrincipal(unionAddr!, lt),
         core!.seniorPendingPrincipal(unionAddr!),
         viewer!.systemHealth(fxAddress!, unionAddr!, lt).catch(() => null),
+        // Global fee split (admin-configurable via setFeeBps, defaults 1%/2%) —
+        // the union's actual share of a loan's interest is
+        // (treasuryFeeBP + rainyFeeBP) / loan.rateBP, per
+        // GenericFundCore._distributeInterest. Read live rather than assuming
+        // the source defaults, since setFeeBps can change them post-deploy.
+        core!.treasuryFeeBP(),
+        core!.rainyFeeBP(),
       ]);
       const escrowDuration = Number(escrowDurationRaw);
 
@@ -146,6 +153,8 @@ export function useUnionCashReserve(unionAddr?: string) {
         escrowDuration,
         usdtBalance,
         usdtDecimals,
+        treasuryFeeBP: Number(treasuryFeeBP),
+        rainyFeeBP: Number(rainyFeeBP),
       };
     },
   });

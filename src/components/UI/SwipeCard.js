@@ -10,7 +10,7 @@ const SWIPE_THRESHOLD = 80;
  * LP-request checkbox + amount toggle. The selected state is forwarded to
  * t.click() on swipe-right so the handler can fire the LP request.
  */
-const SwipeCard = ({ t }) => {
+const SwipeCard = ({ t, compact = false }) => {
     const [dx, setDx]  = useState(0);
     const startX       = useRef(null);
     const isDragging   = useRef(false);
@@ -90,9 +90,12 @@ const SwipeCard = ({ t }) => {
                 <span className={`${leftPositive ? 'text-green dark:text-green' : 'text-red dark:text-red'} font-bold text-xs`}>{leftLabel}</span>
             </div>
 
-            {/* draggable content */}
+            {/* draggable content — h-full + overflow-y-auto is a safety net: if a
+                long title/subtitle still doesn't fit the space the flex column
+                above squeezed this card into, it scrolls instead of silently
+                being clipped by the outer overflow-hidden. */}
             <div
-                className="relative px-4 pt-3 pb-2 touch-pan-y"
+                className={`relative h-full overflow-y-auto touch-pan-y ${compact ? 'px-3 pt-2 pb-1' : 'px-4 pt-3 pb-2'}`}
                 style={{
                     transform: `translateX(${dx}px)`,
                     transition: isDragging.current ? 'none' : 'transform 0.25s ease',
@@ -106,6 +109,28 @@ const SwipeCard = ({ t }) => {
                 onMouseUp={onMouseUp}
                 onMouseLeave={onMouseUp}
             >
+              { compact ? (
+                <div className="flex flex-row items-center gap-3">
+                    <div className="relative flex items-center justify-center h-8 w-8 flex-shrink-0">
+                        {t.pending && (
+                            <>
+                                <div className="absolute inset-0 border-2 border-transparent border-t-green/75 rounded-full animate-spin" />
+                                <div className="absolute inset-0 border-2 border-transparent border-r-green/75 rounded-full animate-spin delay-150" />
+                                <div className="absolute inset-0 border-2 border-transparent border-l-green/75 rounded-full animate-spin delay-450" />
+                            </>
+                        )}
+                        {t.cropImg ? (
+                            <div className={`h-7 w-7 rounded-full flex items-center justify-center ${t.iconBg || 'bg-green'} flex-shrink-0`}>
+                                <div className="w-5 h-5" style={{ WebkitMaskImage: `url(${t.img})`, maskImage: `url(${t.img})`, WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskSize: 'contain', maskSize: 'contain', WebkitMaskPosition: 'center', maskPosition: 'center', backgroundColor: 'black' }} />
+                            </div>
+                        ) : (
+                            <img src={t.img} className="h-7 w-7" alt="Logo" />
+                        )}
+                    </div>
+                    <p className="font-bold text-xs line-clamp-2 dark:text-slate-100">{t.title}</p>
+                </div>
+              ) : (
+                <>
                 <div className="flex justify-center mb-2">
                     <div className="relative flex items-center justify-center h-12 w-12">
                         {t.pending && (
@@ -126,10 +151,12 @@ const SwipeCard = ({ t }) => {
                 </div>
                 <p className="font-bold text-xs text-center dark:text-slate-100">{t.title}</p>
                 {t.subtitle && <p className="text-xs text-center text-gray-400 dark:text-slate-400">{t.subtitle}</p>}
+                </>
+              )}
 
                 {/* ── Inline LP request options ── */}
                 {t.lp && (
-                    <div className="mt-3 flex flex-col items-center gap-1"
+                    <div className={`flex flex-col items-center gap-1 ${compact ? 'mt-1' : 'mt-3'}`}
                          onTouchStart={e => e.stopPropagation()}
                          onMouseDown={e => e.stopPropagation()}>
                         <div className="flex items-center gap-2 cursor-pointer select-none"
@@ -162,7 +189,7 @@ const SwipeCard = ({ t }) => {
                             </span>
                         </div>
 
-                        {sendLP && !inFull && !noEscrow && (
+                        {sendLP && !inFull && !noEscrow && !compact && (
                             <p className="text-[10px] text-gray-400 dark:text-slate-500">
                                 Tap to settle full amount in cash
                             </p>
@@ -170,9 +197,11 @@ const SwipeCard = ({ t }) => {
                     </div>
                 )}
 
+                { !compact &&
                 <p className="text-center text-[10px] text-gray-300 dark:text-slate-600 mt-2">
                     {hintText}
                 </p>
+                }
             </div>
         </div>
     );

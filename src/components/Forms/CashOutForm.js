@@ -58,6 +58,7 @@ export function CashOutForm({ handleOpenForm }) {
   const { data: openRedeemOrdersList = [] } = useUnionOpenRedeemOrdersList(unionAddr);
 
   const prefillAddress = txdetails?.memberAddress ?? null;
+  const prefillLoanId  = txdetails?.loanId ?? null;
   const [step,           setStep]          = useState(
     prefillAddress
       ? (hasName(prefillAddress) ? 'review-loan' : 'name-gate')
@@ -73,11 +74,12 @@ export function CashOutForm({ handleOpenForm }) {
   const [stagedUsdtOut,  setStagedUsdtOut] = useState(null); // set after redeemFarmerNin mines — prevents re-burn on retry
   const [error,          setError]         = useState(null);
 
-  const { loans, loading: loansLoading } = useMemberLoans(memberAddress);
-  const activeLoan     = loans.find((l) => l.drawdownTs !== 0n && l.drawdownTs !== BigInt(0) && !l.defaulted) ?? null;
-  const pendingLoan    = !activeLoan ? loans.find((l) => l.drawdownTs === 0n || l.drawdownTs === BigInt(0)) ?? null : null;
-  const currentLoan    = activeLoan ?? pendingLoan ?? null;
-  const principalRaw   = currentLoan?.principalRaw ?? 0n;                 // original loan bigint
+  const { loans, loading: loansLoading } = useMemberLoans(memberAddress, prefillLoanId);
+  // Sort active loans newest-first: the most recently drawn loan holds the wallet nIN.
+  const rawActiveLoan  = loans
+    .filter((l) => l.drawdownTs !== 0n && l.drawdownTs !== BigInt(0) && !l.defaulted)
+    .sort((a, b) => (b.drawdownTs > a.drawdownTs ? 1 : b.drawdownTs < a.drawdownTs ? -1 : 0))[0] ?? null;
+  const pendingLoan    = loans.find((l) => l.drawdownTs === 0n || l.drawdownTs === BigInt(0)) ?? null;
 
   // Fetch the member's actual nIN wallet balance — this is one input to the
   // payout cap. The other is the loan principal: see maxPayoutRaw below for why
@@ -85,6 +87,12 @@ export function CashOutForm({ handleOpenForm }) {
   const [ninBalanceRaw, setNinBalanceRaw]         = useState(0n);
   const [ninAllowanceRaw, setNinAllowanceRaw]     = useState(0n);
   const [ninBalanceFetched, setNinBalanceFetched] = useState(false);
+
+  // When the active loan is fully disbursed (wallet empty) and a new pending loan is waiting,
+  // suppress the drained active loan so the pending-loan UI branch is surfaced instead.
+  const activeLoan     = (ninBalanceFetched && ninBalanceRaw === 0n && pendingLoan) ? null : rawActiveLoan;
+  const currentLoan    = activeLoan ?? pendingLoan ?? null;
+  const principalRaw   = currentLoan?.principalRaw ?? 0n;                 // original loan bigint
   const [cashOutInput, setCashOutInput]           = useState('');       // leader-entered amount (string for input)
   const fxAddress = process.env.REACT_APP_FX_POOL_MAIN;
   // Reset the input only when the scanned member changes — not on every balance refresh.
@@ -389,7 +397,12 @@ export function CashOutForm({ handleOpenForm }) {
       qc.invalidateQueries({ queryKey: ['unionOpenRedeemOrdersList'] });
       qc.invalidateQueries({ queryKey: ['pendingCashDeliveries'] });
     } catch (err) {
-      setError(err?.reason || err?.message || 'Failed');
+      const reason = err?.reason || err?.message || '';
+      setError(
+        reason.includes('insufficient fx treasury')
+          ? 'FX treasury is low — Nila\'s autohedge has not been replenished.'
+          : reason || 'Failed'
+      );
     } finally {
       closeSheet();
     }

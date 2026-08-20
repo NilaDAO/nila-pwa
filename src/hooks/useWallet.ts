@@ -571,6 +571,19 @@ export function useFxPool(opts: FxOptions = {}) {
   const confirmCashOfferDelivered = useCallback(async (offerId: bigint) => {
     if (!fxPool || !wallet) throw new Error("FX pool or wallet not ready");
     return runTx(async () => {
+      // DEBUG: the contract's require(o.union == msg.sender && o.status == 1, "invalid")
+      // doesn't say which half failed — log both sides so a revert is diagnosable
+      // without guessing. Remove once the stuck-offer issue is understood.
+      try {
+        const o = await fxPool.cashOffers(offerId);
+        console.log("[confirmCashOfferDelivered] offer", offerId.toString(), {
+          "o.union": o.union,
+          "wallet.address": wallet.address,
+          addressMatches: (o.union as string).toLowerCase() === wallet.address.toLowerCase(),
+          "o.status": Number(o.status),
+          statusIsFilled: Number(o.status) === 1,
+        });
+      } catch (e) { console.warn("[confirmCashOfferDelivered] debug read failed:", e); }
       await fxPool.confirmCashOfferDelivered.staticCall(offerId);
       return fxPool.confirmCashOfferDelivered(offerId);
     }, {
