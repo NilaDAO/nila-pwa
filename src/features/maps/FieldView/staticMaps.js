@@ -4,6 +4,14 @@ import { useDataContext } from '../../../utils/NavigationContext';
 import { cropColor, normalizeCropType } from '../../../utils/cropColors.js';
 import { cropName, sameCropFamily, heldFoodTokens } from '../../../utils/foodToken.ts';
 
+const hexToRgba = (hex, alpha) => {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
 // CSS values, not a JS snapshot: window.innerHeight/screen.width were read once
 // at module load and never updated, so on iOS Safari (whose address bar
 // resizes the viewport live) the map could render taller than the actual
@@ -473,9 +481,14 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
             }}
           />
         ))}
-        {/* Portfolio outlines — blue = active loan, grey = other known property; clickable, highlight selected */}
+        {/* Portfolio outlines — fill color is crop type (once known); active vs
+            inactive and selected are secondary channels (opacity/weight), not
+            a second hue, so they don't fight crop color for the same signal.
+            Properties with no resolved crop yet fall back to the previous
+            grey/blue active-vs-not scheme. Clickable, highlights selected. */}
         {portfolioOutlines.length > 0 && console.log('[portfolio] outline coloring', {
           activeIds: fieldActivity?.portfolioActiveIds,
+          cropByLandId: fieldActivity?.portfolioCropByLandId,
           selected: fieldActivity?.portfolioSelected,
           showAll: fieldActivity?.portfolioShowAll,
           lids: portfolioOutlines.map(p => p.lid),
@@ -483,19 +496,30 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
         {portfolioOutlines.map((poly, i) => {
           const isSelected = String(fieldActivity?.portfolioSelected) === String(poly.lid);
           const isActive = (fieldActivity?.portfolioActiveIds || []).some(id => String(id) === String(poly.lid));
+          const cropColorKey = fieldActivity?.portfolioCropByLandId?.[String(poly.lid)];
+          let fillColor, strokeColor;
+          if (cropColorKey) {
+            const hex = cropColor(cropColorKey);
+            const fillAlpha = isSelected ? 0.45 : (isActive ? 0.28 : 0.15);
+            fillColor = hexToRgba(hex, fillAlpha);
+            strokeColor = hex;
+          } else {
+            fillColor = isActive
+              ? (isSelected ? 'rgba(59,130,246,0.35)' : 'rgba(59,130,246,0.15)')
+              : (isSelected ? 'rgba(156,163,175,0.30)' : 'rgba(156,163,175,0.12)');
+            strokeColor = isActive
+              ? (isSelected ? '#1D4ED8' : '#3B82F6')
+              : (isSelected ? '#6B7280' : '#9CA3AF');
+          }
           return (
             <Polygon
               key={`pf-${poly.lid}-${i}`}
               paths={poly.latLngs}
               onClick={() => setFieldActivity(prev => prev ? { ...prev, portfolioSelected: poly.lid } : prev)}
               options={{
-                fillColor: isActive
-                  ? (isSelected ? 'rgba(59,130,246,0.35)' : 'rgba(59,130,246,0.15)')
-                  : (isSelected ? 'rgba(156,163,175,0.30)' : 'rgba(156,163,175,0.12)'),
+                fillColor,
                 fillOpacity: 1,
-                strokeColor: isActive
-                  ? (isSelected ? '#1D4ED8' : '#3B82F6')
-                  : (isSelected ? '#6B7280' : '#9CA3AF'),
+                strokeColor,
                 strokeOpacity: 0.95,
                 strokeWeight: isSelected ? 2.5 : 1.5,
                 clickable: true,

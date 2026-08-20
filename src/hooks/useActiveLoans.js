@@ -189,27 +189,43 @@ async function resolveFoodTokenBatchIds(candidates, provider) {
 }
 
 /**
- * Resolves cropFamily from the satellite record.json for loans that have no
- * food-token crop data — pre-food-token-era loans like the "why is this loan
- * late" investigation that motivated this (see CLAUDE.md / conversation).
- * Fetched via loan.recordHash (backend's report_hash) straight from Pinata —
- * a free, content-addressed IPFS read, NOT the fee-gated on-chain
- * getRecordHash() path in useRecordHash.ts.
+ * Resolves a projected harvest date (and, for loans with no food-token crop
+ * data, cropFamily too) from the satellite record.json. Fetched via
+ * loan.recordHash (backend's report_hash) straight from Pinata — a free,
+ * content-addressed IPFS read, NOT the fee-gated on-chain getRecordHash()
+ * path in useRecordHash.ts.
  *
  * Picks the *open* cycle whose sos is closest to the loan's drawdownTs (i.e.
- * the cycle this loan actually financed) and maps its detected crop_type onto
- * the same `cropFamily` field Step 3 below sets from food tokens, so
- * CROP_CYCLE_DAYS / CropIcon consume it identically regardless of source.
- * `candidates` must already be filtered to loans with a recordHash, no
- * foodTokenId, and no cropFamily yet.
+ * the cycle this loan actually financed). Runs for EVERY loan with a
+ * recordHash, food-token or not — food-token loans already have an
+ * authoritative cropFamily (Step 3's unpackTokenId), so this only adds
+ * satProjectedEos for them, never overwriting cropFamily/cropSource. For
+ * loans with no food token, the matched cycle's detected crop_type also
+ * maps onto the same `cropFamily` field, so CropIcon consumes it identically
+ * regardless of source.
+ *
+ * satProjectedEos — the cycle's `projection.projected_eos_date` when the
+ * model has produced one (derived from the cycle's actual observed
+ * NDVI/weather trajectory) — is what ActiveLoansCard's harvest-date
+ * priority now uses ahead of the removed flat cycle-days estimate; see the
+ * 2026-08-20 harvest-column redesign (the frontend's own CROP_CYCLE_DAYS
+ * table was removed in favor of this backend-computed value exclusively).
+ * `candidates` must already be filtered to loans with a recordHash and no
+ * satProjectedEos yet.
  */
 async function resolveCropFromRecords(candidates) {
   if (!candidates?.length) return;
   const fresh = await readAllItems('ActiveLoans') ?? {};
+  // Temporary diagnostic for the "food-token loans never get a harvest date
+  // or health" report — logs why `best` (the matched open cycle) does or
+  // doesn't resolve per loan, so we can see the real cause instead of
+  // guessing at one.
+  const diag = [];
   for (const l of candidates) {
     try {
       const record = await fetchRecordFromIPFS(l.recordHash);
       const cycles = Array.isArray(record?.cycles) ? record.cycles : [];
+      const openCycles = cycles.filter(c => c.is_open);
       const drawdownMs = Number(l.drawdownTs) * 1000;
       let best = null;
       let bestDiff = Infinity;
@@ -218,33 +234,75 @@ async function resolveCropFromRecords(candidates) {
         const diff = Math.abs(new Date(c.sos).getTime() - drawdownMs);
         if (diff < bestDiff) { best = c; bestDiff = diff; }
       }
-      if (!best) continue;
 
-      // A freshly-open cycle's own entry often hasn't been classified yet
-      // (crop_type: null) — current_cycle carries the live re-classification
-      // for the same zone, so prefer that when the raw cycle lacks one.
-      let cropType = best.crop_type;
-      let confidence = best.crop_confidence ?? null;
-      if (!cropType && Array.isArray(record?.current_cycle)) {
-        const live = record.current_cycle.find((cc) => cc.cluster_id === best.zone_id);
-        if (live) { cropType = live.crop_type; confidence = live.crop_confidence ?? null; }
+      // current_cycle carries the live, continuously-reclassified state for
+      // this zone — crop_type AND health/health_summary/health_description
+      // are only ever populated there in practice. cycles[] carries its own
+      // (good/moderate/poor) health enum too, but it's always null on real
+      // data as of the 2026-08-20 health-field investigation.
+      const live = (best && Array.isArray(record?.current_cycle))
+        ? record.current_cycle.find((cc) => cc.cluster_id === best.zone_id)
+        : null;
+
+      const satProjectedEos = best?.projection?.projected_eos_date ?? null;
+
+      // Crop identity only for non-food-token loans — food tokens already
+      // carry an authoritative, on-chain-attested cropFamily (Step 3) that a
+      // probabilistic satellite guess must never override.
+      let cropFamily = null;
+      let confidence = null;
+      if (best && !l.foodTokenId) {
+        // A freshly-open cycle's own entry often hasn't been classified yet
+        // (crop_type: null) — current_cycle carries the live re-classification
+        // for the same zone, so prefer that when the raw cycle lacks one.
+        let cropType = best.crop_type;
+        confidence = best.crop_confidence ?? null;
+        if (!cropType && live) { cropType = live.crop_type; confidence = live.crop_confidence ?? null; }
+        cropFamily = cropFamilyFromSatelliteType(cropType);
       }
 
-      const cropFamily = cropFamilyFromSatelliteType(cropType);
-      if (cropFamily == null) continue;
+      // Health applies regardless of food-token status — knowing whether a
+      // committed crop is on track matters even more once it's tokenised.
+      const health = live?.health ?? null;
+      const healthSummary = live?.health_summary ?? null;
+      const healthDescription = live?.health_description ?? null;
 
       const updated = {
         ...(fresh[l.id] ?? l),
-        cropFamily,
-        cropSource: 'satellite',
-        cropConfidence: confidence,
+        ...(cropFamily != null ? { cropFamily, cropSource: 'satellite', cropConfidence: confidence } : {}),
+        ...(satProjectedEos != null ? { satProjectedEos } : {}),
+        ...(health != null ? { health, healthSummary, healthDescription } : {}),
+        // Stamped even when nothing new was extracted (no matching open
+        // cycle, no health yet) so this loan isn't re-fetched every sync —
+        // only once the backend publishes a *different* recordHash. See the
+        // two newlyGotRecordHash call sites and the Step 3b filter, both of
+        // which gate on recordHash !== resolvedRecordHash rather than "have
+        // we resolved anything yet" (the latter meant a loan whose hash
+        // changed after its first successful resolve was never re-fetched).
+        resolvedRecordHash: l.recordHash,
       };
       await setDBitem(l.id, updated, 'ActiveLoans');
       fresh[l.id] = updated;
+      diag.push({
+        id: l.id,
+        foodTokenId: l.foodTokenId ?? null,
+        drawdownTs: l.drawdownTs ?? null,
+        cycles: cycles.length,
+        openCycles: openCycles.length,
+        bestFound: !!best,
+        bestSos: best?.sos ?? null,
+        bestZoneId: best?.zone_id ?? null,
+        currentCycleLen: Array.isArray(record?.current_cycle) ? record.current_cycle.length : null,
+        liveFound: !!live,
+        satProjectedEos,
+        health,
+      });
     } catch (e) {
       console.warn(`[cropFromRecord] failed for ${l.id}:`, e.message);
+      diag.push({ id: l.id, foodTokenId: l.foodTokenId ?? null, error: e.message });
     }
   }
+  console.table(diag);
 }
 
 // unionAddress -> in-flight Promise. Ensures concurrent triggers (mount +
@@ -324,8 +382,13 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
         // Loans whose foodTokenId is new-to-us as of this sync — resolved
         // immediately below rather than waiting for the next chain sync.
         const newlyGotFoodTokenId = [];
-        // Loans whose recordHash is new-to-us this sync AND have no food
-        // token — candidates for the satellite-derived cropFamily fallback.
+        // Loans whose recordHash is new-to-us this sync, OR changed from what
+        // we last resolved — candidates for satProjectedEos/health (and, for
+        // non-food-token loans, cropFamily too). A changed hash means the
+        // backend published a fresh data point; re-resolve so health in
+        // particular (a live, changing signal) doesn't go stale. Not mutually
+        // exclusive with newlyGotFoodTokenId — a food-token loan still needs
+        // its own satellite projection resolved.
         const newlyGotRecordHash = [];
         for (const item of backendItems) {
           const existing = stored[item.id];
@@ -338,7 +401,7 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
             try { await setDBitem(item.id, item, 'ActiveLoans'); } catch (_) {}
             stored[item.id] = item;
             if (item.foodTokenId) newlyGotFoodTokenId.push(item);
-            else if (item.recordHash) newlyGotRecordHash.push(item);
+            if (item.recordHash) newlyGotRecordHash.push(item);
             console.log(`[activeLoans] NEW ${item.id.slice(0,8)} landId=${item.landId}`);
           } else if (!existing.chainVerified) {
             // Backend has fresher data than our un-verified local copy
@@ -346,7 +409,7 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
             try { await setDBitem(item.id, merged, 'ActiveLoans'); } catch (_) {}
             stored[item.id] = merged;
             if (item.foodTokenId && !existing.foodTokenId) newlyGotFoodTokenId.push(merged);
-            else if (item.recordHash && !existing.recordHash && !merged.foodTokenId) newlyGotRecordHash.push(merged);
+            if (item.recordHash && item.recordHash !== existing.recordHash) newlyGotRecordHash.push(merged);
             console.log(`[activeLoans] MERGE (unverified) ${item.id.slice(0,8)} landId=${merged.landId}`);
           } else {
             // Chain-verified — backfill landId/farmName from backend if missing locally
@@ -354,13 +417,13 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
             if (item.landId && !existing.landId) patch.landId = item.landId;
             if (item.farmName && !existing.farmName) patch.farmName = item.farmName;
             if (item.foodTokenId && !existing.foodTokenId) patch.foodTokenId = item.foodTokenId;
-            if (item.recordHash && !existing.recordHash) patch.recordHash = item.recordHash;
+            if (item.recordHash && item.recordHash !== existing.recordHash) patch.recordHash = item.recordHash;
             if (Object.keys(patch).length) {
               const patched = { ...existing, ...patch };
               try { await setDBitem(item.id, patched, 'ActiveLoans'); } catch (_) {}
               stored[item.id] = patched;
               if (patch.foodTokenId) newlyGotFoodTokenId.push(patched);
-              else if (patch.recordHash && !patched.foodTokenId) newlyGotRecordHash.push(patched);
+              if (patch.recordHash) newlyGotRecordHash.push(patched);
               console.log(`[activeLoans] BACKFILL ${item.id.slice(0,8)}`, patch);
             } else {
               console.log(`[activeLoans] SKIP ${item.id.slice(0,8)} landId=${existing.landId} farmName=${existing.farmName}`);
@@ -374,7 +437,7 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
           await resolveFoodTokenBatchIds(newlyGotFoodTokenId, provider);
         }
         if (newlyGotRecordHash.length) {
-          console.log(`[activeLoans] ${newlyGotRecordHash.length} loans got a new recordHash this sync — resolving satellite cropFamily now`);
+          console.log(`[activeLoans] ${newlyGotRecordHash.length} loans got a new recordHash this sync — resolving satellite projection now`);
           await resolveCropFromRecords(newlyGotRecordHash);
         }
       }
@@ -794,16 +857,24 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
         console.warn('[chainSync] _ftAddr not set — skipping cropFamily resolution');
       }
 
-      // Step 3b: resolve cropFamily from the satellite record (free Pinata
-      // fetch via recordHash — no wallet/contract call involved, unlike the
-      // fee-gated useRecordHash path) for loans that have no food-token crop
-      // data. Same target field as Step 3, so it's purely a fallback source —
-      // never runs for a loan Step 3 already covered.
+      // Step 3b: resolve satProjectedEos/health (and, for non-food-token
+      // loans, cropFamily too) from the satellite record — free Pinata fetch
+      // via recordHash, no wallet/contract call involved, unlike the
+      // fee-gated useRecordHash path. Runs for every loan whose recordHash
+      // hasn't been resolved yet OR has changed since the last resolve
+      // (resolvedRecordHash, stamped by resolveCropFromRecords) — gating on
+      // satProjectedEos == null instead would mean a loan's health (a live,
+      // changing signal, unlike the largely-static cropFamily/satProjectedEos)
+      // never refreshes past its first resolution. Runs for every loan with a
+      // recordHash, food-token or not — ActiveLoansCard's harvest date now
+      // relies on satProjectedEos exclusively as its estimate tier (the
+      // frontend's own flat cycle-days table was removed 2026-08-20), so
+      // food-token loans need this too, not just their attested cropFamily.
       {
         const freshForSatCrop = await readAllItems('ActiveLoans') ?? {};
         const needSatCrop = Object.values(freshForSatCrop)
-          .filter(l => l.recordHash && !l.foodTokenId && l.cropFamily == null && !l.chainClosed);
-        console.log(`[chainSync] ${needSatCrop.length} loans need satellite-derived cropFamily`);
+          .filter(l => l.recordHash && l.recordHash !== l.resolvedRecordHash && !l.chainClosed);
+        console.log(`[chainSync] ${needSatCrop.length} loans need satellite projection resolution`);
         await resolveCropFromRecords(needSatCrop);
       }
 

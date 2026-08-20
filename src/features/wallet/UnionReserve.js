@@ -14,7 +14,6 @@ import { useErc20Balances } from '../../hooks/useLoadETH.ts';
 import { ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { IndividualExchangeButton, ClaimButton } from '../../components/UI/buttons.js';
 import { useActiveLoans, useActiveLoansChainSync, useLiveCumulativeInterest, isKnownClosed } from '../../hooks/useActiveLoans';
-import { CROP_CYCLE_DAYS, DEFAULT_CROP_CYCLE_DAYS } from '../../hooks/useFoodTokenBatches.ts';
 import { useContactBook } from '../../hooks/useContactBook';
 import { useLoanAcceptance } from '../../hooks/useLoanAcceptance';
 import ActiveLoansCard from './ActiveLoansCard';
@@ -206,26 +205,28 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
   // settlementShortfall — sourced from useUnionCashReserve (systemHealth embedded there)
   const settlementShortfall = data?.settlementShortfall ?? 0n;
 
-  // hasOverdueLoans — mirrors NilaSensingAgent's voucher/generic.py req==5 condition
-  // (overdue_loan_grace_days, default 90d) that already blocks new-loan vouchers.
-  // This is a local display echo of that server-side hold, not its own enforcement.
-  // Harvest date priority matches ActiveLoansCard: confirmed maturityTs first,
-  // else drawdownTs + crop-specific cycle days — most loans never get a
-  // manually-verified maturityTs (reportMaturity is email-gated), so skipping
-  // the estimate here would silently never flag anything.
-  const OVERDUE_LOAN_GRACE_DAYS = 90;
+  // hasOverdueLoans — mirrors ActiveLoansCard's tight 21-day-default-style
+  // rule for TRUSTED harvest dates only: confirmed on-chain maturityTs, or
+  // the satellite record's own projection.projected_eos_date (see
+  // resolveCropFromRecords in useActiveLoans.js) — never a fabricated
+  // guess. The frontend's flat per-crop cycle-days fallback was removed
+  // 2026-08-20 (it diverged from the satellite's own projection by
+  // 100-450+ days across this union's loans, even after correcting the
+  // crop family). This is a local display echo, not its own enforcement —
+  // the real gate is NilaSensingAgent's voucher/generic.py
+  // has_overdue_loans() at voucher-issuance time. A loan with neither a
+  // confirmed date nor a satellite projection is skipped, not flagged.
+  const OVERDUE_LOAN_GRACE_DAYS = 14;
   const hasOverdueLoans = useMemo(() => {
     const loans = loansData?.activeLoans ?? [];
     const nowSec = Math.floor(Date.now() / 1000);
     return loans.some((l) => {
       if (l.chainClosed) return false;
       let harvestTs = l.maturityTs ? Number(l.maturityTs) : null;
-      if (!harvestTs) {
-        if (!l.drawdownTs) return false;
-        const cropFamily = l.cropFamily ?? null;
-        const cycleDays = (cropFamily != null ? CROP_CYCLE_DAYS[cropFamily] : null) ?? DEFAULT_CROP_CYCLE_DAYS;
-        harvestTs = Number(l.drawdownTs) + cycleDays * 86400;
+      if (!harvestTs && l.satProjectedEos) {
+        harvestTs = Math.floor(new Date(l.satProjectedEos + 'T00:00:00Z').getTime() / 1000);
       }
+      if (!harvestTs) return false;
       return (nowSec - harvestTs) > OVERDUE_LOAN_GRACE_DAYS * 86400;
     });
   }, [loansData?.activeLoans]);
