@@ -538,6 +538,34 @@ function decodeRing(encoded, scale) {
   return coords;
 }
 
+/** "early Jan '26" style — same convention as ActiveLoansCard's formatEosDate. */
+const fmtEosShort = (isoDate) => {
+  if (!isoDate) return '--';
+  const d = new Date(isoDate + 'T00:00:00Z');
+  const day = d.getUTCDate();
+  const month = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+  const year = d.getUTCFullYear();
+  const part = day <= 10 ? 'early' : day <= 20 ? 'mid' : 'late';
+  const yearStr = year !== new Date().getFullYear() ? ` '${String(year).slice(2)}` : '';
+  return `${part} ${month}${yearStr}`;
+};
+
+// Crop-health enum from the satellite record's current_cycle — see
+// resolveCropFromRecords in useActiveLoans.js and the matching maps in
+// ActiveLoansCard.js.
+const PORTFOLIO_HEALTH_COLOR = {
+  excellent: 'text-green dark:text-green_dark',
+  on_track: 'text-green dark:text-green_dark',
+  stressed: 'text-amber dark:text-amber-300',
+  underperforming: 'text-red dark:text-red',
+};
+const PORTFOLIO_HEALTH_LABEL = {
+  excellent: 'Excellent',
+  on_track: 'On track',
+  stressed: 'Stressed',
+  underperforming: 'Underperforming',
+};
+
 const PortfolioCards = () => {
   const { db, fieldActivity, setFieldActivity } = useDataContext();
   const { setIx } = useNavContext();
@@ -554,9 +582,30 @@ const PortfolioCards = () => {
   const landTitle = useContract(_ltAddr, _ltAbi, provider);
 
   const loans = fieldActivity?.portfolioLoans || [];
+  // landId (string) -> the loan enriched by ActiveLoansCard's own `enriched`
+  // memo (amount, eosDate/daysToEos/eosSource, cropFamily, foodTokenId,
+  // health/healthSummary/healthDescription, ...) — one loan per property in
+  // practice, so first-match-wins is fine.
+  const loansByLandId = useMemo(() => {
+    const m = {};
+    for (const l of loans) if (l.landId != null && !m[String(l.landId)]) m[String(l.landId)] = l;
+    return m;
+  }, [loans]);
 
   const [resolvedIds, setResolvedIds] = useState([]);
   const [activeIds, setActiveIds] = useState([]); // landIds with a currently-active (drawn) loan → coloured blue
+  // landId -> CROP_CODE_COLOR_KEY string, for outline fill color. Derived
+  // straight from loansByLandId (no chain fallback needed, unlike
+  // resolvedIds/activeIds below) — a property with no loan, or a loan with
+  // no resolved cropFamily yet, just has no entry and keeps the default
+  // grey/blue outline.
+  const cropByLid = useMemo(() => {
+    const m = {};
+    for (const [lid, l] of Object.entries(loansByLandId)) {
+      if (l.cropFamily != null) m[lid] = CROP_CODE_COLOR_KEY[l.cropFamily] ?? null;
+    }
+    return m;
+  }, [loansByLandId]);
   const [cachedHashes, setCachedHashes] = useState(null);
   const [metadata, setMetadata] = useState(null); // { landId: { farm, outline, centroid, bounds } }
   const [expandedLid, setExpandedLid] = useState(null); // accordion: which row is open
@@ -715,6 +764,12 @@ const PortfolioCards = () => {
     setFieldActivity(prev => prev?.portfolioMode ? { ...prev, portfolioActiveIds: activeIds } : prev);
   }, [activeIds, setFieldActivity]);
 
+  // Tell the map each property's crop-type fill color (outline's primary
+  // color channel — see staticMaps.js's portfolio-outline rendering).
+  useEffect(() => {
+    setFieldActivity(prev => prev?.portfolioMode ? { ...prev, portfolioCropByLandId: cropByLid } : prev);
+  }, [cropByLid, setFieldActivity]);
+
   // Lazy: read purchased hashes from IndexedDB (for later record.json enrichment)
   useEffect(() => {
     if (!resolvedIds.length) return;
@@ -792,6 +847,8 @@ const PortfolioCards = () => {
               const h = cachedHashes?.find(r => String(r.landId) === String(lid));
               const expanded = String(expandedLid) === String(lid);
               const nFields = m.fieldNames?.length || 0;
+              const loan = loansByLandId[String(lid)];
+              const rowCropColorKey = loan?.cropFamily != null ? CROP_CODE_COLOR_KEY[loan.cropFamily] : null;
               return (
                 <div key={lid} className="border-b border-slate-100 dark:border-slate-600 last:border-0">
                   <button
@@ -802,8 +859,32 @@ const PortfolioCards = () => {
                     }}
                     className="flex w-full items-center justify-between py-1.5 text-xs"
                   >
-                    <span className="font-semibold dark:text-white truncate text-left">{m.farm}</span>
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      {rowCropColorKey && (
+                        <span
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ background: cropColor(rowCropColorKey), opacity: loan?.foodTokenId ? 1 : 0.4 }}
+                        />
+                      )}
+                      <span className="font-semibold dark:text-white truncate text-left">{m.farm}</span>
+                    </span>
                     <span className="flex items-center gap-1.5 shrink-0 ml-2">
+                      {loan && (
+                        <span className="text-[10px] font-mono text-gray-500 dark:text-slate-400">
+                          ₹{(loan.totalAmount ?? loan.amount ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        </span>
+                      )}
+                      {loan?.eosDate && (
+                        <span className={`text-[10px] font-mono ${
+                          loan.daysToEos != null && loan.daysToEos < -14
+                            ? 'text-red dark:text-red font-bold'
+                            : loan.daysToEos != null && loan.daysToEos < 0
+                              ? 'text-orange-600 dark:text-orange-400 font-bold'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}>
+                          {fmtEosShort(loan.eosDate)}
+                        </span>
+                      )}
                       {nFields > 0 && <span className="text-gray-400 dark:text-slate-500 text-[10px]">{nFields} field{nFields > 1 ? 's' : ''}</span>}
                       <span className="text-gray-400 dark:text-slate-500 text-[10px]">#{lid}</span>
                       <ChevronDownIcon className={`h-3 w-3 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
@@ -813,6 +894,14 @@ const PortfolioCards = () => {
                     <div className="pb-2 pl-1 flex flex-col gap-0.5">
                       {nFields > 0 && (
                         <p className="text-[10px] text-gray-500 dark:text-slate-400">{m.fieldNames.join(', ')}</p>
+                      )}
+                      {loan?.health && (
+                        <p
+                          className={`text-[10px] font-semibold ${PORTFOLIO_HEALTH_COLOR[loan.health] ?? 'text-gray-500 dark:text-slate-300'}`}
+                          title={loan.healthDescription || undefined}
+                        >
+                          {loan.healthSummary || PORTFOLIO_HEALTH_LABEL[loan.health] || loan.health}
+                        </p>
                       )}
                       {!fieldActivity?.outlinesOnly && h && !h.stored && (
                         <p className="text-[10px] text-amber-500">no viewing key</p>

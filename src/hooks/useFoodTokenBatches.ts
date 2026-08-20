@@ -42,29 +42,14 @@ export const CROP_UNIT: Record<number, { label: string; toKg: number }> = {
   13: { label: 'quintal', toKg: 100  },  // Cotton
 };
 
-// Typical days from drawdown/sowing to harvest, per crop family code.
-// Rough agronomic averages for South Indian cropping — placeholders until
-// confirmed against real field data; used only as a display estimate when
-// no on-chain maturityTs has been reported yet. See DEFAULT_CROP_CYCLE_DAYS
-// for loans whose crop isn't known.
-export const CROP_CYCLE_DAYS: Record<number, number> = {
-  0:  120,  // Paddy
-  1:  110,  // Groundnut
-  2:  365,  // Sugarcane
-  3:  300,  // Banana
-  4:  90,   // Potato
-  5:  120,  // Onion
-  6:  85,   // Sesame
-  7:  270,  // Cassava
-  8:  100,  // Maize
-  9:  65,   // Green Gram
-  10: 90,   // Horse Gram
-  11: 70,   // Black Gram
-  12: 365,  // Coconut — perennial; figure is a rough placeholder, not a real cycle
-  13: 180,  // Cotton
-};
-
-export const DEFAULT_CROP_CYCLE_DAYS = 120; // paddy (code 0) is the fallback assumption
+// A hardcoded per-crop cycle-length table (CROP_CYCLE_DAYS/DEFAULT_CROP_CYCLE_DAYS)
+// used to live here as a fallback harvest-date estimate. Removed 2026-08-20 —
+// it duplicated the same "how long does this crop take" concept the backend
+// already computes from real satellite-observed data (NilaSensingAgent's
+// synthetic-label templates, see cycle_projection.py), and the two disagreed
+// by 100-450+ days per the harvest-column ETA investigation. ActiveLoansCard/
+// UnionReserve now use the backend's own satProjectedEos (or confirmed
+// on-chain maturityTs) exclusively — no local guess when neither is present.
 
 // varietyCode 0 = "any variety" (valid for all crops)
 export const CROP_VARIETIES: Record<number, Array<{ code: number; name: string }>> = {
@@ -200,8 +185,8 @@ const SATELLITE_CROP_ALIASES: Record<string, number> = {
 /**
  * Maps a satellite-detected crop_type (record.json current_cycle[]/cycles[]
  * .crop_type) onto the same numeric cropFamily code food tokens use, so a
- * loan with no food token can still drive CROP_CYCLE_DAYS / CropIcon off a
- * satellite-observed crop. Returns null for anything unrecognized.
+ * loan with no food token can still drive CropIcon off a satellite-observed
+ * crop. Returns null for anything unrecognized.
  */
 export function cropFamilyFromSatelliteType(cropType: string | null | undefined): number | null {
   if (!cropType) return null;
