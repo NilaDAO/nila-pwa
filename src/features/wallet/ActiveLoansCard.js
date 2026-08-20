@@ -17,7 +17,7 @@ import { setDBitem } from '../../utils/db.js';
 import { ethers } from 'ethers';
 import landTitleArtifact from '../../components/ABI/NilaLandTitleWithName.json';
 import foodTokenArtifact from '../../components/ABI/FoodTokens.json';
-import { CROP_CODE_NAMES, CROP_CODE_COLOR_KEY, CROP_CYCLE_DAYS, DEFAULT_CROP_CYCLE_DAYS } from '../../hooks/useFoodTokenBatches.ts';
+import { CROP_CODE_NAMES, CROP_CODE_COLOR_KEY } from '../../hooks/useFoodTokenBatches.ts';
 import { dismissLoanLocally } from '../../hooks/useActiveLoans.js';
 import { cropColor, cropIconUrl } from '../../utils/cropColors';
 
@@ -35,14 +35,27 @@ const DAY_MS = 86_400_000;
 const SWIPE_REVEAL  = 60;
 const SWIPE_TRIGGER = 80;
 const SWIPE_MAX     = 160;
-// Mirrors NilaSensingAgent's voucher/generic.py overdue_loan_grace_days (default 90) —
-// the same threshold that blocks new-loan vouchers for this union.
-const OVERDUE_LOAN_GRACE_DAYS = 90;
-
 const formatDate = (ts) => {
   if (!ts) return '--';
   const d = new Date(Number(ts) * 1000);
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
+};
+
+// Crop-health enum from the satellite record's current_cycle (see
+// resolveCropFromRecords in useActiveLoans.js) — only ever populated on the
+// active cycle; a closed cycle's own (separate) health enum is always null
+// on real data today, so a loan without an open cycle just shows nothing.
+const HEALTH_COLOR = {
+  excellent: 'text-green dark:text-green_dark',
+  on_track: 'text-green dark:text-green_dark',
+  stressed: 'text-amber dark:text-amber-300',
+  underperforming: 'text-red dark:text-red',
+};
+const HEALTH_LABEL = {
+  excellent: 'Excellent',
+  on_track: 'On track',
+  stressed: 'Stressed',
+  underperforming: 'Underperforming',
 };
 
 /** Days from now to an ISO date string (positive = future, negative = past) */
@@ -68,33 +81,31 @@ const formatEosDate = (isoDate) => {
 };
 
 /**
- * Row background: orange when past maturity (grace period), red when default
- * deadline <1 week away (maturityTs + 21 days). When there's no confirmed
- * maturityTs yet, fall back to the estimated-harvest overdue90 signal so a
- * loan sitting on an unconfirmed but badly overdue harvest still gets flagged
- * (this is the same signal that puts the union's voucher issuance on hold).
+ * Row background: orange when past the EOS date (grace period), red once
+ * <1 week from the 21-day default-style deadline. Fires only when there's a
+ * real EOS date — confirmed on-chain maturityTs or the satellite record's
+ * own projection.projected_eos_date — never a fabricated guess (the
+ * frontend's flat per-crop cycle-days fallback was removed 2026-08-20).
+ * A loan with neither shows as a plain gray row, not a guessed overdue flag.
  */
-const eosRowBg = (daysToMaturity, chainClosed, overdue90) => {
+const eosRowBg = (daysEos, chainClosed) => {
   if (chainClosed) return 'bg-red-50 dark:bg-red-900/20 opacity-60';
-  if (daysToMaturity == null) return overdue90 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-slate-700';
-  if (daysToMaturity < -14) return 'bg-red-50 dark:bg-red-900/20';
-  if (daysToMaturity < 0)   return 'bg-orange-50 dark:bg-orange-900/20';
+  if (daysEos == null) return 'bg-gray-50 dark:bg-slate-700';
+  if (daysEos < -14) return 'bg-red-50 dark:bg-red-900/20';
+  if (daysEos < 0)   return 'bg-orange-50 dark:bg-orange-900/20';
   return 'bg-gray-50 dark:bg-slate-700';
 };
 
-/** Status icon: maturity overdue > estimated-harvest overdue90 > chain verification status */
+/** Status icon: EOS overdue (contract or satellite-projected) > chain verification status */
 function StatusIcon({ loan }) {
   if (loan.chainClosed) {
     return <XCircleIcon className="w-4 h-4 text-black dark:text-white" title="Closed on-chain" />;
   }
-  if (loan.daysToMaturity != null && loan.daysToMaturity < -14) {
-    return <ExclamationTriangleIcon className="w-4 h-4 text-red" title="Default deadline within 1 week" />;
+  if (loan.daysToEos != null && loan.daysToEos < -14) {
+    return <ExclamationTriangleIcon className="w-4 h-4 text-red" title={loan.eosSource === 'contract' ? 'Default deadline within 1 week' : 'Satellite-projected harvest deadline passed'} />;
   }
-  if (loan.daysToMaturity != null && loan.daysToMaturity < 0) {
-    return <ExclamationTriangleIcon className="w-4 h-4 text-orange dark:text-orange-400" title="Past maturity" />;
-  }
-  if (loan.daysToMaturity == null && loan.overdue90) {
-    return <ExclamationTriangleIcon className="w-4 h-4 text-red" title={`Estimated harvest ${Math.abs(loan.daysToEos)} days overdue — blocking new loans for this union`} />;
+  if (loan.daysToEos != null && loan.daysToEos < 0) {
+    return <ExclamationTriangleIcon className="w-4 h-4 text-orange dark:text-orange-400" title={loan.eosSource === 'contract' ? 'Past maturity' : 'Past satellite-projected harvest'} />;
   }
   if (loan.chainVerified) {
     return <CheckCircleIcon className="w-4 h-4 text-green dark:text-green_dark" title="Verified on-chain" />;
@@ -102,25 +113,46 @@ function StatusIcon({ loan }) {
   return <ExclamationTriangleIcon className="w-4 h-4 text-amber dark:text-amber-300" title="Not yet verified" />;
 }
 
-/** Masked crop-family glyph, tinted by cropColor. Renders nothing pre-food-token (no cropColorKey). */
-function CropIcon({ cropColorKey, className }) {
+/**
+ * Masked crop-family glyph, tinted by cropColor. Renders nothing without a
+ * cropColorKey. `dim` fades it (and drops the ring below) to signal a
+ * satellite guess rather than a food-token-backed (on-chain-attested) crop —
+ * opacity alone was too subtle to read at a glance, so a food-token-backed
+ * crop also gets a solid ring around it.
+ */
+function CropIcon({ cropColorKey, className, dim }) {
   const icon = cropColorKey ? cropIconUrl(cropColorKey) : null;
   if (!icon) return null;
+  const hasToken = !dim;
   return (
     <span
       className={className}
       style={{
-        background: cropColor(cropColorKey),
-        WebkitMaskImage: `url(${icon})`,
-        maskImage: `url(${icon})`,
-        WebkitMaskRepeat: 'no-repeat',
-        maskRepeat: 'no-repeat',
-        WebkitMaskPosition: 'center',
-        maskPosition: 'center',
-        WebkitMaskSize: 'contain',
-        maskSize: 'contain',
+        display: 'inline-block',
+        boxSizing: 'border-box',
+        borderRadius: hasToken ? '9999px' : undefined,
+        border: hasToken ? `1.5px solid ${cropColor(cropColorKey)}` : undefined,
+        padding: hasToken ? 1.5 : undefined,
       }}
-    />
+    >
+      <span
+        style={{
+          display: 'block',
+          width: '100%',
+          height: '100%',
+          background: cropColor(cropColorKey),
+          opacity: dim ? 0.4 : 1,
+          WebkitMaskImage: `url(${icon})`,
+          maskImage: `url(${icon})`,
+          WebkitMaskRepeat: 'no-repeat',
+          maskRepeat: 'no-repeat',
+          WebkitMaskPosition: 'center',
+          maskPosition: 'center',
+          WebkitMaskSize: 'contain',
+          maskSize: 'contain',
+        }}
+      />
+    </span>
   );
 }
 
@@ -330,23 +362,23 @@ export default function ActiveLoansCard({
       const eos = eosMap.get(l.id);
       // Harvest column priority: 1) maturityTs — on-chain, only ever set once
       // manually verified (reportMaturity is currently email-gated, see
-      // beats/chain_writer.py). 2) food token → crop-specific cycle days from
-      // drawdown. 3) no food token → flat DEFAULT_CROP_CYCLE_DAYS. Satellite
-      // EOS is intentionally not part of this — not reliable enough yet.
+      // beats/chain_writer.py). 2) the satellite record's own
+      // projection.projected_eos_date (a model projection from the cycle's
+      // actual observed NDVI/weather trajectory, computed server-side by
+      // NilaSensingAgent — see resolveCropFromRecords in useActiveLoans.js)
+      // when the matched cycle has produced one. No further fallback: the
+      // frontend used to also guess drawdown + a flat per-crop cycle-days
+      // table, but that diverged from the satellite's own projection by
+      // 100-450+ days across this union's loans even after correcting the
+      // crop family — see the 2026-08-20 harvest-column analysis. Removed
+      // in favor of relying on the backend's own (now-fixed) estimate
+      // exclusively; a loan with neither shows "--", not a guess.
       const maturityDate = l.maturityTs
         ? new Date(Number(l.maturityTs) * 1000).toISOString().slice(0, 10)
         : null;
-      // cropFamily is resolved list-wide for every food-token loan via batch
-      // unpackTokenId in useActiveLoansChainSync — ftData is only the
-      // per-expanded-row fallback for the brief window before that resolves.
-      const cropFamily = l.cropFamily ?? ftData[l.id]?.cropFamily ?? null;
-      const cycleDays = (cropFamily != null ? CROP_CYCLE_DAYS[cropFamily] : null) ?? DEFAULT_CROP_CYCLE_DAYS;
-      const estimatedHarvestDate = !maturityDate && l.drawdownTs
-        ? new Date(Number(l.drawdownTs) * 1000 + cycleDays * DAY_MS).toISOString().slice(0, 10)
-        : null;
-      const eosDate = maturityDate || estimatedHarvestDate;
+      const satProjectedDate = l.satProjectedEos || null;
+      const eosDate = maturityDate || satProjectedDate;
       const daysEos = daysToDate(eosDate);
-      const daysToMaturity = daysToDate(maturityDate); // null if no contract deadline
       // Display priority: contact name → on-chain farm name (tokenURI, cached in IDB) → 0xABCD…
       const hasContact = hasName(l.borrower);
       const contactName = resolveName(l.borrower); // already returns truncated addr if no contact
@@ -365,13 +397,9 @@ export default function ActiveLoansCard({
         totalAmount: l.amount,
         eosDate,
         maturityDate,
+        satProjectedDate,
         daysToEos: daysEos,
-        daysToMaturity,
-        // True once >90d past harvest (confirmed maturityTs or estimated from
-        // drawdown+crop-cycle) — same threshold NilaSensingAgent's voucher
-        // service uses to hold new loans for this union.
-        overdue90: daysEos != null && daysEos < -OVERDUE_LOAN_GRACE_DAYS,
-        eosSource: maturityDate ? 'contract' : estimatedHarvestDate ? 'estimated' : null,
+        eosSource: maturityDate ? 'contract' : satProjectedDate ? 'satellite' : null,
       };
     }),
     [pending, active, flagged, resolveName, eosMap, isPending, ftData]
@@ -840,11 +868,11 @@ export default function ActiveLoansCard({
                     transform: `translateX(${dx}px)`,
                     transition: swipeRef.current.dragging ? 'none' : 'transform 0.2s ease',
                   }}
-                  className={`grid grid-cols-[1fr_6rem_5.5rem_1rem] gap-3 items-center px-3 py-2.5 rounded-lg cursor-pointer touch-pan-y ${eosRowBg(loan.daysToMaturity, loan.chainClosed, loan.overdue90)}`}
+                  className={`grid grid-cols-[1fr_6rem_5.5rem_1rem] gap-3 items-center px-3 py-2.5 rounded-lg cursor-pointer touch-pan-y ${eosRowBg(loan.daysToEos, loan.chainClosed)}`}
                 >
               {/* Name */}
               <div className="flex items-center gap-1 min-w-0">
-                <CropIcon cropColorKey={cropColorKey} className="w-3.5 h-3.5 flex-shrink-0" />
+                <CropIcon cropColorKey={cropColorKey} dim={!loan.foodTokenId} className="w-3.5 h-3.5 flex-shrink-0" />
                 <span className={`text-xs font-semibold dark:text-white truncate ${loan.chainClosed ? 'line-through' : ''}`}>
                   {loan.displayName}
                 </span>
@@ -873,23 +901,17 @@ export default function ActiveLoansCard({
                 </span>
               ) : (
                 <span className={`text-[10px] font-mono text-right whitespace-nowrap ${
-                  loan.daysToMaturity != null && loan.daysToMaturity < -14
+                  loan.daysToEos != null && loan.daysToEos < -14
                     ? 'text-red dark:text-red font-bold'
-                    : loan.daysToMaturity != null && loan.daysToMaturity < 0
+                    : loan.daysToEos != null && loan.daysToEos < 0
                       ? 'text-orange-600 dark:text-orange-400 font-bold'
-                      : loan.daysToMaturity == null && loan.overdue90
-                        ? 'text-red dark:text-red font-bold'
-                        : loan.eosSource === 'contract'
-                          ? 'text-black dark:text-white'
-                          : loan.eosSource === 'estimated'
-                            ? 'text-blue-400 dark:text-blue-300'
-                            : 'text-gray-500 dark:text-slate-300'
+                      : loan.eosSource
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-gray-500 dark:text-slate-300'
                 }`} title={
-                  loan.daysToMaturity == null && loan.overdue90
-                    ? `Estimated harvest ${Math.abs(loan.daysToEos)} days overdue (unconfirmed) — new loans for this union are on hold`
-                    : loan.eosSource === 'estimated'
-                      ? 'Estimated from drawdown date + typical crop cycle — not yet confirmed on-chain'
-                      : undefined
+                  loan.eosSource === 'satellite'
+                    ? 'Satellite-projected harvest — model estimate from observed crop growth, not yet confirmed on-chain'
+                    : undefined
                 }>
                   {loan.eosDate ? formatEosDate(loan.eosDate) : '--'}
                 </span>
@@ -969,7 +991,7 @@ export default function ActiveLoansCard({
                   <>
                     <Divider />
                     <div className="flex items-center gap-1.5">
-                      <CropIcon cropColorKey={cropColorKey} className="w-4 h-4 flex-shrink-0" />
+                      <CropIcon cropColorKey={cropColorKey} dim={false} className="w-4 h-4 flex-shrink-0" />
                       <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">
                         Food token #{String(loan.foodTokenId).slice(0, 6)}…{String(loan.foodTokenId).slice(-4)}
                       </span>
@@ -981,35 +1003,55 @@ export default function ActiveLoansCard({
                   </>
                 )}
 
-                {!loan.foodTokenId && loan.cropSource === 'satellite' && (
+                {!loan.foodTokenId && (loan.cropSource === 'satellite' || loan.satProjectedDate) && (
                   <>
                     <Divider />
                     <div className="flex items-center gap-1.5">
-                      <CropIcon cropColorKey={cropColorKey} className="w-4 h-4 flex-shrink-0" />
+                      <CropIcon cropColorKey={cropColorKey} dim className="w-4 h-4 flex-shrink-0" />
                       <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">
                         Satellite-detected crop
                       </span>
                     </div>
-                    <DetailRow label="Crop" value={CROP_CODE_NAMES[loan.cropFamily] ?? '--'} />
-                    <DetailRow label="Confidence" value={loan.cropConfidence != null ? `${Math.round(loan.cropConfidence * 100)}%` : '--'} />
+                    {loan.cropSource === 'satellite' && (
+                      <>
+                        <DetailRow label="Crop" value={CROP_CODE_NAMES[loan.cropFamily] ?? '--'} />
+                        <DetailRow label="Confidence" value={loan.cropConfidence != null ? `${Math.round(loan.cropConfidence * 100)}%` : '--'} />
+                      </>
+                    )}
+                    {loan.satProjectedDate && (
+                      <DetailRow label="Projected harvest" value={formatEosDate(loan.satProjectedDate)} />
+                    )}
                   </>
                 )}
 
-                <Divider />
-                <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">Record</span>
-                <span className="text-[10px] text-gray-400 dark:text-slate-400 italic">No record data yet.</span>
-                <div className="flex flex-col mt-3">
-                {!loan.chainClosed && loan.daysToMaturity != null && loan.daysToMaturity < 0 && (
-                  <p className={`text-[10px] font-semibold ${loan.daysToMaturity < -14 ? 'text-red dark:text-red' : 'text-orange-600 dark:text-orange-400'}`}>
-                    ⚠ Close this loan before it defaults
-                    {loan.daysToMaturity < -14
-                      ? ` — default deadline passed ${Math.abs(loan.daysToMaturity + 21)} days ago.`
-                      : ` — ${21 + loan.daysToMaturity} days left before default.`}
-                  </p>
+                {loan.health && (
+                  <>
+                    <Divider />
+                    <div className="flex items-center justify-between" title={loan.healthDescription || undefined}>
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">Crop health</span>
+                      <span className={`text-[10px] font-semibold ${HEALTH_COLOR[loan.health] ?? 'text-gray-500 dark:text-slate-300'}`}>
+                        {loan.healthSummary || HEALTH_LABEL[loan.health] || loan.health}
+                      </span>
+                    </div>
+                  </>
                 )}
-                {!loan.chainClosed && loan.daysToMaturity == null && loan.overdue90 && (
-                  <p className="text-[10px] font-semibold text-red dark:text-red">
-                    ⚠ Estimated harvest is {Math.abs(loan.daysToEos)} days overdue — new loans for this union are on hold until this is resolved.
+
+                <div className="flex flex-col mt-3">
+                {!loan.chainClosed && loan.daysToEos != null && loan.daysToEos < 0 && (
+                  <p className={`text-[10px] font-semibold ${loan.daysToEos < -14 ? 'text-red dark:text-red' : 'text-orange-600 dark:text-orange-400'}`}>
+                    {loan.eosSource === 'contract' ? (
+                      <>
+                        ⚠ Close this loan before it defaults
+                        {loan.daysToEos < -14
+                          ? ` — default deadline passed ${Math.abs(loan.daysToEos + 21)} days ago.`
+                          : ` — ${21 + loan.daysToEos} days left before default.`}
+                      </>
+                    ) : (
+                      <>
+                        ⚠ Satellite-projected harvest is {Math.abs(loan.daysToEos)} days overdue
+                        {loan.daysToEos < -14 ? ' — confirm status.' : '.'}
+                      </>
+                    )}
                   </p>
                 )}
                 {loan.chainClosed && (
