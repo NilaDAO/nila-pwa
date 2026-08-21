@@ -226,7 +226,19 @@ async function resolveCropFromRecords(candidates) {
   for (const l of candidates) {
     try {
       const record = await fetchRecordFromIPFS(l.recordHash);
-      const cycles = Array.isArray(record?.cycles) ? record.cycles : [];
+      // record.cycles has been an object keyed by cycle_N (not an array)
+      // since NilaSensingAgent's list→dict schema migration — this used to
+      // silently fall through to [] for any such record, meaning `best`
+      // was always null and NOTHING got extracted (satSos, satProjectedEos,
+      // cropFamily, health, stage, yield) for essentially every active land.
+      // See the 2026-08-21 land-53 investigation: a loan showing
+      // satProjectedEos but no satSos was a stale leftover from before its
+      // land's record migrated to the dict schema, frozen in place by the
+      // conditional-merge write below plus resolvedRecordHash gating out
+      // any retry.
+      const cycles = Array.isArray(record?.cycles)
+        ? record.cycles
+        : (record?.cycles && typeof record.cycles === 'object' ? Object.values(record.cycles) : []);
       const drawdownMs = Number(l.drawdownTs) * 1000;
       let best = null;
       let bestDiff = Infinity;
@@ -438,7 +450,8 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
           await resolveFoodTokenBatchIds(newlyGotFoodTokenId, provider);
         }
         if (newlyGotRecordHash.length) {
-          console.log(`[activeLoans] ${newlyGotRecordHash.length} loans got a new recordHash this sync — resolving satellite projection now`);
+          const landIds = newlyGotRecordHash.map(l => l.landId ?? '?').join(', ');
+          console.log(`[activeLoans] ${newlyGotRecordHash.length} loans got a new recordHash this sync (landId: ${landIds}) — resolving satellite projection now`);
           await resolveCropFromRecords(newlyGotRecordHash);
         }
       }
@@ -870,7 +883,17 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
       {
         const freshForSatCrop = await readAllItems('ActiveLoans') ?? {};
         const needSatCrop = Object.values(freshForSatCrop)
-          .filter(l => l.recordHash && l.recordHash !== l.resolvedRecordHash && !l.chainClosed);
+          .filter(l => l.recordHash && !l.chainClosed && (
+            l.recordHash !== l.resolvedRecordHash
+            // Self-heal loans stuck with satProjectedEos but no satSos — a
+            // state a single successful resolveCropFromRecords run can never
+            // produce (both come off the same matched cycle), so it only
+            // means an earlier run against this exact resolvedRecordHash
+            // silently under-extracted (e.g. the cycles-as-object bug fixed
+            // 2026-08-21) and got stamped "done" anyway. Re-running against
+            // the same hash is safe and cheap (one Pinata read).
+            || (l.satProjectedEos != null && l.satSos == null)
+          ));
         console.log(`[chainSync] ${needSatCrop.length} loans need satellite projection resolution`);
         await resolveCropFromRecords(needSatCrop);
       }
