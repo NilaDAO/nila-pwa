@@ -422,8 +422,18 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
         // exclusive with newlyGotFoodTokenId — a food-token loan still needs
         // its own satellite projection resolved.
         const newlyGotRecordHash = [];
+        // Re-read current IndexedDB state rather than trusting `stored`
+        // (captured before the /loans/sync round-trip above) — a concurrent
+        // useActiveLoansChainSync run can land its own write (e.g. flagging
+        // a loan chainClosed) anywhere during that gap. Merging against the
+        // stale `stored` snapshot below would silently overwrite that with
+        // backend data — mapBackendItem always hardcodes
+        // chainVerified/chainClosed to false — resurrecting a just-closed
+        // loan as active. See the 2026-08-21 closed-loan-resurrection
+        // report (mobile: closed loans reappeared active after a sync).
+        const storedNow = await readAllItems('ActiveLoans').catch(() => null) ?? stored;
         for (const item of backendItems) {
-          const existing = stored[item.id];
+          const existing = storedNow[item.id];
           if (!existing) {
             if (isKnownClosed(unionAddress, item.id)) {
               console.log(`[activeLoans] SKIP re-adding known-closed loan ${item.id.slice(0,8)}`);
@@ -436,8 +446,22 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
             if (item.recordHash) newlyGotRecordHash.push(item);
             console.log(`[activeLoans] NEW ${item.id.slice(0,8)} landId=${item.landId}`);
           } else if (!existing.chainVerified) {
-            // Backend has fresher data than our un-verified local copy
-            const merged = { ...existing, ...item };
+            // Backend has fresher data than our un-verified local copy — but
+            // mapBackendItem always hardcodes chainVerified/chainClosed to
+            // false (the backend has no on-chain closure authority, only
+            // useActiveLoansChainSync does). Even reading `existing` from the
+            // re-read storedNow above, a chain sync write can still land in
+            // the few ms between that re-read and this one item's write —
+            // the ||-preserve is belt-and-suspenders so a backend merge can
+            // never flip a closed loan back to open either way. See the
+            // 2026-08-21 closed-loan resurrection report (mobile: closed
+            // loans reappeared active after a sync).
+            const merged = {
+              ...existing,
+              ...item,
+              chainVerified: existing.chainVerified || item.chainVerified,
+              chainClosed: existing.chainClosed || item.chainClosed,
+            };
             try { await setDBitem(item.id, merged, 'ActiveLoans'); } catch (_) {}
             stored[item.id] = merged;
             if (item.foodTokenId && !existing.foodTokenId) newlyGotFoodTokenId.push(merged);
