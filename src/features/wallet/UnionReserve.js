@@ -1108,6 +1108,13 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
               portfolioMode: true,
               portfolioLoans: loansWithLand,
               outlinesOnly: opts?.outlinesOnly ?? false,
+              portfolioLabels: false, // off on initial load — map's Labels toggle can turn it back on
+              // Transient initial focus (e.g. "View property outline" from one
+              // loan row) — portfolioLoans is always the full list now, this
+              // just drives the initial single-property zoom/auto-expand in
+              // staticCards.js. Cleared by the X/back button.
+              portfolioFocusLandId: opts?.focusLandId ?? null,
+              portfolioMonthOffset: opts?.focusMonthOffset ?? 0,
               features: [],
               geojson: { type: 'FeatureCollection', features: [] },
             });

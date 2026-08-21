@@ -23,11 +23,22 @@ const StaticMapNav = ({LAND, onFeatureClick, cardShrink = 0}) => {
   }, [setView, setCardView]);
 
   // Portfolio mode: clear selected property (go back to list), re-fit map to
-  // all. Also lifts the single-property scope (portfolioShowAll) — otherwise
-  // "back" from a single-property view just re-fits to that same one property
-  // instead of actually showing everything.
+  // all. Also lifts the single-property scope (portfolioShowAll) and clears
+  // portfolioFocusLandId — otherwise "back" from a focused single-property
+  // view (e.g. "View property outline") just re-fits to that same one
+  // property instead of actually showing everything (portfolioLoans is
+  // always the full list now, but the focus scope would still restrict what
+  // renders until cleared). Also resets the month-Gantt scrubber
+  // (portfolioMonthOffset) back to "now" — there's no separate reset control
+  // for it, this X button is it (see staticCards.js's month Gantt).
   const handlePortfolioBack = useCallback(() => {
-    setFieldActivity(prev => prev ? { ...prev, portfolioSelected: null, portfolioShowAll: true } : prev);
+    setFieldActivity(prev => prev ? {
+      ...prev,
+      portfolioSelected: null,
+      portfolioShowAll: true,
+      portfolioMonthOffset: 0,
+      portfolioFocusLandId: null,
+    } : prev);
   }, [setFieldActivity]);
 
   const hasSelection = view?.mode === 'select' && (view?.selected?.length ?? 0) > 0;
