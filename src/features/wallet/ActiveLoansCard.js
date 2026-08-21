@@ -10,26 +10,15 @@ import {
   XMarkIcon,
 } from '@heroicons/react/20/solid';
 import { ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline';
-import { ClaimButton } from '../../components/UI/buttons';
 import { useWallet, useContract } from '../../hooks/useWallet.ts';
-import { runTx } from '../../utils/runTx.ts';
-import { setDBitem } from '../../utils/db.js';
-import { ethers } from 'ethers';
-import landTitleArtifact from '../../components/ABI/NilaLandTitleWithName.json';
 import foodTokenArtifact from '../../components/ABI/FoodTokens.json';
 import { CROP_CODE_NAMES, CROP_CODE_COLOR_KEY } from '../../hooks/useFoodTokenBatches.ts';
 import { dismissLoanLocally } from '../../hooks/useActiveLoans.js';
 import { cropColor, cropIconUrl } from '../../utils/cropColors';
+import { HEALTH_COLOR, HEALTH_LABEL } from '../../utils/loanIssues.js';
 
-const _ltAbi = (landTitleArtifact).abi ?? landTitleArtifact;
 const _ftAbi = (foodTokenArtifact).abi ?? foodTokenArtifact;
-const _ltAddr = process.env.REACT_APP_LAND_TITLE_MAIN;
 const _ftAddr = process.env.REACT_APP_FOODTOKEN_ADDRESS;
-const _ninAddr = process.env.REACT_APP_NIN_MAIN;
-const _erc20Abi = [
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)",
-];
 
 const DAY_MS = 86_400_000;
 const SWIPE_REVEAL  = 60;
@@ -39,23 +28,6 @@ const formatDate = (ts) => {
   if (!ts) return '--';
   const d = new Date(Number(ts) * 1000);
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
-};
-
-// Crop-health enum from the satellite record's current_cycle (see
-// resolveCropFromRecords in useActiveLoans.js) — only ever populated on the
-// active cycle; a closed cycle's own (separate) health enum is always null
-// on real data today, so a loan without an open cycle just shows nothing.
-const HEALTH_COLOR = {
-  excellent: 'text-green dark:text-green_dark',
-  on_track: 'text-green dark:text-green_dark',
-  stressed: 'text-amber dark:text-amber-300',
-  underperforming: 'text-red dark:text-red',
-};
-const HEALTH_LABEL = {
-  excellent: 'Excellent',
-  on_track: 'On track',
-  stressed: 'Stressed',
-  underperforming: 'Underperforming',
 };
 
 /** Days from now to an ISO date string (positive = future, negative = past) */
@@ -231,14 +203,9 @@ export default function ActiveLoansCard({
   const fundRef = useRef(null);
   const [syncStep, setSyncStep] = useState(0);
   const [syncing, setSyncing] = useState(false);
-  const [keyMode, setKeyMode] = useState(null);   // null | 'confirm'
-  const [keysPurchased, setKeysPurchased] = useState(false);
-  const [quotedFee, setQuotedFee] = useState(null); // per-token fee in wei, null = not yet quoted
   const { wallet } = useWallet();
   const queryClient = useQueryClient();
-  const landTitle = useContract(_ltAddr, _ltAbi, wallet);
   const foodToken = useContract(_ftAddr, _ftAbi, wallet);
-  const nin = useContract(_ninAddr, _erc20Abi, wallet);
   const [ftData, setFtData] = useState({}); // { loanId: { cropFamily, cropName, kg, sosTs, harvestTs } }
   const [copiedId, setCopiedId] = useState(null);
 
@@ -379,6 +346,30 @@ export default function ActiveLoansCard({
       const satProjectedDate = l.satProjectedEos || null;
       const eosDate = maturityDate || satProjectedDate;
       const daysEos = daysToDate(eosDate);
+      // Season-start counterpart to eosDate, for the portfolio Gantt (see
+      // staticCards.js's PortfolioCards). Simplified 2026-08-21: the food
+      // token's own sosTs turned out to often be a system-suggested default
+      // the farmer/leader just accepted rather than a verified date (see the
+      // land-52 investigation — its sosTs landed 8 days from a stale/unrelated
+      // satellite zone, not the zone this loan actually financed) — dropped
+      // from consideration entirely. Trust the satellite-matched cycle's own
+      // satSos only when it's plausibly the same season as this loan's
+      // drawdown (within 20 days either way); otherwise the match is likely
+      // wrong and drawdownTs itself — a real, always-available date, just not
+      // satellite-confirmed — is the honest fallback. sosSource drives the
+      // blue (verified) vs white (fallback) marker on the Gantt bar.
+      const drawdownDate = l.drawdownTs
+        ? new Date(Number(l.drawdownTs) * 1000).toISOString().slice(0, 10)
+        : null;
+      let sosDate = drawdownDate;
+      let sosSource = drawdownDate ? 'drawdown' : null;
+      if (l.satSos && l.drawdownTs) {
+        const diffDays = Math.abs(new Date(l.satSos).getTime() - Number(l.drawdownTs) * 1000) / DAY_MS;
+        if (diffDays <= 20) {
+          sosDate = new Date(l.satSos).toISOString().slice(0, 10);
+          sosSource = 'satellite';
+        }
+      }
       // Display priority: contact name → on-chain farm name (tokenURI, cached in IDB) → 0xABCD…
       const hasContact = hasName(l.borrower);
       const contactName = resolveName(l.borrower); // already returns truncated addr if no contact
@@ -400,20 +391,12 @@ export default function ActiveLoansCard({
         satProjectedDate,
         daysToEos: daysEos,
         eosSource: maturityDate ? 'contract' : satProjectedDate ? 'satellite' : null,
+        sos: sosDate,
+        sosSource,
       };
     }),
     [pending, active, flagged, resolveName, eosMap, isPending, ftData]
   );
-
-  // Check IndexedDB on mount — if viewing keys cached, show "View on map"
-  useEffect(() => {
-    import('../../utils/db').then(({ readItem }) => {
-      readItem('viewingKeys', 'FarmData').then(cached => {
-        const hashes = cached?.value?.hashes || cached?.hashes;
-        if (hashes && Object.keys(hashes).length > 0) setKeysPurchased(true);
-      }).catch(() => {});
-    }).catch(() => {});
-  }, []);
 
   // When a row is expanded and it carries a foodTokenId, fetch on-chain crop / kg / SOS / harvest.
   useEffect(() => {
@@ -449,15 +432,6 @@ export default function ActiveLoansCard({
       }
     })();
   }, [expandedId, foodToken, loans, ftData]);
-
-  // Read view fee from contract when user opens the confirm panel
-  useEffect(() => {
-    if (keyMode !== 'confirm' || !landTitle) return;
-    landTitle.viewFeeNin().then(fee => {
-      setQuotedFee(fee);
-      console.log(`[viewingKeys] fee: ${ethers.formatEther(fee)} nIN/property`);
-    }).catch(e => console.warn('[viewingKeys] fee read failed:', e.message));
-  }, [keyMode, landTitle]);
 
   const sorted = useMemo(() => {
     const mul = sortDir === 'asc' ? 1 : -1;
@@ -630,8 +604,12 @@ export default function ActiveLoansCard({
         </button>
       </div>
 
-      {/* Fund filter dropdown + viewing keys */}
-      {fundKeys.length > 0 && !keyMode && (
+      {/* Fund filter dropdown + Analyse (was separate free "Outlines" /
+          paid "Buy keys" buttons — viewing keys are redundant now that
+          recordHash comes for free from the backend's /loans/sync, so the
+          whole pay-to-unlock flow was removed; Analyse always opens the map
+          in outlines mode). */}
+      {fundKeys.length > 0 && (
         <div className="flex gap-2">
         <div ref={fundRef} className="relative flex-1">
           <button
@@ -659,123 +637,11 @@ export default function ActiveLoansCard({
             </div>
           )}
         </div>
-        {keysPurchased ? (
-          <button
-            onClick={() => onViewMap?.(enriched)}
-            className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 whitespace-nowrap"
-          >View on map</button>
-        ) : (
-          <>
-          <button
-            onClick={() => onViewMap?.(enriched, { outlinesOnly: true })}
-            disabled={!active.length}
-            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
-            title="See property outlines only — free, no records"
-          >Outlines</button>
-          <button
-            onClick={() => setKeyMode('confirm')}
-            disabled={!active.length}
-            className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
-          >Buy keys</button>
-          </>
-        )}
-        </div>
-      )}
-
-      {/* Buy viewing keys — inline confirm */}
-      {keyMode === 'confirm' && (
-        <div data-tour="viewing-keys" className="flex flex-col gap-2 py-2">
-          <div className="flex justify-end">
-            <button
-              onClick={() => setKeyMode(null)}
-              className="text-gray-400 dark:text-slate-400 text-sm px-1 active:scale-95"
-            >✕</button>
-          </div>
-          <p className="text-[10px] dark:text-slate-300">
-            A viewing key unlocks each member's <span className="font-bold dark:text-white">real-life farm record</span> — harvest timing, yield and crop health, verified from the field and satellite imagery. Property outlines are always free to view (see below).
-          </p>
-          <p className="text-[10px] dark:text-slate-300">
-            Pay up to <span className="font-bold dark:text-white">{quotedFee != null ? `${ethers.formatEther(quotedFee * BigInt(active.length))} nIN` : '...'}</span> for {active.length} members ({quotedFee != null ? `${ethers.formatEther(quotedFee)}/property` : 'quoting...'}). Properties without farm data on-chain are skipped automatically. 80% of the revenue goes directly to the farmer.
-          </p>
-          <button
-            onClick={() => { setKeyMode(null); onViewMap?.(enriched, { outlinesOnly: true }); }}
-            className="self-start text-[11px] text-gray-500 dark:text-slate-400 underline active:scale-95"
-          >See property outlines only (free)</button>
-          <ClaimButton
-            title={quotedFee != null ? `Pay up to ${ethers.formatEther(quotedFee * BigInt(active.length))} nIN` : 'Quoting...'}
-            pendingTitle="Signing..."
-            successTitle="Keys acquired"
-            handleClick={async () => {
-              if (!landTitle || !wallet || !nin) throw new Error('Wallet not ready');
-
-              // 1. Resolve land_ids from loan data (backend /loans/sync)
-              //    Chain fallback for loans without land_id
-              const landIds = [];
-              const seen = new Set();
-              for (const l of active) {
-                if (l.landId && !seen.has(l.landId)) {
-                  seen.add(l.landId);
-                  landIds.push(l.landId);
-                } else if (!l.landId && l.borrower && !seen.has(l.borrower)) {
-                  seen.add(l.borrower);
-                  try {
-                    const bal = await landTitle.balanceOf(l.borrower);
-                    if (bal > 0n) {
-                      const tid = Number(await landTitle.tokenOfOwnerByIndex(l.borrower, 0));
-                      if (!seen.has(tid)) { seen.add(tid); landIds.push(tid); }
-                      console.log(`[viewingKeys] chain: ${l.borrower.slice(0,8)}... → ${tid}`);
-                    }
-                  } catch (e) {
-                    console.warn(`[viewingKeys] resolve failed ${l.borrower.slice(0,8)}...`);
-                  }
-                }
-              }
-
-              // 2. Use quoted fee (already fetched on panel open)
-              const fee = quotedFee ?? await landTitle.quoteViewFee(landIds[0], wallet.address);
-              const maxWei = fee * BigInt(landIds.length);
-              console.log('[viewingKeys] landIds:', landIds, 'fee:', fee.toString(), 'max:', maxWei.toString());
-
-              // 3. Approve max — needed for staticCall simulation
-              if (maxWei > 0n) {
-                const allowance = await nin.allowance(wallet.address, _ltAddr);
-                if (allowance < maxWei) {
-                  await runTx(() => nin.approve(_ltAddr, maxWei));
-                }
-              }
-
-              // 4. Free staticCall to discover which IDs have hashes
-              const hashes = await landTitle.getRecordHashBatch.staticCall(landIds);
-              const validIds = [];
-              const hashMap = {};
-              for (let i = 0; i < landIds.length; i++) {
-                const hash = hashes[i];
-                if (hash && hash !== ethers.ZeroHash) {
-                  validIds.push(landIds[i]);
-                  hashMap[landIds[i]] = hash;
-                }
-              }
-
-              // 5. Only pay for properties that actually have data
-              if (validIds.length > 0) {
-                const paidWei = fee * BigInt(validIds.length);
-                console.log(`[viewingKeys] paying for ${validIds.length}/${landIds.length} (${ethers.formatEther(paidWei)} nIN, skipped ${landIds.length - validIds.length} empty)`);
-                await runTx(() => landTitle.getRecordHashBatch(validIds));
-              } else {
-                console.warn('[viewingKeys] no properties have hashes — nothing to pay for');
-              }
-
-              await setDBitem('viewingKeys', { hashes: hashMap, ts: Date.now() }, 'FarmData');
-
-              // Log for visual verification
-              console.log('[viewingKeys] ── Hashes ──');
-              console.table(hashMap);
-              console.log(`[viewingKeys] ${validIds.length}/${landIds.length} stored`);
-
-              setKeysPurchased(true);
-              setKeyMode(null);
-            }}
-          />
+        <button
+          onClick={() => onViewMap?.(enriched, { outlinesOnly: true })}
+          disabled={!active.length}
+          className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
+        >Harvest Calendar</button>
         </div>
       )}
 
@@ -976,7 +842,23 @@ export default function ActiveLoansCard({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onViewMap?.([loan], { outlinesOnly: true });
+                    // Pass the FULL list, not just [loan] — portfolioLoans
+                    // used to be restricted to this one loan for the
+                    // "focused" view, which meant pressing the X/back button
+                    // (which clears selection but never restored the loan
+                    // list) left the Harvest Calendar card showing only this
+                    // one property forever. focusLandId drives the initial
+                    // single-property zoom/auto-expand instead — a transient
+                    // selection, not a restriction on the underlying data.
+                    onViewMap?.(enriched, {
+                      outlinesOnly: true,
+                      focusLandId: loan.landId,
+                      // Overdue loans have already passed harvest as of
+                      // "now" — the Gantt's current month shows nothing for
+                      // them, so open one month back where the bar is
+                      // actually visible.
+                      focusMonthOffset: loan.daysToEos != null && loan.daysToEos < 0 ? -1 : 0,
+                    });
                   }}
                   className="self-start text-[10px] font-semibold text-blue-500 dark:text-blue-400 active:scale-95"
                 >View property outline</button>
@@ -986,6 +868,29 @@ export default function ActiveLoansCard({
                 <DetailRow label="Fund" value={fundMap.get(loan.fund) || loan.fund || '--'} />
                 <DetailRow label="Principal" value={`₹${(loan.principal ?? loan.amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
                 <DetailRow label="Rate" value={`${(loan.rateBP / 100).toFixed(1)}%`} />
+                {loan.sos && (
+                  <DetailRow
+                    label="SOS"
+                    value={
+                      <span
+                        className={loan.sosSource === 'satellite' ? 'text-blue-600 dark:text-blue-400 font-semibold' : undefined}
+                        title={loan.sosSource === 'satellite' ? 'Satellite-verified (matched cycle within 20 days of drawdown)' : 'Drawdown date — not satellite-confirmed'}
+                      >
+                        {formatEosDate(loan.sos)}
+                      </span>
+                    }
+                  />
+                )}
+                {loan.recordHash && (
+                  <DetailRow
+                    label="Record"
+                    value={
+                      <span title={loan.recordHash}>
+                        {loan.recordHash.slice(0, 8)}…{loan.recordHash.slice(-6)}
+                      </span>
+                    }
+                  />
+                )}
 
                 {loan.foodTokenId && (
                   <>
@@ -998,7 +903,6 @@ export default function ActiveLoansCard({
                     </div>
                     <DetailRow label="Crop" value={ftData[loan.id]?.cropName ?? '…'} />
                     <DetailRow label="Committed" value={ftData[loan.id]?.kg != null ? `${ftData[loan.id].kg.toLocaleString('en-IN')} kg` : '…'} />
-                    <DetailRow label="SOS" value={ftData[loan.id]?.sosTs ? formatDate(ftData[loan.id].sosTs) : '…'} />
                     <DetailRow label="Harvest" value={ftData[loan.id]?.harvestTs ? formatDate(ftData[loan.id].harvestTs) : '…'} />
                   </>
                 )}

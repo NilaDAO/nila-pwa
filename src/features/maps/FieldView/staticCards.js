@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDataContext, useNavContext, useViewModeContext } from '../../../utils/NavigationContext';
 import { cropColor, cropIconUrl, normalizeCropType } from '../../../utils/cropColors.js';
+import {
+  CROP_CURVE_SHAPE,
+  DEFAULT_CURVE_SHAPE,
+  schematicBiomassAt,
+  getLoanIssues,
+} from '../../../utils/loanIssues.js';
 import { mergeZonesWithSubzones } from '../../../utils/recordZones.js';
 import { sameCropFamily } from '../../../utils/foodToken.ts';
 import { motion, useDragControls, AnimatePresence, useAnimation } from 'framer-motion';
@@ -94,7 +100,6 @@ const MintAsset = ({fieldActivity,selected,LAND,setAction}) => {
         setYield(res._yield)
         max_yield.current = res._yield * 2
         setForm(prev => ({...prev, 'date': res.date, 'voucher': res.voucher, 'sig': res.signature}))
-        console.log('res', res)
       })
   }
 
@@ -208,7 +213,6 @@ const SharedCropping = ({fieldActivity,selected,LAND,setAction}) => {
 
   const handleJoin = () => {
     if (confirm(`Please confirm that you understand your land developments will be visible to everyone that joined the same group.`)) {
-      console.log('AGREED')
   }
   }
 
@@ -538,33 +542,76 @@ function decodeRing(encoded, scale) {
   return coords;
 }
 
-/** "early Jan '26" style — same convention as ActiveLoansCard's formatEosDate. */
-const fmtEosShort = (isoDate) => {
-  if (!isoDate) return '--';
-  const d = new Date(isoDate + 'T00:00:00Z');
-  const day = d.getUTCDate();
-  const month = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
-  const year = d.getUTCFullYear();
-  const part = day <= 10 ? 'early' : day <= 20 ? 'mid' : 'late';
-  const yearStr = year !== new Date().getFullYear() ? ` '${String(year).slice(2)}` : '';
-  return `${part} ${month}${yearStr}`;
-};
 
-// Crop-health enum from the satellite record's current_cycle — see
-// resolveCropFromRecords in useActiveLoans.js and the matching maps in
-// ActiveLoansCard.js.
-const PORTFOLIO_HEALTH_COLOR = {
-  excellent: 'text-green dark:text-green_dark',
-  on_track: 'text-green dark:text-green_dark',
-  stressed: 'text-amber dark:text-amber-300',
-  underperforming: 'text-red dark:text-red',
-};
-const PORTFOLIO_HEALTH_LABEL = {
-  excellent: 'Excellent',
-  on_track: 'On track',
-  stressed: 'Stressed',
-  underperforming: 'Underperforming',
-};
+// Same visual convention as ActiveLoansCard.js's expanded-row Divider —
+// duplicated locally rather than imported since it's a trivial, unexported
+// component there.
+function Divider() {
+  return <div className="my-1 border-t border-gray-200 dark:border-slate-500" />;
+}
+
+// Schematic cycle-progression mini chart — one hardcoded curve shape per
+// crop (see CROP_CURVE_SHAPE), a vertical "today" cursor (same convention as
+// the Gantt's cursor line), and three placeholder slots for future
+// crop-health icons (currently empty dashed circles — not wired to
+// loan.health yet, this is layout groundwork).
+function CycleCurve({ cropFamily, sos, eosDate, strokeColor }) {
+  const shape = CROP_CURVE_SHAPE[cropFamily] ?? DEFAULT_CURVE_SHAPE;
+  const sosMs = new Date(sos + 'T00:00:00Z').getTime();
+  const eosMs = new Date(eosDate + 'T00:00:00Z').getTime();
+  const todayFrac = Math.min(1, Math.max(0, (Date.now() - sosMs) / (eosMs - sosMs)));
+  const topY = 3, bottomY = 30;
+  const yFor = (b) => bottomY - b * (bottomY - topY);
+  const { peakFrac, plateauEnd, floor } = shape;
+  // Continuous rounded curve through the control points (quadratic,
+  // curving to the midpoint between each pair — a simple, cheap way to get
+  // an organic, hand-smoothed feel with no sharp joins) rather than the
+  // previous curve+straight-line+curve mix, which read as too mechanical
+  // for something explicitly illustrative rather than real sensor data.
+  // Only the final harvest cut stays a sharp straight line — that drop is
+  // supposed to look sudden.
+  const points = [
+    [0, yFor(0)],
+    [peakFrac * 100, yFor(1)],
+    [((peakFrac + plateauEnd) / 2) * 100, yFor(1)],
+    [plateauEnd * 100, yFor(1)],
+    [98, yFor(floor)],
+  ];
+  let path = `M ${points[0][0]},${points[0][1]}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const [cx, cy] = points[i];
+    const [nx, ny] = points[i + 1];
+    path += ` Q ${cx},${cy} ${(cx + nx) / 2},${(cy + ny) / 2}`;
+  }
+  const [lastX, lastY] = points[points.length - 1];
+  path += ` L ${lastX},${lastY} L 100,${yFor(0)}`;
+  return (
+    <div className="mt-1">
+      <svg viewBox="0 0 100 32" className="w-full h-8" preserveAspectRatio="none">
+        <path d={path} fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        <line
+          x1={todayFrac * 100} y1={0} x2={todayFrac * 100} y2={32}
+          className="text-black dark:text-white" stroke="currentColor"
+          strokeWidth="1" strokeDasharray="2,2" vectorEffect="non-scaling-stroke"
+        />
+        {[0.25, 0.5, 0.75].map((x) => (
+          <circle
+            key={x} cx={x * 100} cy={yFor(schematicBiomassAt(x, shape))} r="2.2"
+            fill="none" stroke="#9CA3AF" strokeWidth="0.8" strokeDasharray="1,1"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+// Hoisted to module scope — a fresh object literal every render made Framer
+// Motion re-measure/re-init the drag gesture mid-drag whenever this
+// component re-rendered (e.g. onUpdate's setFieldActivity calls while
+// dragging), which is what made dragging the card feel shaky/stuttery.
+const PORTFOLIO_DRAG_CONSTRAINTS = { top: -500, bottom: 260 };
+const PORTFOLIO_DRAG_TRANSITION = { type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 };
 
 const PortfolioCards = () => {
   const { db, fieldActivity, setFieldActivity } = useDataContext();
@@ -606,6 +653,115 @@ const PortfolioCards = () => {
     }
     return m;
   }, [loansByLandId]);
+
+  // ── Crop legend/filter — doubles as both (tap a crop icon to toggle it
+  // out of the filter). Only lists crops actually present among this
+  // union's loans; properties with no resolved cropFamily are exempt from
+  // filtering entirely (see cropVisible below) so they never get silently
+  // hidden just because their crop hasn't classified yet.
+  const presentCropKeys = useMemo(() => {
+    const s = new Set();
+    for (const l of Object.values(loansByLandId)) {
+      if (l.cropFamily != null) {
+        const key = CROP_CODE_COLOR_KEY[l.cropFamily];
+        if (key) s.add(key);
+      }
+    }
+    return [...s].sort();
+  }, [loansByLandId]);
+  const cropFilterExcluded = useMemo(
+    () => new Set(fieldActivity?.portfolioCropFilterExcluded || []),
+    [fieldActivity?.portfolioCropFilterExcluded]
+  );
+  const toggleCropFilter = useCallback((key) => {
+    setFieldActivity(prev => {
+      if (!prev) return prev;
+      const cur = new Set(prev.portfolioCropFilterExcluded || []);
+      if (cur.has(key)) cur.delete(key); else cur.add(key);
+      return { ...prev, portfolioCropFilterExcluded: [...cur] };
+    });
+  }, [setFieldActivity]);
+  // Crop icons alone weren't identifiable enough — tapping one now also
+  // briefly expands it in-flow to reveal its crop name, auto-collapsing
+  // after CROP_LABEL_MS. Only one expanded at a time; tapping another crop
+  // (or the same one again) resets the timer.
+  const CROP_LABEL_MS = 1800;
+  const [expandedCropKey, setExpandedCropKey] = useState(null);
+  const expandedCropTimerRef = useRef(null);
+  const handleCropIconClick = useCallback((key) => {
+    toggleCropFilter(key);
+    setExpandedCropKey(key);
+    if (expandedCropTimerRef.current) clearTimeout(expandedCropTimerRef.current);
+    expandedCropTimerRef.current = setTimeout(() => setExpandedCropKey(null), CROP_LABEL_MS);
+  }, [toggleCropFilter]);
+  useEffect(() => () => { if (expandedCropTimerRef.current) clearTimeout(expandedCropTimerRef.current); }, []);
+  const cropVisible = useCallback((loan) => {
+    if (loan?.cropFamily == null) return true; // unclassified — always visible
+    const key = CROP_CODE_COLOR_KEY[loan.cropFamily];
+    return !key || !cropFilterExcluded.has(key);
+  }, [cropFilterExcluded]);
+
+  // ── Month Gantt — replaces the old per-property stepper (was week-stepped;
+  // switched to month steps since crop cycles run months long, so a 7-day
+  // step barely moved the cursor relative to any given loan's [sos, eos]).
+  // monthOffset lives in shared fieldActivity (not local state) so the map's
+  // X/back button (staticNav.js's handlePortfolioBack) can reset it to "now"
+  // the same way it already resets portfolioSelected. Calendar months (via
+  // Date, not fixed-day chunks) since month length varies.
+  const WINDOW_MONTHS = 12;
+  const monthOffset = fieldActivity?.portfolioMonthOffset ?? 0;
+  const navigateMonth = useCallback((dir) => {
+    setFieldActivity(prev => prev ? { ...prev, portfolioMonthOffset: (prev.portfolioMonthOffset ?? 0) + dir } : prev);
+  }, [setFieldActivity]);
+  const { cursorStartMs, cursorEndMs, windowStartMs, windowEndMs, weekLabel } = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const cStart = new Date(y, m + monthOffset, 1);
+    const cEnd = new Date(y, m + monthOffset + 1, 1);
+    const wStart = new Date(y, m + monthOffset - Math.floor(WINDOW_MONTHS / 2), 1);
+    const wEnd = new Date(y, m + monthOffset + Math.ceil(WINDOW_MONTHS / 2), 1);
+    const label = monthOffset === 0
+      ? 'This month'
+      : `${cStart.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })}`;
+    return { cursorStartMs: cStart.getTime(), cursorEndMs: cEnd.getTime(), windowStartMs: wStart.getTime(), windowEndMs: wEnd.getTime(), weekLabel: label };
+  }, [monthOffset]);
+  const pctInWindow = useCallback((ms) => {
+    const pct = ((ms - windowStartMs) / (windowEndMs - windowStartMs)) * 100;
+    return Math.min(100, Math.max(0, pct));
+  }, [windowStartMs, windowEndMs]);
+  // A loan with neither a real SOS nor EOS resolved yet is treated as always
+  // "active" (don't dim/hide on an unknown) — same don't-guess spirit as the
+  // rest of this file's harvest-date handling.
+  const activeThisMonth = useCallback((loan) => {
+    if (!loan?.sos || !loan?.eosDate) return true;
+    const sosMs = new Date(loan.sos + 'T00:00:00Z').getTime();
+    const eosMs = new Date(loan.eosDate + 'T00:00:00Z').getTime();
+    return eosMs >= cursorStartMs && sosMs < cursorEndMs;
+  }, [cursorStartMs, cursorEndMs]);
+
+  // Continuous grab-and-drag, not just a per-swipe step — dragging further
+  // moves through more months, applied live as you drag (not just on
+  // release), like scrubbing a slider. Direction matches the old swipe
+  // convention: dragging left (dx negative) moves forward in time.
+  const PX_PER_MONTH = 40;
+  const monthDragRef = useRef({ startX: null, startOffset: 0, appliedDelta: 0 });
+  const onMonthTouchStart = useCallback((e) => {
+    monthDragRef.current = { startX: e.touches[0].clientX, startOffset: monthOffset, appliedDelta: 0 };
+  }, [monthOffset]);
+  const onMonthTouchMove = useCallback((e) => {
+    const drag = monthDragRef.current;
+    if (drag.startX == null) return;
+    const dx = e.touches[0].clientX - drag.startX;
+    const delta = Math.round(-dx / PX_PER_MONTH);
+    if (delta !== drag.appliedDelta) {
+      drag.appliedDelta = delta;
+      setFieldActivity(prev => prev ? { ...prev, portfolioMonthOffset: drag.startOffset + delta } : prev);
+    }
+  }, [setFieldActivity]);
+  const onMonthTouchEnd = useCallback(() => {
+    monthDragRef.current = { startX: null, startOffset: 0, appliedDelta: 0 };
+  }, []);
+
   const [cachedHashes, setCachedHashes] = useState(null);
   const [metadata, setMetadata] = useState(null); // { landId: { farm, outline, centroid, bounds } }
   const [expandedLid, setExpandedLid] = useState(null); // accordion: which row is open
@@ -613,11 +769,6 @@ const PortfolioCards = () => {
   // (not local state) so the map's X/back button (staticNav.js) can also lift
   // the single-property scope, not just this card's own toggle button.
   const showAll = fieldActivity?.portfolioShowAll ?? false;
-  // Members list is paginated rather than left to scroll indefinitely — a
-  // union can have dozens of properties, and an unbounded scroll region
-  // inside this drag-to-dismiss sheet was hard to reverse direction on.
-  const MEMBERS_PAGE_SIZE = 8;
-  const [membersPage, setMembersPage] = useState(0);
 
   // Seed from the persistent property-metadata cache so ALL known properties
   // (every member we've ever resolved, not just this session's active loans)
@@ -729,35 +880,48 @@ const PortfolioCards = () => {
   }, [landTitle, resolvedIds]);
 
   // Push metadata into fieldActivity so staticMaps renders outlines immediately.
-  // Single-property mode (exactly one loan — e.g. "View property outline" from
-  // an expanded Active Loans row) scopes to just that property, otherwise the
-  // full cache-seeded history leaks into the labels and bounds-fit below.
-  // Portfolio-wide mode (multiple loans) intentionally keeps showing every
-  // known property, not just this session's active loans (see cache-seed
-  // effect above) — that behavior is unchanged here. "Show all known
-  // properties" lifts the single-property scoping too, so the map matches
-  // what's now visible in the expanded members list.
+  // Focused mode (portfolioFocusLandId set — e.g. "View property outline"
+  // from an expanded Active Loans row) scopes to just that one property.
+  // portfolioLoans is always the FULL list now regardless of entry point —
+  // focus is a transient selection, not a restriction on the underlying
+  // data (previously it was: passing just [loan] meant the X/back button,
+  // which only clears selection, could never restore the rest of the list).
+  // Otherwise scopes to just the active-loan properties — the same set the
+  // card's collapsed list shows (activeEntries) — unless "Show all known
+  // properties" is on, matching what's expanded in the members list.
   useEffect(() => {
     if (!metadata || !Object.keys(metadata).length) return;
-    const scoped = (loans.length === 1 && !showAll)
-      ? Object.fromEntries(resolvedIds.filter(lid => metadata[lid]).map(lid => [lid, metadata[lid]]))
-      : metadata;
+    const isActiveLid = (lid) => activeIds.some(id => String(id) === String(lid));
+    const focusLid = fieldActivity?.portfolioFocusLandId;
+    const scoped = showAll
+      ? metadata
+      : Object.fromEntries(
+          Object.keys(metadata)
+            .filter(lid => (focusLid != null ? String(lid) === String(focusLid) : isActiveLid(lid)))
+            .map(lid => [lid, metadata[lid]])
+        );
     setFieldActivity(prev => {
       if (!prev?.portfolioMode) return prev;
       return { ...prev, portfolioProperties: scoped };
     });
-  }, [metadata, resolvedIds, loans.length, showAll, setFieldActivity]);
+  }, [metadata, showAll, activeIds, fieldActivity?.portfolioFocusLandId, setFieldActivity]);
 
-  // Single-property mode: auto-expand + select the one resolved property
-  // instead of waiting for the user to tap it — otherwise the map fits to
-  // the same (already-scoped) bounds twice: once on open, again when the
-  // row is manually expanded.
+  // Focused mode: auto-expand + select the focused property instead of
+  // waiting for the user to tap it — otherwise the map fits to the same
+  // (already-scoped) bounds twice: once on open, again when the row is
+  // manually expanded. Fires once per focus id (autoFocusedRef guards
+  // against re-forcing expand/select if the user manually collapses or
+  // deselects it afterward, since this effect would otherwise re-run on
+  // every unrelated fieldActivity change).
+  const autoFocusedRef = useRef(null);
   useEffect(() => {
-    if (loans.length !== 1 || resolvedIds.length !== 1) return;
-    const lid = resolvedIds[0];
-    setExpandedLid(lid);
-    setFieldActivity(prev => prev?.portfolioMode ? { ...prev, portfolioSelected: lid } : prev);
-  }, [loans.length, resolvedIds, setFieldActivity]);
+    const focusLid = fieldActivity?.portfolioFocusLandId;
+    if (focusLid == null || !metadata?.[focusLid]) return;
+    if (autoFocusedRef.current === focusLid) return;
+    autoFocusedRef.current = focusLid;
+    setExpandedLid(focusLid);
+    setFieldActivity(prev => prev?.portfolioMode ? { ...prev, portfolioSelected: focusLid } : prev);
+  }, [fieldActivity?.portfolioFocusLandId, metadata, setFieldActivity]);
 
   // Tell the map which properties have a live loan → coloured blue, rest grey.
   useEffect(() => {
@@ -769,6 +933,27 @@ const PortfolioCards = () => {
   useEffect(() => {
     setFieldActivity(prev => prev?.portfolioMode ? { ...prev, portfolioCropByLandId: cropByLid } : prev);
   }, [cropByLid, setFieldActivity]);
+
+  // Combined crop-filter + week-Gantt visibility, for the map's per-property
+  // icon markers (staticMaps.js). Outlines stay visible regardless — only
+  // the marker is suppressed, same as the list rows below (crop-filtered-out
+  // rows are removed entirely; week-inactive rows just dim, see renderRow).
+  // A property with no loan (a bare "show all known properties" entry) has
+  // no crop or week concept, so it's always visible.
+  const visibleLandIds = useMemo(() => {
+    if (!metadata) return [];
+    const out = [];
+    for (const lid of Object.keys(metadata)) {
+      const loan = loansByLandId[String(lid)];
+      if (!cropVisible(loan)) continue;
+      if (!activeThisMonth(loan)) continue;
+      out.push(String(lid));
+    }
+    return out;
+  }, [metadata, loansByLandId, cropVisible, activeThisMonth]);
+  useEffect(() => {
+    setFieldActivity(prev => prev?.portfolioMode ? { ...prev, portfolioVisibleLandIds: visibleLandIds } : prev);
+  }, [visibleLandIds, setFieldActivity]);
 
   // Lazy: read purchased hashes from IndexedDB (for later record.json enrichment)
   useEffect(() => {
@@ -789,9 +974,12 @@ const PortfolioCards = () => {
   return (
     <motion.div
       initial={{ y: -300 }}
-      animate={{ y: 0 }}
+      // Opening focused on one property (e.g. "View property outline") starts
+      // the card pulled up further so the expanded detail (curve, stage/health
+      // issues) is visible immediately, instead of needing a manual drag up.
+      animate={{ y: fieldActivity?.portfolioFocusLandId != null ? -220 : 0 }}
       drag="y"
-      dragConstraints={{ top: -500, bottom: 150 }}
+      dragConstraints={PORTFOLIO_DRAG_CONSTRAINTS}
       dragListener={false}
       dragControls={controls}
       dragElastic={0.05}
@@ -799,10 +987,48 @@ const PortfolioCards = () => {
         const lifted = (latest?.y ?? 0) < -20;
         setFieldActivity(prev => (prev && !!prev.cardLifted !== lifted) ? { ...prev, cardLifted: lifted } : prev);
       }}
-      onDragEnd={(_, info) => { if (info.offset.y > 100) close(); }}
-      transition={{ type: 'spring', stiffness: 300, damping: 30, bounce: 0.5 }}
+      // Was a flat 100px offset — too easy to trigger with a small accidental
+      // drag, and a fixed pixel distance doesn't mean the same thing on a
+      // small phone vs. a tall one — scale both thresholds to viewport
+      // height instead. Require either a deliberate long drag, or a
+      // genuinely decisive flick (velocity threshold raised past 800px/s,
+      // which was still easy to hit on an ordinary quick pull).
+      onDragEnd={(_, info) => {
+        const vh = window.innerHeight || 800;
+        const dragThreshold = vh * 0.25;
+        const flickThreshold = vh * 0.12;
+        if (info.offset.y > dragThreshold || (info.offset.y > flickThreshold && info.velocity.y > 1800)) close();
+      }}
+      transition={PORTFOLIO_DRAG_TRANSITION}
       className="flex flex-col py-4"
     >
+      {/* Month Gantt scrubber — outside the card, moves with it (same
+          placement/style as CycleSwiper in the single-property StaticCards).
+          Grab and drag left/right to scrub continuously (further drag = more
+          months), tap arrows to step one at a time; the vertical line marks
+          the cursor month's start, the colored bar on each row is that
+          property's [sos, harvest] span — dimmed rows simply aren't in-cycle
+          during the cursor month. The X/back button (staticNav.js) resets
+          portfolioMonthOffset back to "now". */}
+      <div
+        onTouchStart={onMonthTouchStart}
+        onTouchMove={onMonthTouchMove}
+        onTouchEnd={onMonthTouchEnd}
+        style={{ touchAction: 'pan-y' }}
+        className="flex items-center justify-between rounded-2xl backdrop-blur-sm bg-darkgrey/10 mb-1 cursor-grab active:cursor-grabbing select-none"
+      >
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={() => navigateMonth(-1)}
+          className="text-lg px-2 text-white active:scale-95"
+        >‹</button>
+        <p className="text-xs text-white">{weekLabel}</p>
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={() => navigateMonth(1)}
+          className="text-lg px-2 text-white active:scale-95"
+        >›</button>
+      </div>
       <div className="flex w-full bg-white dark:bg-gray-700 rounded-3xl shadow-bottom flex-col my-1">
         <div
           onPointerDown={(e) => controls.start(e)}
@@ -812,22 +1038,88 @@ const PortfolioCards = () => {
           <span className="h-1 w-16 rounded-full bg-slate-300 dark:bg-slate-500" />
         </div>
         <div className="flex flex-col px-6 pb-2 gap-3">
-          <div className="flex items-center justify-between px-4">
-            <div>
-              <h3 className="font-bold dark:text-white">Members</h3>
-              <p className="text-[10px] dark:text-slate-500">{metadata ? Object.keys(metadata).length : resolvedIds.length} properties · {activeIds.length} active{fieldActivity?.outlinesOnly ? ' · outlines only' : ''}</p>
-            </div>
+          <div className="px-4">
+            <h3 className="font-bold dark:text-white">Harvest Calendar</h3>
+            <p className="text-[10px] dark:text-slate-500">{metadata ? Object.keys(metadata).length : resolvedIds.length} properties · {activeIds.length} active{fieldActivity?.outlinesOnly ? ' · outlines only' : ''}</p>
+          </div>
+
+          {/* Crop legend/filter, Labels toggle, and map-type toggle — one
+              horizontally scrollable strip (native touch-scroll is the
+              "draggable left/right" here) instead of separate rows/buttons.
+              Crop icons: tap to toggle that crop out of the list/map — only
+              crops actually present render here. Background circle only
+              when included (crop color, translucent); the icon glyph itself
+              (mask-tinted, same technique as CropIcon elsewhere) is neutral
+              grey when included, black when excluded. Left-aligned with the
+              Members header/list below (px-4, matching their padding). */}
+          <div className="flex items-center gap-2 px-4 overflow-x-auto">
+            {presentCropKeys.map((key) => {
+              const off = cropFilterExcluded.has(key);
+              const expanded = expandedCropKey === key;
+              return (
+                <button
+                  key={key}
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={() => handleCropIconClick(key)}
+                  title={key.replace(/_/g, ' ')}
+                  className="flex-shrink-0 h-8 rounded-full flex items-center active:scale-95 overflow-hidden"
+                  style={{
+                    maxWidth: expanded ? 200 : 32,
+                    paddingRight: expanded ? 10 : 0,
+                    background: off ? 'transparent' : `${cropColor(key)}75`,
+                    transition: 'max-width 300ms ease-out, padding-right 300ms ease-out',
+                  }}
+                >
+                  <span className="w-8 h-8 flex items-center justify-center flex-shrink-0">
+                    <span
+                      style={{
+                        display: 'block',
+                        width: 20,
+                        height: 20,
+                        background: off ? '#000000' : '#9CA3AF',
+                        WebkitMaskImage: `url(${cropIconUrl(key)})`,
+                        maskImage: `url(${cropIconUrl(key)})`,
+                        WebkitMaskRepeat: 'no-repeat',
+                        maskRepeat: 'no-repeat',
+                        WebkitMaskPosition: 'center',
+                        maskPosition: 'center',
+                        WebkitMaskSize: 'contain',
+                        maskSize: 'contain',
+                      }}
+                    />
+                  </span>
+                  {expanded && (
+                    <span className="text-white text-[10px] font-semibold whitespace-nowrap">
+                      {key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            {presentCropKeys.length > 0 && (
+              <span className="w-px h-6 bg-slate-200 dark:bg-slate-600 flex-shrink-0" />
+            )}
+
             <button
               onPointerDown={e => e.stopPropagation()}
               onClick={() => setFieldActivity(prev => prev ? { ...prev, portfolioLabels: !prev.portfolioLabels } : prev)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-medium transition-colors ${
+              className={`flex items-center gap-1.5 h-8 px-3 rounded-full text-[10px] font-medium transition-colors flex-shrink-0 ${
                 fieldActivity?.portfolioLabels !== false
-                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                  ? 'bg-slate-200 text-slate-700 dark:bg-slate-500 dark:text-white'
                   : 'bg-slate-100 text-slate-400 dark:bg-slate-600 dark:text-slate-400'
               }`}
             >
               <TagIcon className="h-3 w-3" />
               Labels
+            </button>
+
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={() => setFieldActivity(prev => prev ? { ...prev, portfolioMapType: prev.portfolioMapType === 'terrain' ? 'satellite' : 'terrain' } : prev)}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-full text-[10px] font-medium transition-colors flex-shrink-0 bg-slate-100 text-slate-600 dark:bg-slate-600 dark:text-slate-300"
+            >
+              {(fieldActivity?.portfolioMapType ?? 'satellite') === 'terrain' ? 'Terrain' : 'Satellite'}
             </button>
           </div>
 
@@ -839,9 +1131,20 @@ const PortfolioCards = () => {
 
           {metadata && (() => {
             const isActive = (lid) => activeIds.some(id => String(id) === String(lid));
-            const entries = Object.entries(metadata);
-            const activeEntries = entries.filter(([lid]) => isActive(lid));
-            const otherEntries = entries.filter(([lid]) => !isActive(lid));
+            // Crop-filtered-out rows are removed entirely (not just dimmed) —
+            // week-inactive rows stay in the list but dim, handled in
+            // renderRow, so scrubbing the Gantt doesn't reshuffle pagination.
+            const entries = Object.entries(metadata).filter(([lid]) => cropVisible(loansByLandId[String(lid)]));
+            // Urgency order: soonest/overdue EOS first, ties (or no EOS) fall
+            // back to farm name.
+            const byUrgency = ([lidA, mA], [lidB, mB]) => {
+              const la = loansByLandId[String(lidA)], lb = loansByLandId[String(lidB)];
+              const ra = la?.daysToEos ?? Infinity, rb = lb?.daysToEos ?? Infinity;
+              if (ra !== rb) return ra - rb;
+              return (mA.farm || '').localeCompare(mB.farm || '');
+            };
+            const activeEntries = entries.filter(([lid]) => isActive(lid)).sort(byUrgency);
+            const otherEntries = entries.filter(([lid]) => !isActive(lid)).sort(byUrgency);
 
             const renderRow = ([lid, m]) => {
               const h = cachedHashes?.find(r => String(r.landId) === String(lid));
@@ -849,17 +1152,35 @@ const PortfolioCards = () => {
               const nFields = m.fieldNames?.length || 0;
               const loan = loansByLandId[String(lid)];
               const rowCropColorKey = loan?.cropFamily != null ? CROP_CODE_COLOR_KEY[loan.cropFamily] : null;
+              const dimmed = !!loan && !activeThisMonth(loan);
+              // Gantt bar: [sos, eosDate] clipped to the current rolling
+              // window (windowStartMs/windowEndMs). No bar at all if either
+              // date is unresolved yet, or if the range falls fully outside
+              // the visible window (scrub further to reach it).
+              let barLeftPct = null, barWidthPct = null;
+              if (loan?.sos && loan?.eosDate) {
+                const sosMs = new Date(loan.sos + 'T00:00:00Z').getTime();
+                const eosMs = new Date(loan.eosDate + 'T00:00:00Z').getTime();
+                if (eosMs >= windowStartMs && sosMs <= windowEndMs) {
+                  const left = pctInWindow(sosMs);
+                  const right = pctInWindow(eosMs);
+                  barLeftPct = left;
+                  barWidthPct = Math.max(right - left, 1.5);
+                }
+              }
+              const cursorPct = pctInWindow(cursorStartMs);
               return (
-                <div key={lid} className="border-b border-slate-100 dark:border-slate-600 last:border-0">
+                <div key={lid} className={`border-b border-slate-100 dark:border-slate-600 last:border-0 transition-opacity ${dimmed ? 'opacity-40' : ''}`}>
                   <button
                     onPointerDown={e => e.stopPropagation()}
                     onClick={() => {
-                      setExpandedLid(prev => String(prev) === String(lid) ? null : lid);
-                      setFieldActivity(prev => prev ? { ...prev, portfolioSelected: lid } : prev);
+                      const collapsing = String(expandedLid) === String(lid);
+                      setExpandedLid(collapsing ? null : lid);
+                      setFieldActivity(prev => prev ? { ...prev, portfolioSelected: collapsing ? null : lid } : prev);
                     }}
-                    className="flex w-full items-center justify-between py-1.5 text-xs"
+                    className="flex w-full items-center gap-2 py-1.5 text-xs"
                   >
-                    <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="flex items-center gap-1.5 min-w-0 w-24 flex-shrink-0">
                       {rowCropColorKey && (
                         <span
                           className="w-2 h-2 rounded-full flex-shrink-0"
@@ -868,84 +1189,114 @@ const PortfolioCards = () => {
                       )}
                       <span className="font-semibold dark:text-white truncate text-left">{m.farm}</span>
                     </span>
-                    <span className="flex items-center gap-1.5 shrink-0 ml-2">
-                      {loan && (
-                        <span className="text-[10px] font-mono text-gray-500 dark:text-slate-400">
-                          ₹{(loan.totalAmount ?? loan.amount ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                        </span>
+                    <span className="relative flex-1 h-2 rounded-full bg-gray-100 dark:bg-slate-600 overflow-hidden">
+                      {barLeftPct != null && (
+                        <span
+                          className="absolute top-0 h-full rounded-full"
+                          style={{
+                            left: `${barLeftPct}%`,
+                            width: `${barWidthPct}%`,
+                            background: rowCropColorKey ? cropColor(rowCropColorKey) : '#9CA3AF',
+                            opacity: loan?.foodTokenId ? 1 : 0.5,
+                          }}
+                        />
                       )}
-                      {loan?.eosDate && (
-                        <span className={`text-[10px] font-mono ${
-                          loan.daysToEos != null && loan.daysToEos < -14
-                            ? 'text-red dark:text-red font-bold'
-                            : loan.daysToEos != null && loan.daysToEos < 0
-                              ? 'text-orange-600 dark:text-orange-400 font-bold'
-                              : 'text-blue-600 dark:text-blue-400'
-                        }`}>
-                          {fmtEosShort(loan.eosDate)}
-                        </span>
+                      {barLeftPct != null && (
+                        // SOS marker — blue when satellite-verified (within
+                        // 20 days of drawdown), white when it's just the
+                        // drawdownTs fallback (not satellite-confirmed).
+                        <span
+                          className="absolute top-1/2 w-1.5 h-1.5 rounded-full -translate-y-1/2 -translate-x-1/2 ring-1 ring-black/20"
+                          style={{
+                            left: `${barLeftPct}%`,
+                            background: loan?.sosSource === 'satellite' ? '#3B82F6' : '#FFFFFF',
+                          }}
+                          title={loan?.sosSource === 'satellite' ? 'SOS: satellite-verified' : 'SOS: drawdown date (not satellite-confirmed)'}
+                        />
                       )}
-                      {nFields > 0 && <span className="text-gray-400 dark:text-slate-500 text-[10px]">{nFields} field{nFields > 1 ? 's' : ''}</span>}
-                      <span className="text-gray-400 dark:text-slate-500 text-[10px]">#{lid}</span>
-                      <ChevronDownIcon className={`h-3 w-3 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                      <span
+                        className="absolute -top-0.5 -bottom-0.5 w-px bg-black dark:bg-white"
+                        style={{ left: `${cursorPct}%` }}
+                      />
                     </span>
+                    <ChevronDownIcon className={`h-3 w-3 flex-shrink-0 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
                   </button>
-                  {expanded && (
-                    <div className="pb-2 pl-1 flex flex-col gap-0.5">
+                  {expanded && (() => {
+                    // Shared with ActiveLoansCard.js's active-loans list (see
+                    // utils/loanIssues.js) — stage conformance + health,
+                    // unified so both views agree on what's "off track".
+                    const issues = getLoanIssues(loan);
+                    const ISSUE_COLOR = {
+                      ok: 'text-green dark:text-green_dark',
+                      warn: 'text-amber-600 dark:text-amber-400',
+                    };
+                    return (
+                    <div className="mt-1 mb-2 px-3 py-3 rounded-lg bg-gray-100 dark:bg-slate-600 flex flex-col gap-1.5">
                       {nFields > 0 && (
                         <p className="text-[10px] text-gray-500 dark:text-slate-400">{m.fieldNames.join(', ')}</p>
-                      )}
-                      {loan?.health && (
-                        <p
-                          className={`text-[10px] font-semibold ${PORTFOLIO_HEALTH_COLOR[loan.health] ?? 'text-gray-500 dark:text-slate-300'}`}
-                          title={loan.healthDescription || undefined}
-                        >
-                          {loan.healthSummary || PORTFOLIO_HEALTH_LABEL[loan.health] || loan.health}
-                        </p>
                       )}
                       {!fieldActivity?.outlinesOnly && h && !h.stored && (
                         <p className="text-[10px] text-amber-500">no viewing key</p>
                       )}
+                      {loan?.sos && loan?.eosDate && (
+                        <>
+                          <Divider />
+                          <CycleCurve
+                            cropFamily={loan.cropFamily}
+                            sos={loan.sos}
+                            eosDate={loan.eosDate}
+                            strokeColor={rowCropColorKey ? cropColor(rowCropColorKey) : '#9CA3AF'}
+                          />
+                        </>
+                      )}
+                      {(issues.length > 0 || loan?.yieldKgPerAcre != null) && (
+                        <>
+                          <Divider />
+                          <ul className="flex flex-col gap-1.5">
+                            {issues.map((issue, i) => (
+                              <li
+                                key={i}
+                                className={`flex items-center gap-1.5 text-xs font-semibold ${ISSUE_COLOR[issue.tone]}`}
+                                title={issue.title}
+                              >
+                                <span className="flex-shrink-0">{issue.icon}</span>
+                                <span>{issue.text}</span>
+                              </li>
+                            ))}
+                            {loan?.yieldKgPerAcre != null && (
+                              <li className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-slate-400">
+                                <span className="flex-shrink-0">•</span>
+                                <span>Yield: {Number(loan.yieldKgPerAcre).toLocaleString('en-IN')} kg/acre</span>
+                              </li>
+                            )}
+                          </ul>
+                        </>
+                      )}
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               );
             };
 
-            // A union can have dozens of properties — this list used to rely on
-            // an unbounded scroll region inside the drag-to-dismiss sheet,
-            // which was hard to reverse direction on and fought the sheet's
-            // own drag/translateY. Paginate a fixed page size instead so the
-            // row count (and the sheet's height) stays predictable.
+            // Pagination removed — the Gantt/month-scrubber needs every row
+            // visible at once (dimmed, not hidden) so timing across the whole
+            // portfolio reads at a glance; a property tucked away on another
+            // page would never show its dim/highlight state as you scrub.
+            // Instead, the row list scrolls internally (capped height) rather
+            // than growing the whole card past what the drag constraints can
+            // reach. This didn't work in an earlier version of this card
+            // (nested scroll fought the card's own drag-to-dismiss), but the
+            // card's drag is now scoped to two explicit grab-handle zones
+            // (dragListener={false} + controls.start()), not the whole card,
+            // so touching/scrolling the list itself no longer triggers it.
             const visibleEntries = showAll ? [...activeEntries, ...otherEntries] : activeEntries;
-            const totalPages = Math.max(1, Math.ceil(visibleEntries.length / MEMBERS_PAGE_SIZE));
-            const safePage = Math.min(membersPage, totalPages - 1);
-            const pageEntries = visibleEntries.slice(safePage * MEMBERS_PAGE_SIZE, (safePage + 1) * MEMBERS_PAGE_SIZE);
 
             return (
               <div className="flex flex-col px-4">
-                {pageEntries.map(renderRow)}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between pt-2">
-                    <button
-                      onPointerDown={e => e.stopPropagation()}
-                      onClick={() => setMembersPage(p => Math.max(0, p - 1))}
-                      disabled={safePage === 0}
-                      className="px-2 py-1 text-[11px] font-medium text-blue-700 dark:text-blue-300 disabled:opacity-30 disabled:text-blue-700 active:scale-95"
-                    >
-                      ‹ Prev
-                    </button>
-                    <span className="text-[10px] text-gray-400 dark:text-slate-500">Page {safePage + 1} of {totalPages}</span>
-                    <button
-                      onPointerDown={e => e.stopPropagation()}
-                      onClick={() => setMembersPage(p => Math.min(totalPages - 1, p + 1))}
-                      disabled={safePage === totalPages - 1}
-                      className="px-2 py-1 text-[11px] font-medium text-blue-700 dark:text-blue-300 disabled:opacity-30 disabled:text-blue-700 active:scale-95"
-                    >
-                      Next ›
-                    </button>
-                  </div>
-                )}
+                <div className="overflow-y-auto max-h-[45vh]" style={{ touchAction: 'pan-y' }}>
+                  {visibleEntries.map(renderRow)}
+                </div>
                 {otherEntries.length > 0 && (
                   <button
                     onPointerDown={e => e.stopPropagation()}
@@ -956,7 +1307,6 @@ const PortfolioCards = () => {
                       // so the map fits to all properties instead of staying
                       // fixed on just the one it opened with.
                       if (next) setExpandedLid(null);
-                      setMembersPage(0); // the visible set (and page count) just changed
                       return next
                         ? { ...prev, portfolioShowAll: true, portfolioSelected: null }
                         : { ...prev, portfolioShowAll: false };

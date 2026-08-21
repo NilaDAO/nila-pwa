@@ -73,6 +73,27 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
   const [portfolioPrevOutlines, setPortfolioPrevOutlines] = useState([])
   const portfolioMarkersRef                 = useRef([])
   const portfolioBoundsRef                  = useRef(null)
+  // Bounds last actually fitted to (the "no selection / show all" case only),
+  // plus the portfolioSelected value from the previous run of the fit effect
+  // below — together let that effect skip a redundant fit+pan when property
+  // metadata resolves in a later wave (IndexedDB cache, then on-chain
+  // tokenURI) but doesn't reveal anything outside what's already on screen.
+  const portfolioFittedBoundsRef            = useRef(null)
+  // The set of lids that were actually included in the last "fit all" —
+  // distinguishes "same properties, metadata just refreshed" (skip-eligible,
+  // per portfolioFittedBoundsRef above) from "the shown set itself changed"
+  // (e.g. the "Show all known properties" toggle), which must always re-fit
+  // even if the new bounds happen to be a subset of the old ones.
+  const portfolioFittedLidsRef              = useRef(null)
+  // Same class of bug as portfolioFittedBoundsRef above, but for the "fit to
+  // the selected property" branch below — that branch never got the same
+  // protection because it didn't need it until "View property outline" (or
+  // any other flow that sets portfolioSelected on open) started routing
+  // through here. Skips a redundant re-fit when the same property's
+  // metadata just refreshed (cache wave → chain wave), by tracking which
+  // lid we last actually fit to — only a genuine selection CHANGE re-fits.
+  const portfolioFittedSelectedRef          = useRef(undefined)
+  const portfolioPrevSelectedRef            = useRef(undefined)
   const { setFieldActivity, tokenData, view } = useDataContext()
 
   // Food token priority: user self-attested a crop; unconfirmed until oracle matches it
@@ -95,6 +116,19 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
 
   const onLoad = useCallback((map) => setMap(map), []);
   const onUnmount = useCallback(() => setMap(null), []);
+
+  // Portfolio map-type toggle (satellite/terrain) — imperative via
+  // map.setMapTypeId rather than the static `options` object above, which
+  // is only applied once at mount by react-google-maps/api, not reactively.
+  // Resets to satellite on leaving portfolio mode — the map instance is
+  // shared with the single-property view, which should never inherit a
+  // "terrain" choice made while browsing the portfolio.
+  useEffect(() => {
+    if (!map) return;
+    map.setMapTypeId(
+      fieldActivity?.portfolioMode && fieldActivity?.portfolioMapType === 'terrain' ? 'terrain' : 'satellite'
+    );
+  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioMapType]);
 
   // Plan 044 §5.2 — no unmount feature-restore. Features are derived from
   // (record, tokenData, view); leaving the map and returning recomputes them.
@@ -332,13 +366,22 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
       // Clean up if leaving portfolio mode
       if (portfolioOutlines.length) setPortfolioOutlines([]);
       if (portfolioPrevOutlines.length) setPortfolioPrevOutlines([]);
-      portfolioMarkersRef.current.forEach(m => { m.map = null; });
+      portfolioMarkersRef.current.forEach(m => { if (m) m.map = null; });
       portfolioMarkersRef.current = [];
       portfolioBoundsRef.current = null;
+      portfolioFittedBoundsRef.current = null;
+      portfolioFittedLidsRef.current = null;
+      portfolioPrevSelectedRef.current = undefined;
+      portfolioFittedSelectedRef.current = undefined;
       return;
     }
 
     const props = fieldActivity.portfolioProperties;
+    // undefined (not yet computed by staticCards.js) means "no filter yet" —
+    // show every marker rather than flashing an empty map on first mount.
+    const visibleIds = fieldActivity.portfolioVisibleLandIds
+      ? new Set(fieldActivity.portfolioVisibleLandIds.map(String))
+      : null;
     const bounds = new window.google.maps.LatLngBounds();
     const polys = [];
     const labelStyle = 'background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);color:white;padding:6px 10px;border-radius:10px;font-size:10px;line-height:1.5;white-space:nowrap;cursor:pointer;';
@@ -346,16 +389,32 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
 
     for (const [lid, meta] of Object.entries(props)) {
       if (!meta.outline?.length) continue;
+      const visible = !visibleIds || visibleIds.has(String(lid));
 
-      // Build outline polygons (colours applied in render via portfolioSelected)
+      // Bounds always include every known property (filtered out or not) —
+      // otherwise toggling a crop filter would shrink the fit-to-all bounds
+      // and trigger a re-pan every time the filter changes. Only the drawn
+      // polygon itself (polys, below) is suppressed when filtered out.
       for (const ring of meta.outline) {
-        const latLngs = ring.map(([lat, lng]) => ({ lat, lng }));
-        latLngs.forEach(p => bounds.extend(p));
-        polys.push({ latLngs, lid });
+        ring.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
       }
 
-      // Label at centroid — clickable
-      if (meta.centroid) {
+      // Outline polygon — suppressed (not built) when filtered out by the
+      // crop legend/filter or the week-Gantt scrubber, same as the label
+      // below, so "filter" actually hides the property on the map, not just
+      // its name.
+      if (visible) {
+        for (const ring of meta.outline) {
+          const latLngs = ring.map(([lat, lng]) => ({ lat, lng }));
+          polys.push({ latLngs, lid });
+        }
+      }
+
+      // Label at centroid — clickable. Suppressed (not built) when filtered
+      // out by the crop legend/filter or the week-Gantt scrubber — see
+      // staticCards.js's visibleLandIds. (Crop-icon markers were tried and
+      // dropped — they didn't add anything over the farm name.)
+      if (meta.centroid && visible) {
         const pos = { lat: meta.centroid[0], lng: meta.centroid[1] };
         bounds.extend(pos);
 
@@ -366,7 +425,19 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
           setFieldActivity(prev => prev ? { ...prev, portfolioSelected: lid } : prev)
         );
 
-        markers.push(addMarkerLabel(map, pos, el));
+        // Markers are rebuilt from scratch whenever the visible set changes
+        // (e.g. toggling a crop filter) — attach at the CURRENT Labels
+        // show/hide state, not always visible, otherwise a rebuild silently
+        // undoes an OFF toggle (the separate visibility effect below only
+        // reacts to portfolioLabels changing, not to a marker rebuild).
+        // addMarkerLabel must be called WITH the real map — passing null
+        // makes its own capability check treat this as "can't create" and
+        // return null outright, not a hidden marker — so construct visible,
+        // then detach immediately if labels are currently off.
+        const showLabels = fieldActivity?.portfolioLabels !== false;
+        const marker = addMarkerLabel(map, pos, el);
+        if (marker && !showLabels) marker.map = null;
+        markers.push(marker);
       }
     }
 
@@ -377,17 +448,37 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     portfolioMarkersRef.current.forEach(m => { if (m) m.map = null; });
     portfolioMarkersRef.current = markers;
 
-    return () => markers.forEach(m => { m.map = null; });
-  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioProperties, setFieldActivity]);
+    return () => markers.forEach(m => { if (m) m.map = null; });
+  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioProperties, fieldActivity?.portfolioVisibleLandIds, setFieldActivity]);
+
+  // ------------------ portfolio label visibility (no refit) ----------------
+  useEffect(() => {
+    if (!map || !portfolioMarkersRef.current.length) return;
+    const show = fieldActivity?.portfolioLabels !== false;
+    portfolioMarkersRef.current.forEach(m => { m.map = show ? map : null; });
+  }, [map, fieldActivity?.portfolioLabels]);
 
   // ------------------ portfolio: center on selected / re-fit all -------------------------
   useEffect(() => {
     if (!map || !fieldActivity?.portfolioMode) return;
     const selected = fieldActivity?.portfolioSelected;
     const props = fieldActivity?.portfolioProperties;
+    const cameFromSelected = !!portfolioPrevSelectedRef.current;
+    portfolioPrevSelectedRef.current = selected;
+    // Deselecting clears the "already fit" memory — a later re-selection of
+    // the exact same property (after having gone through no-selection) is a
+    // genuine new user action and should re-fit, not be skipped as if it
+    // were just a metadata refresh under an unbroken selection.
+    if (!selected) portfolioFittedSelectedRef.current = undefined;
 
     if (selected && props?.[selected]) {
-      // Fit to the selected property
+      // Fit to the selected property — skip if we already fit to this exact
+      // selection (metadata refreshing under the same lid, e.g. the cache
+      // wave then the chain wave, must not re-pan). A genuine change of
+      // selection always re-fits.
+      if (portfolioFittedSelectedRef.current === selected) return;
+      portfolioFittedSelectedRef.current = selected;
+
       const meta = props[selected];
       const bounds = new window.google.maps.LatLngBounds();
       (meta.outline || []).forEach(ring => ring.forEach(([lat, lng]) => bounds.extend({ lat, lng })));
@@ -402,9 +493,38 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
         return () => window.google.maps.event.removeListener(listener);
       }
     } else if (portfolioBoundsRef.current && !portfolioBoundsRef.current.isEmpty()) {
-      // No selection — fit to all properties
-      map.fitBounds(portfolioBoundsRef.current, 40);
+      // No selection — fit to all (currently scoped) properties. Property
+      // metadata resolves in two waves (IndexedDB cache, then on-chain
+      // tokenURI) and each wave gives portfolioProperties a new object
+      // reference even when nothing newly visible was added — skip the
+      // fit+pan when it's the SAME set of properties as last time and the
+      // new bounds don't extend past what's already fitted, so that second
+      // wave doesn't visibly re-pan the map. But if the actual set of shown
+      // properties changed (e.g. the "Show all known properties" toggle),
+      // always re-fit — even if the new bounds are a subset of the old ones
+      // (shrinking back to fewer properties should zoom in, not stay put).
+      // A transition back from a selected property (the X/back button)
+      // also always re-fits, since that's a real, user-facing navigation.
+      const bounds = portfolioBoundsRef.current;
+      const currentLids = new Set(Object.keys(props || {}));
+      const prevLids = portfolioFittedLidsRef.current;
+      const sameLidSet = !!prevLids && prevLids.size === currentLids.size && [...currentLids].every(lid => prevLids.has(lid));
+      const alreadyFitted = !cameFromSelected
+        && sameLidSet
+        && portfolioFittedBoundsRef.current
+        && portfolioFittedBoundsRef.current.contains(bounds.getNorthEast())
+        && portfolioFittedBoundsRef.current.contains(bounds.getSouthWest());
+      if (alreadyFitted) return;
+
+      // Padding reduced from 40 — outlines were reading as tiny on load.
+      // Small extra zoom bump after settling (same pattern as the
+      // single-property/parcel fits above) tightens it further.
+      map.fitBounds(bounds, 10);
+      portfolioFittedBoundsRef.current = bounds;
+      portfolioFittedLidsRef.current = currentLids;
       const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+        const z = map.getZoom();
+        map.setZoom(Math.min(20, (z ?? 15) + 0.6));
         const center = map.getCenter();
         const span = map.getBounds()?.toSpan();
         if (span) map.panTo({ lat: center.lat() - span.lat() * 0.15, lng: center.lng() });
@@ -429,13 +549,6 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
     }
     setPortfolioPrevOutlines(polys);
   }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioPrevProperties]);
-
-  // ------------------ portfolio label visibility (no refit) ----------------
-  useEffect(() => {
-    if (!map || !portfolioMarkersRef.current.length) return;
-    const show = fieldActivity?.portfolioLabels !== false;
-    portfolioMarkersRef.current.forEach(m => { m.map = show ? map : null; });
-  }, [map, fieldActivity?.portfolioLabels]);
 
   return isLoaded ? (
       <GoogleMap
@@ -486,13 +599,6 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
             a second hue, so they don't fight crop color for the same signal.
             Properties with no resolved crop yet fall back to the previous
             grey/blue active-vs-not scheme. Clickable, highlights selected. */}
-        {portfolioOutlines.length > 0 && console.log('[portfolio] outline coloring', {
-          activeIds: fieldActivity?.portfolioActiveIds,
-          cropByLandId: fieldActivity?.portfolioCropByLandId,
-          selected: fieldActivity?.portfolioSelected,
-          showAll: fieldActivity?.portfolioShowAll,
-          lids: portfolioOutlines.map(p => p.lid),
-        })}
         {portfolioOutlines.map((poly, i) => {
           const isSelected = String(fieldActivity?.portfolioSelected) === String(poly.lid);
           const isActive = (fieldActivity?.portfolioActiveIds || []).some(id => String(id) === String(poly.lid));
