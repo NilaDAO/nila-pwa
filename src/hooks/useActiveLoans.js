@@ -220,10 +220,29 @@ async function resolveFoodTokenBatchIds(candidates, provider) {
  * `candidates` must already be filtered to loans with a recordHash and no
  * satProjectedEos yet.
  */
+// Small bounded-concurrency pool — resolveCropFromRecords used to fetch
+// each loan's IPFS record sequentially (one Pinata gateway round-trip at a
+// time, no timeout/retry, 20-60s each under load per fetchRecordFromIPFS's
+// own docs), so a sync touching even a handful of loans took minutes even
+// once backgrounded (see the 2026-08-21 mobile-slow-load fix). Runs up to
+// `limit` fetches at once instead of one at a time, without unbounded
+// Promise.all hammering the free-tier gateway with dozens of simultaneous
+// requests.
+async function runWithConcurrency(items, limit, worker) {
+  let i = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      await worker(items[idx], idx);
+    }
+  });
+  await Promise.all(runners);
+}
+
 async function resolveCropFromRecords(candidates) {
   if (!candidates?.length) return;
   const fresh = await readAllItems('ActiveLoans') ?? {};
-  for (const l of candidates) {
+  await runWithConcurrency(candidates, 5, async (l) => {
     try {
       const record = await fetchRecordFromIPFS(l.recordHash);
       // record.cycles has been an object keyed by cycle_N (not an array)
@@ -315,7 +334,7 @@ async function resolveCropFromRecords(candidates) {
     } catch (e) {
       console.warn(`[cropFromRecord] failed for ${l.id}:`, e.message);
     }
-  }
+  });
 }
 
 // unionAddress -> in-flight Promise. Ensures concurrent triggers (mount +
@@ -445,18 +464,39 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
         }
         localStorage.setItem(syncKey, String(Date.now()));
 
-        if (newlyGotFoodTokenId.length) {
-          console.log(`[activeLoans] ${newlyGotFoodTokenId.length} loans got a new foodTokenId this sync — resolving batch id now`);
-          await resolveFoodTokenBatchIds(newlyGotFoodTokenId, provider);
-        }
-        if (newlyGotRecordHash.length) {
-          const landIds = newlyGotRecordHash.map(l => l.landId ?? '?').join(', ');
-          console.log(`[activeLoans] ${newlyGotRecordHash.length} loans got a new recordHash this sync (landId: ${landIds}) — resolving satellite projection now`);
-          await resolveCropFromRecords(newlyGotRecordHash);
+        // Food-token/IPFS enrichment, backgrounded — it used to run
+        // awaited, in sequence, BEFORE the invalidate below ever fired:
+        // fetchRecordFromIPFS has no timeout or retry and the Pinata
+        // gateway routinely takes 20-60s under load, so with even a
+        // handful of loans needing re-resolution the whole active-loans
+        // list would sit blank/stale for minutes on a slow mobile
+        // connection — exactly the "takes forever, mash refresh" report
+        // from 2026-08-21. Fires its own invalidate on completion so the
+        // UI picks up health/stage/crop/EOS as they arrive, but nothing
+        // below waits on it.
+        if (newlyGotFoodTokenId.length || newlyGotRecordHash.length) {
+          (async () => {
+            try {
+              if (newlyGotFoodTokenId.length) {
+                console.log(`[activeLoans] ${newlyGotFoodTokenId.length} loans got a new foodTokenId this sync — resolving batch id now`);
+                await resolveFoodTokenBatchIds(newlyGotFoodTokenId, provider);
+              }
+              if (newlyGotRecordHash.length) {
+                const landIds = newlyGotRecordHash.map(l => l.landId ?? '?').join(', ');
+                console.log(`[activeLoans] ${newlyGotRecordHash.length} loans got a new recordHash this sync (landId: ${landIds}) — resolving satellite projection now`);
+                await resolveCropFromRecords(newlyGotRecordHash);
+              }
+            } catch (_) { /* best-effort background enrichment */ }
+            queryClient.invalidateQueries({ queryKey: ['activeLoans', unionAddress] });
+          })();
         }
       }
     } catch (_) { /* backend offline — IndexedDB stays the source of truth */ }
 
+    // Fast path — the backend-synced list itself is already upserted into
+    // IndexedDB above. Fires unconditionally (success or failure) so the UI
+    // re-reads current IndexedDB state either way, same as before this
+    // enrichment was backgrounded.
     queryClient.invalidateQueries({ queryKey: ['activeLoans', unionAddress] });
   })();
 

@@ -690,18 +690,22 @@ export default function ActiveLoansCard({
         <p className="text-xs text-gray-400 dark:text-slate-500 text-center py-3">
           No loans synced yet.
         </p>
+        {/* The list is backend/remote-sourced (/loans/sync), not something
+            that needs an on-chain event scan to discover — that's what the
+            top-right refresh icon already does. Used to default straight to
+            handleDeepSync's expensive on-chain "Scan 24h" escalation here,
+            which is the wrong first move when there's simply nothing to
+            sync remotely yet. Kept as a manual fallback (not auto-offered)
+            for the rare case the backend itself is missing a loan that
+            genuinely exists on-chain — data-tour anchor kept for that flow. */}
         <div data-tour="loan-sync" className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-slate-600">
-          <span className="text-[10px] text-gray-500 dark:text-slate-400">Scan chain events</span>
+          <span className="text-[10px] text-gray-500 dark:text-slate-400">Still nothing?</span>
           <button
-            onClick={handleDeepSync}
-            disabled={syncing || syncStep >= SYNC_STEPS.length}
+            onClick={onRefresh}
+            disabled={refreshing || syncing}
             className="text-[10px] font-semibold px-2 py-0.5 rounded bg-black dark:bg-white text-white dark:text-gray-800 active:scale-95 disabled:opacity-40"
           >
-            {syncing
-              ? 'Scanning…'
-              : syncStep >= SYNC_STEPS.length
-                ? 'No loans found'
-                : `Scan ${SYNC_STEPS[syncStep].label}`}
+            {refreshing || syncing ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
       </div>
