@@ -205,17 +205,23 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
   // settlementShortfall — sourced from useUnionCashReserve (systemHealth embedded there)
   const settlementShortfall = data?.settlementShortfall ?? 0n;
 
-  // hasOverdueLoans — mirrors ActiveLoansCard's tight 21-day-default-style
-  // rule for TRUSTED harvest dates only: confirmed on-chain maturityTs, or
-  // the satellite record's own projection.projected_eos_date (see
-  // resolveCropFromRecords in useActiveLoans.js) — never a fabricated
-  // guess. The frontend's flat per-crop cycle-days fallback was removed
-  // 2026-08-20 (it diverged from the satellite's own projection by
-  // 100-450+ days across this union's loans, even after correcting the
-  // crop family). This is a local display echo, not its own enforcement —
-  // the real gate is NilaSensingAgent's voucher/generic.py
-  // has_overdue_loans() at voucher-issuance time. A loan with neither a
-  // confirmed date nor a satellite projection is skipped, not flagged.
+  // hasOverdueLoans — mirrors ActiveLoansCard's payback-date rule for
+  // TRUSTED dates only: confirmed on-chain maturityTs takes unconditional
+  // priority; otherwise the LATER of (satProjectedEos + 3 weeks) and
+  // (drawdownTs + 3 months + 3 weeks) — see the 2026-08-21 payback-date
+  // investigation in ActiveLoansCard.js for why both tiers need the same
+  // +3-week grace convention (so this doesn't flag a loan overdue the
+  // instant the satellite-projected harvest passes, before there's been
+  // any real chance to sell the crop and repay) and why the drawdown floor
+  // can only push the effective date later, never earlier, than what
+  // satellite says (the frontend's flat per-crop cycle-days fallback that
+  // used to fully REPLACE the satellite estimate was removed 2026-08-20
+  // after diverging by 100-450+ days — this floor can't reproduce that
+  // since it never wins against a later satellite estimate). This is a
+  // local display echo, not its own enforcement — the real gate is
+  // NilaSensingAgent's voucher/generic.py has_overdue_loans() at
+  // voucher-issuance time. A loan with none of the three dates is
+  // skipped, not flagged.
   const OVERDUE_LOAN_GRACE_DAYS = 14;
   const hasOverdueLoans = useMemo(() => {
     const loans = loansData?.activeLoans ?? [];
@@ -223,8 +229,19 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
     return loans.some((l) => {
       if (l.chainClosed) return false;
       let harvestTs = l.maturityTs ? Number(l.maturityTs) : null;
-      if (!harvestTs && l.satProjectedEos) {
-        harvestTs = Math.floor(new Date(l.satProjectedEos + 'T00:00:00Z').getTime() / 1000);
+      if (!harvestTs) {
+        const satPaybackTs = l.satProjectedEos
+          ? Math.floor(new Date(l.satProjectedEos + 'T00:00:00Z').getTime() / 1000) + 21 * 86400
+          : null;
+        const minRepayTs = l.drawdownTs
+          ? (() => {
+              const d = new Date(Number(l.drawdownTs) * 1000);
+              d.setUTCMonth(d.getUTCMonth() + 3);
+              d.setUTCDate(d.getUTCDate() + 21);
+              return Math.floor(d.getTime() / 1000);
+            })()
+          : null;
+        harvestTs = (minRepayTs && (!satPaybackTs || minRepayTs > satPaybackTs)) ? minRepayTs : satPaybackTs;
       }
       if (!harvestTs) return false;
       return (nowSec - harvestTs) > OVERDUE_LOAN_GRACE_DAYS * 86400;
@@ -821,7 +838,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
                   <span className="text-xs font-semibold dark:text-white">New loans on hold</span>
                 </div>
                 <p className="text-[10px] text-red leading-snug">
-                  An active loan is over {OVERDUE_LOAN_GRACE_DAYS} days overdue past harvest.
+                  An active loan is over {OVERDUE_LOAN_GRACE_DAYS} days overdue past its payback date.
                 </p>
               </div>
             )}
