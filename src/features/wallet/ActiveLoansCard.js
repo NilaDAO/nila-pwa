@@ -545,6 +545,11 @@ export default function ActiveLoansCard({
   const sorted = useMemo(() => {
     const mul = sortDir === 'asc' ? 1 : -1;
     return [...enriched].sort((a, b) => {
+      // Closed loans always sort last, regardless of column/direction —
+      // they're historical, not something a leader is triaging against the
+      // active ones. Unaffected by `mul` on purpose: reversing eos/amount/
+      // name sort shouldn't pull them back up to the top.
+      if (a.chainClosed !== b.chainClosed) return a.chainClosed ? 1 : -1;
       switch (sortKey) {
         case 'name':   return mul * a.displayName.localeCompare(b.displayName);
         case 'amount': return mul * (a.totalAmount - b.totalAmount);
