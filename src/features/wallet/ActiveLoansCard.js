@@ -79,9 +79,9 @@ const PAYBACK_WARNING_DAYS = 21;
  * gray row, not a guessed overdue flag.
  */
 const eosRowBg = (daysEos, chainClosed) => {
-  if (chainClosed) return 'bg-red-50 dark:bg-red-900/20 opacity-60';
+  if (chainClosed) return 'bg-red-50 opacity-60';
   if (daysEos == null) return 'bg-gray-50 dark:bg-slate-700';
-  if (daysEos < 0) return 'bg-red-50 dark:bg-red-900/20';
+  if (daysEos < 0) return 'bg-red/50 dark:bg-amber-900/30';
   // Reuses the orange-50/orange-900 pair the old pre-deadline tier already
   // proved out in both themes here — amber-50/amber-900 (tried first) read
   // as plain yellow in light mode and nearly invisible against
