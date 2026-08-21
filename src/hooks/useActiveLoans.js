@@ -189,18 +189,25 @@ async function resolveFoodTokenBatchIds(candidates, provider) {
 }
 
 /**
- * Resolves a projected harvest date (and, for loans with no food-token crop
- * data, cropFamily too) from the satellite record.json. Fetched via
- * loan.recordHash (backend's report_hash) straight from Pinata — a free,
- * content-addressed IPFS read, NOT the fee-gated on-chain getRecordHash()
- * path in useRecordHash.ts.
+ * Resolves a projected harvest date, the matched cycle's own start date
+ * (satSos), and (for loans with no food-token crop data) cropFamily too,
+ * from the satellite record.json. Fetched via loan.recordHash (backend's
+ * report_hash) straight from Pinata — a free, content-addressed IPFS read,
+ * NOT the fee-gated on-chain getRecordHash() path in useRecordHash.ts.
  *
- * Picks the *open* cycle whose sos is closest to the loan's drawdownTs (i.e.
- * the cycle this loan actually financed). Runs for EVERY loan with a
- * recordHash, food-token or not — food-token loans already have an
+ * Picks the *open* cycle whose sos is closest to the loan's drawdownTs.
+ * (Previously preferred the food token's own sosTs as the anchor when
+ * present, on the theory that an on-chain-committed sowing date beats a
+ * drawdown-date proxy — reverted 2026-08-21: sosTs turned out to often be a
+ * system-suggested default the farmer/leader just accepted rather than a
+ * verified date, so it's not a trustworthy anchor. ActiveLoansCard.js's
+ * `enriched` memo now validates the resulting satSos against drawdownTs
+ * itself — see the ±20-day trust window there — rather than trying to
+ * pick a better anchor here.) Runs for EVERY loan with a recordHash, food-token
+ * or not — food-token loans already have an
  * authoritative cropFamily (Step 3's unpackTokenId), so this only adds
- * satProjectedEos for them, never overwriting cropFamily/cropSource. For
- * loans with no food token, the matched cycle's detected crop_type also
+ * satProjectedEos/satSos for them, never overwriting cropFamily/cropSource.
+ * For loans with no food token, the matched cycle's detected crop_type also
  * maps onto the same `cropFamily` field, so CropIcon consumes it identically
  * regardless of source.
  *
@@ -216,16 +223,10 @@ async function resolveFoodTokenBatchIds(candidates, provider) {
 async function resolveCropFromRecords(candidates) {
   if (!candidates?.length) return;
   const fresh = await readAllItems('ActiveLoans') ?? {};
-  // Temporary diagnostic for the "food-token loans never get a harvest date
-  // or health" report — logs why `best` (the matched open cycle) does or
-  // doesn't resolve per loan, so we can see the real cause instead of
-  // guessing at one.
-  const diag = [];
   for (const l of candidates) {
     try {
       const record = await fetchRecordFromIPFS(l.recordHash);
       const cycles = Array.isArray(record?.cycles) ? record.cycles : [];
-      const openCycles = cycles.filter(c => c.is_open);
       const drawdownMs = Number(l.drawdownTs) * 1000;
       let best = null;
       let bestDiff = Infinity;
@@ -245,6 +246,7 @@ async function resolveCropFromRecords(candidates) {
         : null;
 
       const satProjectedEos = best?.projection?.projected_eos_date ?? null;
+      const satSos = best?.sos ?? null;
 
       // Crop identity only for non-food-token loans — food tokens already
       // carry an authoritative, on-chain-attested cropFamily (Step 3) that a
@@ -266,11 +268,26 @@ async function resolveCropFromRecords(candidates) {
       const health = live?.health ?? null;
       const healthSummary = live?.health_summary ?? null;
       const healthDescription = live?.health_description ?? null;
+      // Growth-stage classification — same `current_cycle` entry as health,
+      // same "only populated on the live zone" caveat. Raw pass-through,
+      // whatever vocabulary NilaSensingAgent uses — the frontend doesn't
+      // invent or normalize this string.
+      const stage = live?.stage ?? null;
+      const stageDescription = live?.stage_description ?? null;
+      // Yield estimate — lives on the matched *cycle* itself (cycles[]),
+      // not current_cycle/live. Real field, confirmed present in actual
+      // record.json output during the 2026-08-21 investigation, but null on
+      // every open/in-progress cycle seen so far — likely only populated
+      // once a cycle closes (or once the yield model has enough signal).
+      const yieldKgPerAcre = best?.yield_kg_per_acre ?? null;
 
       const updated = {
         ...(fresh[l.id] ?? l),
         ...(cropFamily != null ? { cropFamily, cropSource: 'satellite', cropConfidence: confidence } : {}),
         ...(satProjectedEos != null ? { satProjectedEos } : {}),
+        ...(satSos != null ? { satSos } : {}),
+        ...(stage != null ? { stage, stageDescription } : {}),
+        ...(yieldKgPerAcre != null ? { yieldKgPerAcre } : {}),
         ...(health != null ? { health, healthSummary, healthDescription } : {}),
         // Stamped even when nothing new was extracted (no matching open
         // cycle, no health yet) so this loan isn't re-fetched every sync —
@@ -283,26 +300,10 @@ async function resolveCropFromRecords(candidates) {
       };
       await setDBitem(l.id, updated, 'ActiveLoans');
       fresh[l.id] = updated;
-      diag.push({
-        id: l.id,
-        foodTokenId: l.foodTokenId ?? null,
-        drawdownTs: l.drawdownTs ?? null,
-        cycles: cycles.length,
-        openCycles: openCycles.length,
-        bestFound: !!best,
-        bestSos: best?.sos ?? null,
-        bestZoneId: best?.zone_id ?? null,
-        currentCycleLen: Array.isArray(record?.current_cycle) ? record.current_cycle.length : null,
-        liveFound: !!live,
-        satProjectedEos,
-        health,
-      });
     } catch (e) {
       console.warn(`[cropFromRecord] failed for ${l.id}:`, e.message);
-      diag.push({ id: l.id, foodTokenId: l.foodTokenId ?? null, error: e.message });
     }
   }
-  console.table(diag);
 }
 
 // unionAddress -> in-flight Promise. Ensures concurrent triggers (mount +
@@ -573,13 +574,12 @@ export function useLiveTreasuryEarningsPending(activeLoans, treasuryFeeBP, rainy
     return () => clearInterval(id);
   }, []);
 
-  // Temporary diagnostic for the "treasury earnings pending looks inflated"
-  // report — one-off fetch of the ground-truth lowerRate flag (rateBP <
-  // minRateBP at drawdown, straight off GenericFundCore.loans(), see
-  // getBorrowerInfo's pending viewer fix) so the console.table below can show
-  // it next to the rateBP<=totalFeeBP forfeiture this hook actually applies.
-  // Runs once per loan-id set, not on every INTEREST_TICK_MS tick — do not
-  // fold this into useActiveLoansChainSync's own recurring Multicall3 batch.
+  // Ground-truth lowerRate flag (rateBP < minRateBP at drawdown, straight off
+  // GenericFundCore.loans(), see getBorrowerInfo's pending viewer fix) — used
+  // by shareOf below to zero out a forfeited loan's share regardless of
+  // whether rateBP still clears totalFeeBP. Runs once per loan-id set, not on
+  // every INTEREST_TICK_MS tick — do not fold this into
+  // useActiveLoansChainSync's own recurring Multicall3 batch.
   const loanIdsKey = (activeLoans ?? []).map(l => l.id).join(',');
   useEffect(() => {
     if (!activeLoans?.length || !provider || !unionAddress) return;
@@ -620,14 +620,6 @@ export function useLiveTreasuryEarningsPending(activeLoans, treasuryFeeBP, rainy
 
   return useMemo(() => {
     if (!activeLoans?.length || !totalFeeBP) return 0;
-    console.table(activeLoans.map(l => ({
-      id: l.id,
-      rateBP: l.rateBP,
-      totalFeeBP,
-      forfeited: lowerRateById[l.id] ?? null,
-      chainVerified: l.chainVerified,
-      share: shareOf(l),
-    })));
     return activeLoans.reduce((sum, l) => sum + shareOf(l), 0);
   }, [activeLoans, totalFeeBP, shareOf]);
 }
@@ -825,15 +817,19 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
       }
 
       // Step 3: batch unpackTokenId for every loan carrying a foodTokenId but
-      // no cropFamily yet. Resolved once for the whole list here (not lazily
-      // per-expanded-row) so the harvest-column crop-adjusted cycle-days
-      // estimate is correct for every food-token loan, not just whichever
-      // one the user happens to click open.
+      // missing cropFamily and/or sosTs. Resolved once for the whole list
+      // here (not lazily per-expanded-row) so the harvest-column
+      // crop-adjusted cycle-days estimate — and the portfolio Gantt's start
+      // date — are correct for every food-token loan, not just whichever one
+      // the user happens to click open. unpackTokenId already returns sosTs
+      // alongside cropCode (see ActiveLoansCard.js's per-row ftData fetch);
+      // it used to be decoded and discarded here — now persisted so the
+      // portfolio view doesn't need its own separate on-chain round-trip.
       if (_ftAddr) {
         const freshForCrop = await readAllItems('ActiveLoans') ?? {};
         const needCropFamily = Object.values(freshForCrop)
-          .filter(l => l.foodTokenId && l.cropFamily == null && !l.chainClosed);
-        console.log(`[chainSync] ${needCropFamily.length} loans need cropFamily resolution`);
+          .filter(l => l.foodTokenId && (l.cropFamily == null || l.sosTs == null) && !l.chainClosed);
+        console.log(`[chainSync] ${needCropFamily.length} loans need cropFamily/sosTs resolution`);
         if (needCropFamily.length > 0) {
           const mc = new ethers.Contract(MULTICALL3, MulticallAbi, provider);
           const ftIface = new ethers.Interface(_ftAbi);
@@ -846,7 +842,8 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
               const unpacked = ftIface.decodeFunctionResult('unpackTokenId', cropResults[k].returnData);
               const combined = Number(unpacked.cropCode ?? unpacked[1] ?? 0);
               const cropFamily = Math.floor(combined / 1000);
-              const updated = { ...(freshForCrop[l.id] ?? l), cropFamily };
+              const sosTs = Number(unpacked.sosTs ?? unpacked[2] ?? 0) || null;
+              const updated = { ...(freshForCrop[l.id] ?? l), cropFamily, ...(sosTs != null ? { sosTs } : {}) };
               await setDBitem(l.id, updated, 'ActiveLoans');
             } catch (e) {
               console.warn(`[chainSync] unpackTokenId decode failed for ${l.id}:`, e.message);
