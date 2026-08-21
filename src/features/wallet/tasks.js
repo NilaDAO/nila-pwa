@@ -8,8 +8,10 @@ import Spinner from '../../components/UI/spinner';
 // subtitle, swipe hint) no longer fits — the card stack above claims space
 // first (it's flex-shrink-0), so a busy stack can squeeze this slot down to
 // its 120px floor. Compact mode swaps to a smaller icon-left row so content
-// stays legible instead of being clipped.
-const COMPACT_HEIGHT = 190;
+// stays legible instead of being clipped. 190 (tuned against a small/busy
+// test device) was tripping compact mode on plenty of real phones that had
+// comfortable room to spare — lowered to sit closer to the 120px floor.
+const COMPACT_HEIGHT = 150;
 
 const TaskMessage = ({ LAND, CAP, inArrays }) => {
     const [ index, setIndex ] = useState(0);
