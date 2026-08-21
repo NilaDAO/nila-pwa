@@ -1037,7 +1037,7 @@ const PortfolioCards = () => {
         >
           <span className="h-1 w-16 rounded-full bg-slate-300 dark:bg-slate-500" />
         </div>
-        <div className="flex flex-col px-6 pb-2 gap-3">
+        <div className="flex flex-col px-3 pb-2 gap-3">
           <div className="px-4">
             <h3 className="font-bold dark:text-white">Harvest Calendar</h3>
             <p className="text-[10px] dark:text-slate-500">{metadata ? Object.keys(metadata).length : resolvedIds.length} properties · {activeIds.length} active{fieldActivity?.outlinesOnly ? ' · outlines only' : ''}</p>
@@ -1202,16 +1202,15 @@ const PortfolioCards = () => {
                         />
                       )}
                       {barLeftPct != null && (
-                        // SOS marker — blue when satellite-verified (within
-                        // 20 days of drawdown), white when it's just the
-                        // drawdownTs fallback (not satellite-confirmed).
+                        // SOS marker — barLeftPct only gets set when loan.sos
+                        // is present (see above), and loan.sos is only ever
+                        // set from a satellite-matched cycle (ActiveLoansCard's
+                        // enriched memo dropped the drawdownTs fallback
+                        // 2026-08-21), so this is always the verified case.
                         <span
                           className="absolute top-1/2 w-1.5 h-1.5 rounded-full -translate-y-1/2 -translate-x-1/2 ring-1 ring-black/20"
-                          style={{
-                            left: `${barLeftPct}%`,
-                            background: loan?.sosSource === 'satellite' ? '#3B82F6' : '#FFFFFF',
-                          }}
-                          title={loan?.sosSource === 'satellite' ? 'SOS: satellite-verified' : 'SOS: drawdown date (not satellite-confirmed)'}
+                          style={{ left: `${barLeftPct}%`, background: '#3B82F6' }}
+                          title="SOS: satellite-verified"
                         />
                       )}
                       <span

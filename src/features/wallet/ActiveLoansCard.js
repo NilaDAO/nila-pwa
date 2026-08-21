@@ -24,6 +24,17 @@ const DAY_MS = 86_400_000;
 const SWIPE_REVEAL  = 60;
 const SWIPE_TRIGGER = 80;
 const SWIPE_MAX     = 160;
+
+// Extended wording for the expanded row's loan-stage badge only — the
+// filter-bar pills stay short (loan.loanStage's own value) since they need
+// to fit compactly; this is purely a display-text lookup, not a second
+// source of truth (loan.loanStage itself is still the enum-ish short form).
+const LOAN_STAGE_LONG_LABEL = {
+  Operating: 'Operating Credit line',
+  Cultivation: 'Cultivation loan',
+  'Pre-harvest': 'Pre-harvest finance',
+};
+
 const formatDate = (ts) => {
   if (!ts) return '--';
   const d = new Date(Number(ts) * 1000);
@@ -52,32 +63,51 @@ const formatEosDate = (isoDate) => {
   return `${part} ${month}${yearStr}`;
 };
 
+// Amber warning window before the payback date — 3 weeks, same grace
+// period already baked into eosDate itself (satEOS+3wk / drawdown+3mo+3wk).
+// "date minus 3 weeks": amber starts 21 days out, red once daysEos goes
+// negative (payback date itself has passed) — no separate escalation
+// tier past that, unlike the old -14-day red/orange split this replaces.
+const PAYBACK_WARNING_DAYS = 21;
+
 /**
- * Row background: orange when past the EOS date (grace period), red once
- * <1 week from the 21-day default-style deadline. Fires only when there's a
- * real EOS date — confirmed on-chain maturityTs or the satellite record's
- * own projection.projected_eos_date — never a fabricated guess (the
- * frontend's flat per-crop cycle-days fallback was removed 2026-08-20).
- * A loan with neither shows as a plain gray row, not a guessed overdue flag.
+ * Row background: amber inside the 3-week payback warning window, red once
+ * the payback date has passed. Fires only when there's a real eosDate —
+ * confirmed on-chain maturityTs, or the satellite/minimum-floor payback
+ * date — never a fabricated guess (the frontend's flat per-crop cycle-days
+ * fallback was removed 2026-08-20). A loan with neither shows as a plain
+ * gray row, not a guessed overdue flag.
  */
 const eosRowBg = (daysEos, chainClosed) => {
   if (chainClosed) return 'bg-red-50 dark:bg-red-900/20 opacity-60';
   if (daysEos == null) return 'bg-gray-50 dark:bg-slate-700';
-  if (daysEos < -14) return 'bg-red-50 dark:bg-red-900/20';
-  if (daysEos < 0)   return 'bg-orange-50 dark:bg-orange-900/20';
+  if (daysEos < 0) return 'bg-red-50 dark:bg-red-900/20';
+  // Reuses the orange-50/orange-900 pair the old pre-deadline tier already
+  // proved out in both themes here — amber-50/amber-900 (tried first) read
+  // as plain yellow in light mode and nearly invisible against
+  // dark:bg-slate-700 in dark mode.
+  if (daysEos <= PAYBACK_WARNING_DAYS) return 'bg-amber-500/50 dark:bg-amber-500/30';
   return 'bg-gray-50 dark:bg-slate-700';
 };
 
-/** Status icon: EOS overdue (contract or satellite-projected) > chain verification status */
+/** Status icon: payback-date proximity (amber within 3wk, red once passed) > chain verification status */
 function StatusIcon({ loan }) {
   if (loan.chainClosed) {
     return <XCircleIcon className="w-4 h-4 text-black dark:text-white" title="Closed on-chain" />;
   }
-  if (loan.daysToEos != null && loan.daysToEos < -14) {
-    return <ExclamationTriangleIcon className="w-4 h-4 text-red" title={loan.eosSource === 'contract' ? 'Default deadline within 1 week' : 'Satellite-projected harvest deadline passed'} />;
-  }
   if (loan.daysToEos != null && loan.daysToEos < 0) {
-    return <ExclamationTriangleIcon className="w-4 h-4 text-orange dark:text-orange-400" title={loan.eosSource === 'contract' ? 'Past maturity' : 'Past satellite-projected harvest'} />;
+    return <ExclamationTriangleIcon className="w-4 h-4 text-red" title={
+      loan.eosSource === 'contract' ? 'Default deadline within 1 week'
+        : loan.eosSource === 'minimum' ? 'Minimum repayment period deadline passed'
+        : 'Satellite-projected payback deadline passed'
+    } />;
+  }
+  if (loan.daysToEos != null && loan.daysToEos <= PAYBACK_WARNING_DAYS) {
+    return <ExclamationTriangleIcon className="w-4 h-4 text-amber-500 dark:text-amber-300" title={
+      loan.eosSource === 'contract' ? 'Maturity within 3 weeks'
+        : loan.eosSource === 'minimum' ? 'Minimum repayment period ends within 3 weeks'
+        : 'Satellite-projected payback date within 3 weeks'
+    } />;
   }
   if (loan.chainVerified) {
     return <CheckCircleIcon className="w-4 h-4 text-green dark:text-green_dark" title="Verified on-chain" />;
@@ -131,7 +161,7 @@ function CropIcon({ cropColorKey, className, dim }) {
 const COLUMNS = [
   { key: 'name',   label: 'Name',   align: 'left' },
   { key: 'amount', label: 'Amount', align: 'right' },
-  { key: 'eos',    label: 'Harvest', align: 'right' },
+  { key: 'eos',    label: 'Payback', align: 'right' },
   { key: 'status', label: '',       align: 'right' },
 ];
 
@@ -201,6 +231,18 @@ export default function ActiveLoansCard({
   const [selectedFund, setSelectedFund] = useState('all');
   const [fundOpen, setFundOpen] = useState(false);
   const fundRef = useRef(null);
+  // Loan-stage filter (Operating/Cultivation/Pre-harvest) — same
+  // tap-to-exclude pattern as staticCards.js's crop filter bar, just keyed
+  // by loanStage instead of cropFamily and scoped locally to this list (no
+  // shared fieldActivity state to sync with the map here).
+  const [stageFilterExcluded, setStageFilterExcluded] = useState(() => new Set());
+  const toggleStageFilter = useCallback((key) => {
+    setStageFilterExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
   const [syncStep, setSyncStep] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const { wallet } = useWallet();
@@ -329,22 +371,59 @@ export default function ActiveLoansCard({
       const eos = eosMap.get(l.id);
       // Harvest column priority: 1) maturityTs — on-chain, only ever set once
       // manually verified (reportMaturity is currently email-gated, see
-      // beats/chain_writer.py). 2) the satellite record's own
-      // projection.projected_eos_date (a model projection from the cycle's
-      // actual observed NDVI/weather trajectory, computed server-side by
-      // NilaSensingAgent — see resolveCropFromRecords in useActiveLoans.js)
-      // when the matched cycle has produced one. No further fallback: the
-      // frontend used to also guess drawdown + a flat per-crop cycle-days
-      // table, but that diverged from the satellite's own projection by
-      // 100-450+ days across this union's loans even after correcting the
-      // crop family — see the 2026-08-20 harvest-column analysis. Removed
-      // in favor of relying on the backend's own (now-fixed) estimate
-      // exclusively; a loan with neither shows "--", not a guess.
+      // beats/chain_writer.py) — a real confirmed date, never second-guessed
+      // by anything below. 2) otherwise, the LATER of the satellite record's
+      // own projection.projected_eos_date (a model projection from the
+      // cycle's actual observed NDVI/weather trajectory, computed
+      // server-side by NilaSensingAgent — see resolveCropFromRecords in
+      // useActiveLoans.js) and a minimum-repayment floor (drawdownTs + 3
+      // months + 3 weeks). 2026-08-21: the frontend used to also guess
+      // drawdown + a flat per-crop cycle-days table as a full REPLACEMENT
+      // estimate, but that diverged from the satellite's own projection by
+      // 100-450+ days across this union's loans — removed for that reason
+      // (see the 2026-08-20 harvest-column analysis). This floor is
+      // different in kind: it never overrides a satellite estimate that's
+      // already later, it only guards against a satellite estimate landing
+      // implausibly early (before any real minimum repayment period could
+      // have elapsed) — so it can't reproduce that divergence, it can only
+      // push the shown date later, never earlier, than what satellite says.
       const maturityDate = l.maturityTs
         ? new Date(Number(l.maturityTs) * 1000).toISOString().slice(0, 10)
         : null;
       const satProjectedDate = l.satProjectedEos || null;
-      const eosDate = maturityDate || satProjectedDate;
+      // Payback date, not the bare harvest date — 3 weeks after the
+      // satellite's projected harvest, so the loan isn't flagged overdue
+      // the instant the crop is ready, before there's been any real chance
+      // to sell it and repay. Same grace-period convention as minRepayDate
+      // below and the on-chain 'contract' path's 21-day post-maturity
+      // grace window. Kept separate from satProjectedDate itself, which
+      // stays the raw harvest date for the "Projected harvest" detail row.
+      const satPaybackDate = satProjectedDate
+        ? (() => {
+            const d = new Date(satProjectedDate + 'T00:00:00Z');
+            d.setUTCDate(d.getUTCDate() + 21);
+            return d.toISOString().slice(0, 10);
+          })()
+        : null;
+      const minRepayDate = l.drawdownTs
+        ? (() => {
+            const d = new Date(Number(l.drawdownTs) * 1000);
+            d.setUTCMonth(d.getUTCMonth() + 3);
+            d.setUTCDate(d.getUTCDate() + 21);
+            return d.toISOString().slice(0, 10);
+          })()
+        : null;
+      let eosDate = maturityDate;
+      let eosSource = maturityDate ? 'contract' : null;
+      if (!eosDate) {
+        if (minRepayDate && (!satPaybackDate || minRepayDate > satPaybackDate)) {
+          eosDate = minRepayDate;
+          eosSource = 'minimum';
+        } else if (satPaybackDate) {
+          eosDate = satPaybackDate;
+          eosSource = 'satellite';
+        }
+      }
       const daysEos = daysToDate(eosDate);
       // Season-start counterpart to eosDate, for the portfolio Gantt (see
       // staticCards.js's PortfolioCards). Simplified 2026-08-21: the food
@@ -352,22 +431,52 @@ export default function ActiveLoansCard({
       // the farmer/leader just accepted rather than a verified date (see the
       // land-52 investigation — its sosTs landed 8 days from a stale/unrelated
       // satellite zone, not the zone this loan actually financed) — dropped
-      // from consideration entirely. Trust the satellite-matched cycle's own
-      // satSos only when it's plausibly the same season as this loan's
-      // drawdown (within 20 days either way); otherwise the match is likely
-      // wrong and drawdownTs itself — a real, always-available date, just not
-      // satellite-confirmed — is the honest fallback. sosSource drives the
-      // blue (verified) vs white (fallback) marker on the Gantt bar.
-      const drawdownDate = l.drawdownTs
-        ? new Date(Number(l.drawdownTs) * 1000).toISOString().slice(0, 10)
-        : null;
-      let sosDate = drawdownDate;
-      let sosSource = drawdownDate ? 'drawdown' : null;
-      if (l.satSos && l.drawdownTs) {
-        const diffDays = Math.abs(new Date(l.satSos).getTime() - Number(l.drawdownTs) * 1000) / DAY_MS;
-        if (diffDays <= 20) {
-          sosDate = new Date(l.satSos).toISOString().slice(0, 10);
-          sosSource = 'satellite';
+      // from consideration entirely. Used to also reject the satellite-matched
+      // cycle's own satSos when it was more than 20 days from drawdownTs,
+      // falling back to drawdownTs itself on the theory that a big gap meant
+      // the match was wrong. Removed 2026-08-21 (land-33 investigation): the
+      // cycle match itself is already the real safeguard (closest sos among
+      // THIS land's own open cycles beats every other candidate, picked
+      // upstream in useActiveLoans.js's resolveCropFromRecords) — an absolute
+      // day-count on top of that can't distinguish "wrong cycle" from "right
+      // cycle, unusually-timed drawdown" (e.g. a post-harvest loan, drawn
+      // long after the season's real SOS). Rejecting satSos there paired a
+      // fallback SOS with the (still unconditionally trusted, see eosDate
+      // above) satellite EOS from the very cycle just rejected, showing an
+      // impossible cycle length. 2026-08-21: dropped the drawdownDate
+      // fallback entirely too — showing an unconfirmed drawdown-as-SOS guess
+      // is worse than showing nothing, now that satSos is trusted whenever
+      // present. sos is null (DetailRow below hides, Gantt bar in
+      // staticCards.js skips its marker) when no cycle matched at all —
+      // dropped the separate sosSource field once it became just a boolean
+      // restating that (every non-null sos is now satellite-sourced).
+      const sosDate = l.satSos ? new Date(l.satSos).toISOString().slice(0, 10) : null;
+      // Where in the crop's season this loan's drawdown fell — the display
+      // string itself, no separate label-lookup table (a post-harvest draw,
+      // like land 33's 92-day-after-SOS loan that motivated this — see the
+      // 2026-08-21 SOS/EOS mismatch investigation). Season split into equal
+      // thirds by elapsed *fraction*, not a fixed day count: season length
+      // ranges from ~85d (horse gram) to 365+d (sugarcane) across this
+      // portfolio, so a flat day window isn't comparable across crops the
+      // way a fraction is. Clamped at both ends — a drawdown before sos or
+      // after eos still lands in the nearest bucket rather than falling out
+      // of range. Uses the RAW season end (maturityDate/satProjectedDate),
+      // NOT eosDate — eosDate can now be the payback-adjusted date (satEOS
+      // +3wk, or the drawdown+3mo+3wk floor, added 2026-08-21), and feeding
+      // that back into a fraction of (drawdown − sos) made the season length
+      // partly a function of drawdown itself, silently reclassifying loans
+      // like land 33's from Pre-harvest to Cultivation with no real change
+      // in when the loan was drawn — this is a "where in the real crop
+      // season" question, unrelated to the payback/overdue-tracking concern.
+      const seasonEosDate = maturityDate || satProjectedDate;
+      let loanStage = null;
+      if (sosDate && seasonEosDate && l.drawdownTs) {
+        const sosMs = new Date(sosDate + 'T00:00:00Z').getTime();
+        const eosMs = new Date(seasonEosDate + 'T00:00:00Z').getTime();
+        const seasonMs = eosMs - sosMs;
+        if (seasonMs > 0) {
+          const frac = (Number(l.drawdownTs) * 1000 - sosMs) / seasonMs;
+          loanStage = frac < 1 / 3 ? 'Operating' : frac < 2 / 3 ? 'Cultivation' : 'Pre-harvest';
         }
       }
       // Display priority: contact name → on-chain farm name (tokenURI, cached in IDB) → 0xABCD…
@@ -389,10 +498,10 @@ export default function ActiveLoansCard({
         eosDate,
         maturityDate,
         satProjectedDate,
+        loanStage,
         daysToEos: daysEos,
-        eosSource: maturityDate ? 'contract' : satProjectedDate ? 'satellite' : null,
+        eosSource,
         sos: sosDate,
-        sosSource,
       };
     }),
     [pending, active, flagged, resolveName, eosMap, isPending, ftData]
@@ -453,6 +562,23 @@ export default function ActiveLoansCard({
       }
     });
   }, [enriched, sortKey, sortDir]);
+
+  // Distinct loan stages actually present, in season order (not
+  // alphabetical) — only render filter chips for stages that exist,
+  // mirroring presentCropKeys in staticCards.js.
+  const presentStages = useMemo(() => {
+    const s = new Set();
+    for (const l of enriched) if (l.loanStage) s.add(l.loanStage);
+    return ['Operating', 'Cultivation', 'Pre-harvest'].filter((k) => s.has(k));
+  }, [enriched]);
+  // A loan with no loanStage yet (no matched satellite cycle) stays visible
+  // regardless of filter state — same "unclassified is never hidden" rule
+  // as cropVisible in staticCards.js.
+  const stageVisible = useCallback(
+    (loan) => !loan.loanStage || !stageFilterExcluded.has(loan.loanStage),
+    [stageFilterExcluded]
+  );
+  const visible = useMemo(() => sorted.filter(stageVisible), [sorted, stageVisible]);
 
   // Accounting check: sum of principals by fund vs chain's total lent
   const accounting = useMemo(() => {
@@ -608,42 +734,42 @@ export default function ActiveLoansCard({
           paid "Buy keys" buttons — viewing keys are redundant now that
           recordHash comes for free from the backend's /loans/sync, so the
           whole pay-to-unlock flow was removed; Analyse always opens the map
-          in outlines mode). */}
-      {fundKeys.length > 0 && (
-        <div className="flex gap-2">
-        <div ref={fundRef} className="relative flex-1">
-          <button
-            onClick={() => setFundOpen((o) => !o)}
-            className="w-full text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white text-left flex items-center justify-between"
-          >
-            <span>{selectedFund === 'all' ? 'All funds' : (fundMap.get(selectedFund) || selectedFund)}</span>
-            <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${fundOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {fundOpen && (
-            <div className="absolute left-0 right-0 mt-1 z-10 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-lg overflow-hidden">
-              {[{ key: 'all', label: 'All funds' }, ...fundKeys.map((k) => ({ key: k, label: fundMap.get(k) || k }))].map((opt) => (
-                <button
-                  key={opt.key}
-                  onClick={() => { setSelectedFund(opt.key); setFundOpen(false); }}
-                  className={`w-full text-left text-xs px-3 py-1.5 ${
-                    selectedFund === opt.key
-                      ? 'bg-gray-100 dark:bg-slate-600 font-semibold'
-                      : 'active:bg-gray-50 dark:active:bg-slate-600'
-                  } dark:text-white`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+          in outlines mode). Loan-stage filter moved below the list. */}
+      <div className="flex items-center gap-2">
+        {fundKeys.length > 0 && (
+          <div ref={fundRef} className="relative flex-1 min-w-0">
+            <button
+              onClick={() => setFundOpen((o) => !o)}
+              className="w-full text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white text-left flex items-center justify-between"
+            >
+              <span>{selectedFund === 'all' ? 'All funds' : (fundMap.get(selectedFund) || selectedFund)}</span>
+              <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${fundOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {fundOpen && (
+              <div className="absolute left-0 right-0 mt-1 z-10 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-lg overflow-hidden">
+                {[{ key: 'all', label: 'All funds' }, ...fundKeys.map((k) => ({ key: k, label: fundMap.get(k) || k }))].map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => { setSelectedFund(opt.key); setFundOpen(false); }}
+                    className={`w-full text-left text-xs px-3 py-1.5 ${
+                      selectedFund === opt.key
+                        ? 'bg-gray-100 dark:bg-slate-600 font-semibold'
+                        : 'active:bg-gray-50 dark:active:bg-slate-600'
+                    } dark:text-white`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <button
           onClick={() => onViewMap?.(enriched, { outlinesOnly: true })}
           disabled={!active.length}
-          className="text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
+          className="flex-shrink-0 ml-auto text-xs px-3 py-1.5 rounded-lg border border-black dark:border-white bg-black dark:bg-white text-white dark:text-gray-800 font-bold active:scale-95 disabled:opacity-30 whitespace-nowrap"
         >Harvest Calendar</button>
-        </div>
-      )}
+      </div>
 
       {/* Column headers */}
       <div className="grid grid-cols-[1fr_6rem_5.5rem_1rem] gap-3 px-3 py-1">
@@ -663,7 +789,7 @@ export default function ActiveLoansCard({
 
       {/* Rows */}
       <div className="flex flex-col gap-1 max-h-[400px] overflow-y-auto">
-        {sorted.map((loan) => (
+        {visible.map((loan) => (
           <div key={loan.id}>
             {/* Collapsed row — swipeable */}
             {(() => {
@@ -776,8 +902,10 @@ export default function ActiveLoansCard({
                         : 'text-gray-500 dark:text-slate-300'
                 }`} title={
                   loan.eosSource === 'satellite'
-                    ? 'Satellite-projected harvest — model estimate from observed crop growth, not yet confirmed on-chain'
-                    : undefined
+                    ? 'Satellite-projected payback date — 3 weeks after the model-estimated harvest, not yet confirmed on-chain'
+                    : loan.eosSource === 'minimum'
+                      ? 'Minimum repayment floor — 3 months + 3 weeks after drawdown, later than the satellite estimate (or no satellite estimate available)'
+                      : undefined
                 }>
                   {loan.eosDate ? formatEosDate(loan.eosDate) : '--'}
                 </span>
@@ -808,7 +936,17 @@ export default function ActiveLoansCard({
               const cropFamily = loan.cropFamily ?? ftData[loan.id]?.cropFamily ?? null;
               const cropColorKey = cropFamily != null ? CROP_CODE_COLOR_KEY[cropFamily] : null;
               return (
-              <div className="mx-3 mt-1 mb-2 px-3 py-3 rounded-lg bg-gray-100 dark:bg-slate-600 flex flex-col gap-1.5">
+              <div className="mt-1 mb-2 px-3 py-3 rounded-lg bg-gray-100 dark:bg-slate-600 flex flex-col gap-1.5">
+                {!loan.chainClosed && loan.daysToEos != null && loan.daysToEos < 0 && (
+                  <p className="text-[10px] font-semibold text-red dark:text-red">
+                    ⚠ This loan is due, please contact the borrower.
+                  </p>
+                )}
+                {!loan.chainClosed && loan.daysToEos != null && loan.daysToEos >= 0 && loan.daysToEos <= PAYBACK_WARNING_DAYS && (
+                  <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-300">
+                    ⚠ This loan has to be paid back within {loan.daysToEos} day{loan.daysToEos === 1 ? '' : 's'}.
+                  </p>
+                )}
                 {/* Header: farm name (#landId) + copy address */}
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold dark:text-white">
@@ -863,6 +1001,14 @@ export default function ActiveLoansCard({
                   className="self-start text-[10px] font-semibold text-blue-500 dark:text-blue-400 active:scale-95"
                 >View property outline</button>
                 <DetailRow label="Farm score" value={loan.farmerScore ?? '--'} />
+                {loan.loanStage && (
+                  <span
+                    className="self-start text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full text-white bg-gray-800"
+                    title="Where in the crop's season this loan's drawdown fell, relative to SOS/EOS"
+                  >
+                    {LOAN_STAGE_LONG_LABEL[loan.loanStage] ?? loan.loanStage}
+                  </span>
+                )}
 
                 <Divider />
                 <DetailRow label="Fund" value={fundMap.get(loan.fund) || loan.fund || '--'} />
@@ -873,8 +1019,8 @@ export default function ActiveLoansCard({
                     label="SOS"
                     value={
                       <span
-                        className={loan.sosSource === 'satellite' ? 'text-blue-600 dark:text-blue-400 font-semibold' : undefined}
-                        title={loan.sosSource === 'satellite' ? 'Satellite-verified (matched cycle within 20 days of drawdown)' : 'Drawdown date — not satellite-confirmed'}
+                        className="text-blue-600 dark:text-blue-400 font-semibold"
+                        title="Satellite-verified — matched cycle closest to this loan's drawdown among the property's own open cycles"
                       >
                         {formatEosDate(loan.sos)}
                       </span>
@@ -885,9 +1031,16 @@ export default function ActiveLoansCard({
                   <DetailRow
                     label="Record"
                     value={
-                      <span title={loan.recordHash}>
+                      <a
+                        href={`${window.location.origin}/record/${loan.recordHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={loan.recordHash}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-blue-500 dark:text-blue-400 underline"
+                      >
                         {loan.recordHash.slice(0, 8)}…{loan.recordHash.slice(-6)}
-                      </span>
+                      </a>
                     }
                   />
                 )}
@@ -941,23 +1094,6 @@ export default function ActiveLoansCard({
                 )}
 
                 <div className="flex flex-col mt-3">
-                {!loan.chainClosed && loan.daysToEos != null && loan.daysToEos < 0 && (
-                  <p className={`text-[10px] font-semibold ${loan.daysToEos < -14 ? 'text-red dark:text-red' : 'text-orange-600 dark:text-orange-400'}`}>
-                    {loan.eosSource === 'contract' ? (
-                      <>
-                        ⚠ Close this loan before it defaults
-                        {loan.daysToEos < -14
-                          ? ` — default deadline passed ${Math.abs(loan.daysToEos + 21)} days ago.`
-                          : ` — ${21 + loan.daysToEos} days left before default.`}
-                      </>
-                    ) : (
-                      <>
-                        ⚠ Satellite-projected harvest is {Math.abs(loan.daysToEos)} days overdue
-                        {loan.daysToEos < -14 ? ' — confirm status.' : '.'}
-                      </>
-                    )}
-                  </p>
-                )}
                 {loan.chainClosed && (
                   <p className="text-[10px] text-red dark:text-red">
                     This loan is {loan.defaulted ? 'defaulted' : 'closed'} on-chain but still in the backend list.
@@ -971,6 +1107,32 @@ export default function ActiveLoansCard({
           </div>
         ))}
       </div>
+
+      {/* Loan-stage filter — moved below the list (was grouped with Harvest
+          Calendar above it). Same tap-to-exclude pill pattern as
+          staticCards.js's crop filter bar, keyed by loanStage instead of
+          crop. Only stages actually present in the list render a chip. */}
+      {presentStages.length > 0 && (
+        <div className="flex items-center gap-2 px-1 overflow-x-auto">
+          {presentStages.map((key) => {
+            const off = stageFilterExcluded.has(key);
+            return (
+              <button
+                key={key}
+                onClick={() => toggleStageFilter(key)}
+                title={key}
+                className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-lg font-bold tracking-wide active:scale-95 transition-colors ${
+                  off
+                    ? 'bg-transparent text-gray-400 dark:text-slate-500 border border-gray-300 dark:border-slate-600'
+                    : 'bg-gray-800 text-white'
+                }`}
+              >
+                {key}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Accounting check footer */}
       {accounting.length > 0 && (
