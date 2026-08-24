@@ -704,9 +704,16 @@ const PortfolioCards = () => {
   // ── Month Gantt — replaces the old per-property stepper (was week-stepped;
   // switched to month steps since crop cycles run months long, so a 7-day
   // step barely moved the cursor relative to any given loan's [sos, eos]).
-  // monthOffset lives in shared fieldActivity (not local state) so the map's
-  // X/back button (staticNav.js's handlePortfolioBack) can reset it to "now"
-  // the same way it already resets portfolioSelected. Calendar months (via
+  // monthOffset lives in shared fieldActivity (not local state) so it resets
+  // to "now" the same way the rest of fieldActivity does on every fresh
+  // entry into the portfolio view (each caller's setFieldActivity({...})
+  // explicitly sets portfolioMonthOffset: 0 — see UnionReserve's onViewMap
+  // and useFilterTasks.js's health-warning task). The in-map X button that
+  // used to reset it mid-view (staticNav.js's handlePortfolioBack) was
+  // removed 2026-08-24 — it cleared portfolioSelected/portfolioFocusLandId
+  // without ever restoring portfolioLoans, which got stuck on one property
+  // once both "View property outline" and the health task started passing
+  // a single-loan list instead of the full portfolio. Calendar months (via
   // Date, not fixed-day chunks) since month length varies.
   const WINDOW_MONTHS = 12;
   const monthOffset = fieldActivity?.portfolioMonthOffset ?? 0;
@@ -1269,6 +1276,17 @@ const PortfolioCards = () => {
                               </li>
                             )}
                           </ul>
+                          {/* Extended health narrative — was only ever in the
+                              health issue's `title` tooltip above (issue.title),
+                              which never shows on touch devices at all. This
+                              card has the room for it, unlike the compact
+                              ActiveLoansCard row, so show it as real text here
+                              (2026-08-24). */}
+                          {loan?.healthDescription && (
+                            <p className="text-[10px] text-gray-500 dark:text-slate-400 leading-snug">
+                              {loan.healthDescription}
+                            </p>
+                          )}
                         </>
                       )}
                     </div>

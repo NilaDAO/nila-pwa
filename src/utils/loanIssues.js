@@ -1,3 +1,108 @@
+const DAY_MS = 86_400_000;
+
+/** Days from now to an ISO date string (positive = future, negative = past) */
+function daysToDate(isoDate) {
+  if (!isoDate) return null;
+  const target = new Date(isoDate + 'T00:00:00Z').getTime();
+  return Math.round((target - Date.now()) / DAY_MS);
+}
+
+/**
+ * Derives the full display/scheduling shape (eosDate, loanStage, sos,
+ * displayName, ...) from a raw loan record — the same transformation
+ * ActiveLoansCard.js's own `enriched` memo has always computed inline (that
+ * memo now just calls this). Extracted 2026-08-24 so any other consumer
+ * (useFilterTasks.js's health-warning task, building portfolioLoans for the
+ * "view property outline" map link) can produce loans in the shape
+ * staticCards.js's portfolio Gantt/graph actually reads — it silently
+ * renders nothing without eosDate/sos/cropFamily/etc., which raw loan
+ * records from useActiveLoans don't carry on their own.
+ *
+ * opts.isPending/resolveName/hasName/eosMap mirror ActiveLoansCard's own —
+ * all optional. isPending defaults to the same active/!chainClosed/
+ * !drawdownTs/!fastDraw check; resolveName/hasName default to identity/false
+ * (displayName just falls back to farmName or the raw address); eosMap's
+ * landId/farmName fallback is skipped entirely if omitted — harmless since
+ * chain sync already backfills those onto the loan directly in the common
+ * case.
+ */
+export function enrichLoan(l, opts = {}) {
+  const {
+    isPending = (loan) => Boolean(loan?.active && !loan?.chainClosed && !loan?.drawdownTs && !loan?.fastDraw),
+    resolveName = (addr) => addr,
+    hasName = () => false,
+    eosMap = null,
+  } = opts;
+
+  const eos = eosMap?.get ? eosMap.get(l.id) : null;
+
+  const maturityDate = l.maturityTs
+    ? new Date(Number(l.maturityTs) * 1000).toISOString().slice(0, 10)
+    : null;
+  const satProjectedDate = l.satProjectedEos || null;
+  const satPaybackDate = satProjectedDate
+    ? (() => {
+        const d = new Date(satProjectedDate + 'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() + 21);
+        return d.toISOString().slice(0, 10);
+      })()
+    : null;
+  const minRepayDate = l.drawdownTs
+    ? (() => {
+        const d = new Date(Number(l.drawdownTs) * 1000);
+        d.setUTCMonth(d.getUTCMonth() + 3);
+        d.setUTCDate(d.getUTCDate() + 21);
+        return d.toISOString().slice(0, 10);
+      })()
+    : null;
+  let eosDate = maturityDate;
+  let eosSource = maturityDate ? 'contract' : null;
+  if (!eosDate) {
+    if (minRepayDate && (!satPaybackDate || minRepayDate > satPaybackDate)) {
+      eosDate = minRepayDate;
+      eosSource = 'minimum';
+    } else if (satPaybackDate) {
+      eosDate = satPaybackDate;
+      eosSource = 'satellite';
+    }
+  }
+  const daysEos = daysToDate(eosDate);
+  const sosDate = l.satSos ? new Date(l.satSos).toISOString().slice(0, 10) : null;
+  const seasonEosDate = maturityDate || satProjectedDate;
+  let loanStage = null;
+  if (sosDate && seasonEosDate && l.drawdownTs) {
+    const sosMs = new Date(sosDate + 'T00:00:00Z').getTime();
+    const eosMs = new Date(seasonEosDate + 'T00:00:00Z').getTime();
+    const seasonMs = eosMs - sosMs;
+    if (seasonMs > 0) {
+      const frac = (Number(l.drawdownTs) * 1000 - sosMs) / seasonMs;
+      loanStage = frac < 1 / 3 ? 'Operating' : frac < 2 / 3 ? 'Cultivation' : 'Pre-harvest';
+    }
+  }
+  const hasContact = hasName(l.borrower);
+  const contactName = resolveName(l.borrower);
+  const landId = l.landId ?? eos?.land_id ?? null;
+  const farmName = l.farmName || eos?.farm_name || null;
+  const displayName = hasContact ? contactName : (farmName || contactName);
+
+  return {
+    ...l,
+    farmName,
+    landId,
+    hasContact,
+    displayName,
+    isPending: isPending(l),
+    totalAmount: l.amount,
+    eosDate,
+    maturityDate,
+    satProjectedDate,
+    loanStage,
+    daysToEos: daysEos,
+    eosSource,
+    sos: sosDate,
+  };
+}
+
 // Crop-health enum from the satellite record's current_cycle — see
 // resolveCropFromRecords in useActiveLoans.js. Previously duplicated
 // (identically) as PORTFOLIO_HEALTH_COLOR/LABEL in staticCards.js and
@@ -18,6 +123,27 @@ export const HEALTH_LABEL = {
   stressed: 'Stressed',
   underperforming: 'Underperforming',
 };
+
+/**
+ * Shared crop-health indicator derivation — tone/color/title only, not a
+ * rendered icon, so this stays a plain utility with no icon-library/JSX
+ * dependency; the caller picks the actual icon component (e.g.
+ * CheckCircleIcon vs ExclamationTriangleIcon) based on `tone`. Returns null
+ * when there's no health data to show at all (matches loan.health/
+ * loan.healthSummary field names, but works from any {health, healthSummary}
+ * pair — e.g. a future task object, not just a loan). Extracted 2026-08-24
+ * from ActiveLoansCard's StatusIcon so TaskMessage (tasks.js) can reuse the
+ * same tone/color/title logic once a task type carries health data.
+ */
+export function getHealthIndicator(health, healthSummary) {
+  if (!health) return null;
+  const tone = (health === 'excellent' || health === 'on_track') ? 'good' : 'warn';
+  return {
+    tone,
+    colorClass: HEALTH_COLOR[health] ?? 'text-amber dark:text-amber-300',
+    title: `Crop health: ${healthSummary || HEALTH_LABEL[health] || health}`,
+  };
+}
 
 // Schematic (hardcoded, NOT derived from real NDVI/satellite data) per-crop
 // biomass-over-cycle shape: 0 at sowing, rises to 1 (peak biomass) by

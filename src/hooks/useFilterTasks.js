@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from 'react';
-import { useDataContext, useViewModeContext } from '../utils/NavigationContext';
+import { useDataContext, useViewModeContext, useNavContext } from '../utils/NavigationContext';
 import { ethers } from 'ethers';
 import { useActiveLoans } from './useActiveLoans';
 import { useContactBook } from './useContactBook';
@@ -15,6 +15,27 @@ import { useFxPool } from './useWallet.ts';
 import { useLoadFundsData } from './useLoadFunds.ts';
 import { useCertRegistry } from './useCertRegistry.ts';
 import { useDonationPrograms, useDonationsEnabled } from './useDonationPrograms.ts';
+import { HEALTH_LABEL, enrichLoan } from '../utils/loanIssues.js';
+
+// Heroicons ExclamationTriangleIcon (20/solid) path, inlined as a data URI —
+// tasks.js's cropImg rendering mask-fills t.img in solid black onto a
+// t.iconBg-colored circle (see its cropImg branch), so this only needs to
+// supply the glyph shape; color comes from iconBg below, not from this SVG's
+// own fill. Avoids adding a new static asset for one glyph.
+const WARNING_ICON_URL = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="black">' +
+  // fill-rule/clip-rule are required — the exclamation mark's dot/bar are
+  // cut-out subpaths that only render as holes under the evenodd winding
+  // rule; without it (dropped when translating from the JSX fillRule/
+  // clipRule props to raw SVG attribute names) the whole thing filled solid
+  // instead of showing the glyph (2026-08-24).
+  '<path fill-rule="evenodd" clip-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"/>' +
+  '</svg>'
+);
+
+// Mirrors ActiveLoansCard.js's own PAYBACK_WARNING_DAYS — keep in sync so the
+// task list and the expanded loan row agree on when the warning appears.
+const PAYBACK_WARNING_DAYS = 21;
 
 export function usePolBalance(address, provider) {
   return useQuery({
@@ -50,10 +71,11 @@ export const CROP_IMG = {
 export function useFilterTasks(LAND, CAP) {
   const { db, tokenData, unionFunds, fieldActivity, setFieldActivity } = useDataContext();
   const { navRef } = useViewModeContext();
+  const { setIx, prevIx } = useNavContext();
   const { provider }                 = useProvider();
   const queryClient                  = useQueryClient();
   const isLeader                     = Boolean(db?.union?.leader);
-  const { resolveName }              = useContactBook({ enabled: false });
+  const { resolveName, hasName }     = useContactBook({ enabled: false });
   const { data: polBalance }         = usePolBalance(db?.address, provider);
   const { data: loansData, isFetched: loansFetched } = useActiveLoans(db?.union?.address, false);
   const { data: reserveData, isPending: reservePending } = useUnionCashReserve(isLeader ? db?.union?.address : undefined);
@@ -76,6 +98,29 @@ export function useFilterTasks(LAND, CAP) {
   const { data: filledCashOffers = [] } = usePendingFilledCashOffers(
     isLeader ? db?.union?.address : undefined
   );
+
+  // Shared by the crop-health and payback-warning tasks below — opens the
+  // portfolio outlines map focused on one enriched loan, replicating
+  // ActiveLoansCard's "View property outline" button (UnionReserve.js's
+  // onViewMap prop) since useFilterTasks isn't inside that component tree
+  // to receive the prop itself. ActiveLoansCard's own button also stashes
+  // the current fieldActivity into a savedFieldActivity ref (a UnionReserve
+  // prop not reachable from this hook) so back-navigation restores whatever
+  // view was active before — that one restoration nuance is lost here.
+  const openPortfolioOutline = (l) => {
+    setFieldActivity({
+      portfolioMode: true,
+      portfolioLoans: [l],
+      outlinesOnly: true,
+      portfolioLabels: false,
+      portfolioFocusLandId: l.landId,
+      portfolioMonthOffset: 0,
+      features: [],
+      geojson: { type: 'FeatureCollection', features: [] },
+    });
+    prevIx.current = 6;
+    setIx(2);
+  };
   // Donations — task shows only when the union leader enabled donations AND there
   // are active programs. Swipe-right dismisses for the session (local, like LP offers).
   const { data: donationsEnabled = false } = useDonationsEnabled(db?.union);
@@ -547,6 +592,70 @@ export function useFilterTasks(LAND, CAP) {
             swipeLeftLabel: '✕ Deny',
           };
         }) : []),
+        // Union leader: crop-health warning, one per active loan whose
+        // satellite-read health is stressed/underperforming. No accept/deny
+        // — it's a live reflection of loan.health, not an action to take,
+        // so it disappears on its own once health improves or the loan
+        // closes rather than needing manual dismissal. Swipe-right opens
+        // the portfolio outlines map focused on this land, same as
+        // ActiveLoansCard's "View property outline" button.
+        ...(isLeader ? (loansData?.activeLoans ?? [])
+          .filter(l => l.health === 'stressed' || l.health === 'underperforming')
+          .map((rawLoan, idx) => {
+            const l = enrichLoan(rawLoan, { resolveName, hasName });
+            // Same priority as the expanded loan row's own health text
+            // (ActiveLoansCard.js) — healthSummary is the short read
+            // (crop_stage's "max 6 words" field); healthDescription is a
+            // longer farmer-facing line only ever used there as a tooltip,
+            // not the visible text.
+            const desc = l.healthSummary || HEALTH_LABEL[l.health] || l.health;
+            return {
+              i: 800 + idx,
+              active: true,
+              img: WARNING_ICON_URL,
+              cropImg: true,
+              iconBg: l.health === 'underperforming' ? 'bg-red' : 'bg-amber-400',
+              swipeable: true,
+              swipeRightLabel: 'View ✓',
+              swipeHint: 'Swipe to view property outline',
+              click: () => openPortfolioOutline(l),
+              title: l.displayName,
+              subtitle: desc,
+            };
+          }) : []),
+        // Union leader: payback-date warning, one per active loan whose
+        // daysToEos (see enrichLoan) is overdue or inside the 3-week
+        // warning window — same threshold and copy as ActiveLoansCard's own
+        // expanded-row warning paragraph, so the two never disagree. Needs
+        // enrichLoan first (unlike the health task above) since daysToEos/
+        // eosDate are derived fields, not present on raw loan records.
+        ...(isLeader ? (loansData?.activeLoans ?? [])
+          .map(rawLoan => enrichLoan(rawLoan, { resolveName, hasName }))
+          .filter(l => !l.chainClosed && l.daysToEos != null && l.daysToEos <= PAYBACK_WARNING_DAYS)
+          .map((l, idx) => {
+            const overdue = l.daysToEos < 0;
+            // Overdue copy mirrors UnionReserve.js's "New loans on hold" card
+            // (hasOverdueLoans) — same rule (an active loan past its payback
+            // date freezes new lending), surfaced here too so the task
+            // itself explains the union-wide consequence, not just this loan.
+            const desc = overdue
+              ? 'This loan is due, please contact the borrower. New loans are on hold until it is resolved.'
+              : `This loan has to be paid back within ${l.daysToEos} day${l.daysToEos === 1 ? '' : 's'}.`;
+            return {
+              i: 900 + idx,
+              active: true,
+              img: WARNING_ICON_URL,
+              cropImg: true,
+              iconBg: overdue ? 'bg-red' : 'bg-amber-400',
+              urgent: overdue,
+              swipeable: true,
+              swipeRightLabel: 'View ✓',
+              swipeHint: 'Swipe to view property outline',
+              click: () => openPortfolioOutline(l),
+              title: l.displayName,
+              subtitle: desc,
+            };
+          }) : []),
         { i: 102,
           active: isLeader && treasuryLow,
           img: 'images/label-06.webp',
@@ -643,12 +752,16 @@ export function useFilterTasks(LAND, CAP) {
       ];
 
       const active = taskList.filter(t => t.active);
-      
+
+      // Overdue (red) payback warnings outrank everything else, including
+      // the pinned chain-switch/land/loan tasks below — an overdue payment
+      // is the single most urgent thing a leader can act on.
+      const urgent = active.filter(t => t.urgent);
       // Pin chain-switch (i=0), land (i=2), and loan tasks (i=7+) first in order, shuffle the rest
       const isLoan = (t) => t.i >= 7 && t.i < 100;
-      const pinned = active.filter(t => t.i === 0 || t.i === 2 || isLoan(t));
-      const others = active.filter(t => t.i !== 0 && t.i !== 2 && !isLoan(t));
-      const highlighted_task = [...pinned, ...shuffle(others)];
+      const pinned = active.filter(t => !t.urgent && (t.i === 0 || t.i === 2 || isLoan(t)));
+      const others = active.filter(t => !t.urgent && t.i !== 0 && t.i !== 2 && !isLoan(t));
+      const highlighted_task = [...urgent, ...pinned, ...shuffle(others)];
       return highlighted_task; // ✅ return the list
     },
   });

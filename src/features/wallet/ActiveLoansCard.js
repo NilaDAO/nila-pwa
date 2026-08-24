@@ -14,12 +14,11 @@ import foodTokenArtifact from '../../components/ABI/FoodTokens.json';
 import { CROP_CODE_NAMES, CROP_CODE_COLOR_KEY } from '../../hooks/useFoodTokenBatches.ts';
 import { dismissLoanLocally } from '../../hooks/useActiveLoans.js';
 import { cropColor, cropIconUrl } from '../../utils/cropColors';
-import { HEALTH_COLOR, HEALTH_LABEL } from '../../utils/loanIssues.js';
+import { HEALTH_COLOR, HEALTH_LABEL, getHealthIndicator, enrichLoan } from '../../utils/loanIssues.js';
 
 const _ftAbi = (foodTokenArtifact).abi ?? foodTokenArtifact;
 const _ftAddr = process.env.REACT_APP_FOODTOKEN_ADDRESS;
 
-const DAY_MS = 86_400_000;
 const SWIPE_REVEAL  = 60;
 const SWIPE_TRIGGER = 80;
 const SWIPE_MAX     = 160;
@@ -38,13 +37,6 @@ const formatDate = (ts) => {
   if (!ts) return '--';
   const d = new Date(Number(ts) * 1000);
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
-};
-
-/** Days from now to an ISO date string (positive = future, negative = past) */
-const daysToDate = (isoDate) => {
-  if (!isoDate) return null;
-  const target = new Date(isoDate + 'T00:00:00Z').getTime();
-  return Math.round((target - Date.now()) / DAY_MS);
 };
 
 /**
@@ -104,13 +96,13 @@ const eosRowBg = (daysEos, chainClosed) => {
  * hasn't produced a read yet).
  */
 function StatusIcon({ loan }) {
-  if (!loan.health) return null;
-  const isGood = loan.health === 'excellent' || loan.health === 'on_track';
-  const HealthIcon = isGood ? CheckCircleIcon : ExclamationTriangleIcon;
+  const indicator = getHealthIndicator(loan.health, loan.healthSummary);
+  if (!indicator) return null;
+  const HealthIcon = indicator.tone === 'good' ? CheckCircleIcon : ExclamationTriangleIcon;
   return (
     <HealthIcon
-      className={`w-4 h-4 justify-self-end ${HEALTH_COLOR[loan.health] ?? 'text-amber dark:text-amber-300'}`}
-      title={`Crop health: ${loan.healthSummary || HEALTH_LABEL[loan.health] || loan.health}`}
+      className={`w-4 h-4 justify-self-end ${indicator.colorClass}`}
+      title={indicator.title}
     />
   );
 }
@@ -365,145 +357,14 @@ export default function ActiveLoansCard({
     return { pending: p, active: a, flagged: f };
   }, [loans, selectedFund]);
 
+  // Full per-loan derivation (eosDate/loanStage/sos/displayName/...) lives in
+  // enrichLoan (utils/loanIssues.js) — extracted 2026-08-24 so other
+  // consumers (useFilterTasks.js's health-warning task, building
+  // portfolioLoans for its "view property outline" map link) can produce
+  // loans in the same shape staticCards.js's portfolio Gantt/graph expects,
+  // instead of duplicating this logic a second time.
   const enriched = useMemo(() =>
-    [...pending, ...active, ...flagged].map((l) => {
-      const _isPending = isPending(l);
-      const eos = eosMap.get(l.id);
-      // Harvest column priority: 1) maturityTs — on-chain, only ever set once
-      // manually verified (reportMaturity is currently email-gated, see
-      // beats/chain_writer.py) — a real confirmed date, never second-guessed
-      // by anything below. 2) otherwise, the LATER of the satellite record's
-      // own projection.projected_eos_date (a model projection from the
-      // cycle's actual observed NDVI/weather trajectory, computed
-      // server-side by NilaSensingAgent — see resolveCropFromRecords in
-      // useActiveLoans.js) and a minimum-repayment floor (drawdownTs + 3
-      // months + 3 weeks). 2026-08-21: the frontend used to also guess
-      // drawdown + a flat per-crop cycle-days table as a full REPLACEMENT
-      // estimate, but that diverged from the satellite's own projection by
-      // 100-450+ days across this union's loans — removed for that reason
-      // (see the 2026-08-20 harvest-column analysis). This floor is
-      // different in kind: it never overrides a satellite estimate that's
-      // already later, it only guards against a satellite estimate landing
-      // implausibly early (before any real minimum repayment period could
-      // have elapsed) — so it can't reproduce that divergence, it can only
-      // push the shown date later, never earlier, than what satellite says.
-      const maturityDate = l.maturityTs
-        ? new Date(Number(l.maturityTs) * 1000).toISOString().slice(0, 10)
-        : null;
-      const satProjectedDate = l.satProjectedEos || null;
-      // Payback date, not the bare harvest date — 3 weeks after the
-      // satellite's projected harvest, so the loan isn't flagged overdue
-      // the instant the crop is ready, before there's been any real chance
-      // to sell it and repay. Same grace-period convention as minRepayDate
-      // below and the on-chain 'contract' path's 21-day post-maturity
-      // grace window. Kept separate from satProjectedDate itself, which
-      // stays the raw harvest date for the "Projected harvest" detail row.
-      const satPaybackDate = satProjectedDate
-        ? (() => {
-            const d = new Date(satProjectedDate + 'T00:00:00Z');
-            d.setUTCDate(d.getUTCDate() + 21);
-            return d.toISOString().slice(0, 10);
-          })()
-        : null;
-      const minRepayDate = l.drawdownTs
-        ? (() => {
-            const d = new Date(Number(l.drawdownTs) * 1000);
-            d.setUTCMonth(d.getUTCMonth() + 3);
-            d.setUTCDate(d.getUTCDate() + 21);
-            return d.toISOString().slice(0, 10);
-          })()
-        : null;
-      let eosDate = maturityDate;
-      let eosSource = maturityDate ? 'contract' : null;
-      if (!eosDate) {
-        if (minRepayDate && (!satPaybackDate || minRepayDate > satPaybackDate)) {
-          eosDate = minRepayDate;
-          eosSource = 'minimum';
-        } else if (satPaybackDate) {
-          eosDate = satPaybackDate;
-          eosSource = 'satellite';
-        }
-      }
-      const daysEos = daysToDate(eosDate);
-      // Season-start counterpart to eosDate, for the portfolio Gantt (see
-      // staticCards.js's PortfolioCards). Simplified 2026-08-21: the food
-      // token's own sosTs turned out to often be a system-suggested default
-      // the farmer/leader just accepted rather than a verified date (see the
-      // land-52 investigation — its sosTs landed 8 days from a stale/unrelated
-      // satellite zone, not the zone this loan actually financed) — dropped
-      // from consideration entirely. Used to also reject the satellite-matched
-      // cycle's own satSos when it was more than 20 days from drawdownTs,
-      // falling back to drawdownTs itself on the theory that a big gap meant
-      // the match was wrong. Removed 2026-08-21 (land-33 investigation): the
-      // cycle match itself is already the real safeguard (closest sos among
-      // THIS land's own open cycles beats every other candidate, picked
-      // upstream in useActiveLoans.js's resolveCropFromRecords) — an absolute
-      // day-count on top of that can't distinguish "wrong cycle" from "right
-      // cycle, unusually-timed drawdown" (e.g. a post-harvest loan, drawn
-      // long after the season's real SOS). Rejecting satSos there paired a
-      // fallback SOS with the (still unconditionally trusted, see eosDate
-      // above) satellite EOS from the very cycle just rejected, showing an
-      // impossible cycle length. 2026-08-21: dropped the drawdownDate
-      // fallback entirely too — showing an unconfirmed drawdown-as-SOS guess
-      // is worse than showing nothing, now that satSos is trusted whenever
-      // present. sos is null (DetailRow below hides, Gantt bar in
-      // staticCards.js skips its marker) when no cycle matched at all —
-      // dropped the separate sosSource field once it became just a boolean
-      // restating that (every non-null sos is now satellite-sourced).
-      const sosDate = l.satSos ? new Date(l.satSos).toISOString().slice(0, 10) : null;
-      // Where in the crop's season this loan's drawdown fell — the display
-      // string itself, no separate label-lookup table (a post-harvest draw,
-      // like land 33's 92-day-after-SOS loan that motivated this — see the
-      // 2026-08-21 SOS/EOS mismatch investigation). Season split into equal
-      // thirds by elapsed *fraction*, not a fixed day count: season length
-      // ranges from ~85d (horse gram) to 365+d (sugarcane) across this
-      // portfolio, so a flat day window isn't comparable across crops the
-      // way a fraction is. Clamped at both ends — a drawdown before sos or
-      // after eos still lands in the nearest bucket rather than falling out
-      // of range. Uses the RAW season end (maturityDate/satProjectedDate),
-      // NOT eosDate — eosDate can now be the payback-adjusted date (satEOS
-      // +3wk, or the drawdown+3mo+3wk floor, added 2026-08-21), and feeding
-      // that back into a fraction of (drawdown − sos) made the season length
-      // partly a function of drawdown itself, silently reclassifying loans
-      // like land 33's from Pre-harvest to Cultivation with no real change
-      // in when the loan was drawn — this is a "where in the real crop
-      // season" question, unrelated to the payback/overdue-tracking concern.
-      const seasonEosDate = maturityDate || satProjectedDate;
-      let loanStage = null;
-      if (sosDate && seasonEosDate && l.drawdownTs) {
-        const sosMs = new Date(sosDate + 'T00:00:00Z').getTime();
-        const eosMs = new Date(seasonEosDate + 'T00:00:00Z').getTime();
-        const seasonMs = eosMs - sosMs;
-        if (seasonMs > 0) {
-          const frac = (Number(l.drawdownTs) * 1000 - sosMs) / seasonMs;
-          loanStage = frac < 1 / 3 ? 'Operating' : frac < 2 / 3 ? 'Cultivation' : 'Pre-harvest';
-        }
-      }
-      // Display priority: contact name → on-chain farm name (tokenURI, cached in IDB) → 0xABCD…
-      const hasContact = hasName(l.borrower);
-      const contactName = resolveName(l.borrower); // already returns truncated addr if no contact
-      const landId = l.landId ?? eos?.land_id ?? null;
-      const farmName = l.farmName || eos?.farm_name || null;
-      const displayName = hasContact ? contactName : (farmName || contactName);
-      return {
-        ...l,
-        farmName,
-        landId,
-        hasContact,
-        displayName,
-        isPending: _isPending,
-        // l.amount already equals chain `outstanding` (principal + accrued interest)
-        // from useActiveLoans chain sync — don't add interest on top.
-        totalAmount: l.amount,
-        eosDate,
-        maturityDate,
-        satProjectedDate,
-        loanStage,
-        daysToEos: daysEos,
-        eosSource,
-        sos: sosDate,
-      };
-    }),
+    [...pending, ...active, ...flagged].map((l) => enrichLoan(l, { isPending, resolveName, hasName, eosMap })),
     [pending, active, flagged, resolveName, eosMap, isPending, ftData]
   );
 
@@ -995,15 +856,21 @@ export default function ActiveLoansCard({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    // Pass the FULL list, not just [loan] — portfolioLoans
-                    // used to be restricted to this one loan for the
-                    // "focused" view, which meant pressing the X/back button
-                    // (which clears selection but never restored the loan
-                    // list) left the Harvest Calendar card showing only this
-                    // one property forever. focusLandId drives the initial
-                    // single-property zoom/auto-expand instead — a transient
-                    // selection, not a restriction on the underlying data.
-                    onViewMap?.(enriched, {
+                    // 2026-08-24: back to passing just [loan] (not the full
+                    // enriched list) — matches useFilterTasks.js's
+                    // crop-health-warning task, which filters the Gantt down
+                    // to one property the same way. This was reverted once
+                    // before (see git history) because portfolioLoans used
+                    // to get stuck on one entry after the map's X/back
+                    // button — that only clears portfolioFocusLandId/
+                    // portfolioSelected, never portfolioLoans itself. Tried
+                    // again since staticCards.js now wipes fieldActivity
+                    // entirely on unmount, which should make every fresh
+                    // entry re-initialize regardless of what was left behind
+                    // — if the Harvest Calendar/portfolio view ever shows a
+                    // stale single-property list again, that's the mechanism
+                    // to check first.
+                    onViewMap?.([loan], {
                       outlinesOnly: true,
                       focusLandId: loan.landId,
                       // Overdue loans have already passed harvest as of
