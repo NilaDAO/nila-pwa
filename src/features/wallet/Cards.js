@@ -744,18 +744,18 @@ export const Card = ({
             className={`relative flex h-full flex-col rounded-3xl content-end justify-end p-4 bg-cover bg-center overflow-hidden`}
         >
         {children}
-        <h3 className={`
-            font-bold
-            text-xs
-            flex items-center gap-1
-            ${type == 'BORROW' || type == 'INVEST' && `dark:text-black ${cardShrink >= 0.5 && 'dark:text-slate-400' }`}
-            ${type == 'DONATE' && 'text-black dark:text-black'}
-            ${type == 'ASSETS' && 'dark:text-white'}
-            ${type == 'DEFAULTED' && 'dark:text-slate-400'}
-            ${type == 'MAP' && 'text-white z-10 dark:text-white'}
-            ${type == 'CASH_LIQUIDITY' && 'dark:text-white'}
-            ${type == 'ORDERS' && 'dark:text-white z-10'}
-            `}>
+        <h3 className={[
+            'font-bold',
+            'text-xs',
+            'flex items-center gap-1',
+            (type === 'BORROW' || type === 'INVEST') && (cardShrink >= 0.5 ? 'dark:text-slate-400' : 'dark:text-black'),
+            type === 'DONATE' && 'text-black dark:text-black',
+            type === 'ASSETS' && 'dark:text-white',
+            type === 'DEFAULTED' && 'dark:text-slate-400',
+            type === 'MAP' && 'text-white z-10 dark:text-white',
+            type === 'CASH_LIQUIDITY' && 'dark:text-white',
+            type === 'ORDERS' && 'dark:text-white z-10',
+          ].filter(Boolean).join(' ')}>
             {titleDot && (titleIconCrop
               ? <div className="w-5 h-5 mb-1 flex-shrink-0" style={{
                   WebkitMaskImage: `url(${cropIconUrl(titleIconCrop)})`,

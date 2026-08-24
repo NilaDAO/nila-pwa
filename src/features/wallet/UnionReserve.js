@@ -13,7 +13,7 @@ import genericFundViewerArtifact from '../../components/ABI/genericFundViewer.js
 import { useErc20Balances } from '../../hooks/useLoadETH.ts';
 import { ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { IndividualExchangeButton, ClaimButton } from '../../components/UI/buttons.js';
-import { useActiveLoans, useActiveLoansChainSync, useLiveCumulativeInterest, isKnownClosed } from '../../hooks/useActiveLoans';
+import { useActiveLoans, useActiveLoansChainSync, useLiveCumulativeInterest, isKnownClosed, useLoansEnrichmentPending } from '../../hooks/useActiveLoans';
 import { useContactBook } from '../../hooks/useContactBook';
 import { useLoanAcceptance } from '../../hooks/useLoanAcceptance';
 import ActiveLoansCard from './ActiveLoansCard';
@@ -168,6 +168,13 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
   const { deposit, withdraw } = useUnionTreasury();
   const { data: loansData } = useActiveLoans(unionAddr, !!db?.union?.leader);
   const { refreshFromChain, isFetching: chainSyncing } = useActiveLoansChainSync(unionAddr, !!db?.union?.leader);
+  // chainSyncing alone only covers the Multicall3/getBorrowerInfo half of a
+  // refresh — the backend /loans/sync push/pull plus its backgrounded
+  // food-token/IPFS enrichment (often the slower half) run independently
+  // and used to finish silently after the spinner had already stopped
+  // (2026-08-24). Combine both so the icon reflects the full refresh cycle.
+  const enrichmentPending = useLoansEnrichmentPending(unionAddr);
+  const loansRefreshing = chainSyncing || enrichmentPending;
   const { handleAcceptLoan, handleCancelLoan } = useLoanAcceptance();
   const { provider } = useProvider();
 
@@ -222,7 +229,13 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
   // NilaSensingAgent's voucher/generic.py has_overdue_loans() at
   // voucher-issuance time. A loan with none of the three dates is
   // skipped, not flagged.
-  const OVERDUE_LOAN_GRACE_DAYS = 14;
+  //
+  // No extra grace period beyond harvestTs itself (removed 2026-08-24) —
+  // harvestTs already bakes in the full +3-week payback grace, so an
+  // additional buffer here just meant the "Lending: Active/On hold" badge
+  // stayed "Active" for two more weeks after ActiveLoansCard's own row had
+  // already been showing that same loan red/overdue — the two signals
+  // disagreeing about the same loan on the same screen.
   const hasOverdueLoans = useMemo(() => {
     const loans = loansData?.activeLoans ?? [];
     const nowSec = Math.floor(Date.now() / 1000);
@@ -244,7 +257,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
         harvestTs = (minRepayTs && (!satPaybackTs || minRepayTs > satPaybackTs)) ? minRepayTs : satPaybackTs;
       }
       if (!harvestTs) return false;
-      return (nowSec - harvestTs) > OVERDUE_LOAN_GRACE_DAYS * 86400;
+      return nowSec > harvestTs;
     });
   }, [loansData?.activeLoans]);
 
@@ -838,7 +851,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
                   <span className="text-xs font-semibold dark:text-white">New loans on hold</span>
                 </div>
                 <p className="text-[10px] text-red leading-snug">
-                  An active loan is over {OVERDUE_LOAN_GRACE_DAYS} days overdue past its payback date.
+                  An active loan is past its payback date.
                 </p>
               </div>
             )}
@@ -1097,7 +1110,7 @@ const UnionReserve = ({ handleOpenForm, savedFieldActivity }) => {
             if (name) addContact(addr, name);
           }}
           onRefresh={refreshFromChain}
-          refreshing={chainSyncing}
+          refreshing={loansRefreshing}
           onDeepSync={handleDeepSync}
           cashOutDisabled={settlementShortfall > 0n}
           onCashIn={(loan) => handleOpenForm('cashIn', { memberAddress: loan.borrower })}
