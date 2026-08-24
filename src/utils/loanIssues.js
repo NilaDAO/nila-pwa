@@ -3,9 +3,12 @@
 // (identically) as PORTFOLIO_HEALTH_COLOR/LABEL in staticCards.js and
 // HEALTH_COLOR/LABEL in ActiveLoansCard.js — centralized here so both stay
 // in sync.
+// dark:text-green (not the custom green_dark token) — green_dark is
+// #d4a634, a golden-amber hex despite the name, which made "good health" in
+// dark mode look indistinguishable from the stressed/amber tier (2026-08-24).
 export const HEALTH_COLOR = {
-  excellent: 'text-green dark:text-green_dark',
-  on_track: 'text-green dark:text-green_dark',
+  excellent: 'text-green dark:text-green',
+  on_track: 'text-green dark:text-green',
   stressed: 'text-amber dark:text-amber-300',
   underperforming: 'text-red dark:text-red',
 };
