@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ethers } from 'ethers';
 import { setDBitem, readAllItems, deleteItem } from '../utils/db';
@@ -35,6 +35,44 @@ const SECONDS_PER_YEAR = 365 * 24 * 60 * 60; // matches GenericFundCore's `YEAR 
 // and just read IndexedDB (already the display source of truth).
 const SYNC_THROTTLE_MS = 5 * 60 * 1000;
 const lastSyncKey = (union) => `nila_loans_lastSync_${union}`;
+
+// Tracks which unions currently have the backgrounded food-token/IPFS
+// enrichment step (below) in flight, so the refresh spinner can reflect it —
+// added 2026-08-24 (refresh spinner stopped as soon as the chain-sync query
+// finished, while this background step — often the slower of the two — kept
+// running unobserved). First cut used react-query's useIsFetching, but that
+// hook subscribes to fetch-state changes across the ENTIRE query cache (any
+// query anywhere in the app starting/settling triggers a re-render, which it
+// then filters internally) — in an app with this many concurrent queries
+// (union funds, balances, chain sync, ...) that produced dozens of redundant
+// re-renders per second, visible as StatusIcon logging the same two loans
+// over and over with no new data between them. A plain module-level Set +
+// useSyncExternalStore only notifies the specific hook instances that care
+// about this specific union, decoupled from every other query's activity.
+const enrichmentPending = new Set();
+const enrichmentSubscribers = new Set();
+function setEnrichmentPending(unionAddress, isPending) {
+  if (isPending) enrichmentPending.add(unionAddress);
+  else enrichmentPending.delete(unionAddress);
+  for (const cb of enrichmentSubscribers) cb();
+}
+
+/**
+ * True while this union's backgrounded post-sync enrichment (food-token
+ * batch id resolution + satellite record/crop resolution) is still running.
+ * Combine with useActiveLoansChainSync's own isFetching for a refresh
+ * button that accurately reflects when a refresh is FULLY done, not just
+ * when the faster chain-sync half finished.
+ */
+export function useLoansEnrichmentPending(unionAddress) {
+  return useSyncExternalStore(
+    (onChange) => {
+      enrichmentSubscribers.add(onChange);
+      return () => enrichmentSubscribers.delete(onChange);
+    },
+    () => enrichmentPending.has(unionAddress),
+  );
+}
 
 /** Force the next useActiveLoans run to hit /loans/sync regardless of throttle. */
 export function forceLoansResync(unionAddress) {
@@ -434,6 +472,20 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
         const storedNow = await readAllItems('ActiveLoans').catch(() => null) ?? stored;
         for (const item of backendItems) {
           const existing = storedNow[item.id];
+          // Debug: unconditional per-item trace of what the backend sent vs
+          // what's already local, ahead of the NEW/MERGE/BACKFILL/SKIP branch
+          // below — added 2026-08-24 to debug reports of a loan's updated
+          // satellite record (new report_hash on-chain) not showing up in the
+          // PWA after refresh. Answers "was this loan even in the /loans/sync
+          // response this time" and "did its recordHash actually change from
+          // the backend's point of view" without having to cross-reference
+          // the landIds summary line above by truncated id prefix.
+          console.log(
+            `[activeLoans][sync-trace] id=${item.id.slice(0, 10)} landId=${item.landId} ` +
+            `chainVerified=${existing?.chainVerified ?? '(new)'} ` +
+            `recordHash: local=${existing?.recordHash ?? 'none'} backend=${item.recordHash ?? 'none'} ` +
+            `changed=${!existing ? 'n/a-new' : existing.recordHash !== item.recordHash}`
+          );
           if (!existing) {
             if (isKnownClosed(unionAddress, item.id)) {
               console.log(`[activeLoans] SKIP re-adding known-closed loan ${item.id.slice(0,8)}`);
@@ -497,8 +549,13 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
         // connection — exactly the "takes forever, mash refresh" report
         // from 2026-08-21. Fires its own invalidate on completion so the
         // UI picks up health/stage/crop/EOS as they arrive, but nothing
-        // below waits on it.
+        // below waits on it. setEnrichmentPending brackets it purely so its
+        // in-flight state is observable via useLoansEnrichmentPending — the
+        // refresh button used to stop spinning as soon as the (often
+        // faster) chain-sync query finished, while this step kept running
+        // unobserved in the background (2026-08-24).
         if (newlyGotFoodTokenId.length || newlyGotRecordHash.length) {
+          setEnrichmentPending(unionAddress, true);
           (async () => {
             try {
               if (newlyGotFoodTokenId.length) {
@@ -512,6 +569,7 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
               }
             } catch (_) { /* best-effort background enrichment */ }
             queryClient.invalidateQueries({ queryKey: ['activeLoans', unionAddress] });
+            setEnrichmentPending(unionAddress, false);
           })();
         }
       }

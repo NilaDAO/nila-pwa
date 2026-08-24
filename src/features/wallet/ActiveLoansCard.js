@@ -6,7 +6,6 @@ import {
   ArrowPathIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  XCircleIcon,
   XMarkIcon,
 } from '@heroicons/react/20/solid';
 import { ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline';
@@ -58,9 +57,13 @@ const formatEosDate = (isoDate) => {
   const day = d.getUTCDate();
   const month = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
   const year = d.getUTCFullYear();
-  const part = day <= 10 ? 'early' : day <= 20 ? 'mid' : 'late';
   const yearStr = year !== new Date().getFullYear() ? ` '${String(year).slice(2)}` : '';
-  return `${part} ${month}${yearStr}`;
+  // Drop the early/mid/late prefix once a year suffix is shown (a
+  // different-year date is already far enough out that the day-of-month
+  // precision isn't worth the extra width) — saves column space (2026-08-24).
+  if (yearStr) return `${month}${yearStr}`;
+  const part = day <= 10 ? 'early' : day <= 20 ? 'mid' : 'late';
+  return `${part} ${month}`;
 };
 
 // Amber warning window before the payback date — 3 weeks, same grace
@@ -90,29 +93,26 @@ const eosRowBg = (daysEos, chainClosed) => {
   return 'bg-gray-50 dark:bg-slate-700';
 };
 
-/** Status icon: payback-date proximity (amber within 3wk, red once passed) > chain verification status */
+/**
+ * Status icon: crop health only. Payback-date warnings (red overdue / amber
+ * within 3wk) and chain-verification/closed status used to live in this
+ * same slot — moved out 2026-08-24 so this column (now headed "Health") is
+ * purely a crop-health signal; payback urgency is still visible via the
+ * Payback column's own date coloring, and closed loans via the row's
+ * line-through/faded styling. Shows nothing when there's no health data
+ * (no food token, no matched satellite cycle, or the weekly LLM cadence
+ * hasn't produced a read yet).
+ */
 function StatusIcon({ loan }) {
-  if (loan.chainClosed) {
-    return <XCircleIcon className="w-4 h-4 text-black dark:text-white" title="Closed on-chain" />;
-  }
-  if (loan.daysToEos != null && loan.daysToEos < 0) {
-    return <ExclamationTriangleIcon className="w-4 h-4 text-red" title={
-      loan.eosSource === 'contract' ? 'Default deadline within 1 week'
-        : loan.eosSource === 'minimum' ? 'Minimum repayment period deadline passed'
-        : 'Satellite-projected payback deadline passed'
-    } />;
-  }
-  if (loan.daysToEos != null && loan.daysToEos <= PAYBACK_WARNING_DAYS) {
-    return <ExclamationTriangleIcon className="w-4 h-4 text-amber-500 dark:text-amber-300" title={
-      loan.eosSource === 'contract' ? 'Maturity within 3 weeks'
-        : loan.eosSource === 'minimum' ? 'Minimum repayment period ends within 3 weeks'
-        : 'Satellite-projected payback date within 3 weeks'
-    } />;
-  }
-  if (loan.chainVerified) {
-    return <CheckCircleIcon className="w-4 h-4 text-green dark:text-green_dark" title="Verified on-chain" />;
-  }
-  return <ExclamationTriangleIcon className="w-4 h-4 text-amber dark:text-amber-300" title="Not yet verified" />;
+  if (!loan.health) return null;
+  const isGood = loan.health === 'excellent' || loan.health === 'on_track';
+  const HealthIcon = isGood ? CheckCircleIcon : ExclamationTriangleIcon;
+  return (
+    <HealthIcon
+      className={`w-4 h-4 justify-self-end ${HEALTH_COLOR[loan.health] ?? 'text-amber dark:text-amber-300'}`}
+      title={`Crop health: ${loan.healthSummary || HEALTH_LABEL[loan.health] || loan.health}`}
+    />
+  );
 }
 
 /**
@@ -162,7 +162,7 @@ const COLUMNS = [
   { key: 'name',   label: 'Name',   align: 'left' },
   { key: 'amount', label: 'Amount', align: 'right' },
   { key: 'eos',    label: 'Payback', align: 'right' },
-  { key: 'status', label: '',       align: 'right' },
+  { key: 'status', label: 'Health', align: 'right' },
 ];
 
 const SYNC_STEPS = [
@@ -560,7 +560,13 @@ export default function ActiveLoansCard({
           return mul * (da - db);
         }
         case 'status': {
-          const rank = (l) => l.chainClosed ? 2 : l.chainVerified ? 0 : 1;
+          // Health rank — matches StatusIcon's own severity ordering.
+          // Ascending = worst health first (same "surface the problem"
+          // convention as 'eos' ascending putting soonest deadlines first).
+          // Unclassified (no health data) sorts last, same treatment as
+          // null EOS above.
+          const HEALTH_RANK = { underperforming: 0, stressed: 1, on_track: 2, excellent: 2 };
+          const rank = (l) => HEALTH_RANK[l.health] ?? 9;
           return mul * (rank(a) - rank(b));
         }
         default: return 0;
@@ -781,7 +787,7 @@ export default function ActiveLoansCard({
       </div>
 
       {/* Column headers */}
-      <div className="grid grid-cols-[1fr_6rem_5.5rem_1rem] gap-3 px-3 py-1">
+      <div className="grid grid-cols-[1fr_6rem_4.5rem_3rem] gap-3 px-3 py-1">
         {COLUMNS.map((col) => (
           <button
             key={col.key}
@@ -869,7 +875,7 @@ export default function ActiveLoansCard({
                     transform: `translateX(${dx}px)`,
                     transition: swipeRef.current.dragging ? 'none' : 'transform 0.2s ease',
                   }}
-                  className={`grid grid-cols-[1fr_6rem_5.5rem_1rem] gap-3 items-center px-3 py-2.5 rounded-lg cursor-pointer touch-pan-y ${eosRowBg(loan.daysToEos, loan.chainClosed)}`}
+                  className={`grid grid-cols-[1fr_6rem_4.5rem_3rem] gap-3 items-center px-3 py-2.5 rounded-lg cursor-pointer touch-pan-y ${eosRowBg(loan.daysToEos, loan.chainClosed)}`}
                 >
               {/* Name */}
               <div className="flex items-center gap-1 min-w-0">

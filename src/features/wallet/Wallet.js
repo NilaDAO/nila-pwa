@@ -921,7 +921,13 @@ function Wallet({LAND}) {
                     }
                     <div
                         className={`relative z-10 flex-shrink-0`}
-                        style={{ paddingBottom: `calc(${(ix !== 2 && ix !== 5) && cardShrink < 0.5 ? '64px' : '32px'} + env(safe-area-inset-bottom, 0px))` }}
+                        // Tapers 64px -> 0px continuously as the card stack scrolls
+                        // away (cardShrink 0 -> 1), instead of the old binary
+                        // 64px/32px switch at cardShrink===0.5 — that flip landed on
+                        // the exact same threshold where the card's own height snaps
+                        // to 0 (Cards.js), leaving a stranded 32px block once the
+                        // card was already fully scrolled out of view (2026-08-24).
+                        style={{ paddingBottom: `calc(${(ix !== 2 && ix !== 5) ? Math.round(64 * (1 - Math.max(0, Math.min(1, cardShrink)))) : 32}px + env(safe-area-inset-bottom, 0px))` }}
                         onTouchStart={handleTouchStart}
                         onTouchMove={handleTouchMove}
                         onTouchEnd={handleTouchEnd}
