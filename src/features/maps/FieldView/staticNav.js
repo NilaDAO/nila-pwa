@@ -5,7 +5,7 @@ import { XCircleIcon } from '@heroicons/react/24/solid';
 import { setMetaThemeColor } from '../../../utils/metaTheme';
 
 const StaticMapNav = ({LAND, onFeatureClick, cardShrink = 0}) => {
-  const { fieldActivity, setFieldActivity, view, setView } = useDataContext();
+  const { fieldActivity, view, setView } = useDataContext();
   const { setCardView } = useViewModeContext();
   const metadata = LAND?.current?.LAND?.metadata || LAND?.current?.metadata;
   const hideOverlay = cardShrink > 0 || !!fieldActivity?.cardLifted;
@@ -21,25 +21,6 @@ const StaticMapNav = ({LAND, onFeatureClick, cardShrink = 0}) => {
     setView(prev => ({ ...prev, mode: 'overview', focus: null, focusZone: null, focusName: null, selected: [] }));
     setCardView('mapview');
   }, [setView, setCardView]);
-
-  // Portfolio mode: clear selected property (go back to list), re-fit map to
-  // all. Also lifts the single-property scope (portfolioShowAll) and clears
-  // portfolioFocusLandId — otherwise "back" from a focused single-property
-  // view (e.g. "View property outline") just re-fits to that same one
-  // property instead of actually showing everything (portfolioLoans is
-  // always the full list now, but the focus scope would still restrict what
-  // renders until cleared). Also resets the month-Gantt scrubber
-  // (portfolioMonthOffset) back to "now" — there's no separate reset control
-  // for it, this X button is it (see staticCards.js's month Gantt).
-  const handlePortfolioBack = useCallback(() => {
-    setFieldActivity(prev => prev ? {
-      ...prev,
-      portfolioSelected: null,
-      portfolioShowAll: true,
-      portfolioMonthOffset: 0,
-      portfolioFocusLandId: null,
-    } : prev);
-  }, [setFieldActivity]);
 
   const hasSelection = view?.mode === 'select' && (view?.selected?.length ?? 0) > 0;
 
@@ -57,13 +38,6 @@ const StaticMapNav = ({LAND, onFeatureClick, cardShrink = 0}) => {
            <div className="pointer-events-auto relative flex flex-col items-center justify-center">
             <XCircleIcon onClick={handleClose} className='h-20 w-20 text-white' />
            </div>
-        </div>
-        }
-        {fieldActivity?.portfolioMode && fieldActivity?.portfolioSelected && !hideOverlay &&
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center w-full z-20">
-          <div className="pointer-events-auto relative flex flex-col items-center justify-center">
-            <XCircleIcon onClick={handlePortfolioBack} className='h-20 w-20 text-white' />
-          </div>
         </div>
         }
         {hasSelection && (
