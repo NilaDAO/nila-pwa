@@ -25,6 +25,7 @@ const NIN_ADDR = process.env.REACT_APP_NIN_MAIN!;
 const erc20Abi = [
   "function allowance(address owner, address spender) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",
+  "function balanceOf(address account) view returns (uint256)",
 ];
 
 const DB_STORE = "FarmData";
@@ -54,6 +55,11 @@ type RecordHashState = {
   isApproved: boolean;
   /** nIN claimable by the token owner from data view fees (wei). */
   claimableFees: bigint | null;
+  /** Current wallet's nIN balance (wei) — only read when fee > 0 (non-owner
+   * path); null while unknown/not applicable. Lets callers warn "not enough
+   * nIN" before the user attempts a fetch that would only fail on-chain
+   * with an opaque transferFrom revert (2026-08-25). */
+  ninBalance: bigint | null;
 };
 
 
@@ -74,6 +80,7 @@ export function useRecordHash(tokenId: number | string | null) {
     isOwner: false,
     claimableFees: null,
     isApproved: false,
+    ninBalance: null,
   });
 
   const tid = tokenId != null ? BigInt(tokenId) : null;
@@ -100,6 +107,14 @@ export function useRecordHash(tokenId: number | string | null) {
       const isApproved = isOwner || (await landTitle.viewerApproved(wallet.address));
       // Anyone can view — quoteViewFee returns 0 (owner), 1 nIN (whitelisted), or viewFeeNin (public)
       const fee: bigint = await landTitle.quoteViewFee(tid, wallet.address);
+      // Only relevant on the fee-paying path — an owner never needs it, and
+      // skipping the read there avoids an extra RPC call on the common case.
+      let ninBalance: bigint | null = null;
+      if (fee > 0n && nin) {
+        try {
+          ninBalance = await nin.balanceOf(wallet.address);
+        } catch { /* best-effort — button falls back to the post-attempt error path */ }
+      }
       // Read claimable fees — cache for 2 weeks
       let claimableFees: bigint | null = null;
       if (isOwner) {
@@ -115,7 +130,7 @@ export function useRecordHash(tokenId: number | string | null) {
           } catch { }
         }
       }
-      setState((s) => ({ ...s, isOwner, isApproved, fee, claimableFees }));
+      setState((s) => ({ ...s, isOwner, isApproved, fee, claimableFees, ninBalance }));
     } catch (err: any) {
       console.warn("[useRecordHash] checkAccess error:", err.message);
     }
