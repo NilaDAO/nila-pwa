@@ -9,6 +9,7 @@ import { ClaimButton, EnableNotifications,DisableNotifications } from '../../com
 import LPSignup from '../settings/LPSignup';
 import { useLPProfile } from '../../hooks/useLPProfile';
 import { useDonationsEnabled, setDonationsEnabled } from '../../hooks/useDonationPrograms.ts';
+import { forceLoansResync } from '../../hooks/useActiveLoans';
 import { useQueryClient } from '@tanstack/react-query';
 
 const getInitialNotificationPermission = () => {
@@ -152,6 +153,14 @@ function Settings({ handleOpenForm, LAND }) {
             localStorage.removeItem('fields');
             localStorage.removeItem('positions');
             document.cookie = "offsite=; Max-Age=0; path=/;";
+            // deleteAllItems() below wipes IndexedDB (including the ActiveLoans
+            // store) but this reset never touched useActiveLoans.js's own
+            // localStorage throttle key — so a reset within SYNC_THROTTLE_MS
+            // (5min) of the last real sync left IndexedDB empty AND the
+            // post-reload syncLoansWithBackend call skipping itself on the
+            // stale timestamp, silently leaving the loan list blank until the
+            // throttle window passed on its own (2026-08-24).
+            if (db?.union?.address) forceLoansResync(db.union.address);
         } catch (_) {}
         // Reset Account is a destructive wipe + hard reload. Don't route through
         // useHardReload — it's the gentle SW-update path and early-returns without

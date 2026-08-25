@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { ethers } from 'ethers';
 import {
   ChevronUpIcon,
   ChevronDownIcon,
@@ -12,9 +13,11 @@ import { ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useWallet, useContract } from '../../hooks/useWallet.ts';
 import foodTokenArtifact from '../../components/ABI/FoodTokens.json';
 import { CROP_CODE_NAMES, CROP_CODE_COLOR_KEY } from '../../hooks/useFoodTokenBatches.ts';
-import { dismissLoanLocally } from '../../hooks/useActiveLoans.js';
+import { dismissLoanLocally, resolveCropFromRecords } from '../../hooks/useActiveLoans.js';
+import { useRecordHash } from '../../hooks/useRecordHash.ts';
 import { cropColor, cropIconUrl } from '../../utils/cropColors';
 import { HEALTH_COLOR, HEALTH_LABEL, getHealthIndicator, enrichLoan } from '../../utils/loanIssues.js';
+import { setDBitem, readAllItems } from '../../utils/db.js';
 
 const _ftAbi = (foodTokenArtifact).abi ?? foodTokenArtifact;
 const _ftAddr = process.env.REACT_APP_FOODTOKEN_ADDRESS;
@@ -239,6 +242,29 @@ export default function ActiveLoansCard({
   const [syncing, setSyncing] = useState(false);
   const { wallet } = useWallet();
   const queryClient = useQueryClient();
+
+  // Manual on-chain verify (VerifyOnChainButton below) — the leader paid
+  // (or read free, if they own this land) to read NilaLandTitle.getRecordHash
+  // directly, bypassing whatever node's /loans/sync currently reports. If it
+  // found a different hash, apply it locally right away (don't wait for the
+  // next backend sync) and best-effort tell node to self-correct too, via
+  // its own free whitelisted-signer read — never by trusting this hash value
+  // itself, since an arbitrary POST body isn't a safe source of truth for a
+  // shared DB (see NilaSensingAgent's /loans/resync-hash).
+  const handleVerifiedHash = useCallback(async (loan, recordHash) => {
+    const fresh = await readAllItems('ActiveLoans') ?? {};
+    const existing = fresh[loan.id] ?? loan;
+    const updated = { ...existing, recordHash };
+    await setDBitem(loan.id, updated, 'ActiveLoans');
+    await resolveCropFromRecords([updated]);
+    const API = process.env.REACT_APP_API_BASE_URL;
+    if (API && loan.union && loan.landId != null) {
+      fetch(`${API}/loans/resync-hash?union=${encodeURIComponent(loan.union)}&land_id=${loan.landId}`, {
+        method: 'POST',
+      }).catch(() => {});
+    }
+    queryClient.invalidateQueries({ queryKey: ['activeLoans', loan.union] });
+  }, [queryClient]);
   const foodToken = useContract(_ftAddr, _ftAbi, wallet);
   const [ftData, setFtData] = useState({}); // { loanId: { cropFamily, cropName, kg, sosTs, harvestTs } }
   const [copiedId, setCopiedId] = useState(null);
@@ -926,6 +952,11 @@ export default function ActiveLoansCard({
                     }
                   />
                 )}
+                {loan.landId != null && (
+                  <div className="flex justify-end">
+                    <VerifyOnChainButton loan={loan} onVerifiedHash={handleVerifiedHash} />
+                  </div>
+                )}
 
                 {loan.foodTokenId && (
                   <>
@@ -1056,6 +1087,70 @@ export default function ActiveLoansCard({
         </div>
       )}
     </div>
+  );
+}
+
+// Manual "pay to check the contract" action — separate component (not inline
+// in the per-loan .map()) purely so useRecordHash, a real hook, has a stable
+// per-loan instance to attach to; Rules of Hooks forbids calling it directly
+// inside the map callback. useRecordHash itself decides free-vs-fee (owner
+// vs not) and drives the wallet through allowance+payment when a fee applies
+// — this button only reacts to the result.
+function VerifyOnChainButton({ loan, onVerifiedHash }) {
+  const { recordHash, fee, ninBalance, loading, error, fetchRecord } = useRecordHash(loan.landId);
+  const [status, setStatus] = useState('idle'); // idle | checking | same | updated | error
+  const appliedRef = useRef(null);
+
+  useEffect(() => {
+    if (!recordHash || loading || appliedRef.current === recordHash) return;
+    appliedRef.current = recordHash;
+    if (recordHash === loan.recordHash) {
+      setStatus('same');
+      return;
+    }
+    onVerifiedHash(loan, recordHash).then(
+      () => setStatus('updated'),
+      () => setStatus('error'),
+    );
+  }, [recordHash, loading, loan, onVerifiedHash]);
+
+  useEffect(() => {
+    if (error) setStatus('error');
+  }, [error]);
+
+  // Catches the exact "you clicked, it reverted, and the button just said
+  // 'Failed' with no explanation" report (2026-08-25) — checkAccess already
+  // reads fee/ninBalance on mount (before any click), so a wallet that can't
+  // afford this land's view fee is knowable up front rather than only after
+  // an on-chain revert.
+  const insufficientNin = fee != null && fee > 0n && ninBalance != null && ninBalance < fee;
+
+  const LABEL = { idle: 'Verify on-chain', checking: 'Checking…', same: 'Up to date ✓', updated: 'Corrected ✓', error: 'Failed — retry' };
+  const label = status === 'idle' && insufficientNin
+    ? `Need ${ethers.formatUnits(fee, 18)} nIN to verify`
+    : LABEL[status];
+  // On genuine failure, prefer the actual on-chain/wallet error over the
+  // generic label — same information runTx already logs to console, just
+  // also visible without opening devtools.
+  const title = status === 'error' ? (error || undefined) : (insufficientNin ? `Wallet has ${ethers.formatUnits(ninBalance ?? 0n, 18)} nIN` : undefined);
+
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        setStatus('checking');
+        fetchRecord();
+      }}
+      disabled={status === 'checking'}
+      title={title}
+      className={`text-[10px] font-semibold underline disabled:opacity-50 disabled:no-underline ${
+        status === 'error' || (status === 'idle' && insufficientNin)
+          ? 'text-red dark:text-red'
+          : 'text-blue-500 dark:text-blue-400'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

@@ -277,7 +277,7 @@ async function runWithConcurrency(items, limit, worker) {
   await Promise.all(runners);
 }
 
-async function resolveCropFromRecords(candidates) {
+export async function resolveCropFromRecords(candidates) {
   if (!candidates?.length) return;
   const fresh = await readAllItems('ActiveLoans') ?? {};
   await runWithConcurrency(candidates, 5, async (l) => {
