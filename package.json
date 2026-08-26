@@ -1,6 +1,6 @@
 {
   "name": "nila-pwa",
-  "version": "0.4.11",
+  "version": "0.4.12",
   "private": true,
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.621.0",

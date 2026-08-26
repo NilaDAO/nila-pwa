@@ -639,7 +639,7 @@ export function useFilterTasks(LAND, CAP) {
             // date freezes new lending), surfaced here too so the task
             // itself explains the union-wide consequence, not just this loan.
             const desc = overdue
-              ? 'This loan is due, please contact the borrower. New loans are on hold until it is resolved.'
+              ? 'This loan is overdue. New loans are on hold until repaid or defaulted.'
               : `This loan has to be paid back within ${l.daysToEos} day${l.daysToEos === 1 ? '' : 's'}.`;
             return {
               i: 900 + idx,
