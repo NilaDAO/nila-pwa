@@ -12,11 +12,11 @@ import {
 import { ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useWallet, useContract } from '../../hooks/useWallet.ts';
 import foodTokenArtifact from '../../components/ABI/FoodTokens.json';
-import { CROP_CODE_NAMES, CROP_CODE_COLOR_KEY } from '../../hooks/useFoodTokenBatches.ts';
+import { CROP_CODE_NAMES, CROP_CODE_COLOR_KEY, useFoodTokenBatches } from '../../hooks/useFoodTokenBatches.ts';
 import { dismissLoanLocally, resolveCropFromRecords } from '../../hooks/useActiveLoans.js';
 import { useRecordHash } from '../../hooks/useRecordHash.ts';
 import { cropColor, cropIconUrl } from '../../utils/cropColors';
-import { HEALTH_COLOR, HEALTH_LABEL, getHealthIndicator, enrichLoan } from '../../utils/loanIssues.js';
+import { HEALTH_COLOR, HEALTH_LABEL, getHealthIndicator, enrichLoan, getRepaymentHealth, REPAYMENT_TONE_COLOR } from '../../utils/loanIssues.js';
 import { setDBitem, readAllItems } from '../../utils/db.js';
 
 const _ftAbi = (foodTokenArtifact).abi ?? foodTokenArtifact;
@@ -89,24 +89,26 @@ const eosRowBg = (daysEos, chainClosed) => {
 };
 
 /**
- * Status icon: crop health only. Payback-date warnings (red overdue / amber
- * within 3wk) and chain-verification/closed status used to live in this
- * same slot — moved out 2026-08-24 so this column (now headed "Health") is
- * purely a crop-health signal; payback urgency is still visible via the
- * Payback column's own date coloring, and closed loans via the row's
- * line-through/faded styling. Shows nothing when there's no health data
- * (no food token, no matched satellite cycle, or the weekly LLM cadence
- * hasn't produced a read yet).
+ * Status icon: repayment ability (expected crop value vs. outstanding),
+ * not crop vigor — the crop-vigor signal (getHealthIndicator) moved to the
+ * Portfolio Map card 2026-08-25, since "is the crop growing well" belongs
+ * next to the crop-condition view, while this list is where leaders judge
+ * "will this loan get repaid". Payback-date warnings (red overdue / amber
+ * within 3wk) and chain-verification/closed status still live elsewhere
+ * (Payback column's date coloring, row's line-through/faded styling).
+ * Shows nothing when the ratio can't be computed (no matched batch price,
+ * no yield estimate yet, or no acreage) — never a false green/red.
  */
 function StatusIcon({ loan }) {
-  const indicator = getHealthIndicator(loan.health, loan.healthSummary);
-  if (!indicator) return null;
-  const HealthIcon = indicator.tone === 'good' ? CheckCircleIcon : ExclamationTriangleIcon;
+  const rh = loan.repaymentHealth;
+  if (!rh) return null;
   return (
-    <HealthIcon
-      className={`w-4 h-4 justify-self-end ${indicator.colorClass}`}
-      title={indicator.title}
-    />
+    <span
+      className={`justify-self-end text-[10px] font-mono font-bold whitespace-nowrap ${REPAYMENT_TONE_COLOR[rh.tone]}`}
+      title={`Repayment outlook: expected ₹${Math.round(rh.expectedValue).toLocaleString('en-IN')} vs ₹${Math.round(loan.totalAmount).toLocaleString('en-IN')} outstanding (${rh.ratio.toFixed(2)}x)`}
+    >
+      {Math.round(rh.ratio * 100)}%
+    </span>
   );
 }
 
@@ -269,6 +271,20 @@ export default function ActiveLoansCard({
   const [ftData, setFtData] = useState({}); // { loanId: { cropFamily, cropName, kg, sosTs, harvestTs } }
   const [copiedId, setCopiedId] = useState(null);
 
+  // Best available USDT/kg price per crop, for the repayment-health ratio —
+  // "best" = highest active-batch price for that crop, same optimistic
+  // pick staticCards.js's earnings estimate already uses (sorted desc).
+  const { data: batchSummary } = useFoodTokenBatches(unionAddress);
+  const priceByCrop = useMemo(() => {
+    const m = new Map();
+    for (const b of batchSummary?.active ?? []) {
+      if (!b.pricePerKgUsdt) continue;
+      const price = Number(b.pricePerKgUsdt) / 1e6;
+      if (price > (m.get(b.cropCode) ?? 0)) m.set(b.cropCode, price);
+    }
+    return m;
+  }, [batchSummary]);
+
   // Per-loan collect-deadline window check.
   // Within window (drawdownTs + collectDeadline > now): swipe right → cash-out (DISBURSE more).
   // Outside window: swipe left → repay.
@@ -390,8 +406,18 @@ export default function ActiveLoansCard({
   // loans in the same shape staticCards.js's portfolio Gantt/graph expects,
   // instead of duplicating this logic a second time.
   const enriched = useMemo(() =>
-    [...pending, ...active, ...flagged].map((l) => enrichLoan(l, { isPending, resolveName, hasName, eosMap })),
-    [pending, active, flagged, resolveName, eosMap, isPending, ftData]
+    [...pending, ...active, ...flagged].map((l) => {
+      const el = enrichLoan(l, { isPending, resolveName, hasName, eosMap });
+      const pricePerKg = el.cropFamily != null ? priceByCrop.get(el.cropFamily) ?? null : null;
+      const repaymentHealth = getRepaymentHealth({
+        yieldKgPerAcre: el.yieldKgPerAcre ?? null,
+        areaAcres: el.areaAcres ?? null,
+        pricePerKg,
+        outstanding: el.totalAmount,
+      });
+      return { ...el, repaymentHealth };
+    }),
+    [pending, active, flagged, resolveName, eosMap, isPending, ftData, priceByCrop]
   );
 
   // When a row is expanded and it carries a foodTokenId, fetch on-chain crop / kg / SOS / harvest.
@@ -447,14 +473,15 @@ export default function ActiveLoansCard({
           return mul * (da - db);
         }
         case 'status': {
-          // Health rank — matches StatusIcon's own severity ordering.
-          // Ascending = worst health first (same "surface the problem"
-          // convention as 'eos' ascending putting soonest deadlines first).
-          // Unclassified (no health data) sorts last, same treatment as
-          // null EOS above.
-          const HEALTH_RANK = { underperforming: 0, stressed: 1, on_track: 2, excellent: 2 };
-          const rank = (l) => HEALTH_RANK[l.health] ?? 9;
-          return mul * (rank(a) - rank(b));
+          // Actual repayment ratio, not just its tone bucket — two loans
+          // both "warn" (e.g. 105% vs 140%) still need to sort relative to
+          // each other, which a 3-bucket rank can't do. Ascending = worst
+          // outlook first (same "surface the problem" convention as 'eos'
+          // ascending putting soonest deadlines first). Unclassified (no
+          // ratio computable) sorts last, same treatment as null EOS above.
+          const ra = a.repaymentHealth?.ratio ?? Infinity;
+          const rb = b.repaymentHealth?.ratio ?? Infinity;
+          return mul * (ra - rb);
         }
         default: return 0;
       }
@@ -679,8 +706,8 @@ export default function ActiveLoansCard({
           <button
             key={col.key}
             onClick={() => col.key && handleSort(col.key)}
-            className={`text-[10px] font-semibold uppercase tracking-wide dark:text-slate-400 text-gray-500 ${
-              col.align === 'right' ? 'text-right' : 'text-left'
+            className={`flex items-center gap-0.5 whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide dark:text-slate-400 text-gray-500 ${
+              col.align === 'right' ? 'justify-end ml-auto' : 'justify-start'
             }`}
           >
             {col.label}
@@ -922,6 +949,19 @@ export default function ActiveLoansCard({
                 <DetailRow label="Fund" value={fundMap.get(loan.fund) || loan.fund || '--'} />
                 <DetailRow label="Principal" value={`₹${(loan.principal ?? loan.amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
                 <DetailRow label="Rate" value={`${(loan.rateBP / 100).toFixed(1)}%`} />
+                {loan.repaymentHealth && (
+                  <DetailRow
+                    label="Repayment outlook"
+                    value={
+                      <span
+                        className={`font-semibold ${REPAYMENT_TONE_COLOR[loan.repaymentHealth.tone]}`}
+                        title={`Expected ₹${Math.round(loan.repaymentHealth.expectedValue).toLocaleString('en-IN')} vs ₹${Math.round(loan.totalAmount).toLocaleString('en-IN')} outstanding`}
+                      >
+                        {loan.repaymentHealth.ratio.toFixed(2)}x
+                      </span>
+                    }
+                  />
+                )}
                 {loan.sos && (
                   <DetailRow
                     label="SOS"
@@ -969,6 +1009,12 @@ export default function ActiveLoansCard({
                     </div>
                     <DetailRow label="Crop" value={ftData[loan.id]?.cropName ?? '…'} />
                     <DetailRow label="Committed" value={ftData[loan.id]?.kg != null ? `${ftData[loan.id].kg.toLocaleString('en-IN')} kg` : '…'} />
+                    {loan.yieldKgPerAcre != null && loan.areaAcres != null && (
+                      <DetailRow
+                        label="Est. Yield"
+                        value={`${Math.round(loan.yieldKgPerAcre * loan.areaAcres).toLocaleString('en-IN')} kg`}
+                      />
+                    )}
                     <DetailRow label="Harvest" value={ftData[loan.id]?.harvestTs ? formatDate(ftData[loan.id].harvestTs) : '…'} />
                   </>
                 )}
@@ -1104,12 +1150,16 @@ function VerifyOnChainButton({ loan, onVerifiedHash }) {
   useEffect(() => {
     if (!recordHash || loading || appliedRef.current === recordHash) return;
     appliedRef.current = recordHash;
-    if (recordHash === loan.recordHash) {
-      setStatus('same');
-      return;
-    }
+    // A matching hash only means the pointer hasn't moved — it doesn't mean
+    // the JSON behind it was ever successfully reviewed (a prior extraction
+    // could have hit a transient IPFS 404, or found no matching open cycle
+    // and silently extracted nothing while still stamping resolvedRecordHash
+    // as "done" — see the land 18/25/50 investigation, 2026-08-25). A manual
+    // verify click always re-fetches and re-extracts; "same" only changes
+    // the label shown, never skips the review.
+    const sameHash = recordHash === loan.recordHash;
     onVerifiedHash(loan, recordHash).then(
-      () => setStatus('updated'),
+      () => setStatus(sameHash ? 'same' : 'updated'),
       () => setStatus('error'),
     );
   }, [recordHash, loading, loan, onVerifiedHash]);
