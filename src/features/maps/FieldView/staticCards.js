@@ -7,12 +7,14 @@ import {
   DEFAULT_CURVE_SHAPE,
   schematicBiomassAt,
   getLoanIssues,
+  HEALTH_COLOR,
+  HEALTH_LABEL,
 } from '../../../utils/loanIssues.js';
 import { mergeZonesWithSubzones } from '../../../utils/recordZones.js';
 import { sameCropFamily } from '../../../utils/foodToken.ts';
 import { motion, useDragControls, AnimatePresence, useAnimation } from 'framer-motion';
 import { RateSlider, ClaimButton, DropdownButton } from '../../../components/UI/buttons';
-import { ChevronDownIcon, TagIcon } from '@heroicons/react/24/solid';
+import { ChevronDownIcon, TagIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import Spinner from '../../../components/UI/spinner.js';
 import useLendingFlow from '../../../hooks/useDirectLendingFlow.js'
 import { useMintFoodToken, useBurnLandTitle } from '../../../hooks/useMintLandTitle.ts'
@@ -1187,14 +1189,34 @@ const PortfolioCards = () => {
                     }}
                     className="flex w-full items-center gap-2 py-1.5 text-xs"
                   >
+                    {/* Crop-vigor health — its own column, left of the name,
+                        not squeezed into the land-title span. Moved here from
+                        the Cash & Liquidity list's Health column 2026-08-25
+                        (that column now shows repayment ability instead).
+                        Crop identity is still visible via the Gantt bar color
+                        + expanded CropIcon, so it isn't lost by not also
+                        being here. Three-tier severity (check / amber warning
+                        / red warning) — stressed and underperforming both
+                        used to collapse into a single "warn" tone elsewhere,
+                        but HEALTH_COLOR already distinguishes them, so this
+                        glyph does too rather than losing that distinction. */}
+                    <span className="flex-shrink-0 w-10 flex items-center justify-start">
+                      {loan?.health && (() => {
+                        const isGood = loan.health === 'excellent' || loan.health === 'on_track';
+                        const Icon = isGood ? CheckCircleIcon : ExclamationTriangleIcon;
+                        return (
+                          <Icon
+                            className={`w-3 h-3 ${HEALTH_COLOR[loan.health] ?? 'text-amber dark:text-amber-300'}`}
+                            title={loan.healthSummary || HEALTH_LABEL[loan.health] || loan.health}
+                          />
+                        );
+                      })()}
+                    </span>
                     <span className="flex items-center gap-1.5 min-w-0 w-24 flex-shrink-0">
-                      {rowCropColorKey && (
-                        <span
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ background: cropColor(rowCropColorKey), opacity: loan?.foodTokenId ? 1 : 0.4 }}
-                        />
-                      )}
-                      <span className="font-semibold dark:text-white truncate text-left">{m.farm}</span>
+                      {/* Contact name overrides farm name when known — same
+                          precedence as ActiveLoansCard's displayName (loan
+                          was enriched via that same enrichLoan call). */}
+                      <span className="font-semibold dark:text-white truncate text-left">{loan?.displayName || m.farm}</span>
                     </span>
                     <span className="relative flex-1 h-2 rounded-full bg-gray-100 dark:bg-slate-600 overflow-hidden">
                       {barLeftPct != null && (
@@ -1311,6 +1333,15 @@ const PortfolioCards = () => {
 
             return (
               <div className="flex flex-col px-4">
+                {/* Column headers — same style as the Cash & Liquidity active
+                    loans list's header row, mirroring this row's own layout
+                    (health icon, name, Gantt-bar-as-calendar, chevron). */}
+                <div className="flex items-center gap-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                  <span className="w-10 flex-shrink-0 text-left whitespace-nowrap">Health</span>
+                  <span className="w-24 flex-shrink-0 text-left whitespace-nowrap">Name</span>
+                  <span className="flex-1 text-left">Calendar</span>
+                  <span className="flex-shrink-0 w-3" />
+                </div>
                 <div className="overflow-y-auto max-h-[45vh]" style={{ touchAction: 'pan-y' }}>
                   {visibleEntries.map(renderRow)}
                 </div>

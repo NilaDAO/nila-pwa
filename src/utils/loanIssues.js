@@ -296,6 +296,37 @@ export function getLoanIssues(loan) {
   return issues;
 }
 
+// Hardcoded benchmark thresholds for getRepaymentHealth — ratio of expected
+// crop value to outstanding loan amount. >= GOOD is a clean repay outlook,
+// between WARN and GOOD is a possible amber warning, below WARN is a red
+// repay-problem flag. Both sides of the ratio are ₹ despite the on-chain
+// field names (`nin` token, `Batch.pricePerKgUsdt`) — unions enter batch
+// prices directly in rupees and loan amounts display as ₹ everywhere in the
+// UI, confirmed 2026-08-25, so no currency peg/oracle is needed here.
+export const REPAYMENT_RATIO_GOOD = 1.5;
+export const REPAYMENT_RATIO_WARN = 1.0;
+
+export const REPAYMENT_TONE_COLOR = {
+  good: 'text-green dark:text-green',
+  warn: 'text-amber dark:text-amber-300',
+  bad: 'text-red dark:text-red',
+};
+
+/**
+ * Repayment-ability health: expected crop value (yield * area * price) vs.
+ * outstanding loan amount. Distinct from getHealthIndicator's crop-vigor
+ * signal above — this is "can they pay it back", not "is the crop healthy".
+ * Returns null (render as neutral/unknown, never a false green/red) when any
+ * input is missing, e.g. no matching FoodToken batch price for the crop.
+ */
+export function getRepaymentHealth({ yieldKgPerAcre, areaAcres, pricePerKg, outstanding }) {
+  if (yieldKgPerAcre == null || areaAcres == null || pricePerKg == null || !outstanding) return null;
+  const expectedValue = Number(yieldKgPerAcre) * Number(areaAcres) * Number(pricePerKg);
+  const ratio = expectedValue / Number(outstanding);
+  const tone = ratio >= REPAYMENT_RATIO_GOOD ? 'good' : ratio >= REPAYMENT_RATIO_WARN ? 'warn' : 'bad';
+  return { ratio, tone, expectedValue };
+}
+
 // Single worst-of tone across an issues list — 'warn' if anything needs
 // attention, 'ok' if everything's fine, null if there's nothing to judge
 // yet. Used where only one summary icon fits (e.g. next to CropIcon in the
