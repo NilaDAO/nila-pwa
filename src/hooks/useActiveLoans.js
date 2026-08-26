@@ -343,12 +343,32 @@ export async function resolveCropFromRecords(candidates) {
       // invent or normalize this string.
       const stage = live?.stage ?? null;
       const stageDescription = live?.stage_description ?? null;
-      // Yield estimate — lives on the matched *cycle* itself (cycles[]),
-      // not current_cycle/live. Real field, confirmed present in actual
-      // record.json output during the 2026-08-21 investigation, but null on
-      // every open/in-progress cycle seen so far — likely only populated
-      // once a cycle closes (or once the yield model has enough signal).
-      const yieldKgPerAcre = best?.yield_kg_per_acre ?? null;
+      // Yield estimate — current_cycle/live's expected_yield_kg_acre is the
+      // one NilaSensingAgent actually populates in production (an LLM
+      // forecast call, not a deterministic model); the matched cycle's own
+      // yield_kg_per_acre (cycles[]) is only ever set post-close and has
+      // been null on every real record seen so far, kept as a fallback for
+      // when that path does start populating. Matches the same
+      // live-then-cycle preference Wallet.js already uses independently
+      // (`cyc.expected_yield_kg_acre || cyc.yield_kg_per_acre`).
+      const yieldKgPerAcre = live?.expected_yield_kg_acre ?? best?.yield_kg_per_acre ?? null;
+      // Parcel area, for turning yieldKgPerAcre into a total expected yield
+      // (repayment-health calc) — same record.meta field and m²→acre divisor
+      // staticCards.js already computes independently (areaAcres there).
+      const areaAcres = record?.meta?.parcel_area_m2 != null
+        ? Number(record.meta.parcel_area_m2) / 4046.86
+        : null;
+
+      // The one line that actually answers "did extraction find anything" —
+      // fetch/integrity logs (ipfsCid.ts, useRecordHash.ts) only prove the
+      // record loaded, not that best/live matched or that these fields came
+      // out non-null (2026-08-25: a loaded-fine record still showed no
+      // yield, and nothing logged the extraction step itself to check why).
+      console.log(
+        `[cropFromRecord] land_id=${record?.land_id} loan=${l.id.slice(0, 10)} ` +
+        `best=${best ? best.zone_id : 'none'} live=${live ? live.cluster_id : 'none'} ` +
+        `crop=${cropFamily ?? '—'} stage=${stage ?? '—'} health=${health ?? '—'} yield=${yieldKgPerAcre ?? '—'}`
+      );
 
       const updated = {
         ...(fresh[l.id] ?? l),
@@ -357,6 +377,7 @@ export async function resolveCropFromRecords(candidates) {
         ...(satSos != null ? { satSos } : {}),
         ...(stage != null ? { stage, stageDescription } : {}),
         ...(yieldKgPerAcre != null ? { yieldKgPerAcre } : {}),
+        ...(areaAcres != null ? { areaAcres } : {}),
         ...(health != null ? { health, healthSummary, healthDescription } : {}),
         // Stamped even when nothing new was extracted (no matching open
         // cycle, no health yet) so this loan isn't re-fetched every sync —
@@ -405,7 +426,6 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
     const syncKey = lastSyncKey(unionAddress);
     const lastSyncedAt = Number(localStorage.getItem(syncKey) || 0);
     if (Date.now() - lastSyncedAt < SYNC_THROTTLE_MS) {
-      console.log(`[activeLoans] skip backend sync — last synced ${Math.round((Date.now() - lastSyncedAt) / 1000)}s ago`);
       return;
     }
 
@@ -447,8 +467,6 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
           : [];
 
         // Upsert new loans AND refresh stale ones (but don't overwrite chain-synced records)
-        console.log(`[activeLoans] backend returned ${backendItems.length} items, landIds:`,
-          backendItems.filter(i => i.landId).map(i => `${i.id.slice(0,8)}→${i.landId}`));
         // Loans whose foodTokenId is new-to-us as of this sync — resolved
         // immediately below rather than waiting for the next chain sync.
         const newlyGotFoodTokenId = [];
@@ -470,25 +488,11 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
         // loan as active. See the 2026-08-21 closed-loan-resurrection
         // report (mobile: closed loans reappeared active after a sync).
         const storedNow = await readAllItems('ActiveLoans').catch(() => null) ?? stored;
+        let newCount = 0, mergeCount = 0, backfillCount = 0;
         for (const item of backendItems) {
           const existing = storedNow[item.id];
-          // Debug: unconditional per-item trace of what the backend sent vs
-          // what's already local, ahead of the NEW/MERGE/BACKFILL/SKIP branch
-          // below — added 2026-08-24 to debug reports of a loan's updated
-          // satellite record (new report_hash on-chain) not showing up in the
-          // PWA after refresh. Answers "was this loan even in the /loans/sync
-          // response this time" and "did its recordHash actually change from
-          // the backend's point of view" without having to cross-reference
-          // the landIds summary line above by truncated id prefix.
-          console.log(
-            `[activeLoans][sync-trace] id=${item.id.slice(0, 10)} landId=${item.landId} ` +
-            `chainVerified=${existing?.chainVerified ?? '(new)'} ` +
-            `recordHash: local=${existing?.recordHash ?? 'none'} backend=${item.recordHash ?? 'none'} ` +
-            `changed=${!existing ? 'n/a-new' : existing.recordHash !== item.recordHash}`
-          );
           if (!existing) {
             if (isKnownClosed(unionAddress, item.id)) {
-              console.log(`[activeLoans] SKIP re-adding known-closed loan ${item.id.slice(0,8)}`);
               continue;
             }
             // Brand-new loan from backend
@@ -496,7 +500,7 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
             stored[item.id] = item;
             if (item.foodTokenId) newlyGotFoodTokenId.push(item);
             if (item.recordHash) newlyGotRecordHash.push(item);
-            console.log(`[activeLoans] NEW ${item.id.slice(0,8)} landId=${item.landId}`);
+            newCount++;
           } else if (!existing.chainVerified) {
             // Backend has fresher data than our un-verified local copy — but
             // mapBackendItem always hardcodes chainVerified/chainClosed to
@@ -518,7 +522,7 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
             stored[item.id] = merged;
             if (item.foodTokenId && !existing.foodTokenId) newlyGotFoodTokenId.push(merged);
             if (item.recordHash && item.recordHash !== existing.recordHash) newlyGotRecordHash.push(merged);
-            console.log(`[activeLoans] MERGE (unverified) ${item.id.slice(0,8)} landId=${merged.landId}`);
+            mergeCount++;
           } else {
             // Chain-verified — backfill landId/farmName from backend if missing locally
             const patch = {};
@@ -532,11 +536,12 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
               stored[item.id] = patched;
               if (patch.foodTokenId) newlyGotFoodTokenId.push(patched);
               if (patch.recordHash) newlyGotRecordHash.push(patched);
-              console.log(`[activeLoans] BACKFILL ${item.id.slice(0,8)}`, patch);
-            } else {
-              console.log(`[activeLoans] SKIP ${item.id.slice(0,8)} landId=${existing.landId} farmName=${existing.farmName}`);
+              backfillCount++;
             }
           }
+        }
+        if (newCount || mergeCount || backfillCount) {
+          console.log(`[activeLoans] sync: ${newCount} new, ${mergeCount} merged, ${backfillCount} backfilled (of ${backendItems.length})`);
         }
         localStorage.setItem(syncKey, String(Date.now()));
 
@@ -625,7 +630,6 @@ export function useActiveLoans(unionAddress, enabled) {
       const activeLoans = allItems.filter(
         (l) => l.drawdownTs && l.active && !l.chainClosed
       );
-      console.log('[activeLoans] loaded:', activeLoans.length, 'active /', allItems.length, 'total');
 
       return {
         activeLoans,
@@ -891,7 +895,6 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
       }
 
       // Resolve landId + farmName from chain for active loans missing them
-      console.log('[chainSync] farm name resolution — _ltAddr:', _ltAddr);
       if (_ltAddr) {
         const lt = new ethers.Contract(_ltAddr, _ltAbi, provider);
         const ltIface = new ethers.Interface(_ltAbi);
@@ -900,7 +903,6 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
         const allLoans = Object.values(fresh).filter(l => !l.chainClosed);
         const needLandId = allLoans.filter(l => !l.landId && l.borrower);
         const needName = allLoans.filter(l => l.landId && !l.farmName);
-        console.log(`[chainSync] ${allLoans.length} active loans, ${needLandId.length} need landId, ${needName.length} need farmName`);
 
         // Step 1a: batch balanceOf to find loans whose borrower has a land title
         if (needLandId.length > 0) {
@@ -923,16 +925,12 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
               const updated = { ...l, landId: Number(tid) };
               await setDBitem(l.id, updated, 'ActiveLoans');
               fresh[l.id] = updated;
-              console.log(`[chainSync] resolved landId: ${l.borrower.slice(0,8)}… → ${Number(tid)}`);
             }
-          } else {
-            console.log('[chainSync] no borrowers have a land title');
           }
         }
 
         // Step 2: batch getTitleName for loans with landId but no farmName
         const needName2 = Object.values(fresh).filter(l => l.landId && !l.farmName && !l.chainClosed);
-        console.log(`[chainSync] ${needName2.length} loans need farmName after landId resolution`);
         if (needName2.length > 0) {
           const nameCalls = needName2.map(l => [_ltAddr, ltIface.encodeFunctionData('getTitleName', [l.landId])]);
           const nameResults = await mc.tryAggregate.staticCall(false, nameCalls);
@@ -943,7 +941,6 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
             if (name) {
               const updated = { ...fresh[l.id] ?? l, farmName: name };
               await setDBitem(l.id, updated, 'ActiveLoans');
-              console.log(`[chainSync] ✓ ${l.id.slice(0,8)} landId=${l.landId} → "${name}"`);
             }
           }
         }
@@ -964,7 +961,6 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
         const freshForCrop = await readAllItems('ActiveLoans') ?? {};
         const needCropFamily = Object.values(freshForCrop)
           .filter(l => l.foodTokenId && (l.cropFamily == null || l.sosTs == null) && !l.chainClosed);
-        console.log(`[chainSync] ${needCropFamily.length} loans need cropFamily/sosTs resolution`);
         if (needCropFamily.length > 0) {
           const mc = new ethers.Contract(MULTICALL3, MulticallAbi, provider);
           const ftIface = new ethers.Interface(_ftAbi);
@@ -1016,7 +1012,6 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
             // the same hash is safe and cheap (one Pinata read).
             || (l.satProjectedEos != null && l.satSos == null)
           ));
-        console.log(`[chainSync] ${needSatCrop.length} loans need satellite projection resolution`);
         await resolveCropFromRecords(needSatCrop);
       }
 
@@ -1029,7 +1024,6 @@ export function useActiveLoansChainSync(unionAddress, enabled) {
         const freshForBatch = await readAllItems('ActiveLoans') ?? {};
         const needBatchId = Object.values(freshForBatch)
           .filter(l => l.foodTokenId && l.foodTokenBatchId == null && !l.chainClosed);
-        console.log(`[chainSync] ${needBatchId.length} loans need foodTokenBatchId resolution`);
         await resolveFoodTokenBatchIds(needBatchId, provider);
       } else {
         console.warn('[chainSync] _ftAddr not set — skipping foodTokenBatchId resolution');
