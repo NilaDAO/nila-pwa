@@ -452,6 +452,15 @@ function syncLoansWithBackend(unionAddress, queryClient, provider) {
           farm_name: l.farmName ?? null,
           farmer_score: l.farmerScore ?? null,
           food_token_id: l.foodTokenId ?? null,
+          // Backup path: NilaSensingAgent's own MonitorUnionLoans beat writes
+          // this primarily as it re-runs the compute pipeline's HEALTH_PROMPT
+          // classification; this client-side sync just mirrors what we
+          // already read from the same record.current_cycle[zone].health for
+          // display (see cropFromRecord above) in case that beat hasn't
+          // caught up yet for this loan.
+          crop_health: l.health ?? null,
+          crop_health_summary: l.healthSummary ?? null,
+          crop_health_description: l.healthDescription ?? null,
         }));
 
       const res = await fetch(`${API}/loans/sync`, {
