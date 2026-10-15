@@ -5,7 +5,8 @@
 import { ethers } from 'ethers';
 import { readFileSync } from 'fs';
 
-const RPC = 'https://polygon-mainnet.g.alchemy.com/v2/REDACTED_ALCHEMY';
+const RPC = process.env.REACT_APP_RPC_ALCHEMY; // run with: node --env-file=.env.local <script>
+if (!RPC) throw new Error('REACT_APP_RPC_ALCHEMY is not set — run with node --env-file=.env.local');
 const UNION = '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070';
 const CORE_ADDR  = '0x4173BbaF66A4f9A2705d05B800e8602370366756';
 const FXPOOL_ADDR = '0xBaE307FE0A453955c649cD8f81e3DA572dF448eA';
