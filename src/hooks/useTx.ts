@@ -100,6 +100,7 @@ const erc20Err = new Interface([
   "error FieldNumberTooLarge()",
   "error InvalidSosDate()",
   "error SosTooOld()",
+  "error SosTooFar()",
   // ERC20Permit ERRORS (from NilaNINV2 — bubble up through drawLoanWithVoucher)
   "error ERC2612InvalidSigner(address signer, address owner)",
   "error ERC2612ExpiredSignature(uint256 deadline)",
@@ -296,11 +297,13 @@ export function useTx() {
               } else if (parsed.name === 'SosTooOld') {
                 msg = 'This cycle started more than 270 days ago, so a food token can no longer be minted for it. Long-cycle crops like sugarcane will be supported once the per-crop window is enabled on the contract.';
               } else if (parsed.name === 'InvalidSosDate') {
-                msg = 'The start-of-season date for this cycle is missing or in the future. Confirm the SOS in the field record before minting.';
+                msg = 'The start-of-season date for this cycle is missing. Confirm the SOS in the field record before minting.';
+              } else if (parsed.name === 'SosTooFar') {
+                msg = 'The start-of-season date is more than a year ahead. Check the SOS in the crop plan before minting.';
               } else if (parsed.name === 'FieldAlreadyClaimed') {
-                msg = 'A food token has already been minted for this field this season. Pick a different field or wait until next season.';
+                msg = 'This field still carries a food token for an earlier season. It is free again from that crop\'s harvest date; if no harvest has been reported yet, the field stays taken until the oracle reports it. Pick a different field, or report the harvest first.';
               } else if (parsed.name === 'EntirePropertyClaimed') {
-                msg = 'The whole property has already been claimed for this season — individual fields cannot be added on top.';
+                msg = 'A food token for the whole property covers this season. Individual fields are free again from that crop\'s harvest date; if no harvest has been reported yet, they stay taken until the oracle reports it.';
               } else if (parsed.name === 'FieldNumberTooLarge') {
                 msg = 'Field number is out of range (must be 0–127). Re-select the field and try again.';
               } else if (parsed.name === 'NotCertified') {
