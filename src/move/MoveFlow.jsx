@@ -49,7 +49,7 @@ function Primary({ children, disabled, onClick }) {
   );
 }
 
-export default function MoveFlow({ onMoved }) {
+export default function MoveFlow({ onMoved, onRepay }) {
   const signer = useNilaSigner();
   const online = useOnline();
   const { run, busy, progress, legacy } = useMoveWallet();
@@ -87,18 +87,37 @@ export default function MoveFlow({ onMoved }) {
       </Frame>
     );
   }
-  const blocked = loans.open.length > 0;
-  // M1 / M1b. DESIGN GAP: crop shares are not moved (15 Oct) and an open loan blocks the move (16 Oct).
+  if (!loans.known) {
+    // DESIGN GAP: her Polygon loans are read before the start choice; a failed read never opens the move.
+    return (
+      <Frame>
+        <p className="text-center text-sm" style={{ color: T.muted }}>
+          {loans.error ? 'Could not check your loans. Check your internet and open the app again.' : 'Checking your loans…'}
+        </p>
+      </Frame>
+    );
+  }
+  if (loans.open.length > 0) {
+    // DESIGN GAP: the start choice for a member with an open Polygon loan (16 Oct): she repays in
+    // today's app first; this screen comes back at every start until the loan is closed.
+    return (
+      <Frame note="When your loan is repaid, you can move your wallet.">
+        <div className="text-center font-bold text-lg mb-2">Nila has moved to a new network</div>
+        <p className="text-center text-sm mb-4" style={{ color: T.muted }}>Repay your loan first. Then you can move your wallet.</p>
+        <Primary onClick={onRepay}>Repay my loan</Primary>
+      </Frame>
+    );
+  }
+  // M1 / M1b. DESIGN GAP: crop shares are not moved (15 Oct).
   return (
     <Frame note={!online ? 'You are offline. Connect to the internet to move your wallet.'
-      : blocked ? 'Repay your loan first. Then you can move your wallet.'
-        : undefined /* DESIGN GAP: no reset, so no "open your wallet again" note */}>
+      : undefined /* DESIGN GAP: no reset, so no "open your wallet again" note */}>
       <div className="text-center font-bold text-lg mb-2">Nila has moved to a new network</div>
       <p className="text-center text-sm mb-4" style={{ color: T.muted }}>Move your wallet to keep what you own. It is free.</p>
       <Row label="Land title" value={l ? l.titles : '…'} />
       <Row label="nIN" value={l ? Math.floor(l.nin) : '…'} />
-      <Primary disabled={!online || blocked || loans.loading || !signer?.ready || !l} onClick={run}>Move my wallet</Primary>
-      <span hidden data-testid="m1-ready">{String(!(!online || blocked || loans.loading || !signer?.ready || !l))}</span>
+      <Primary disabled={!online || !signer?.ready || !l} onClick={run}>Move my wallet</Primary>
+      <span hidden data-testid="m1-ready">{String(!(!online || !signer?.ready || !l))}</span>
     </Frame>
   );
 }

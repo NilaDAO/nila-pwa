@@ -1,7 +1,7 @@
 // The move M1–M4 (P3): design hooks useLegacyBalances, useMoveProgress, useMoveWallet.
 // Executive decisions 16 Oct (LOAN_RULES §5 "The move"): Polygon nIN is attested on Stellar and
 // burned on Polygon (oracle O10); an open Polygon loan blocks the move; no reset; custom:chain = 'stellar'.
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ethers } from 'ethers';
 import { useProvider } from '../hooks/useWallet.ts';
@@ -97,8 +97,17 @@ export function useMoveWallet() {
   return { run, busy, progress, legacy };
 }
 
-/** An open Polygon loan blocks the move until it is repaid in the old app (16 Oct). */
+/**
+ * An open Polygon loan blocks the move until it is repaid in the old app (16 Oct). `known` is true
+ * only after a read finished without error: until then the move stays closed (never assume "none").
+ */
 export function useOpenPolygonLoans(address) {
-  const { loans, loading } = useMemberLoans(address);
-  return { open: (loans || []).filter((l) => Number(l.outstanding) > 0), loading };
+  const { loans, loading, error } = useMemberLoans(address);
+  const started = useRef(false);
+  const [known, setKnown] = useState(false);
+  useEffect(() => {
+    if (loading) { started.current = true; setKnown(false); }
+    else if (started.current) setKnown(!error);
+  }, [loading, error]);
+  return { open: (loans || []).filter((l) => Number(l.outstanding) > 0), known, error };
 }

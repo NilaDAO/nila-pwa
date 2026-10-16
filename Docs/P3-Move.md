@@ -13,8 +13,12 @@ is unchanged (3 JS files, 3.9 MB, no Privy, Stellar or move code; checked 16 Oct
 
 ## What it does
 
-`StellarGate` (lazy, flag on) wraps the wallet: a Polygon wallet (`chain` = 137) sees only the move, full
-screen; a moved wallet (`stellar`) opens on an interim Stellar home until P1's bottom bar and A1 replace it.
+`StellarGate` (lazy, flag on) wraps the wallet. **Both apps ship in one build and the start decides:**
+- Polygon wallet (`chain` = 137) **with an open Polygon loan**: "Repay your loan first" + **Repay my loan**, which
+  opens today's app for this start (sessionStorage); the choice comes back at every start until the loan is closed.
+- Polygon wallet **without one**: only the move (M1–M4), full screen, no skip.
+- Moved wallet (`stellar`): an interim Stellar home until P1's bottom bar and A1 replace it.
+- Her Polygon loans are read first ("Checking your loans…"); a failed read never opens the move.
 
 "Move my wallet" (`useMoveWallet`), each step safe to repeat, progress in localStorage (`nila.move`),
 M4 "Try again" resumes at the failed step:
@@ -45,7 +49,10 @@ user: Amplify dev), and a move with Polygon nIN (needs BURNER_ROLE on a fork + C
 ## Design gaps (for the design brief)
 
 - M1: "Crop shares" row removed (existing FoodTokens are not moved, 15 Oct); the "open your wallet again"
-  note removed (no reset). New state: "Repay your loan first. Then you can move your wallet." (no board).
+  note removed (no reset).
+- New start screen for an open loan: "Repay your loan first. Then you can move your wallet." + "Repay my loan"
+  (opens today's app), note "When your loan is repaid, you can move your wallet." And "Checking your loans…" /
+  "Could not check your loans. Check your internet and open the app again." No boards yet.
 - M3: no reset, so no "Recover wallet" and no "new code on WhatsApp": "Your land title and nIN are waiting."
   + Continue, with a note that her nIN arrives after the union confirms her title.
 - Interim Stellar home: no board (P1's A1 replaces it).
