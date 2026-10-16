@@ -22,6 +22,8 @@ Branch `t1/pwa/P5` (from `snapshot/2026-10-08`). Behind the Privy flag; the live
 | `src/loan/CashDesk.jsx` | leader **Cash** tab: Crop share request, **Invest** (her wallet + counted cash → `cash_scan_mint` INVEST), **Repay** (an open loan → `cash_scan_mint` REPAY) |
 | `src/shell/WalletQr.jsx` | **A1a** her wallet QR (for the leader) |
 | `src/stellar/hooks.js` | `useInvestment` (`fund_core.position`); A1 shows "nIN invested" and adds it to the total |
+| `src/loan/Investment.jsx` | **A3** (P5c): invested, earned, locked; withdraw her free part (`request_unbond_junior`, shares = amount × RAY / index), 14 days, then `claim_junior` |
+| `src/loan/CashOut.jsx` | **A7 → A7b** (P5c): nIN amount → `fx_pool.request_cash_out` under the hash of a one-time 9-digit code (7 days; the code stays on her phone) → QR + digits; leader **Pay out a cash-out** → `fx_pool.pay_out` (sponsored) |
 | oracle O12 | `GET /plan/approvals/approved` (L11 list) and leader-call sponsoring |
 
 ## Design gaps
@@ -31,7 +33,7 @@ Branch `t1/pwa/P5` (from `snapshot/2026-10-08`). Behind the Privy flag; the live
 - L11 does not show the union checks (cash on hand, stock, union limit) or the `#short` LP offer yet.
 - C6 photo count (`/inr/scan-bulk`) is not wired: the leader types the counted amount; the receipt hash is a hash
   of leader, member, purpose, amount and time. No N11 board.
-- A3 (her investment page with withdraw: `request_unbond_junior` / `claim_junior`) and cash-out (A7/A7b,
-  `request_cash_out`, leader `pay_out`) are **P5c**.
+- P5c design gaps: A3 has no rate arrow (Q5), no "In a year", no Photo count / Cash teller on her side; the
+  cash-out has no leader name and no reclaim button after expiry; the leader types her code (no camera on Pay out).
 - New hooks not in the design yet: `useSorobanTx` (in the design), `checkRequest`/`makeRequest` (design
   `useIssueRequest`/`useConfirmRequest`), `useInvestment` (in the design).

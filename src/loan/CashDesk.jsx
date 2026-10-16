@@ -13,6 +13,7 @@ import { usePlanClient } from '../plan/hooks';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { LeaderLoan } from './LoanScreens';
+import { PayOut } from './CashOut';
 import { NIN } from './request';
 
 const PURPOSE = { invest: 0, repay: 1 };
@@ -100,11 +101,13 @@ export default function CashDesk() {
   const back = useMemo(() => () => setView(undefined), []);
   if (view === 'loan') return <LeaderLoan />;
   if (view === 'invest' || view === 'repay') return <Scan purpose={view} onBack={back} />;
+  if (view === 'payout') return <PayOut onBack={back} />;
   return (
     <Sheet landName="Cash" title="Start a task">
       <Choice sub="For a crop plan the member accepted" onClick={() => setView('loan')}>Crop share request</Choice>
       <Choice sub="Cash in: she invests in the union" onClick={() => setView('invest')}>Invest</Choice>
       <Choice sub="Cash in: the member repays her crop share" onClick={() => setView('repay')}>Repay</Choice>
+      <Choice sub="Scan her code, pay cash, burn her nIN" onClick={() => setView('payout')}>Pay out a cash-out</Choice>
     </Sheet>
   );
 }

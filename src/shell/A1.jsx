@@ -50,7 +50,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const legacy = useLegacyBalances(s?.evmAddress);
@@ -90,10 +90,10 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         {leader && <span style={{ fontWeight: 700, color: C.muted }}>Yours</span>}
         <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
           value={titles ?? '…'} valueSub="—" />
-        <Row label="Open nIN" icon={<NinIcon />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} />
+        <Row label="Open nIN" icon={<NinIcon />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />
         {invested !== undefined && (
           <Row label="Open nIN invested" icon={<NinIcon />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}
-            value={Math.floor(invested)} valueSub={inr(invested)} />
+            value={Math.floor(invested)} valueSub={inr(invested)} onClick={onInvested} />
         )}
         {moveNote && <p style={{ color: C.muted, fontSize: 14, margin: '4px 0 0' }} role="note">{moveNote}</p>}
       </section>

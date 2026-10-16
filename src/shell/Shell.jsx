@@ -14,6 +14,8 @@ import LeaderPlans from '../plan/LeaderApprove';
 import { LeaderLoan, MemberScan } from '../loan/LoanScreens';
 import CashDesk from '../loan/CashDesk';
 import WalletQr from './WalletQr';
+import Investment from '../loan/Investment';
+import CashOut from '../loan/CashOut';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
 
@@ -93,13 +95,16 @@ export default function Shell({ leader }) {
   let body;
   if (view === 'assets') {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
-      onHistory={() => go('history')} onWalletQr={() => go('wallet')} moveNote={moveNote} />;
+      onHistory={() => go('history')} onWalletQr={() => go('wallet')} moveNote={moveNote}
+      onNin={() => go('cashout')} onInvested={() => go('invested')} />;
   } else if (view === 'settings') body = <Settings onBack={() => go('assets')} />;
   else if (view === 'crop') body = leader ? <LeaderPlans /> : <CropPlanFlow />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
   else if (view === 'loan') body = <LeaderLoan />;
   else if (view === 'cash' && leader) body = <CashDesk />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
+  else if (view === 'invested') body = <Investment onBack={() => go('assets')} />;
+  else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
   else if (view === 'tasks') body = <Later title="Tasks" step={leader ? 'the leader steps' : 'P5'} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
 
