@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
 import { useDataContext } from '../utils/NavigationContext';
 import { useNilaSigner } from '../wallet/signer';
 import MoveFlow, { LeaderStart } from './MoveFlow';
-import StellarHome from './StellarHome';
+import Shell from '../shell/Shell';
 import { STELLAR_CHAIN } from './hooks';
 
 // This start only, per wallet: 'old' (today's app) or 'new' (Stellar, leaders).
@@ -33,11 +33,11 @@ export default function StellarGate({ children }) {
   useEffect(() => { setMode(readMode(addr)); }, [addr]);
   const choose = (m) => { try { sessionStorage.setItem(modeKey(addr), m); } catch { /* private mode */ } setMode(m); };
 
-  if (db?.chain === STELLAR_CHAIN) return signer ? <StellarHome /> : <Holding />;
+  if (db?.chain === STELLAR_CHAIN) return signer ? <Shell /> : <Holding />;
   if (!signer || db?.chain !== '137') return children;
   if (mode === 'old') return children;
   if (db?.union?.leader) {
-    if (mode === 'new') return <StellarHome leader />;
+    if (mode === 'new') return <Shell leader />;
     return <LeaderStart onOld={() => choose('old')} onNew={() => { signer.stellarSetup?.run(); choose('new'); }} />;
   }
   return <MoveFlow onMoved={() => window.location.reload()} onRepay={() => choose('old')} />;

@@ -16,6 +16,8 @@ import WalletRoot from './wallet/WalletRoot';
 const P0Check = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./wallet/P0Check')) : null;
 // /p3: the move screens on their own, for checks (P3); same flag.
 const MoveCheck = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./move/MoveFlow')) : null;
+// /p1: the new shell on its own (member; /p1?leader for the leader bar), for checks (P1); same flag.
+const ShellCheck = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./shell/Shell')) : null;
 
 // small util to mirror meta theme-color to CSS var (import path adjust if needed)
 import { setMetaThemeColor } from './utils/metaTheme.js';
@@ -90,6 +92,7 @@ function Layout() {
                     <Route path="/record/:hash" element={<RecordViewer />} />
                     {P0Check && <Route path="/p0" element={<Suspense fallback={null}><P0Check /></Suspense>} />}
                     {MoveCheck && <Route path="/p3" element={<Suspense fallback={null}><MoveCheck onMoved={() => {}} /></Suspense>} />}
+                    {ShellCheck && <Route path="/p1" element={<Suspense fallback={null}><ShellCheck leader={window.location.search.includes('leader')} /></Suspense>} />}
                     <Route path="/*" element={<App installAvailable={installAvailable} />} />
                   </Routes>
                 </ErrorBoundary>
