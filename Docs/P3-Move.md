@@ -54,5 +54,6 @@ user: Amplify dev), and a move with Polygon nIN (needs BURNER_ROLE on a fork + C
 ## Security note found in passing
 
 `src/utils/cognito_helpers.js` builds its Cognito client with an IAM key from `REACT_APP_NILAAPP_AWS` /
-`REACT_APP_NILAAPP_SECRET`, so that key is in the browser bundle, and `updateUserChain` falls back to
-`AdminUpdateUserAttributes` with it. P3 never takes that path (no phone passed). The exposure predates P3.
+`REACT_APP_NILAAPP_SECRET`, and `updateUserChain` falls back to `AdminUpdateUserAttributes` with it. Checked
+16 Oct: `.env.production` does not set that key, so the live bundle carries none; never set it in an env file a
+build reads. P3 never takes the admin path (no phone passed).
