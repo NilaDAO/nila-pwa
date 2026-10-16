@@ -75,8 +75,27 @@ to correct). Board names
 (ids of her Polygon titles) stands for the spec's `useLandTitle`. Shares refused for "SOS more than a year
 ahead" are made later; the gas top-up is once per plan, so a later mint may need POL again (open).
 
+## P4c — field record, the map, the active plan (built)
+
+- **`useFieldRecord`** (`src/plan/record.js`): the record hash from her land title (`getRecordHash`, free for the
+  owner), the bytes from the node (`GET /gis/record-by-hash`) or an IPFS gateway, accepted only when sha256
+  matches. **CP1** "Getting your field record · This can take up to an hour." until published (checks every
+  minute); **CP2** "Your field record · <from> to <to> · n cultivations on m areas" → "Make my crop plan".
+- **`AreaMap`** (`src/plan/AreaMap.jsx`): her areas from `record.zones[].geometry` on Esri World Imagery (Leaflet
+  loaded at runtime, as the record viewer does; no new dependency), "Area n" by zone order, or the first
+  season's crop and yield in the crop's colour once there is a plan. The land name is `meta.farm_name`.
+- **CP13** (`src/plan/ActivePlan.jsx`): after the shares are made — season shown, "To do now", "Coming up"
+  (plant, machine jobs, harvest, repay with amount), "Your plan" (plan year, season n of 3), "Update my plan" /
+  "Plan next year" (→ change).
+- Demo: the crop-plan check now starts at CP2 and ends on CP13 (nila-integrations E4).
+
+**Design gaps (P4c):** CP2 has no "Main issues" (the oracle detects none yet, design Q20) and no "Add your trees
+and water sources" row (A5 not built); CP13 has no "Done" chips or "Done · n" (no activity-done store, Q26), no
+mismatch card (open-cp/3–4), no farm improvements (not in the record or plan) and no "Sell" steps (not in the
+plan); the map is not tappable (CP10 area check, merge and split stay in the list); "Nothing this month.".
+
 ## Next
 
-- **P4c:** CP1/CP2 (field record), CP13 (active plan), the map; a land picker for several titles.
+- A land picker for several titles; tappable areas on CP10; Done / mismatch / improvements once their data exists.
 - **Demo:** `/plan` on in the demo stack (LLM off), a test record and a FoodToken with standing batches on the
   fork, so the whole plan → approve → mint runs on localhost.
