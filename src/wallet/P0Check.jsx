@@ -1,5 +1,5 @@
 // /p0 — the P0 checks against her real Privy wallets, inside the PWA (only when Privy is on).
-// Log in to the app as usual first (Cognito, code by WhatsApp/SMS); Privy picks up that session.
+// Log in to the app as usual first (Cognito, code by SMS); Privy picks up that session.
 // Nothing goes to Polygon mainnet: the FoodToken mint is signed and decoded, never broadcast.
 // Stellar checks run on testnet.
 import { useState } from 'react';

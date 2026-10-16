@@ -6,9 +6,12 @@ Questions:
 
 ## Decisions (executive, 16 Oct — LOAN_RULES §5)
 
-- **Login is ours, not Privy's.** Her code goes by **WhatsApp**, sent by our backend (Cognito custom
-  auth). Privy only holds the wallets and trusts our Cognito **ID token** (Privy "JWT-based auth").
-  No Privy login UI, **no email login**, no Privy Scale plan, no SMS fallback.
+- **Login is ours, not Privy's: SMS through Cognito, as today** (operations' choice, 16 Oct; it
+  replaces the WhatsApp choice of the same morning). Privy only holds the wallets and trusts our
+  Cognito **ID token** (Privy "JWT-based auth"). No Privy login UI, **no email login**, no Privy Scale plan.
+- **Keys:** Cognito no longer stores or recovers keys for Privy wallets — Privy does. The encrypted-key
+  code (the Cognito Lambda, copy in `src/misc/lambda_handlers.js`; `getEncryptedKey.js`) is **kept**
+  for when we go off Privy.
 - **Privy is for now.** The app signs only through `useNilaSigner()` (`src/wallet/signer.js`):
   `signHash(hash32)` for Stellar, `signEvmTx(tx)` for Polygon. Replacing Privy means replacing
   `src/wallet/PrivyRoot.jsx` and nothing else. Keys can be exported from Privy.
@@ -66,8 +69,9 @@ Then log in to the app as usual, open `/p0`, press S0–S3 and E1–E2, and past
 | E1 | Polygon wallet made after login | |
 | E2 | `mintForBatchMember` signed silently, decoded, **not broadcast** | |
 
-Still open after P0: WhatsApp delivery in the Cognito `CreateAuthChallenge` Lambda (Meta WhatsApp
-Cloud API); importing her existing Polygon key into Privy (open item 13, M1).
+Still open after P0: the Cognito Lambda stops generating and storing a key for members who get
+Privy wallets (code kept, switched off per member); importing her existing Polygon key into Privy
+(open item 13, M1).
 
 Pinned: `@privy-io/react-auth` 3.46.0, `@stellar/stellar-sdk` 17.2.0, `viem` 2.56.0 (installed with
 `--legacy-peer-deps`: Privy's optional Solana peers want TypeScript ≥ 5.4, CRA has 4.9.5, kept pinned).

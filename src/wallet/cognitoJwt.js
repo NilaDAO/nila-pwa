@@ -1,4 +1,4 @@
-// Her login is ours (Cognito, code by WhatsApp); Privy only holds the wallets and trusts the
+// Her login is ours (Cognito, code by SMS as today); Privy only holds the wallets and trusts the
 // Cognito ID token through "JWT-based auth" (executive decision, 16 Oct — LOAN_RULES §5).
 // Privy dashboard: JWT auth on, JWKS = the user pool's /.well-known/jwks.json, user id claim `sub`.
 import { jwtDecode } from 'jwt-decode';
