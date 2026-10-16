@@ -14,6 +14,7 @@ import { usePlanClient } from '../plan/hooks';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { NIN, checkRequest, makeRequest } from './request';
+import { checkRows, useUnionChecks } from './unionChecks';
 
 const FLAG_DRAWN = 8;
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -56,6 +57,7 @@ export function LeaderLoan() {
       }));
     },
   });
+  const checks = useUnionChecks();
   const [pick, setPick] = useState();
   const [cash, setCash] = useState(0);
   const [hours, setHours] = useState(0);
@@ -106,22 +108,28 @@ export function LeaderLoan() {
       {shares.isLoading && <p style={muted}>…</p>}
       {shares.data?.map((x) => {
         const drawn = x.ft && (Number(x.ft.loan?.flags ?? 0) & FLAG_DRAWN);
-        const ready = x.ft && !drawn && Number(x.ft.from_date) <= now;
+        const ready = !!x.ft && !drawn && Number(x.ft.from_date) <= now;
         const tag = !x.ft ? 'Not attested yet' : drawn ? 'Financed' : ready ? 'Ready' : `From ${monthYear(Number(x.ft.from_date) * 1000)}`;
         return (
           <Choice key={x.token_id} on={pick === x.token_id} sub={`${x.share.zone} · ${tag}`}
-            onClick={() => { if (!ready) return; setPick(x.token_id); setCash(Math.min(10000, x.share.loan_amount || 0)); setHours(Math.round(x.share.hours || 0)); }}>
+            onClick={() => { if (!ready) return; setPick(x.token_id); setCash(Math.min(checks.data?.cashCap ?? 10000, x.share.loan_amount || 0)); setHours(Math.min(checks.data?.hoursCap ?? 99, Math.round(x.share.hours || 0))); }}>
             {x.crop}
           </Choice>
         );
       })}
       {sel && (
         <>
-          <Stepper label="Cash" value={cash} set={setCash} step={100} max={10000} fmt={inr} />
-          <Stepper label="Machine hours" value={hours} set={setHours} step={1} max={99} fmt={(h) => `${h} h`} />
+          <Stepper label="Cash" value={cash} set={setCash} step={100} max={checks.data?.cashCap ?? 10000} fmt={inr} />
+          <Stepper label="Machine hours" value={hours} set={setHours} step={1} max={checks.data?.hoursCap ?? 99} fmt={(h) => `${h} h`} />
+          {checkRows(checks.data, cash, hours).map(([k, v, bad]) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '4px 0' }}>
+              <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: bad ? C.coral : C.text }}>{v}</span>
+            </div>
+          ))}
+          {checkRows(checks.data, cash, hours)[0]?.[2] && <p style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</p>}
           <p style={muted}>Interest {rate}% a year{row ? ` · repay about ${inr(cash * (1 + (rate / 100) * ((new Date(row.finance.due) - new Date(row.sow)) / 864e5) / 365))} by end of ${monthYear(row.finance.due)}` : ''}</p>
           {error && <p style={{ color: C.coral }}>{error}</p>}
-          <Primary disabled={!cash && !hours} onClick={go}>Show QR to her</Primary>
+          <Primary disabled={(!cash && !hours) || (checks.data && (cash > checks.data.cashCap || hours > checks.data.hoursCap))} onClick={go}>Show QR to her</Primary>
         </>
       )}
     </Sheet>

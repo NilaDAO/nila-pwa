@@ -1,8 +1,8 @@
 // The leader's Cash tab (P5b; boards LeaderCash C1, LeaderInvest L10, LeaderPhotoCount C6): crop share
 // request (L11), invest (her cash into her union investment) and repay (her cash against a loan). The
 // leader records the cash with fx_pool.cash_scan_mint (leader signs; the node sponsors the fee, 16 Oct).
-// DESIGN GAPs: the photo count (C6, /inr/scan-bulk) is not wired yet — the leader types the counted amount;
-// the receipt hash (scan_hash) is a hash of the leader, member, purpose, amount and time; no N11 board.
+// The cash is counted on C6 (photo count, /inr/scan-bulk); the receipt hash (scan_hash) is sha256 of the
+// stored photo keys. DESIGN GAP: no N11 board (the tx screens N1/N2 show the result).
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
@@ -15,6 +15,7 @@ import { C, R } from '../shell/tokens';
 import { LeaderLoan } from './LoanScreens';
 import { PayOut } from './CashOut';
 import { NIN } from './request';
+import PhotoCount from './PhotoCount';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
@@ -40,6 +41,7 @@ function Scan({ purpose, onBack }) {
   const [member, setMember] = useState('');
   const [amount, setAmount] = useState(purpose === 'invest' ? 600 : 0);
   const [token, setToken] = useState();
+  const [counting, setCounting] = useState(false);
   // Repay: the loans drawn on approved plans (her token id and what she owes).
   const loans = useQuery({
     queryKey: ['stellar', 'loans', 'approved'], enabled: purpose === 'repay' && !!api && !!cfg,
@@ -58,19 +60,25 @@ function Scan({ purpose, onBack }) {
   const owed = (l) => Number((BigInt(l.principal) - BigInt(l.principal_paid) + BigInt(l.interest_accrued) - BigInt(l.interest_paid)) / NIN);
   const sel = loans.data?.find((l) => l.token_id === token);
   const who = purpose === 'repay' ? sel?.loan?.borrower : member.trim();
-  const record = async () => {
-    const amt = BigInt(Math.round(amount)) * NIN;
-    const scanHash = await sha(`${s.stellarAddress}|${who}|${purpose}|${amt}|${Date.now()}`);
+  const record = async ({ total, s3Keys }) => {
+    setAmount(total);
+    const amt = BigInt(Math.round(total)) * NIN;
+    // The receipt: the stored photos of this count (one scan per receipt, ScanUsed on reuse).
+    const scanHash = await sha(`${s3Keys.join('|')}|${who}|${purpose}|${amt}`);
     await tx.run({
-      label: purpose === 'invest' ? `Invest ${inr(amount)}` : `Repay ${inr(amount)}`,
-      rows: [['Amount', inr(amount)], ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
+      label: purpose === 'invest' ? `Invest ${inr(total)}` : `Repay ${inr(total)}`,
+      rows: [['Amount', inr(total)], ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
       contractName: 'fx_pool', fn: 'cash_scan_mint',
       args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.u32(PURPOSE[purpose]), sv.address(who), sv.i128(amt), sv.bytes(scanHash),
         purpose === 'repay' ? sv.bytes32(tokenHex(sel.token_id)) : sv.none()],
       invalidate: [['stellar', 'loans'], ['stellar', 'investment']],
     });
   };
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={record} />;
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => { tx.reset(); setCounting(true); }} />;
+  if (counting) {
+    return <PhotoCount name={purpose === 'invest' ? 'Invest' : `Repay · ${sel?.crop || ''}`} target={amount} verb={purpose === 'invest' ? 'Invest' : 'Repay'}
+      onBack={() => setCounting(false)} onDone={(c) => { setCounting(false); record(c); }} />;
+  }
   return (
     <Sheet landName="Cash" title={purpose === 'invest' ? 'Invest' : 'Repay'} onBack={onBack}>
       {purpose === 'invest' && (
@@ -89,9 +97,9 @@ function Scan({ purpose, onBack }) {
           ))}
         </>
       )}
-      <p style={{ ...muted, textAlign: 'center' }}>Cash counted</p>
+      <p style={{ ...muted, textAlign: 'center' }}>{purpose === 'invest' ? 'She brings' : 'She repays'}</p>
       <Amount value={amount} set={setAmount} />
-      <Primary disabled={!amount || !isG(who) || !tx.ready} onClick={record}>{purpose === 'invest' ? `Invest ${inr(amount)}` : `Record repay ${inr(amount)}`}</Primary>
+      <Primary disabled={!amount || !isG(who) || !tx.ready} onClick={() => setCounting(true)}>Photo count</Primary>
     </Sheet>
   );
 }
