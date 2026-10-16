@@ -12,6 +12,7 @@ export const qkPlan = {
   plan: (landId) => ['oracle', 'plan', landId],
   job: (jobId) => ['oracle', 'planJob', jobId],
   titles: (addr) => ['polygon', 'titles', addr],
+  pending: () => ['oracle', 'pendingApprovals'],
 };
 
 export function usePlanClient() {
@@ -82,3 +83,25 @@ export function useAcceptPlan(landId) {
 export const COWS = { None: 0, '1 or 2': 2, '3 to 5': 4, '6 or more': 6 };
 /** CP5 answer → land_role (free string on the node). */
 export const LAND_ROLE = { 'Our main income': 'main', 'One of several incomes': 'several', 'Food for our home and cattle': 'food' };
+
+/** L12: the accepted plans of lands this leader leads, waiting for approval (O11). */
+export function usePendingApprovals() {
+  const api = usePlanClient();
+  return useQuery({ queryKey: qkPlan.pending(), enabled: !!api, queryFn: () => api.pendingApprovals(), refetchInterval: 60_000 });
+}
+
+/** L12 Approve / Deny (executive decision, 16 Oct: she accepts, a leader approves, she mints). */
+export function useApprovePlan() {
+  const api = usePlanClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, decision, reason, note }) => api.approve(planId, decision, reason, note),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qkPlan.pending() }),
+  });
+}
+
+/** CP10 "Change my plan": her (or her leader's) explanation and crop changes → a new version (/revise). */
+export function useRevisePlan() {
+  const api = usePlanClient();
+  return useMutation({ mutationFn: ({ planId, note, changes }) => api.revise(planId, note, changes) });
+}

@@ -47,6 +47,32 @@ Design gaps (P4b): the pending list replaces LeaderPickMember for approvals; no 
 "Land N"); a leader's own plan is not reachable from the leader's Crop plan tab yet; "Make my crop shares" is a
 button (the board shows CP12 busy directly); L12 no longer says "sign the mint on this phone" (N1).
 
+## Review fixes (nila-reviewer FAIL, 16 Oct)
+
+- **Mint:** the gas tx hash is normalised to `0x…` and its wait can never fail the run; one share that reverts
+  (a field still held, a closed batch) no longer stops the others: it is listed with a plain reason and "Try
+  again" retries only what is missing; FoodToken reverts and the node's refusals in plain words (texts as in
+  `hooks/useTx.ts`, copied so the live file is untouched); an approved plan whose shares are on her wallet
+  opens on "made".
+- **Shown now:** the part of the input cost above the ₹10,000 cash cap (CP10 and L12, coral), the tree-discount
+  row (CP10), the plan year (L12), refused member changes ("Not followed …").
+- **Her changes:** CP10 "Change my plan" → a note (≤1000) → `POST /plan/{id}/revise` → a new version (crop
+  changes on the map come with P4c).
+- After accept the plan is read-only ("See my plan" no longer offers "Accept the plan").
+- Named hooks: `usePendingApprovals`, `useApprovePlan`, `useRevisePlan` (keys in `qkPlan`).
+- Oracle O11: a leader who accepted cannot approve and she must have accepted herself; gas hash `0x`, claim freed
+  on a failed send, one lock; no RPC URL in errors.
+
+## More design gaps (not on any board)
+
+"Your plan is approved", "Make your crop shares now. Nila pays the network fee.", "Make my crop shares", "Your
+crop shares are made", "n of N crop shares made", "No land title yet" + "Your crop plan starts when your land
+title is ready.", "Waiting for your approval", "No plans are waiting.", "Accept the plan", "Check each area and
+accept it.", "Areas too small to plan", "Change my plan" + its text, the cash-cap line, "Not followed". Board names
+(Rosalie, Lakshmi) are replaced by "Your leader" / "She" / "Land N" (no names on the node). `useLandTitles`
+(ids of her Polygon titles) stands for the spec's `useLandTitle`. Shares refused for "SOS more than a year
+ahead" are made later; the gas top-up is once per plan, so a later mint may need POL again (open).
+
 ## Next
 
 - **P4c:** CP1/CP2 (field record), CP13 (active plan), the map; a land picker for several titles.

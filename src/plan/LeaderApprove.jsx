@@ -3,9 +3,8 @@
 // DESIGN GAPs: the list (LeaderPickMember is not built); member names are not on the node, so the
 // list shows the land title; "sign the mint on this phone" is gone: she mints on her phone (N1).
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { C } from '../shell/tokens';
-import { usePlanClient } from './hooks';
+import { useApprovePlan, usePendingApprovals } from './hooks';
 import { Choice, Primary, Sheet, inr, muted } from './ui';
 
 const SEASON = { S1: 'Season 1', S2: 'Season 2', S3: 'Season 3' };
@@ -13,7 +12,7 @@ const REASONS = ['Crops do not fit her land', 'Amounts too high', 'Wrong areas',
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'long' });
 
 function L12({ plan, onDone }) {
-  const api = usePlanClient();
+  const approve = useApprovePlan();
   const [deny, setDeny] = useState(false);
   const [reason, setReason] = useState();
   const [note, setNote] = useState('');
@@ -24,7 +23,10 @@ function L12({ plan, onDone }) {
   const all = (p.seasons || []).flatMap((s) => s.rows);
   const decide = async (decision) => {
     setBusy(true); setError(undefined);
-    try { await api.approve(plan.id, decision, decision === 'deny' ? reason : undefined, note || undefined); onDone(); } catch (e) { setError(e.message); }
+    try {
+      await approve.mutateAsync({ planId: plan.id, decision, reason: decision === 'deny' ? reason : undefined, note: note || undefined });
+      onDone();
+    } catch (e) { setError(e.message); }
     setBusy(false);
   };
   const acceptedAt = Math.max(...Object.values(plan.accepted || {}).map((a) => a.ts), 0);
@@ -32,13 +34,15 @@ function L12({ plan, onDone }) {
     <Sheet landName={`Land ${plan.land_id}`} onBack={onDone}>
       <p style={{ fontWeight: 700, margin: 0 }}>Accepted</p>
       <p style={muted}>{acceptedAt ? new Date(acceptedAt * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</p>
-      <p style={muted}>Land {Object.keys(p.proposal).length} areas · {all.length ? (p.seasons[0].rows.reduce((a, r) => a + r.acres, 0)).toFixed(2) : 0} acres</p>
+      {p.seasons?.length > 0 && <p style={muted}>Plan year {new Date(p.seasons[0].start).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })} to {new Date(all.map((r) => r.finance.due).sort().pop()).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</p>}
+      <p style={muted}>Land: {Object.keys(p.proposal).length} areas · {all.length ? (p.seasons[0].rows.reduce((a, r) => a + r.acres, 0)).toFixed(2) : 0} acres</p>
       {(p.seasons || []).map((s) => (
         <div key={s.slot} style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 8 }}>
           <b>{SEASON[s.slot]}</b>
           <div style={muted}>Crops: {[...new Set(s.rows.map((r) => r.name))].join(', ')}</div>
           <div style={muted}>Cash {inr(sum(s.rows, (f) => f.cash))} · Vouchers {inr(sum(s.rows, (f) => f.voucher_value))}</div>
           <div style={muted}>Repay {inr(sum(s.rows, (f) => f.repay))} · end of {monthYear(s.rows.map((r) => r.finance.due).sort().pop())}</div>
+          {sum(s.rows, (f) => f.cash_above_cap || 0) > 0 && <div style={{ color: C.coral }}>Not financed (above the ₹10,000 cash cap): {inr(sum(s.rows, (f) => f.cash_above_cap || 0))}</div>}
         </div>
       ))}
       <div style={{ fontWeight: 700 }}>3 seasons: Crop shares {(p.shares || []).length} · Cash {inr(sum(all, (f) => f.cash))} · Vouchers {inr(sum(all, (f) => f.voucher_value))} · Repay, with interest {inr(sum(all, (f) => f.repay))}</div>
@@ -64,13 +68,11 @@ function L12({ plan, onDone }) {
 }
 
 export default function LeaderPlans() {
-  const api = usePlanClient();
-  const qc = useQueryClient();
   const [open, setOpen] = useState();
-  const list = useQuery({ queryKey: ['oracle', 'pendingApprovals'], enabled: !!api, queryFn: () => api.get_pending(), refetchInterval: 60_000 });
+  const list = usePendingApprovals();
   const plans = list.data?.plans || [];
   const sel = plans.find((p) => p.id === open);
-  if (sel) return <L12 plan={sel} onDone={() => { setOpen(undefined); qc.invalidateQueries({ queryKey: ['oracle', 'pendingApprovals'] }); }} />;
+  if (sel) return <L12 plan={sel} onDone={() => setOpen(undefined)} />;
   return (
     <Sheet landName="Crop plans" title="Waiting for your approval">
       {list.isLoading && <p style={muted}>…</p>}

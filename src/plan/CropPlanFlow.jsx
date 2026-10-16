@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C } from '../shell/tokens';
-import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, useLandTitles, usePlanJob, useSubmitIntake } from './hooks';
+import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { Choice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { useMintCropShares } from './mint';
 
@@ -31,7 +31,7 @@ function Making({ jobId, onDone, onError }) {
   );
 }
 
-function PlanView({ plan, onAccept }) {
+function PlanView({ plan, onAccept, onChange, readOnly }) {
   const p = plan.plan;
   const [tab, setTab] = useState('Year');
   const [checked, setChecked] = useState(() => new Set(Object.keys(plan.accepted || {})));
@@ -75,6 +75,11 @@ function PlanView({ plan, onAccept }) {
               </tr>
             );
           })}
+          {p.trees?.discount > 0 && (
+            <tr style={{ borderTop: `1px solid ${C.raised}` }}>
+              <td style={{ padding: '8px 0' }} colSpan={4}><b>Tree discount</b><br /><span style={muted}>{(1250 - p.trees.effective_rate_bp) / 100}% off the rate · trees registered</span></td>
+            </tr>
+          )}
           <tr style={{ borderTop: `1px solid ${C.raised}`, fontWeight: 700 }}>
             <td style={{ padding: '8px 0' }} colSpan={2}>Total, due in {seasons.length} parts</td>
             <td style={{ textAlign: 'right' }}>{inr(total.cash)}</td><td style={{ textAlign: 'right' }}>{inr(total.interest)}</td>
@@ -82,8 +87,15 @@ function PlanView({ plan, onAccept }) {
         </tbody>
       </table>
       {lastDue && <p style={muted}>You repay {inr(total.cash + total.interest)} in {seasons.length} parts, the last by end of {monthYear(lastDue)}.</p>}
+      {seasons.some((s) => s.rows.some((r) => r.finance.cash_above_cap > 0)) && (
+        <p style={{ ...muted, color: C.coral }}>Part of the input cost is above the ₹10,000 cash cap and is not financed: {inr(seasons.reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.cash_above_cap || 0), 0), 0))}.</p>
+      )}
       {p.left_out?.length > 0 && <p style={muted}>Areas too small to plan: {p.left_out.length}.</p>}
-      <Primary disabled={checked.size < zones.length} onClick={onAccept}>Accept the plan</Primary>
+      {p.member_request?.not_followed?.length > 0 && <p style={muted}>Not followed: {p.member_request.not_followed.map((n) => n.why || n.reason || JSON.stringify(n)).join('; ')}</p>}
+      {!readOnly && <Primary disabled={checked.size < zones.length} onClick={onAccept}>Accept the plan</Primary>}
+      {!readOnly && onChange && (
+        <button type="button" onClick={onChange} style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 }}>Change my plan</button>
+      )}
     </>
   );
 }
@@ -98,6 +110,12 @@ export default function CropPlanFlow() {
   const submit = useSubmitIntake(landId);
   const accept = useAcceptPlan(landId);
   const mint = useMintCropShares();
+  const revise = useRevisePlan();
+  const [changeNote, setChangeNote] = useState('');
+  // An approved plan whose crop shares are already on her wallet opens on "made", not on "Make".
+  const approvedId = current.data?.approval?.decision === 'approve' ? current.data.id : undefined;
+  const checkMinted = mint.check;
+  useEffect(() => { if (approvedId) checkMinted(approvedId); }, [approvedId, checkMinted]);
   const [step, setStep] = useState(null);
   const [crops, setCrops] = useState(new Set());
   const [role, setRole] = useState();
@@ -212,7 +230,24 @@ export default function CropPlanFlow() {
       <Sheet landName={name}>
         {season && <p style={{ textAlign: 'center', fontWeight: 700, margin: '0 0 8px' }}>Season 1 · {monthYear(season.start)}</p>}
         <p style={{ textAlign: 'center', fontWeight: 700 }}>Check each area and accept it.</p>
-        <PlanView plan={plan} onAccept={() => setStep('terms')} />
+        <PlanView plan={plan} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={plan.status !== 'draft'} />
+      </Sheet>
+    );
+  }
+  if (at === 'change' && plan) {
+    // DESIGN GAP: the board changes crops on the map (P4c); here she says what to change (/revise, her
+    // suggestion is followed unless a hard fact refuses it, LOAN_RULES §5).
+    const go = async () => {
+      setError(undefined);
+      try { const r = await revise.mutateAsync({ planId: plan.id, note: changeNote }); setJobId(r.job_id); setStep('making'); } catch (e) { setError(e.message); }
+    };
+    return (
+      <Sheet landName={name} title="Change my plan" onBack={back('plan')}>
+        <p style={muted}>Tell us what to change and why. Your plan follows you unless a fact rules it out, and it says why.</p>
+        <textarea aria-label="What to change" value={changeNote} maxLength={1000} onChange={(e) => setChangeNote(e.target.value)}
+          style={{ width: '100%', minHeight: 100, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 14 }} />
+        {error && <p style={{ color: C.coral }}>{error}</p>}
+        <Primary disabled={!changeNote.trim() || revise.isPending} onClick={go}>Make my new plan</Primary>
       </Sheet>
     );
   }
@@ -273,7 +308,9 @@ export default function CropPlanFlow() {
     if (mint.status === 'done' || mint.status === 'partial') {
       return (
         <Sheet landName={name} title="Your crop shares are made">
-          <p style={muted}>{mint.total} crop shares{mint.refused?.length ? `; ${mint.refused.length} not yet: ${mint.refused.map((r) => r.error).join('; ')}` : ''}.</p>
+          <p style={muted}>{mint.done} of {mint.total + (mint.refused?.length || 0)} crop shares made.</p>
+          {mint.refused?.map((r) => <p key={r.share || r.token_id} style={muted}>{r.crop || 'Crop share'}: {r.error}</p>)}
+          {mint.status === 'partial' && <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>}
           <Primary onClick={() => setStep('plan')}>See my plan</Primary>
         </Sheet>
       );
