@@ -10,7 +10,9 @@ createRoot(document.getElementById('root')).render(
     <PrivyProvider
       appId={appId}
       config={{
-        loginMethods: ['sms'],
+        // Email for the spike only. Her code goes by WhatsApp (design R2, executive decision 16 Oct); in Privy
+        // 'sms' is the phone-login method and WhatsApp the account's delivery channel (Scale plan, via Privy support).
+        loginMethods: ['email', 'sms'],
         defaultChain: polygon,
         supportedChains: [polygon],
         // Her Polygon wallet is made at login; the Stellar wallet is created by the page (extended chain).

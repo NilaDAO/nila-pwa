@@ -85,7 +85,7 @@ export default function App() {
   };
 
   if (!ready) return <p style={s.page}>Loading Privy…</p>;
-  if (!authenticated) return <div style={s.page}><h1 style={s.h1}>P0 Privy spike</h1><button style={s.btn} onClick={login}>Log in with phone (SMS)</button></div>;
+  if (!authenticated) return <div style={s.page}><h1 style={s.h1}>P0 Privy spike</h1><button style={s.btn} onClick={login}>Log in (email or phone)</button></div>;
 
   return (
     <div style={s.page}>

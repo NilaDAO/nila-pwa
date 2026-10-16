@@ -32,8 +32,8 @@ What part 1 cannot show is that Privy itself returns that signature; part 2 does
 
 ### Part 2 — the real Privy wallets (`npm run dev`) — pending
 
-Needs a Privy app (dashboard.privy.io): SMS login on, `http://localhost:5173` in allowed origins,
-and the app id in `.env.local` (`VITE_PRIVY_APP_ID=…`). Then log in with a test phone number and
+Needs a Privy app (dashboard.privy.io, app "Nila"): email login on, `http://localhost:5173` in allowed origins,
+and the app id in `.env.local` (`VITE_PRIVY_APP_ID=…`). Then log in by email and
 press S0 → S1 → S2 → S3, E1 → E2, and E3 last (it adds a throwaway imported wallet to that test
 user). Paste the log block into this README.
 
@@ -47,8 +47,11 @@ user). Paste the log block into this README.
 | E2 | `mintForBatchMember` signed without a wallet pop-up (`showWalletUIs: false`), decoded, **not broadcast** | |
 | E3 | Imported key keeps its address | |
 
-Also to note during part 2: WhatsApp OTP (design R2) is a Privy dashboard switch (`whatsAppEnabled`),
-not code; whether it is available on the plan.
+**Login channel (finding, 16 Oct):** her code goes by **WhatsApp** (design R2; executive decision 16 Oct).
+In Privy the phone-login method is `sms`; the delivery channel is set per Privy **account**, SMS *or* WhatsApp,
+never both. WhatsApp needs the Scale or Enterprise plan and a request to support@privy.io. So the design's
+R3 `#sms` resend fallback cannot exist with Privy. The spike logs in by email until WhatsApp is enabled; the
+wallet checks do not depend on the login method.
 
 ## Run
 
