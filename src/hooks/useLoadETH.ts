@@ -66,6 +66,8 @@ export function useErc20Balances(chain: string, address: string, enabled: Enable
     retryDelay: (i) => Math.min(1000 * 2 ** i, 8000),
     networkMode: 'always',
     queryFn: async () => {
+      // A moved wallet (chain 'stellar', P3) has no Polygon balances to read.
+      if (chain === 'stellar') return [];
       try {
         const mc         = new ethers.Contract("0xcA11bde05977b3631167028862bE2a173976CA11", MulticallAbi, rpc);
         const erc20Iface = new ethers.Interface(erc20ABI);

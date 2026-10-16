@@ -32,8 +32,23 @@ module.exports = (config, env) => {
     new webpack.DefinePlugin({
       'process.env.REACT_APP_VERSION': JSON.stringify(process.env.REACT_APP_VERSION),
       'process.env.REACT_APP_FORCE_LOGOUT': JSON.stringify(process.env.REACT_APP_FORCE_LOGOUT),
+      // a literal, so webpack drops the Privy imports when it is empty (wallet/WalletRoot.jsx)
+      'process.env.REACT_APP_PRIVY_APP_ID': JSON.stringify(process.env.REACT_APP_PRIVY_APP_ID || ''),
     })
   );
+
+  // Privy (wallet/PrivyRoot.jsx): its optional add-ons are not installed and not used —
+  // resolve them to empty modules. stellar-sdk needs Buffer in the browser.
+  config.resolve.alias = {
+    ...config.resolve.alias,
+    '@stripe/stripe-js': false,
+    '@abstract-foundation/agw-client': false,
+    '@farcaster/mini-app-solana': false,
+    '@solana-program/memo': false,
+    permissionless: false,
+  };
+  config.resolve.fallback = { ...config.resolve.fallback, buffer: require.resolve('buffer/') };
+  config.plugins.push(new webpack.ProvidePlugin({ Buffer: ['buffer', 'Buffer'] }));
 
   return config;
 };
