@@ -2,7 +2,7 @@
 // CP12 waiting for the leader (nila-design boards CropPlanIntro … CropPlanPending-590i). Copy from the
 // boards; DESIGN GAPs: no map yet (P4c), no record crops or suggestions on CP4 (no hook), CP9 shows the
 // engine's one explanation text (16 Oct), CP6/CP5 answers mapped to numbers/keys in hooks.js.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C } from '../shell/tokens';
@@ -77,7 +77,7 @@ function PlanView({ plan, onAccept, onChange, readOnly }) {
           })}
           {p.trees?.discount > 0 && (
             <tr style={{ borderTop: `1px solid ${C.raised}` }}>
-              <td style={{ padding: '8px 0' }} colSpan={4}><b>Tree discount</b><br /><span style={muted}>{(1250 - p.trees.effective_rate_bp) / 100}% off the rate · trees registered</span></td>
+              <td style={{ padding: '8px 0' }} colSpan={4}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount}% tree discount · trees registered</span></td>
             </tr>
           )}
           <tr style={{ borderTop: `1px solid ${C.raised}`, fontWeight: 700 }}>
@@ -115,7 +115,10 @@ export default function CropPlanFlow() {
   // An approved plan whose crop shares are already on her wallet opens on "made", not on "Make".
   const approvedId = current.data?.approval?.decision === 'approve' ? current.data.id : undefined;
   const checkMinted = mint.check;
-  useEffect(() => { if (approvedId) checkMinted(approvedId); }, [approvedId, checkMinted]);
+  const checkedFor = useRef();
+  useEffect(() => {   // once per approved plan (each check signs a request)
+    if (approvedId && checkedFor.current !== approvedId) { checkedFor.current = approvedId; checkMinted(approvedId); }
+  }, [approvedId, checkMinted]);
   const [step, setStep] = useState(null);
   const [crops, setCrops] = useState(new Set());
   const [role, setRole] = useState();
@@ -308,7 +311,7 @@ export default function CropPlanFlow() {
     if (mint.status === 'done' || mint.status === 'partial') {
       return (
         <Sheet landName={name} title="Your crop shares are made">
-          <p style={muted}>{mint.done} of {mint.total + (mint.refused?.length || 0)} crop shares made.</p>
+          <p style={muted}>{mint.done} of {mint.total} crop shares made.</p>
           {mint.refused?.map((r) => <p key={r.share || r.token_id} style={muted}>{r.crop || 'Crop share'}: {r.error}</p>)}
           {mint.status === 'partial' && <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>}
           <Primary onClick={() => setStep('plan')}>See my plan</Primary>

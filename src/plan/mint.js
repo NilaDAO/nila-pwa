@@ -25,12 +25,23 @@ const REASON = {
   BatchNotActive: 'This crop\'s batch is closed. Ask your union leader.',
   SosTooFar: 'This season starts more than a year ahead. It is made later.',
   InvalidSosDate: 'The season start date is missing.',
+  NotMember: 'You are not a member of this crop\'s batch yet. Try again.',
+  NotStanding: 'This crop\'s batch is not open yet. Ask your union leader.',
+  InvalidCropCode: 'This crop is not registered yet. Ask your union leader.',
 };
+// The node's refusals (plan/mint.py), in plain words.
+const NODE = [
+  [/more than a year ahead/, REASON.SosTooFar],
+  [/no Polygon crop code/, 'This crop is not registered yet. Ask your union leader.'],
+  [/no open batch/, 'This crop\'s batch is not open yet. Ask your union leader.'],
+];
 const ftIface = new ethers.Interface(foodTokenAbi);
 export function reasonOf(e) {
   const data = [e?.data, e?.info?.error?.data, e?.error?.data].find((d) => typeof d === 'string' && d.startsWith('0x'));
   try { const p = data && ftIface.parseError(data); if (p && REASON[p.name]) return REASON[p.name]; } catch { /* not ours */ }
-  if (/more than a year ahead/.test(e?.message || e || '')) return REASON.SosTooFar;
+  const text = typeof e === 'string' ? e : e?.message || '';
+  const hit = NODE.find(([re]) => re.test(text));
+  if (hit) return hit[1];
   return e?.shortMessage || e?.message || String(e);
 }
 
@@ -90,7 +101,7 @@ export function useMintCropShares() {
         setState({ status: 'busy', done, total: ready.length });
       }
       const notMade = [...refused.map((r) => ({ ...r, error: reasonOf(r.error) })), ...failed];
-      setState({ status: notMade.length ? (done ? 'partial' : 'failed') : 'done', done, total: ready.length,
+      setState({ status: notMade.length ? (done ? 'partial' : 'failed') : 'done', done, total: mints.length,
         refused: notMade, error: !done && notMade[0]?.error, gas: g });
     } catch (e) {
       console.error('[mint]', e);
@@ -106,9 +117,9 @@ export function useMintCropShares() {
       const ready = mints.filter((m) => m.args);
       const held = await Promise.all(ready.map((m) => ft.balanceOf(s.evmAddress, m.token_id)));
       const n = held.filter((b) => b > 0n).length;
-      if (n && n === ready.length) setState({ status: mints.length > n ? 'partial' : 'done', done: n, total: ready.length, refused: mints.filter((m) => m.error).map((r) => ({ ...r, error: reasonOf(r.error) })) });
+      if (n && n === ready.length) setState({ status: mints.length > n ? 'partial' : 'done', done: n, total: mints.length, refused: mints.filter((m) => m.error).map((r) => ({ ...r, error: reasonOf(r.error) })) });
     } catch { /* stay on "Make my crop shares" */ }
-  }, [api, provider, s]);
+  }, [api, provider, s?.evmAddress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { ...state, run, check };
 }
