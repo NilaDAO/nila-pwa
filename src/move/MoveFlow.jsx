@@ -125,3 +125,22 @@ export default function MoveFlow({ onMoved, onRepay }) {
     </Frame>
   );
 }
+
+/**
+ * A union leader's start (executive decision, 16 Oct): while the union still has open Polygon loans,
+ * every start offers today's app (the Polygon cash desk where members repay old loans) or the new Nila
+ * on Stellar. The leader's chain stays Polygon; the leader's Stellar account is made on first use.
+ * The leaders' own move comes once the union's old loans are closed (not offered in this version).
+ * DESIGN GAP: no board.
+ */
+export function LeaderStart({ onOld, onNew }) {
+  return (
+    <Frame note="Members still repay their old loans in today's app.">
+      <div className="text-center font-bold text-lg mb-2">Nila has moved to a new network</div>
+      <p className="text-center text-sm mb-2" style={{ color: T.muted }}>Which do you want to open?</p>
+      <Primary onClick={onNew}>New Nila</Primary>
+      <button type="button" onClick={onOld} className="w-full h-11 rounded-xl font-semibold text-sm mt-2"
+        style={{ background: T.raised, color: T.text }}>Old loans (today's app)</button>
+    </Frame>
+  );
+}

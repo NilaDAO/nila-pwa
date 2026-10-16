@@ -13,7 +13,7 @@ const STATE = {
   failed: 'Did not arrive',
 };
 
-export default function StellarHome() {
+export default function StellarHome({ leader }) {
   const s = useNilaSigner();
   const a = s?.stellarAccount;
   const move = useQuery({ queryKey: ['stellar', 'move', s?.evmAddress], enabled: !!s?.evmAddress,
@@ -34,6 +34,7 @@ export default function StellarHome() {
   return (
     <div className="p-4 text-sm" style={{ color: '#f1f5f9', background: '#121212', minHeight: '100%' }} data-testid="stellar-home">
       <h1 className="text-lg font-bold mb-3">nila</h1>
+      {leader && <p className="mb-2" style={{ color: '#94a3b8' }}>Leader · new Nila. Old loans: close and reopen the app, then choose Old loans.</p>}
       <div className="rounded-xl p-4 mb-2" style={{ background: '#1f2733' }}>
         <div>nIN {a?.nin ? a.nin.balance : a?.exists === false ? '—' : '…'}</div>
         <div style={{ color: '#94a3b8' }}>Moved nIN: {STATE[move.data?.state] ?? '…'}</div>

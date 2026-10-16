@@ -22,6 +22,9 @@ is unchanged (3 JS files, 3.9 MB, no Privy, Stellar or move code; checked 16 Oct
   "Repay my loan" is always there. Loans under ₹10 outstanding do not block (16 Oct). "Every start" means a
   cold start (sessionStorage clears when the app is closed from the task switcher).
 - A moved wallet never sees today's Polygon app (a holding screen while the signer loads).
+- **Union leaders** (`db.union.leader`, executive decision 16 Oct): at every start, "New Nila" (Stellar; their
+  account is made on first use) or "Old loans (today's app)" — the Polygon cash desk where members repay old
+  loans. Their chain stays Polygon; their own move comes once the union's old loans are closed (not offered yet).
 
 "Move my wallet" (`useMoveWallet`), each step safe to repeat, progress in localStorage (`nila.move`),
 M4 "Try again" resumes at the failed step:
