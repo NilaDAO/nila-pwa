@@ -69,7 +69,13 @@ user: Amplify dev), and a move with Polygon nIN (needs BURNER_ROLE on a fork + C
   "Could not check your loans. Check your internet and open the app again." No boards yet.
 - M3: no reset, so no "Recover wallet" and no "new code on WhatsApp": "Your land title and nIN are waiting."
   + Continue, with a note that her nIN arrives after the union confirms her title.
-- Interim Stellar home: no board (P1's A1 replaces it).
+- Interim Stellar home: no board (P1's A1 replaces it). Its lines: "Moved nIN: No nIN to move / Waiting for your
+  union to confirm your land title / On its way / On its way (delayed) / Arrived / Part of it arrived / Did not
+  arrive" + "Try again"; holding screen "Check your internet and open the app again."
+- Leaders' start: "Which do you want to open?", **New Nila**, **Old loans (today's app)**, note "Members still repay
+  their old loans in today's app."; leader home note "Leader · new Nila. Old loans: close and reopen the app, then
+  choose Old loans." No boards.
+- The start choice is kept per wallet for this start (`nila.start:<evm>`, sessionStorage).
 - `useMoveWallet` signs with "member + Nila (+ attester)" in the design; the attester now acts later (O10).
 
 ## Security note found in passing

@@ -10,7 +10,7 @@ import { getMoveStatus, requestMoveNin } from './api';
 const STATE = {
   none: 'No nIN to move', waiting: 'Waiting for your union to confirm your land title',
   pending: 'On its way', burned: 'On its way', stuck: 'On its way (delayed)', done: 'Arrived',
-  failed: 'Did not arrive',
+  partial: 'Part of it arrived', failed: 'Did not arrive',
 };
 
 export default function StellarHome({ leader }) {
@@ -37,8 +37,8 @@ export default function StellarHome({ leader }) {
       {leader && <p className="mb-2" style={{ color: '#94a3b8' }}>Leader · new Nila. Old loans: close and reopen the app, then choose Old loans.</p>}
       <div className="rounded-xl p-4 mb-2" style={{ background: '#1f2733' }}>
         <div>nIN {a?.nin ? a.nin.balance : a?.exists === false ? '—' : '…'}</div>
-        <div style={{ color: '#94a3b8' }}>Moved nIN: {STATE[move.data?.state] ?? '…'}</div>
-        {move.data?.state === 'failed' && (
+        {!leader && <div style={{ color: '#94a3b8' }}>Moved nIN: {STATE[move.data?.state] ?? '…'}</div>}
+        {!leader && (move.data?.state === 'failed' || move.data?.state === 'partial') && (
           <button type="button" className="underline mt-1" onClick={again} disabled={retry === '…'}>Try again</button>
         )}
         {retry && retry !== '…' && <div style={{ color: '#e8907f' }}>{retry}</div>}

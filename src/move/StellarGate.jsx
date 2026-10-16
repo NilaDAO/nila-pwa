@@ -7,23 +7,33 @@
 // - A moved wallet ('stellar'): Stellar mode (never today's Polygon app).
 // "Every start" is a cold start: sessionStorage clears when the app is closed from the task switcher.
 // Loaded only with Privy on; otherwise the app is unchanged.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDataContext } from '../utils/NavigationContext';
 import { useNilaSigner } from '../wallet/signer';
 import MoveFlow, { LeaderStart } from './MoveFlow';
 import StellarHome from './StellarHome';
 import { STELLAR_CHAIN } from './hooks';
 
-const MODE = 'nila.start'; // this start only: 'old' (today's app) or 'new' (Stellar, leaders)
-const readMode = () => { try { return sessionStorage.getItem(MODE); } catch { return null; } };
+// This start only, per wallet: 'old' (today's app) or 'new' (Stellar, leaders).
+const modeKey = (addr) => `nila.start:${(addr || '').toLowerCase()}`;
+const readMode = (addr) => { try { return sessionStorage.getItem(modeKey(addr)); } catch { return null; } };
+
+/** A moved wallet waits for its signer; after 20 s it says what to do. */
+function Holding() {
+  const [late, setLate] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setLate(true), 20_000); return () => clearTimeout(t); }, []);
+  return <div className="p-4 text-sm">{late ? 'Check your internet and open the app again.' : '…'}</div>;
+}
 
 export default function StellarGate({ children }) {
   const { db } = useDataContext();
   const signer = useNilaSigner();
-  const [mode, setMode] = useState(readMode);
-  const choose = (m) => { try { sessionStorage.setItem(MODE, m); } catch { /* private mode */ } setMode(m); };
+  const addr = db?.address;
+  const [mode, setMode] = useState(() => readMode(addr));
+  useEffect(() => { setMode(readMode(addr)); }, [addr]);
+  const choose = (m) => { try { sessionStorage.setItem(modeKey(addr), m); } catch { /* private mode */ } setMode(m); };
 
-  if (db?.chain === STELLAR_CHAIN) return signer ? <StellarHome /> : <div className="p-4 text-sm">…</div>;
+  if (db?.chain === STELLAR_CHAIN) return signer ? <StellarHome /> : <Holding />;
   if (!signer || db?.chain !== '137') return children;
   if (mode === 'old') return children;
   if (db?.union?.leader) {
