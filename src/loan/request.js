@@ -1,0 +1,45 @@
+// The crop share request (L11 → L9 → she scans → N10), executive decision 16 Oct: signed by the leader's
+// Stellar wallet (SEP-53), checked on her phone — signature, signer is a leader of her union, 48 h
+// expiry — and N10 is written only from the signed values. A replay cannot draw twice (one loan per food
+// token, in fund_core.draw_loan).
+import { Keypair } from '@stellar/stellar-sdk';
+import { signStellarMessage } from '../plan/api';
+import { readContract, sv } from '../stellar/soroban';
+
+const PREFIX = 'nila:loan:';
+const VALID_S = 48 * 3600;
+const enc = new TextEncoder();
+const b64u = (s) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = (s) => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))));
+
+/** The signed text: fixed key order, so both sides hash the same bytes. */
+const KEYS = ['v', 'union', 'member', 'token', 'cash', 'hours', 'crop', 'area', 'repay', 'due', 'exp', 'n', 'by'];
+const canonical = (r) => JSON.stringify(Object.fromEntries(KEYS.map((k) => [k, r[k]])));
+
+export async function makeRequest(fields, { stellarAddress, signHash }) {
+  const now = Math.floor(Date.now() / 1000);
+  const r = { v: 1, ...fields, exp: now + VALID_S, n: Math.floor(Math.random() * 1e6), by: stellarAddress };
+  const msg = canonical(r);
+  const sig = await signStellarMessage(signHash, msg);
+  return { request: r, qr: PREFIX + b64u(JSON.stringify({ m: msg, s: sig })), number: String(r.n).padStart(6, '0') };
+}
+
+/** Decode and check a scanned request for her. Throws a plain reason when it is not valid. */
+export async function checkRequest(text, { cfg, me }) {
+  if (!text?.startsWith(PREFIX)) throw new Error('This is not a Nila request.');
+  let m; let s;
+  try { ({ m, s } = JSON.parse(unb64u(text.slice(PREFIX.length)))); } catch { throw new Error('This code cannot be read.'); }
+  const r = JSON.parse(m);
+  if (canonical(r) !== m) throw new Error('This code cannot be read.');
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(`Stellar Signed Message:\n${m}`)));
+  const sig = Uint8Array.from(s.match(/../g).map((x) => parseInt(x, 16)));
+  if (!Keypair.fromPublicKey(r.by).verify(Buffer.from(hash), Buffer.from(sig))) throw new Error('This code was not made by a Nila leader.');
+  if (r.exp < Date.now() / 1000) throw new Error('This request has expired. Ask your leader for a new one.');
+  if (r.member !== me) throw new Error('This request is for someone else.');
+  if (r.union !== cfg.union) throw new Error('This request is for another union.');
+  const leader = await readContract(cfg, 'roles', 'is_leader', [sv.address(r.union), sv.address(r.by)]);
+  if (!leader) throw new Error('This code was not made by a leader of your union.');
+  return r;
+}
+
+export const NIN = 10_000_000n; // 7 decimals

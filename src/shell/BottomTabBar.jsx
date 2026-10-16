@@ -3,7 +3,9 @@
 import { C, FONT, SHADOW, TAB_BAR_HEIGHT } from './tokens';
 import { AssetsIcon, CashIcon, CropPlanIcon, HarvestsIcon, MembersIcon, ScanIcon } from './icons';
 
-export const MEMBER_TABS = [['crop', 'Crop plan', CropPlanIcon], ['assets', 'Assets', AssetsIcon]];
+// P5: every member gets Scan for now (the design shows it in assisted mode only): she scans the
+// leader's crop share request. DESIGN GAP until the design says where a self-mode member scans.
+export const MEMBER_TABS = [['crop', 'Crop plan', CropPlanIcon], ['scan', 'Scan', ScanIcon], ['assets', 'Assets', AssetsIcon]];
 export const ASSISTED_TABS = [['crop', 'Crop plan', CropPlanIcon], ['scan', 'Scan', ScanIcon], ['assets', 'Assets', AssetsIcon]];
 export const LEADER_TABS = [
   ['crop', 'Crop plan', CropPlanIcon], ['assets', 'Assets', AssetsIcon], ['members', 'Members', MembersIcon],

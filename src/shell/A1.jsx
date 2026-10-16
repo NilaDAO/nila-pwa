@@ -5,6 +5,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useLegacyBalances } from '../move/hooks';
+import { useInvestment } from '../stellar/hooks';
 import { C, FONT, R } from './tokens';
 import { ChevronIcon, HistoryIcon, LandIcon, QrIcon, RefreshIcon, SettingsIcon } from './icons';
 
@@ -55,6 +56,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const legacy = useLegacyBalances(s?.evmAddress);
   const nin = s?.stellarAccount?.nin?.balance ?? 0;
   const titles = legacy.data?.titles;
+  const inv = useInvestment(s?.stellarAddress);
+  const invested = inv.data ? Number(inv.data.invested) / 1e7 : undefined;
   const refresh = () => qc.invalidateQueries({ queryKey: ['stellar', 'account'] });
 
   return (
@@ -74,7 +77,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           <button type="button" aria-label="Refresh balance" onClick={refresh}
             style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', display: 'flex' }}><RefreshIcon color={C.muted} /></button>
         </div>
-        <div style={{ fontSize: 32, fontWeight: 700, margin: '4px 0 12px' }} data-testid="total-balance">{inr(nin)}/-</div>
+        <div style={{ fontSize: 32, fontWeight: 700, margin: '4px 0 12px' }} data-testid="total-balance">{inr(nin + (invested || 0))}/-</div>
         <button type="button" aria-label="Show wallet QR code" onClick={onWalletQr} style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, height: 40, padding: '0 16px',
           borderRadius: R.button, background: C.raised, border: 0, color: C.text, fontWeight: 700,
@@ -88,6 +91,10 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
           value={titles ?? '…'} valueSub="—" />
         <Row label="Open nIN" icon={<NinIcon />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} />
+        {invested !== undefined && (
+          <Row label="Open nIN invested" icon={<NinIcon />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}
+            value={Math.floor(invested)} valueSub={inr(invested)} />
+        )}
         {moveNote && <p style={{ color: C.muted, fontSize: 14, margin: '4px 0 0' }} role="note">{moveNote}</p>}
       </section>
     </div>

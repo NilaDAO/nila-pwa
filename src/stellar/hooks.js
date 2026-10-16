@@ -100,3 +100,17 @@ export function useSetupAccount({ stellarAddress, evmWallet, signHash }) {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.stellar.account(stellarAddress) }),
   });
 }
+
+/** Her union investment (design useInvestment; fund_core.position): invested, locked, free, earned. 30 s. */
+export function useInvestment(address) {
+  const { data: cfg } = useStellarConfig();
+  return useQuery({
+    queryKey: ['stellar', 'investment', cfg?.union, address],
+    enabled: !!cfg && !!address && !!cfg.contracts?.fund_core,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { readContract, sv } = await import('./soroban');
+      return readContract(cfg, 'fund_core', 'position', [sv.address(cfg.union), sv.address(address)]);
+    },
+  });
+}
