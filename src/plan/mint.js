@@ -2,7 +2,7 @@
 // season's FoodToken with her own Polygon key (N1, executive decision 16 Oct). Steps, each safe to
 // repeat: the node tops up her POL (once per plan) → joinBatch where she is not a member yet →
 // mintForBatchMember with exactly the node's arguments (GET /plan/{id}/mint), skipping tokens she holds.
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import { useProvider } from '../hooks/useWallet.ts';
 import { useNilaSigner } from '../wallet/signer';
@@ -50,14 +50,17 @@ export function useMintCropShares() {
   const api = usePlanClient();
   const { provider } = useProvider();
   const [state, setState] = useState({ status: 'idle' });
+  const nonceRef = useRef(null); // our own counter: ethers caches getTransactionCount for 250 ms
 
   const send = useCallback(async (ft, fn, args) => {
     const me = s.evmAddress;
     const data = ft.interface.encodeFunctionData(fn, args);
-    const [nonce, fees, gas] = await Promise.all([
+    const [chainNonce, fees, gas] = await Promise.all([
       provider.getTransactionCount(me, 'pending'), provider.getFeeData(),
       provider.estimateGas({ from: me, to: FOODTOKEN, data }),
     ]);
+    const nonce = Math.max(chainNonce, nonceRef.current ?? 0);
+    nonceRef.current = nonce + 1;
     const raw = await s.signEvmTx({ to: FOODTOKEN, data, chainId: CHAIN_ID, nonce, gasLimit: (gas * 12n) / 10n,
       maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas, value: 0, type: 2 });
     const tx = await provider.broadcastTransaction(raw);
@@ -67,6 +70,7 @@ export function useMintCropShares() {
   }, [s, provider]);
 
   const run = useCallback(async (planId) => {
+    nonceRef.current = null;
     setState({ status: 'busy', done: 0 });
     try {
       const me = s.evmAddress;

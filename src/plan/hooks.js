@@ -45,6 +45,8 @@ export function useCropPlan(landId) {
   return useQuery({
     queryKey: qkPlan.plan(landId), enabled: !!api && landId != null,
     queryFn: () => api.latest(landId).catch((e) => { if (e.status === 404) return null; throw e; }),
+    // CP12: while she waits for the leader, look again every 30 s.
+    refetchInterval: (q) => (q.state.data?.status === 'accepted' && !q.state.data?.approval ? 30_000 : false),
   });
 }
 
