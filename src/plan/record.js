@@ -1,3 +1,6 @@
+// DEVIATION from the spec (data/DataHooksRead.md: qk.ipfs.record(hash), never stale per hash, hash from
+// useRecordAccess): keyed by land and owner with a 10-minute staleTime, because the hash is read here
+// (useRecordHash.ts does the same but pulls in the old app's wallet and paid-read path).
 // Her field record (design useFieldRecord): the record hash from her land title (free for the owner),
 // then the record bytes — from the node (GET /gis/record-by-hash, exact bytes) or an IPFS gateway —
 // accepted only when sha256(bytes) equals the hash. Never stale for a hash.
@@ -27,13 +30,17 @@ export function useFieldRecord(landId, owner) {
     queryKey: ['ipfs', 'record', landId, owner],
     enabled: !!provider && landId != null && !!owner,
     staleTime: 10 * 60_000,
-    refetchInterval: (q) => (q.state.data && !q.state.data.hash ? 60_000 : false),
+    // While it is being made, or after a failed fetch: look again every minute.
+    refetchInterval: (q) => ((q.state.data && !q.state.data.hash) || q.state.error ? 60_000 : false),
     queryFn: async () => {
       const c = new ethers.Contract(process.env.REACT_APP_LAND_TITLE_MAIN, TITLE_ABI, provider);
       if ((await c.getCommitment(landId)) === ZERO) return { hash: null };
       const hash = (await c.getRecordHash.staticCall(landId, { from: owner })).toLowerCase();
       if (hash === ZERO) return { hash: null };
-      const record = await fromNode(hash).catch(() => fetchRecordFromIPFS(hash));
+      const record = await fromNode(hash).catch((e) => {
+        console.warn('[record] node:', e.message, '— trying IPFS');
+        return fetchRecordFromIPFS(hash);
+      });
       return { hash, record };
     },
   });

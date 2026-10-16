@@ -34,7 +34,7 @@ function Making({ jobId, onDone, onError }) {
   );
 }
 
-function PlanView({ plan, onAccept, onChange, readOnly }) {
+function PlanView({ plan, onAccept, onChange, readOnly, areaNo = (z) => z }) {
   const p = plan.plan;
   const [tab, setTab] = useState('Year');
   const [checked, setChecked] = useState(() => new Set(Object.keys(plan.accepted || {})));
@@ -49,10 +49,10 @@ function PlanView({ plan, onAccept, onChange, readOnly }) {
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
   return (
     <>
-      {zones.map((z, i) => (
+      {zones.map((z) => (
         <Choice key={z} check on={checked.has(z)} onClick={() => setChecked((c) => { const n = new Set(c); n.has(z) ? n.delete(z) : n.add(z); return n; })}
           sub={seasons.map((s) => s.rows.filter((r) => r.zone === z).map((r) => `${SEASON[s.slot]}: ${r.name} ${fmtKg(r.kg)}${r.risks?.length ? ` · ${r.risks.join(', ')}` : ''}`).join('')).filter(Boolean).join(' · ')}>
-          Area {i + 1}
+          Area {areaNo(z)}
         </Choice>
       ))}
       <p style={{ ...muted, textAlign: 'center' }}>{checked.size} of {zones.length} accepted</p>
@@ -160,7 +160,7 @@ export default function CropPlanFlow() {
       return (
         <Sheet map={map} landName={name} title="Getting your field record">
           <p style={{ ...muted, textAlign: 'center' }}>This can take up to an hour.</p>
-          {field.error && <p style={{ ...muted, color: C.coral }}>{field.error.message}</p>}
+          {field.error && <p style={muted}>Your field record could not be loaded. It is tried again every minute.</p>}
         </Sheet>
       );
     }
@@ -268,7 +268,7 @@ export default function CropPlanFlow() {
       <Sheet map={map} landName={name}>
         {season && <p style={{ textAlign: 'center', fontWeight: 700, margin: '0 0 8px' }}>Season 1 · {monthYear(season.start)}</p>}
         <p style={{ textAlign: 'center', fontWeight: 700 }}>Check each area and accept it.</p>
-        <PlanView plan={plan} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={plan.status !== 'draft'} />
+        <PlanView plan={plan} areaNo={areaNo} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={plan.status !== 'draft'} />
       </Sheet>
     );
   }
@@ -343,7 +343,7 @@ export default function CropPlanFlow() {
         </Sheet>
       );
     }
-    if (mint.status === 'done' && at !== 'shares') {
+    if (mint.status === 'done') {
       return (
         <Sheet map={map} landName={name}>
           <ActivePlan plan={plan} areaNo={areaNo} onUpdate={() => setStep('change')} />

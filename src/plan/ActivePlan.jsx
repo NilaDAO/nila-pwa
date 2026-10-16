@@ -8,21 +8,26 @@ import { Primary, inr, muted } from './ui';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' });
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+// Machine jobs as the board words them ("Weed maize"); the catalogue's `for` text otherwise.
+const VERB = [[/weeding/i, 'Weed'], [/spraying|spray/i, 'Spray'], [/harvest/i, 'Harvest'], [/cutting|cut/i, 'Cut']];
+const SLOT = { S1: 'Oct to Feb', S2: 'Mar to May', S3: 'Jun to Aug' };
+const job = (m, name) => { const v = VERB.find(([re]) => re.test(m.for)); return v ? `${v[1]} ${name}` : `${m.for.charAt(0).toUpperCase()}${m.for.slice(1)} · ${name}`; };
+const kg = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')} t` : `${Math.round(n).toLocaleString('en-IN')} kg`);
 
 export function tasksOf(plan, areaNo) {
   const out = [];
   for (const s of plan.seasons || []) {
     for (const r of s.rows) {
-      const area = `Area ${areaNo(r.zone)}`;
-      if (r.sow && !r.continues) out.push({ date: r.sow, text: `Plant ${r.name.toLowerCase()}`, area });
+      const no = areaNo(r.zone);
+      const area = typeof no === 'number' ? `Area ${no}` : '';
+      if (r.sow && !r.continues) out.push({ date: r.sow, text: `Plant ${r.name}`, area });
       for (const m of Object.values(r.finance?.machines || {})) {
-        if (m.when && m.for && !/sowing|land preparation/.test(m.for)) out.push({ date: m.when, text: `${cap(m.for)} · ${r.name.toLowerCase()}`, area });
+        if (m.when && m.for && !/sowing|land preparation/.test(m.for)) out.push({ date: m.when, text: job(m, r.name), area });
       }
-      if (r.harvest) out.push({ date: r.harvest, text: `Harvest ${r.name.toLowerCase()}`, area });
+      if (r.harvest) out.push({ date: r.harvest, text: `Harvest ${r.name}`, area: [area, r.kg ? `about ${kg(r.kg)}` : ''].filter(Boolean).join(' · ') });
     }
     const due = s.rows.map((r) => r.finance?.due).filter(Boolean).sort().pop();
-    if (due && s.repay) out.push({ date: due, text: `Repay ${inr(s.repay)}`, area: '' });
+    if (due && s.repay) out.push({ date: due, text: `Repay ${inr(s.repay)}`, area: `${SLOT[s.slot] || ''} finance`.trim() });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
