@@ -68,10 +68,9 @@ button (the board shows CP12 busy directly); L12 no longer says "sign the mint o
 "Your plan is approved", "Make your crop shares now. Nila pays the network fee.", "Make my crop shares", "Your
 crop shares are made", "n of N crop shares made", "No land title yet" + "Your crop plan starts when your land
 title is ready.", "Waiting for your approval", "No plans are waiting.", "Accept the plan", "Check each area and
-accept it.", "Areas too small to plan", "Change my plan" + its text, the cash-cap line, "Not followed", and the tree-discount line "…% tree discount · trees registered" (the
-board says "1% off when you repay"; LOAN_RULES §5 says points off the rate, while the engine's `trees.discount`
-(basis `rate_points`) reduces each row's interest by `(cash + interest) × discount / 100` — to settle with the
-engine owner before the copy is fixed). Board names
+accept it.", "Areas too small to plan", "Change my plan" + its text, the cash-cap line, "Not followed", and the tree-discount line "n points off the rate (x%) · trees registered" (the
+board says "1% off when you repay"; LOAN_RULES §5 and the engine take points off the rate, so the board is the one
+to correct). Board names
 (Rosalie, Lakshmi) are replaced by "Your leader" / "She" / "Land N" (no names on the node). `useLandTitles`
 (ids of her Polygon titles) stands for the spec's `useLandTitle`. Shares refused for "SOS more than a year
 ahead" are made later; the gas top-up is once per plan, so a later mint may need POL again (open).

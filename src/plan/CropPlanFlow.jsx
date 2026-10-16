@@ -77,7 +77,7 @@ function PlanView({ plan, onAccept, onChange, readOnly }) {
           })}
           {p.trees?.discount > 0 && (
             <tr style={{ borderTop: `1px solid ${C.raised}` }}>
-              <td style={{ padding: '8px 0' }} colSpan={4}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount}% tree discount · trees registered</span></td>
+              <td style={{ padding: '8px 0' }} colSpan={4}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount} points off the rate ({rate}%) · trees registered</span></td>
             </tr>
           )}
           <tr style={{ borderTop: `1px solid ${C.raised}`, fontWeight: 700 }}>
