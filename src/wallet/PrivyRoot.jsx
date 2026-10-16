@@ -108,7 +108,7 @@ function SignerBridge({ children }) {
   // Made by itself at login for a new wallet (R4). A Polygon wallet ('137') waits for the move:
   // M1 step 1 calls the same setup (design R4: "Polygon wallet found → M1").
   const account = useAccount(signersReady ? stellar.address : undefined);
-  const { status: setupStatus, error: setupError, mutate: runSetup } =
+  const { status: setupStatus, error: setupError, mutate: runSetup, mutateAsync: runSetupAsync } =
     useSetupAccount({ stellarAddress: stellar?.address, evmWallet, signHash });
   const autoSetup = chain !== undefined && chain !== '137';  // undefined: not read yet
   const tried = useRef();
@@ -134,9 +134,15 @@ function SignerBridge({ children }) {
     stellarSetup: {
       status: setupStatus, error: setupError?.message,
       run: () => setupStatus !== 'pending' && runSetup(),
+      runAsync: () => runSetupAsync(),
+    },
+    // Her Polygon key signs a text message (EIP-191), e.g. the move request.
+    signEvmMessage: (msg) => {
+      if (!evmWallet) throw new Error('no Polygon key');
+      return evmWallet.signMessage(msg);
     },
   }), [signersReady, authenticated, error, user, evmWallet, stellar, signHash, signEvmTx, account.data,
-    setupStatus, setupError, runSetup]);
+    setupStatus, setupError, runSetup, runSetupAsync]);
 
   return <SignerContext.Provider value={value}>{children}</SignerContext.Provider>;
 }

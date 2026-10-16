@@ -12,6 +12,6 @@ export const SignerContext = createContext(null);
  * signEvmTx, stellarAccount, stellarSetup }. stellarAccount is her Stellar account as read from
  * Horizon ({ exists, nin: { balance, authorized }, usdc, sponsor }); the app creates it by itself
  * after login for a new wallet; a Polygon wallet's move calls stellarSetup.run() (M1 step 1).
- * stellarSetup: { status, error, run }.
+ * stellarSetup: { status, error, run, runAsync }. signEvmMessage(text) signs with her Polygon key.
  */
 export const useNilaSigner = () => useContext(SignerContext);

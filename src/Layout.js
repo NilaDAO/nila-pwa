@@ -14,6 +14,8 @@ import WalletRoot from './wallet/WalletRoot';
 
 // Inline env test so webpack drops the page when Privy is off (see wallet/WalletRoot.jsx).
 const P0Check = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./wallet/P0Check')) : null;
+// /p3: the move screens on their own, for checks (P3); same flag.
+const MoveCheck = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./move/MoveFlow')) : null;
 
 // small util to mirror meta theme-color to CSS var (import path adjust if needed)
 import { setMetaThemeColor } from './utils/metaTheme.js';
@@ -87,6 +89,7 @@ function Layout() {
                     <Route path="/diag" element={<PWA_diagnosis />} />
                     <Route path="/record/:hash" element={<RecordViewer />} />
                     {P0Check && <Route path="/p0" element={<Suspense fallback={null}><P0Check /></Suspense>} />}
+                    {MoveCheck && <Route path="/p3" element={<Suspense fallback={null}><MoveCheck onMoved={() => {}} /></Suspense>} />}
                     <Route path="/*" element={<App installAvailable={installAvailable} />} />
                   </Routes>
                 </ErrorBoundary>
