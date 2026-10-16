@@ -8,6 +8,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { C } from '../shell/tokens';
 import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, useLandTitles, usePlanJob, useSubmitIntake } from './hooks';
 import { Choice, Primary, Sheet, Steps, inr, muted } from './ui';
+import { useMintCropShares } from './mint';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
@@ -96,6 +97,7 @@ export default function CropPlanFlow() {
   const catalogue = useCropCatalogue();
   const submit = useSubmitIntake(landId);
   const accept = useAcceptPlan(landId);
+  const mint = useMintCropShares();
   const [step, setStep] = useState(null);
   const [crops, setCrops] = useState(new Set());
   const [role, setRole] = useState();
@@ -249,9 +251,43 @@ export default function CropPlanFlow() {
       </Sheet>
     );
   }
+  if (ap?.decision === 'approve') {
+    // CP12 busy / failed; done → her crop shares (CP13 comes in P4c).
+    if (mint.status === 'busy') {
+      return (
+        <Sheet landName={name} title="Creating your crop shares">
+          <p style={{ ...muted, textAlign: 'center' }}>{mint.total ? `${mint.done} of ${mint.total}` : '…'}</p>
+        </Sheet>
+      );
+    }
+    if (mint.status === 'failed') {
+      return (
+        <Sheet landName={name} title="Your crop shares were not made">
+          <p style={muted}>Nothing is lost: your accepted plan is saved. Check your internet and try again.</p>
+          {mint.error && <p style={{ ...muted, color: C.coral }}>{mint.error}</p>}
+          <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>
+          <p style={muted}>Still not working? Ask your union leader.</p>
+        </Sheet>
+      );
+    }
+    if (mint.status === 'done' || mint.status === 'partial') {
+      return (
+        <Sheet landName={name} title="Your crop shares are made">
+          <p style={muted}>{mint.total} crop shares{mint.refused?.length ? `; ${mint.refused.length} not yet: ${mint.refused.map((r) => r.error).join('; ')}` : ''}.</p>
+          <Primary onClick={() => setStep('plan')}>See my plan</Primary>
+        </Sheet>
+      );
+    }
+    return (
+      <Sheet landName={name} title="Your plan is approved">
+        <p style={muted}>Make your crop shares now. Nila pays the network fee.</p>
+        <Primary onClick={() => mint.run(plan.id)}>Make my crop shares</Primary>
+      </Sheet>
+    );
+  }
   return (
-    <Sheet landName={name} title={ap?.decision === 'approve' ? 'Your plan is approved' : 'Waiting for your union leader'}>
-      <p style={muted}>{ap?.decision === 'approve' ? 'Your crop shares are made next.' : 'Your leader checks your plan. You get a message when they are ready.'}</p>
+    <Sheet landName={name} title="Waiting for your union leader">
+      <p style={muted}>Your leader checks your plan. You get a message when they are ready.</p>
       <Primary onClick={() => setStep('plan')}>See my plan</Primary>
     </Sheet>
   );

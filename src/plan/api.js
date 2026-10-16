@@ -37,6 +37,7 @@ export function planClient({ stellarAddress, signHash }) {
     latest: (landId) => call('GET', `/plan/land/${landId}`),
     plan: (planId) => call('GET', `/plan/${planId}`),
     accept: (planId, zone) => call('POST', `/plan/${planId}/accept`, { zone }),
+    get_pending: () => call('GET', '/plan/approvals/pending'),
     approve: (planId, decision, reason, note) => call('POST', `/plan/${planId}/approve`, { decision, reason, note }),
     mintList: (planId) => call('GET', `/plan/${planId}/mint`),
     gas: (planId) => call('POST', `/plan/${planId}/gas`, {}),

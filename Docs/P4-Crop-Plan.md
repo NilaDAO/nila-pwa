@@ -31,10 +31,24 @@ the node) → CP12 waiting for the leader / approved / denied ("Make a new plan"
 - CP10: areas are checked in a list, not on the map; "Season 1 · <month>" header only.
 - The plan uses her first Polygon land title; several titles need a picker.
 
+## P4b — leader approval and the mint (built)
+
+- **L12** (`src/plan/LeaderApprove.jsx`): the leader's Crop plan tab lists the plans waiting for approval
+  (`GET /plan/approvals/pending`), opens one (seasons: crops, cash, vouchers, repay; totals) and approves or denies
+  it (reasons "Crops do not fit her land", "Amounts too high", "Wrong areas", "Other", optional note).
+- **CP12 mint** (`src/plan/mint.js`, `useMintCropShares`): once approved, "Make my crop shares" → the node tops
+  up her POL (`POST /plan/{id}/gas`) → `joinBatch` where she is not a member → `mintForBatchMember` for every
+  entry of `GET /plan/{id}/mint` with her own key (`signEvmTx`, broadcast to Polygon), skipping tokens she
+  already holds; "Creating your crop shares n of N"; failed → "Your crop shares were not made … Try again".
+- FoodToken ABI refreshed from nila-evm (P1: `fieldBusyUntil`, `sellFromBatch`, `syncFieldClaims`):
+  `src/components/ABI/FoodTokenP1.json`.
+
+Design gaps (P4b): the pending list replaces LeaderPickMember for approvals; no member names (the node has none:
+"Land N"); a leader's own plan is not reachable from the leader's Crop plan tab yet; "Make my crop shares" is a
+button (the board shows CP12 busy directly); L12 no longer says "sign the mint on this phone" (N1).
+
 ## Next
 
-- **P4b:** L12 (leader approves/denies, with the leader's member picker) and CP12 mint: gas top-up, `joinBatch` when
-  needed, then `mintForBatchMember` for every entry of `GET /plan/{id}/mint` with her key; FoodToken ABI refresh
-  (P1: `fieldBusyUntil`, `sellFromBatch`).
-- **P4c:** CP1/CP2 (field record), CP13 (active plan), the map.
-- Demo: `/plan` on in the demo stack (LLM off), a test record and title on the fork.
+- **P4c:** CP1/CP2 (field record), CP13 (active plan), the map; a land picker for several titles.
+- **Demo:** `/plan` on in the demo stack (LLM off), a test record and a FoodToken with standing batches on the
+  fork, so the whole plan → approve → mint runs on localhost.
