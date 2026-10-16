@@ -1,14 +1,16 @@
 // Shared crop-plan layout: the header band (map in P4c) and the bottom sheet of the CP boards.
 import { C, FONT, R } from '../shell/tokens';
 
-export function Sheet({ title, children, landName, onBack }) {
+export function Sheet({ title, children, landName, onBack, map }) {
   return (
     <div style={{ fontFamily: FONT, color: C.text }}>
-      <div style={{ background: '#25361f', height: 180, position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 24 }}>
+      <div style={{ background: '#25361f', height: map ? 'auto' : 180, position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: map ? 0 : 24 }}>
+        {map && <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>{map}</div>}
+        {map && <div style={{ height: 220 }} />}
         {onBack && (
-          <button type="button" aria-label="Back" onClick={onBack} style={{ position: 'absolute', left: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0, color: C.text, fontSize: 20 }}>←</button>
+          <button type="button" aria-label="Back" onClick={onBack} style={{ position: 'absolute', zIndex: 2, left: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0, color: C.text, fontSize: 20 }}>←</button>
         )}
-        <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700 }}>{landName}</span>
+        <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: map ? 'absolute' : 'static', top: 18, zIndex: 2 }}>{landName}</span>
       </div>
       <div style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 24px', position: 'relative', minHeight: 400 }}>
         <div style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(255,255,255,.35)', margin: '0 auto 16px' }} />

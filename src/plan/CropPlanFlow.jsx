@@ -2,13 +2,16 @@
 // CP12 waiting for the leader (nila-design boards CropPlanIntro … CropPlanPending-590i). Copy from the
 // boards; DESIGN GAPs: no map yet (P4c), no record crops or suggestions on CP4 (no hook), CP9 shows the
 // engine's one explanation text (16 Oct), CP6/CP5 answers mapped to numbers/keys in hooks.js.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C } from '../shell/tokens';
 import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { Choice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { useMintCropShares } from './mint';
+import { areasOf, summarize, useFieldRecord } from './record';
+import AreaMap from './AreaMap';
+import ActivePlan from './ActivePlan';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
@@ -31,7 +34,7 @@ function Making({ jobId, onDone, onError }) {
   );
 }
 
-function PlanView({ plan, onAccept, onChange, readOnly }) {
+function PlanView({ plan, onAccept, onChange, readOnly, areaNo = (z) => z }) {
   const p = plan.plan;
   const [tab, setTab] = useState('Year');
   const [checked, setChecked] = useState(() => new Set(Object.keys(plan.accepted || {})));
@@ -46,10 +49,10 @@ function PlanView({ plan, onAccept, onChange, readOnly }) {
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
   return (
     <>
-      {zones.map((z, i) => (
+      {zones.map((z) => (
         <Choice key={z} check on={checked.has(z)} onClick={() => setChecked((c) => { const n = new Set(c); n.has(z) ? n.delete(z) : n.add(z); return n; })}
           sub={seasons.map((s) => s.rows.filter((r) => r.zone === z).map((r) => `${SEASON[s.slot]}: ${r.name} ${fmtKg(r.kg)}${r.risks?.length ? ` · ${r.risks.join(', ')}` : ''}`).join('')).filter(Boolean).join(' · ')}>
-          Area {i + 1}
+          Area {areaNo(z)}
         </Choice>
       ))}
       <p style={{ ...muted, textAlign: 'center' }}>{checked.size} of {zones.length} accepted</p>
@@ -107,6 +110,8 @@ export default function CropPlanFlow() {
   const landId = titles.data?.[0];
   const current = useCropPlan(landId);
   const catalogue = useCropCatalogue();
+  const field = useFieldRecord(landId, s?.evmAddress);
+  const record = field.data?.record;
   const submit = useSubmitIntake(landId);
   const accept = useAcceptPlan(landId);
   const mint = useMintCropShares();
@@ -128,19 +133,49 @@ export default function CropPlanFlow() {
   const [error, setError] = useState();
   const [read, setRead] = useState(false);
   const plan = current.data;
-  const name = landId != null ? `Land ${landId}` : 'Nila';
+  const name = record?.meta?.farm_name || (landId != null ? `Land ${landId}` : 'Nila');
+  const zoneOrder = useMemo(() => areasOf(record).map((z) => z.zone_id), [record]);
+  const areaNo = useCallback((zone) => (zoneOrder.indexOf(zone) + 1) || zone, [zoneOrder]);
+  // The map shows what grows on each area in the first season of the plan, or just "Area n".
+  const labels = useMemo(() => {
+    const s0 = plan?.plan?.seasons?.[0];
+    if (!s0) return {};
+    return Object.fromEntries(s0.rows.map((r) => [r.zone, { text: r.name, sub: fmtKg(r.kg), colour: r.colour }]));
+  }, [plan]);
+  const map = record ? <AreaMap record={record} labels={labels} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
 
-  if (titles.isLoading || current.isLoading) return <Sheet landName={name}><p style={muted}>…</p></Sheet>;
+  if (titles.isLoading || current.isLoading) return <Sheet map={map} landName={name}><p style={muted}>…</p></Sheet>;
   if (titles.data && !titles.data.length) {
-    return <Sheet landName={name} title="No land title yet"><p style={muted}>Your crop plan starts when your land title is ready.</p></Sheet>;
+    return <Sheet map={map} landName={name} title="No land title yet"><p style={muted}>Your crop plan starts when your land title is ready.</p></Sheet>;
   }
-  const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'intro');
+  const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');
   const back = (to) => () => setStep(to);
 
+  if (at === 'record') {
+    // CP1 / CP2 (boards CropPlanPending, CropPlanPending-n9mn-kewp). DESIGN GAPs: no "Main issues" (the
+    // oracle detects none yet, design Q20), no "Add your trees and water sources" row (A5 not built).
+    if (field.isLoading) return <Sheet map={map} landName={name}><p style={muted}>…</p></Sheet>;
+    if (!record) {
+      return (
+        <Sheet map={map} landName={name} title="Getting your field record">
+          <p style={{ ...muted, textAlign: 'center' }}>This can take up to an hour.</p>
+          {field.error && <p style={muted}>Your field record could not be loaded. It is tried again every minute.</p>}
+        </Sheet>
+      );
+    }
+    const sum = summarize(record);
+    return (
+      <Sheet map={map} landName={name} title="Your field record">
+        {sum.from && <p style={{ ...muted, textAlign: 'center', margin: 0 }}>{sum.from} to {sum.to}</p>}
+        <p style={{ ...muted, textAlign: 'center' }}>{sum.cultivations} cultivations on {sum.areas} areas</p>
+        <Primary onClick={() => setStep('intro')}>Make my crop plan</Primary>
+      </Sheet>
+    );
+  }
   if (at === 'intro') {
     return (
-      <Sheet landName={name} title="What is a crop plan?">
+      <Sheet map={map} landName={name} title="What is a crop plan?">
         <Steps items={[
           ['Income all year', 'Different crops are ready at different times, so money comes in through the year, not once.'],
           ['Money in the hard months', 'You tell us which months are hard. The plan brings sales and cash to those months.'],
@@ -154,7 +189,7 @@ export default function CropPlanFlow() {
   if (at === 'crops') {
     const list = (catalogue.data?.crops || []).filter((c) => !c.whole_year || crops.has(c.key));
     return (
-      <Sheet landName={name} onBack={back('intro')}>
+      <Sheet map={map} landName={name} onBack={back('intro')}>
         <p style={{ ...muted, textAlign: 'center', margin: 0 }}>1 / 4</p>
         <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Which crops can you grow?</h1>
         {list.map((c) => (
@@ -166,7 +201,7 @@ export default function CropPlanFlow() {
   }
   if (at === 'role') {
     return (
-      <Sheet landName={name} onBack={back('crops')}>
+      <Sheet map={map} landName={name} onBack={back('crops')}>
         <p style={{ ...muted, textAlign: 'center', margin: 0 }}>2 / 4</p>
         <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>What is this land for your family?</h1>
         {Object.keys(LAND_ROLE).map((k) => <Choice key={k} on={role === k} onClick={() => { setRole(k); setStep('cows'); }}>{k}</Choice>)}
@@ -175,7 +210,7 @@ export default function CropPlanFlow() {
   }
   if (at === 'cows') {
     return (
-      <Sheet landName={name} onBack={back('role')}>
+      <Sheet map={map} landName={name} onBack={back('role')}>
         <p style={{ ...muted, textAlign: 'center', margin: 0 }}>3 / 4</p>
         <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>How many cows does this land feed?</h1>
         {Object.keys(COWS).map((k) => <Choice key={k} on={cows === k} onClick={() => { setCows(k); setStep('months'); }}>{k}</Choice>)}
@@ -191,7 +226,7 @@ export default function CropPlanFlow() {
       } catch (e) { setError(e.message); }
     };
     return (
-      <Sheet landName={name} onBack={back('cows')}>
+      <Sheet map={map} landName={name} onBack={back('cows')}>
         <p style={{ ...muted, textAlign: 'center', margin: 0 }}>4 / 4</p>
         <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>In which months does your family need money most?</h1>
         <p style={{ ...muted, textAlign: 'center' }}>Choose up to 3 months.</p>
@@ -212,7 +247,7 @@ export default function CropPlanFlow() {
   }
   if (at === 'making') {
     return (
-      <Sheet landName={name} title="Making your crop plan">
+      <Sheet map={map} landName={name} title="Making your crop plan">
         <Making jobId={jobId} onDone={() => { qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep('why'); }}
           onError={(e) => { setError(e); setStep('months'); }} />
       </Sheet>
@@ -221,7 +256,7 @@ export default function CropPlanFlow() {
   if (at === 'why') {
     const text = plan?.plan?.explain?.text || plan?.plan?.proposal_why;
     return (
-      <Sheet landName={name} title="Why this plan">
+      <Sheet map={map} landName={name} title="Why this plan">
         {text ? <p style={{ lineHeight: 1.5 }}>{text}</p> : <p style={muted}>…</p>}
         <Primary onClick={() => setStep('plan')}>See my plan</Primary>
       </Sheet>
@@ -230,10 +265,10 @@ export default function CropPlanFlow() {
   if (at === 'plan' && plan) {
     const season = plan.plan.seasons?.[0];
     return (
-      <Sheet landName={name}>
+      <Sheet map={map} landName={name}>
         {season && <p style={{ textAlign: 'center', fontWeight: 700, margin: '0 0 8px' }}>Season 1 · {monthYear(season.start)}</p>}
         <p style={{ textAlign: 'center', fontWeight: 700 }}>Check each area and accept it.</p>
-        <PlanView plan={plan} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={plan.status !== 'draft'} />
+        <PlanView plan={plan} areaNo={areaNo} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={plan.status !== 'draft'} />
       </Sheet>
     );
   }
@@ -245,7 +280,7 @@ export default function CropPlanFlow() {
       try { const r = await revise.mutateAsync({ planId: plan.id, note: changeNote }); setJobId(r.job_id); setStep('making'); } catch (e) { setError(e.message); }
     };
     return (
-      <Sheet landName={name} title="Change my plan" onBack={back('plan')}>
+      <Sheet map={map} landName={name} title="Change my plan" onBack={back('plan')}>
         <p style={muted}>Tell us what to change and why. Your plan follows you unless a fact rules it out, and it says why.</p>
         <textarea aria-label="What to change" value={changeNote} maxLength={1000} onChange={(e) => setChangeNote(e.target.value)}
           style={{ width: '100%', minHeight: 100, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 14 }} />
@@ -261,7 +296,7 @@ export default function CropPlanFlow() {
       try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
     };
     return (
-      <Sheet landName={name} title="Before you accept your crop plan" onBack={back('plan')}>
+      <Sheet map={map} landName={name} title="Before you accept your crop plan" onBack={back('plan')}>
         <h2 style={{ fontSize: 14, fontWeight: 700 }}>Money left each month</h2>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 80, margin: '8px 0' }} aria-label="Money left each month">
           {cf.map((m) => {
@@ -283,7 +318,7 @@ export default function CropPlanFlow() {
   const ap = plan?.approval;
   if (ap?.decision === 'deny') {
     return (
-      <Sheet landName={name} title="Your leader denied your plan">
+      <Sheet map={map} landName={name} title="Your leader denied your plan">
         <p style={muted}>{[ap.reason, ap.note].filter(Boolean).join('. ')}</p>
         <Primary onClick={() => setStep('intro')}>Make a new plan</Primary>
       </Sheet>
@@ -293,14 +328,14 @@ export default function CropPlanFlow() {
     // CP12 busy / failed; done → her crop shares (CP13 comes in P4c).
     if (mint.status === 'busy') {
       return (
-        <Sheet landName={name} title="Creating your crop shares">
+        <Sheet map={map} landName={name} title="Creating your crop shares">
           <p style={{ ...muted, textAlign: 'center' }}>{mint.total ? `${mint.done} of ${mint.total}` : '…'}</p>
         </Sheet>
       );
     }
     if (mint.status === 'failed') {
       return (
-        <Sheet landName={name} title="Your crop shares were not made">
+        <Sheet map={map} landName={name} title="Your crop shares were not made">
           <p style={muted}>Nothing is lost: your accepted plan is saved. Check your internet and try again.</p>
           {mint.error && <p style={{ ...muted, color: C.coral }}>{mint.error}</p>}
           <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>
@@ -308,9 +343,16 @@ export default function CropPlanFlow() {
         </Sheet>
       );
     }
+    if (mint.status === 'done') {
+      return (
+        <Sheet map={map} landName={name}>
+          <ActivePlan plan={plan} areaNo={areaNo} onUpdate={() => setStep('change')} />
+        </Sheet>
+      );
+    }
     if (mint.status === 'done' || mint.status === 'partial') {
       return (
-        <Sheet landName={name} title="Your crop shares are made">
+        <Sheet map={map} landName={name} title="Your crop shares are made">
           <p style={muted}>{mint.done} of {mint.total} crop shares made.</p>
           {mint.refused?.map((r) => <p key={r.share || r.token_id} style={muted}>{r.crop || 'Crop share'}: {r.error}</p>)}
           {mint.status === 'partial' && <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>}
@@ -319,14 +361,14 @@ export default function CropPlanFlow() {
       );
     }
     return (
-      <Sheet landName={name} title="Your plan is approved">
+      <Sheet map={map} landName={name} title="Your plan is approved">
         <p style={muted}>Make your crop shares now. Nila pays the network fee.</p>
         <Primary onClick={() => mint.run(plan.id)}>Make my crop shares</Primary>
       </Sheet>
     );
   }
   return (
-    <Sheet landName={name} title="Waiting for your union leader">
+    <Sheet map={map} landName={name} title="Waiting for your union leader">
       <p style={muted}>Your leader checks your plan. You get a message when they are ready.</p>
       <Primary onClick={() => setStep('plan')}>See my plan</Primary>
     </Sheet>

@@ -75,8 +75,42 @@ to correct). Board names
 (ids of her Polygon titles) stands for the spec's `useLandTitle`. Shares refused for "SOS more than a year
 ahead" are made later; the gas top-up is once per plan, so a later mint may need POL again (open).
 
+## P4c — field record, the map, the active plan (built)
+
+- **`useFieldRecord`** (`src/plan/record.js`): the record hash from her land title (`getRecordHash`, free for the
+  owner), the bytes from the node (`GET /gis/record-by-hash`) or an IPFS gateway, accepted only when sha256
+  matches. **CP1** "Getting your field record · This can take up to an hour." until published (checks every
+  minute); **CP2** "Your field record · <from> to <to> · n cultivations on m areas" → "Make my crop plan".
+- **`AreaMap`** (`src/plan/AreaMap.jsx`): her areas from `record.zones[].geometry` on Esri World Imagery (Leaflet
+  loaded at runtime, as the record viewer does; no new dependency), "Area n" by zone order, or the first
+  season's crop and yield in the crop's colour once there is a plan. The land name is `meta.farm_name`.
+- **CP13** (`src/plan/ActivePlan.jsx`): after the shares are made — season shown, "To do now", "Coming up"
+  (plant, machine jobs, harvest, repay with amount), "Your plan" (plan year, season n of 3), "Update my plan" /
+  "Plan next year" (→ change).
+- Demo: the crop-plan check now starts at CP2 and ends on CP13 (nila-integrations E4).
+
+**Design gaps (P4c):** CP2 has no "Main issues" (the oracle detects none yet, design Q20) and no "Add your trees
+and water sources" row (A5 not built); CP13 has no "Done" chips or "Done · n" (no activity-done store, Q26), no
+mismatch card (open-cp/3–4), no farm improvements (not in the record or plan) and no "Sell" steps (not in the
+plan); the map is not tappable (CP10 area check, merge and split stay in the list); "Nothing this month.".
+CP2 also lacks "(beta)" and the assisted block ("How your crop plan is made" · Visit your leader · Confirm it
+with a scan · "Show my QR code"); CP13 lacks the assisted line "Ask your leader to update your plan.".
+
+**Review fixes (P4c, nila-reviewer PASS WITH NOTES):** map labels are text nodes (crop names come from the
+node, never as HTML); Leaflet 1.9.4 with Subresource Integrity and `crossOrigin`, and the map waits until the
+script has really loaded; Esri attribution kept; "Area n" numbered the same way on CP10, the map and CP13;
+CP1 shows one plain line on a failed fetch and keeps trying every minute; CP13 keeps the catalogue's crop
+names, words machine jobs as the board does ("Weed maize"), adds "about n kg" to harvests and "Oct to Feb
+finance" to repayments. **Deviation from the spec:** `useFieldRecord` is keyed by land and owner with a
+10-minute staleTime (the spec: by hash, never stale), because it reads the hash itself. The record viewer
+(live code) still loads Leaflet without SRI; left untouched here.
+
+**Open:** "Update my plan" on an already-minted plan makes a new version; minting it again may meet
+`FieldAlreadyClaimed` for the fields of the old tokens (until their harvest is reported) — to settle with the
+member-review and re-plan rules (open-cp/5–8).
+
 ## Next
 
-- **P4c:** CP1/CP2 (field record), CP13 (active plan), the map; a land picker for several titles.
+- A land picker for several titles; tappable areas on CP10; Done / mismatch / improvements once their data exists.
 - **Demo:** `/plan` on in the demo stack (LLM off), a test record and a FoodToken with standing batches on the
   fork, so the whole plan → approve → mint runs on localhost.
