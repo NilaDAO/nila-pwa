@@ -6,8 +6,9 @@ build is unchanged (3 JS files, 3.9 MB, no Privy or Stellar code; checked 16 Oct
 ## What it does
 
 After the Cognito login and the silent Privy login (P0), the app makes her **sponsored Stellar account**
-by itself, with no screen: at login for a new wallet (R4), and the move (M1 step 1, P3) calls the same
-setup. It needs **no land title**: titles stay on Polygon and the attester only attests them on Stellar
+by itself, with no screen, **for a new wallet** (R4). A **Polygon wallet** (`custom:chain` = 137, every
+member today) waits for the move: M1 step 1 (P3) calls the same setup (`stellarSetup.run()`), as the
+design says ("Polygon wallet found → M1"). It needs **no land title**: titles stay on Polygon and the attester only attests them on Stellar
 (oracle O1b, `t1/oracle/O1b`).
 
 1. `GET /stellar/config` (node): network, Horizon, nIN asset, union, contract ids. No Stellar build settings.
@@ -22,9 +23,9 @@ setup. It needs **no land title**: titles stay on Polygon and the attester only 
 | File | Does |
 |---|---|
 | `src/stellar/api.js` | node endpoints, Horizon read, the pair message |
-| `src/stellar/hooks.js` | `useStellarConfig`, `useAccount(addr)` (exists, nIN balance + authorised, USDC, sponsor; fresh 15 s), `useSetupAccount` |
+| `src/stellar/hooks.js` | `useStellarConfig` (not in the design: the node's config replaces Stellar build settings), `useAccount(addr)` (exists, nIN balance + authorised, sponsor; fresh 15 s; not persisted, the app has no query persister; no USDC for members), `useSetupAccount` (checks the node's tx is exactly her sponsored account before she signs; rebuilds on a 409; an account made meanwhile counts as success) |
 | `src/stellar/keys.js` | `qk.stellar.*` query keys (design data/DataHooksRead.md) |
-| `src/wallet/PrivyRoot.jsx` | runs the setup once per Stellar address after login; `useNilaSigner()` now also gives `stellarAccount` and `stellarSetup {status, error, retry}` |
+| `src/wallet/PrivyRoot.jsx` | runs the setup once per Stellar address after login, only when both wallets belong to the same login and the wallet is not a Polygon one; `useNilaSigner()` now also gives `stellarAccount` and `stellarSetup {status, error, run}` |
 | `src/wallet/P0Check.jsx` | `/p0` shows the Stellar account panel |
 
 The Stellar code is imported only from the lazy Privy chunk. Screens read the account through
@@ -36,7 +37,12 @@ Local node (`APP_ENV=local`: no periodic jobs, no S3 upload) on the C3 testnet c
 friendbot sponsor; flag-on build; headless browser at 390 px with a throwaway Polygon key:
 `/p0` → "Stellar account: exists · nIN 0 (trustline unauthorised) · sponsor GB5O7MXX…". The node recorded
 the pair (`stellar_links`) and one account row in the sponsor's account cap (1.5 XLM reserves + fee).
-No page errors.
+No page errors. Re-run after the review fixes: same result; with `chain = 137` stored (a Polygon wallet)
+no account call is made ("not yet (setup idle)").
+
+**Review (nila-reviewer): PASS WITH NOTES**, 7 findings; fixed: login-switch race (both wallets must be
+the same login), 409 rebuild and "made meanwhile" success, render churn, USDC of any issuer, tx check
+before signing, doc gaps. Finding 6 (existing Polygon members) is settled by waiting for M1.
 
 ## Not in P2
 

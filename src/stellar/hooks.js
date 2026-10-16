@@ -1,7 +1,7 @@
 // Stellar hooks for the PWA (P2). Loaded only inside the Privy chunk, so the live build carries none of it.
 // Names and keys follow the design (data/DataHooksRead.md, DataHooksWrite.md): useAccount, useSetupAccount.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { TransactionBuilder } from '@stellar/stellar-sdk';
+import { Asset, TransactionBuilder } from '@stellar/stellar-sdk';
 import { ethers } from 'ethers';
 import { buildAccount, getAccount, getStellarConfig, linkMessage, submitAccount } from './api';
 import { qk } from './keys';
@@ -12,7 +12,11 @@ export function useStellarConfig() {
 
 const NIN_DECIMALS = 7;
 
-/** Her Stellar account: exists, nIN (balance, authorised), USDC if any, sponsor. Fresh 15 s. */
+/**
+ * Her Stellar account: exists, nIN (balance, authorised; the asset and issuer from the node), sponsor.
+ * Fresh 15 s. Not persisted yet (the app has no query persister). No USDC for members: they hold no
+ * USDC trustline (R9, R11), and a balance of an unknown issuer is ignored.
+ */
 export function useAccount(address) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
@@ -24,12 +28,10 @@ export function useAccount(address) {
       if (!a) return { exists: false };
       const [code, issuer] = cfg.nin_asset.split(':');
       const nin = a.balances.find((b) => b.asset_code === code && b.asset_issuer === issuer);
-      const usdc = a.balances.find((b) => b.asset_code === 'USDC');
       return {
         exists: true,
         sponsor: a.sponsor || null,
         nin: nin ? { balance: Number(nin.balance), authorized: !!nin.is_authorized } : null,
-        usdc: usdc ? { balance: Number(usdc.balance) } : null,
         decimals: NIN_DECIMALS,
       };
     },
@@ -37,6 +39,20 @@ export function useAccount(address) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** The node's tx is exactly the sponsored account for her: checked before she signs. */
+function checkAccountTx(tx, cfg, me) {
+  const ops = tx.operations || [];
+  const [code, issuer] = cfg.nin_asset.split(':');
+  const ok = ops.length === 4
+    && ops[0].type === 'beginSponsoringFutureReserves' && ops[0].sponsoredId === me
+    && ops[1].type === 'createAccount' && ops[1].destination === me && Number(ops[1].startingBalance) === 0
+    && ops[2].type === 'changeTrust' && ops[2].source === me && ops[2].line instanceof Asset
+    && ops[2].line.getCode() === code && ops[2].line.getIssuer() === issuer
+    && ops[3].type === 'endSponsoringFutureReserves' && ops[3].source === me
+    && (!cfg.sponsor || tx.source === cfg.sponsor);
+  if (!ok) throw new Error('the node sent a transaction that is not her sponsored account');
+}
 
 /**
  * Her sponsored Stellar account with the nIN trustline only (R9), at login (R4) or at the move
@@ -51,13 +67,29 @@ export function useSetupAccount({ stellarAddress, evmWallet, signHash }) {
     mutationFn: async () => {
       if (!cfg || !stellarAddress || !evmWallet) throw new Error('not ready');
       if (await getAccount(cfg.horizon_url, stellarAddress)) return { existed: true };
-      const { xdr } = await buildAccount(stellarAddress);
-      const tx = TransactionBuilder.fromXDR(xdr, cfg.passphrase);
-      const sig = await signHash(tx.hash());
-      tx.addSignature(stellarAddress, btoa(String.fromCharCode(...sig)));
       const polygon = ethers.getAddress(evmWallet.address);
       const polygonSig = await evmWallet.signMessage(linkMessage(cfg.network, stellarAddress, polygon));
-      const { hash } = await submitAccount(tx.toXDR(), polygon, polygonSig);
+      let hash;
+      try {
+        for (let attempt = 0; ; attempt++) {
+          const { xdr } = await buildAccount(stellarAddress);
+          const tx = TransactionBuilder.fromXDR(xdr, cfg.passphrase);
+          checkAccountTx(tx, cfg, stellarAddress);
+          const sig = await signHash(tx.hash());
+          tx.addSignature(stellarAddress, btoa(String.fromCharCode(...sig)));
+          try {
+            ({ hash } = await submitAccount(tx.toXDR(), polygon, polygonSig));
+            break;
+          } catch (e) {
+            // 409: another member's account went first on the sponsor's sequence; build again.
+            if (e.status !== 409 || attempt >= 2) throw e;
+          }
+        }
+      } catch (e) {
+        // Made meanwhile (another tab, the move): that is success, not an error.
+        if (await getAccount(cfg.horizon_url, stellarAddress).catch(() => null)) return { existed: true };
+        throw e;
+      }
       // The node does not wait: poll Horizon until the account is there (about one ledger).
       for (let i = 0; i < 30; i++) {
         await sleep(2000);

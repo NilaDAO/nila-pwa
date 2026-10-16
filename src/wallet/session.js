@@ -25,5 +25,14 @@ export const getLocalEvmWallet = async () => {
   }
 };
 
+/** Her wallet's chain as Cognito keeps it (custom:chain): '137' = a Polygon wallet; null if none stored. */
+export const getChain = async () => {
+  try {
+    return (await readAllItems('Init')).chain ?? null;
+  } catch {
+    return null;
+  }
+};
+
 // Called by the login flow once the Cognito tokens are stored, and on logout.
 export const announceAuthChange = () => window.dispatchEvent(new Event(AUTH_EVENT));

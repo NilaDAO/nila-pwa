@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PrivyProvider, useLoginWithSiwe, usePrivy } from '@privy-io/react-auth';
 import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { polygon } from 'viem/chains';
-import { AUTH_EVENT, getLocalEvmWallet, hasSession } from './session';
+import { AUTH_EVENT, getChain, getLocalEvmWallet, hasSession } from './session';
 import { SignerContext } from './signer';
 import { useAccount, useSetupAccount } from '../stellar/hooks';
 
@@ -40,11 +40,13 @@ function SignerBridge({ children }) {
   const [evmWallet, setEvmWallet] = useState();
   const [error, setError] = useState();
 
-  // Her Polygon key, unlocked as the app does today.
+  // Her Polygon key, unlocked as the app does today, and her wallet's chain.
+  const [chain, setChain] = useState();
   useEffect(() => {
     if (session.loading) return;
-    if (!session.active) { setEvmWallet(undefined); return; }
+    if (!session.active) { setEvmWallet(undefined); setChain(undefined); return; }
     getLocalEvmWallet().then(setEvmWallet);
+    getChain().then(setChain);
   }, [session]);
 
   // Silent Privy login with her key; logout follows the Cognito session.
@@ -97,17 +99,24 @@ function SignerBridge({ children }) {
     return evmWallet.signTransaction(tx);
   }, [evmWallet]);
 
-  // Her Stellar account (P2): made at login once both keys are there (R4; the move M1 step 1 calls
-  // the same setup). The node sponsors it; it needs no land title (titles stay on Polygon).
-  const signersReady = ready && authenticated && !!evmWallet && !!stellar;
+  // Both wallets belong to the same login: the Privy user is the one her current key signed in
+  // (during a key change the old user is still there for a moment).
+  const sameLogin = !!evmWallet && user?.wallet?.address?.toLowerCase() === evmWallet.address.toLowerCase();
+  const signersReady = ready && authenticated && sameLogin && !!stellar;
+
+  // Her Stellar account (P2): the node sponsors it; it needs no land title (titles stay on Polygon).
+  // Made by itself at login for a new wallet (R4). A Polygon wallet ('137') waits for the move:
+  // M1 step 1 calls the same setup (design R4: "Polygon wallet found → M1").
   const account = useAccount(signersReady ? stellar.address : undefined);
-  const setup = useSetupAccount({ stellarAddress: stellar?.address, evmWallet, signHash });
+  const { status: setupStatus, error: setupError, mutate: runSetup } =
+    useSetupAccount({ stellarAddress: stellar?.address, evmWallet, signHash });
+  const autoSetup = chain !== undefined && chain !== '137';  // undefined: not read yet
   const tried = useRef();
   useEffect(() => {
-    if (!signersReady || account.data?.exists !== false || tried.current === stellar.address) return;
+    if (!signersReady || !autoSetup || account.data?.exists !== false || tried.current === stellar.address) return;
     tried.current = stellar.address;
-    setup.mutate();
-  }, [signersReady, account.data, stellar, setup]);
+    runSetup();
+  }, [signersReady, autoSetup, account.data, stellar, runSetup]);
 
   const value = useMemo(() => ({
     ready: signersReady,
@@ -121,9 +130,13 @@ function SignerBridge({ children }) {
     signEvmTx,
     // { exists, nin: { balance, authorized }, usdc, sponsor } once read; undefined before.
     stellarAccount: account.data,
-    stellarSetup: { status: setup.status, error: setup.error?.message, retry: () => setup.mutate() },
+    // run: the move (M1 step 1) and the retry button call it; no second run while one is pending.
+    stellarSetup: {
+      status: setupStatus, error: setupError?.message,
+      run: () => setupStatus !== 'pending' && runSetup(),
+    },
   }), [signersReady, authenticated, error, user, evmWallet, stellar, signHash, signEvmTx, account.data,
-    setup]);
+    setupStatus, setupError, runSetup]);
 
   return <SignerContext.Provider value={value}>{children}</SignerContext.Provider>;
 }

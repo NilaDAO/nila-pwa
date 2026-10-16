@@ -11,6 +11,7 @@ export const SignerContext = createContext(null);
  * null while Privy is off; otherwise { ready, authenticated, evmAddress, stellarAddress, signHash,
  * signEvmTx, stellarAccount, stellarSetup }. stellarAccount is her Stellar account as read from
  * Horizon ({ exists, nin: { balance, authorized }, usdc, sponsor }); the app creates it by itself
- * after login (stellarSetup: { status, error, retry }).
+ * after login for a new wallet; a Polygon wallet's move calls stellarSetup.run() (M1 step 1).
+ * stellarSetup: { status, error, run }.
  */
 export const useNilaSigner = () => useContext(SignerContext);

@@ -21,7 +21,7 @@ function StellarAccountPanel({ signer }) {
         <div>nIN {a.nin ? `${a.nin.balance} (trustline ${a.nin.authorized ? 'authorised' : 'unauthorised'})` : 'no trustline'}
           {' · '}sponsor {a.sponsor ? `${a.sponsor.slice(0, 8)}…` : '—'}</div>
       )}
-      {s.error && <div className="text-red-600">setup failed: {s.error} <button className="underline" onClick={s.retry}>retry</button></div>}
+      {s.error && <div className="text-red-600">setup failed: {s.error} <button className="underline" onClick={s.run}>retry</button></div>}
     </div>
   );
 }
