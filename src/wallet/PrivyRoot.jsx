@@ -1,13 +1,16 @@
 // Privy, wrapped so the rest of the app never imports it: the app signs through useNilaSigner()
 // (wallet/signer.js). Loaded lazily by WalletRoot only when REACT_APP_PRIVY_APP_ID is set.
-// No Privy login UI and no email: Privy accepts only our Cognito ID token (cognitoJwt.js).
+//
+// Login stays ours (phone → Cognito → SMS). Privy is plugged in next to it: once her Cognito
+// session is there, the app signs Privy's Sign-In-With-Ethereum message with her own Polygon key
+// (no screen, no code) and Privy logs her in. Privy then holds her Stellar wallet. Her Polygon
+// wallet stays the key she already has, so her address, land titles and FoodTokens do not move
+// (design open item 13). No Privy login UI, no email, no Privy SMS.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  PrivyProvider, usePrivy, useSignTransaction, useSubscribeToJwtAuthWithFlag, useWallets,
-} from '@privy-io/react-auth';
+import { PrivyProvider, useLoginWithSiwe, usePrivy } from '@privy-io/react-auth';
 import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { polygon } from 'viem/chains';
-import { AUTH_EVENT, getCognitoIdToken, hasCognitoSession } from './cognitoJwt';
+import { AUTH_EVENT, getLocalEvmWallet, hasSession } from './session';
 import { SignerContext } from './signer';
 
 const APP_ID = process.env.REACT_APP_PRIVY_APP_ID;
@@ -15,29 +18,56 @@ const APP_ID = process.env.REACT_APP_PRIVY_APP_ID;
 const toHex = (u8) => '0x' + Array.from(u8, (b) => b.toString(16).padStart(2, '0')).join('');
 const fromHex = (h) => Uint8Array.from(h.slice(2).match(/../g), (x) => parseInt(x, 16));
 
-function useCognitoFlag() {
-  const [state, setState] = useState({ isLoading: true, isAuthenticated: false });
+function useSession() {
+  const [session, setSession] = useState({ loading: true, active: false });
   useEffect(() => {
     let live = true;
-    const check = () => hasCognitoSession().then((ok) => live && setState({ isLoading: false, isAuthenticated: ok }));
+    const check = () => hasSession().then((active) => live && setSession({ loading: false, active }));
     check();
     window.addEventListener(AUTH_EVENT, check);
     return () => { live = false; window.removeEventListener(AUTH_EVENT, check); };
   }, []);
-  return state;
+  return session;
 }
 
 function SignerBridge({ children }) {
-  const { isLoading, isAuthenticated } = useCognitoFlag();
-  useSubscribeToJwtAuthWithFlag({ isLoading, isAuthenticated, getExternalJwt: getCognitoIdToken });
-
-  const { ready, authenticated, user } = usePrivy();
-  const { wallets } = useWallets();
-  const { signTransaction } = useSignTransaction();
+  const session = useSession();
+  const { ready, authenticated, user, logout } = usePrivy();
+  const { generateSiweMessage, loginWithSiwe } = useLoginWithSiwe();
   const { createWallet } = useCreateWallet();
   const { signRawHash } = useSignRawHash();
+  const [evmWallet, setEvmWallet] = useState();
+  const [error, setError] = useState();
 
-  const evm = wallets.find((w) => w.walletClientType === 'privy');
+  // Her Polygon key, unlocked as the app does today.
+  useEffect(() => {
+    if (session.loading) return;
+    if (!session.active) { setEvmWallet(undefined); return; }
+    getLocalEvmWallet().then(setEvmWallet);
+  }, [session]);
+
+  // Silent Privy login with her key; logout follows the Cognito session.
+  const busy = useRef(false);
+  useEffect(() => {
+    if (!ready || busy.current) return;
+    const linked = user?.wallet?.address?.toLowerCase();
+    if (authenticated && (!session.active || (evmWallet && linked && linked !== evmWallet.address.toLowerCase()))) {
+      busy.current = true;
+      logout().finally(() => { busy.current = false; });
+      return;
+    }
+    if (authenticated || !evmWallet) return;
+    busy.current = true;
+    (async () => {
+      const message = await generateSiweMessage({ address: evmWallet.address, chainId: `eip155:${polygon.id}` });
+      const signature = await evmWallet.signMessage(message);
+      await loginWithSiwe({ message, signature });
+      setError(undefined);
+    })()
+      .catch((e) => { console.error('[privy] silent login failed', e); setError(e.message); })
+      .finally(() => { busy.current = false; });
+  }, [ready, authenticated, user, session, evmWallet, generateSiweMessage, loginWithSiwe, logout]);
+
   const stellar = user?.linkedAccounts?.find((a) => a.type === 'wallet' && a.chainType === 'stellar');
 
   // Every member has both wallets (LOAN_RULES §5, 15 Oct): make her Stellar wallet once.
@@ -60,21 +90,23 @@ function SignerBridge({ children }) {
     return sig;
   }, [stellar, signRawHash]);
 
-  // Polygon: returns the signed raw tx; the caller broadcasts it.
+  // Polygon: her own key signs, as today. Returns the signed raw tx; the caller broadcasts it.
   const signEvmTx = useCallback(async (tx) => {
-    if (!evm) throw new Error('no Polygon wallet yet');
-    const { signature } = await signTransaction(tx, { address: evm.address, uiOptions: { showWalletUIs: false } });
-    return signature;
-  }, [evm, signTransaction]);
+    if (!evmWallet) throw new Error('no Polygon key');
+    return evmWallet.signTransaction(tx);
+  }, [evmWallet]);
 
   const value = useMemo(() => ({
-    ready: ready && authenticated && !!evm && !!stellar,
+    ready: ready && authenticated && !!evmWallet && !!stellar,
     authenticated,
-    evmAddress: evm?.address,
+    error,
+    privyUserId: user?.id,
+    privyEvmAddress: user?.wallet?.address,
+    evmAddress: evmWallet?.address,
     stellarAddress: stellar?.address,
     signHash,
     signEvmTx,
-  }), [ready, authenticated, evm, stellar, signHash, signEvmTx]);
+  }), [ready, authenticated, error, user, evmWallet, stellar, signHash, signEvmTx]);
 
   return <SignerContext.Provider value={value}>{children}</SignerContext.Provider>;
 }
@@ -86,7 +118,8 @@ export default function PrivyRoot({ children }) {
       config={{
         defaultChain: polygon,
         supportedChains: [polygon],
-        embeddedWallets: { ethereum: { createOnLogin: 'all-users' }, showWalletUIs: false },
+        // No Privy Polygon wallet: her own key is her Polygon wallet.
+        embeddedWallets: { ethereum: { createOnLogin: 'off' }, showWalletUIs: false },
       }}
     >
       <SignerBridge>{children}</SignerBridge>

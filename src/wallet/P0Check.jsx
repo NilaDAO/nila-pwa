@@ -1,6 +1,6 @@
 // /p0 — the P0 checks against her real Privy wallets, inside the PWA (only when Privy is on).
-// Log in to the app as usual first (Cognito, code by SMS); Privy picks up that session.
-// Nothing goes to Polygon mainnet: the FoodToken mint is signed and decoded, never broadcast.
+// Log in to the app as usual first (Cognito, code by SMS); Privy then signs in silently with her
+// Polygon key. Nothing goes to Polygon mainnet: the FoodToken mint is signed and decoded, never broadcast.
 // Stellar checks run on testnet.
 import { useState } from 'react';
 import { Interface, Transaction } from 'ethers';
@@ -17,9 +17,11 @@ export default function P0Check() {
   const log = (m) => setLines((l) => [...l, `${new Date().toISOString().slice(11, 19)} ${m}`]);
 
   if (!signer) return <p className="p-4">Privy is off (REACT_APP_PRIVY_APP_ID not set).</p>;
-  if (!signer.authenticated) return <p className="p-4">Log in to the app first; Privy uses that session.</p>;
+  if (!signer.authenticated) {
+    return <p className="p-4">{signer.error ? `Privy login failed: ${signer.error}` : 'Waiting for the app login, then Privy signs in…'}</p>;
+  }
 
-  const { evmAddress: evm, stellarAddress: stellar, signHash, signEvmTx } = signer;
+  const { evmAddress: evm, stellarAddress: stellar, signHash, signEvmTx, privyEvmAddress, privyUserId } = signer;
 
   const run = async (key, fn) => {
     setResults((r) => ({ ...r, [key]: 'running…' }));
@@ -41,11 +43,12 @@ export default function P0Check() {
     S1: ['Soroban auth entry signed by raw hash, testnet SUCCESS', () => sorobanAuth({ address: stellar, signHash, log })],
     S2: ['SEP-10 challenge (server-side check)', () => sep10Local({ address: stellar, signHash, log })],
     S3: ['SEP-10 against SDF test anchor (JWT)', () => sep10TestAnchor({ address: stellar, signHash, log })],
-    E1: ['Polygon wallet made after login', async () => {
-      if (!evm) throw new Error('no Privy Polygon wallet');
-      return { address: evm };
+    E1: ['Privy signed in with her own Polygon key (same address)', async () => {
+      if (!evm) throw new Error('her Polygon key is not available');
+      if (privyEvmAddress?.toLowerCase() !== evm.toLowerCase()) throw new Error(`Privy user wallet ${privyEvmAddress} ≠ her key ${evm}`);
+      return { address: evm, privyUser: privyUserId };
     }],
-    E2: ['mintForBatchMember signed silently, not broadcast', async () => {
+    E2: ['mintForBatchMember signed with her key, not broadcast', async () => {
       const data = new Interface(MINT_ABI).encodeFunctionData('mintForBatchMember',
         [1n, 32, 0, 1000n, 2n, 3101, 0, Math.floor(Date.now() / 1000)]);
       // Fixed gas and fees: estimation would revert (this test user is no batch member).
@@ -62,7 +65,7 @@ export default function P0Check() {
   return (
     <div className="p-4 text-sm max-w-xl mx-auto">
       <h1 className="text-lg font-semibold">P0 — Privy checks</h1>
-      <p className="break-all">Polygon {evm ?? '—'} · Stellar {stellar ?? '—'}</p>
+      <p className="break-all">Privy user {privyUserId ?? '—'} · Polygon {evm ?? '—'} · Stellar {stellar ?? '—'}</p>
       {Object.entries(checks).map(([k, [label, fn]]) => (
         <div key={k} className="my-2">
           <button className="border rounded px-2 py-1 mr-2" onClick={() => run(k, fn)}

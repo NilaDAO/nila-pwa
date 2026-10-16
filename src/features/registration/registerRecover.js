@@ -6,7 +6,7 @@ import { getSuperteamCookie } from "./getSuperTeamCookie";
 import { createItem } from '../../utils/db';
 import { InputButton, EnableNotifications } from '../../components/UI/buttons';
 import { signUp, getUserAttributes, initAuth, respondToAuthChallenge} from '../../utils/cognito_helpers'
-import { announceAuthChange } from '../../wallet/cognitoJwt'
+import { announceAuthChange } from '../../wallet/session'
 import { InformationCircleIcon, WifiIcon } from '@heroicons/react/24/outline'
 import MemberUnion from '../../components/Forms/memberUnion';
 import { setMetaThemeColor } from '../../utils/metaTheme';

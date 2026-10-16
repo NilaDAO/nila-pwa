@@ -53,7 +53,7 @@ export const deleteItem = async (id,STORE) => {
 export const deleteAllItems = async () => {
   console.log('delete DB')
   await deleteDB(DB_NAME);
-  // Logout: Privy (if on) drops its session too. Same name as AUTH_EVENT in wallet/cognitoJwt.js.
+  // Logout: Privy (if on) drops its session too. Same name as AUTH_EVENT in wallet/session.js.
   window.dispatchEvent(new Event('nila:auth-changed'));
 }
 
