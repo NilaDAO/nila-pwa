@@ -10,7 +10,7 @@ import { readAllItems, setDBitem } from '../utils/db';
 import { updateUserChain } from '../utils/cognito_helpers';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { requestMoveNin } from './api';
+import { getMoveStatus, requestMoveNin } from './api';
 
 export const STELLAR_CHAIN = 'stellar';
 const ERC20 = ['function balanceOf(address) view returns (uint256)'];
@@ -35,14 +35,15 @@ export function useLegacyBalances(address) {
   });
 }
 
-/** Last confirmed step and error, in localStorage (survives a reload; works offline). */
-const KEY = 'nila.move';
-const readProgress = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
-const writeProgress = (p) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* private mode */ } };
+/** Last confirmed step and error, per Polygon wallet, in localStorage (survives a reload; offline). */
+const keyFor = (evm) => `nila.move:${(evm || '').toLowerCase()}`;
+const readProgress = (evm) => { try { return JSON.parse(localStorage.getItem(keyFor(evm))) || {}; } catch { return {}; } };
+const writeProgress = (evm, p) => { try { localStorage.setItem(keyFor(evm), JSON.stringify(p)); } catch { /* private mode */ } };
 
-export function useMoveProgress() {
-  const [progress, setProgress] = useState(readProgress);
-  const save = useCallback((p) => { writeProgress(p); setProgress(p); }, []);
+export function useMoveProgress(evm) {
+  const [progress, setProgress] = useState(() => readProgress(evm));
+  useEffect(() => { setProgress(readProgress(evm)); }, [evm]);
+  const save = useCallback((p) => { writeProgress(evm, p); setProgress(p); }, [evm]);
   return [progress, save];
 }
 
@@ -52,16 +53,16 @@ export function useMoveProgress() {
  * (the oracle burns and mints later, once her title is attested); 3 custom:chain = 'stellar'
  * in Cognito, then in IndexedDB. No reset (16 Oct): the app reloads in place.
  */
-export function useMoveWallet() {
+export function useMoveWallet(loans) {
   const signer = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const qc = useQueryClient();
-  const [progress, save] = useMoveProgress();
+  const [progress, save] = useMoveProgress(signer?.evmAddress);
   const [busy, setBusy] = useState(false);
   const legacy = useLegacyBalances(signer?.evmAddress);
 
   const run = useCallback(async () => {
-    if (busy) return;
+    if (busy || !signer?.evmAddress) return;
     setBusy(true);
     let step = progress.step || 0;
     try {
@@ -70,8 +71,12 @@ export function useMoveWallet() {
         step = 1; save({ step });
       }
       if (step < 2) {
+        // Her loans, checked again right before anything moves (an M4 retry skips the start screen).
+        if (!loans?.known || loans.open.length > 0) throw new Error('her Polygon loans are not checked, or one is open');
         const wei = (await legacy.refetch()).data?.ninWei ?? 0n;
-        if (wei > 0n) {
+        // One move per wallet: a request that already reached the node is not sent again.
+        const prior = wei > 0n ? await getMoveStatus(signer.evmAddress).catch(() => ({ state: 'none' })) : null;
+        if (wei > 0n && (prior.state === 'none' || prior.state === 'failed')) {
           await requestMoveNin({ network: cfg.network, stellar: signer.stellarAddress,
             evmAddress: signer.evmAddress, amountWei: wei, signEvmMessage: signer.signEvmMessage });
         }
@@ -92,22 +97,26 @@ export function useMoveWallet() {
     } finally {
       setBusy(false);
     }
-  }, [busy, progress.step, signer, cfg, legacy, save, qc]);
+  }, [busy, progress.step, signer, cfg, legacy, save, qc, loans]);
 
   return { run, busy, progress, legacy };
 }
 
 /**
- * An open Polygon loan blocks the move until it is repaid in the old app (16 Oct). `known` is true
- * only after a read finished without error: until then the move stays closed (never assume "none").
+ * An open Polygon loan blocks the move until it is repaid in the old app (16 Oct): ₹10 or more
+ * outstanding (smaller remainders do not block). `known` is true only after a read for this wallet
+ * and union finished without error: until then the move stays closed (never assume "none").
  */
-export function useOpenPolygonLoans(address) {
+export const LOAN_DUST = 10;
+
+export function useOpenPolygonLoans(address, unionAddress) {
   const { loans, loading, error } = useMemberLoans(address);
   const started = useRef(false);
   const [known, setKnown] = useState(false);
+  useEffect(() => { started.current = false; setKnown(false); }, [address, unionAddress]);
   useEffect(() => {
     if (loading) { started.current = true; setKnown(false); }
     else if (started.current) setKnown(!error);
   }, [loading, error]);
-  return { open: (loans || []).filter((l) => Number(l.outstanding) > 0), known, error };
+  return { open: (loans || []).filter((l) => Number(l.outstanding) >= LOAN_DUST), known, error };
 }

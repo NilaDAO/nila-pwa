@@ -18,7 +18,10 @@ is unchanged (3 JS files, 3.9 MB, no Privy, Stellar or move code; checked 16 Oct
   opens today's app for this start (sessionStorage); the choice comes back at every start until the loan is closed.
 - Polygon wallet **without one**: only the move (M1–M4), full screen, no skip.
 - Moved wallet (`stellar`): an interim Stellar home until P1's bottom bar and A1 replace it.
-- Her Polygon loans are read first ("Checking your loans…"); a failed read never opens the move.
+- Her Polygon loans are read first ("Checking your loans…"); a failed read never opens the move, but
+  "Repay my loan" is always there. Loans under ₹10 outstanding do not block (16 Oct). "Every start" means a
+  cold start (sessionStorage clears when the app is closed from the task switcher).
+- A moved wallet never sees today's Polygon app (a holding screen while the signer loads).
 
 "Move my wallet" (`useMoveWallet`), each step safe to repeat, progress in localStorage (`nila.move`),
 M4 "Try again" resumes at the failed step:
@@ -35,6 +38,14 @@ M4 "Try again" resumes at the failed step:
 | `src/move/StellarGate.jsx`, `StellarHome.jsx` | Stellar mode routing; interim home |
 | `src/App.js`, `src/Layout.js` | lazy gate around the wallet; `/p3` check route (flag on only) |
 | `src/wallet/PrivyRoot.jsx` | `stellarSetup.runAsync`, `signEvmMessage` |
+
+## Review fixes (nila-reviewer FAIL, 16 Oct)
+
+Move progress per Polygon wallet (`nila.move:<evm>`); the loan check is repeated inside the move (an M4 retry
+skips the start screen) and resets when her wallet or union changes; the nIN request is sent only when the node
+has no open or finished move for her (the node also keeps one open move per wallet); the Stellar home offers
+"Try again" when her nIN move was refused before any burn; `useErc20Balances` returns no Polygon balances for a
+moved wallet instead of failing into an empty list.
 
 ## Tested (16 Oct)
 

@@ -3,6 +3,7 @@
 // (no reset, crop shares not moved, an open loan blocks the move) the copy is marked DESIGN GAP.
 import { useEffect, useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
+import { useDataContext } from '../utils/NavigationContext';
 import { useMoveWallet, useOpenPolygonLoans } from './hooks';
 
 const T = { ink: '#121212', raised: '#1f2733', text: '#f1f5f9', muted: '#94a3b8', accent: '#d4cf5a', gold: '#d4a634', ground: '#8a9a2e' };
@@ -52,8 +53,9 @@ function Primary({ children, disabled, onClick }) {
 export default function MoveFlow({ onMoved, onRepay }) {
   const signer = useNilaSigner();
   const online = useOnline();
-  const { run, busy, progress, legacy } = useMoveWallet();
-  const loans = useOpenPolygonLoans(signer?.evmAddress);
+  const { db } = useDataContext();
+  const loans = useOpenPolygonLoans(signer?.evmAddress, db?.union?.address);
+  const { run, busy, progress, legacy } = useMoveWallet(loans);
   const l = legacy.data;
 
   if (progress.done) {
@@ -76,24 +78,15 @@ export default function MoveFlow({ onMoved, onRepay }) {
       </Frame>
     );
   }
-  if (progress.error) {
-    // M4
-    return (
-      <Frame note="Still not working? Ask your union leader.">
-        <div className="flex justify-center mb-3"><div className="h-14 w-14 rounded-full flex items-center justify-center text-2xl" style={{ background: '#e8907f', color: T.ink }}>✕</div></div>
-        <div className="text-center font-bold text-lg mb-2">The move did not finish</div>
-        <p className="text-center text-sm" style={{ color: T.muted }}>Nothing is lost. Your wallet stays on the old network until the move is done.</p>
-        <Primary disabled={!online || !signer?.ready} onClick={run}>Try again</Primary>
-      </Frame>
-    );
-  }
   if (!loans.known) {
-    // DESIGN GAP: her Polygon loans are read before the start choice; a failed read never opens the move.
+    // DESIGN GAP: her Polygon loans are read before the start choice; a failed read never opens the
+    // move, but repaying in today's app is always possible.
     return (
       <Frame>
         <p className="text-center text-sm" style={{ color: T.muted }}>
           {loans.error ? 'Could not check your loans. Check your internet and open the app again.' : 'Checking your loans…'}
         </p>
+        <Primary onClick={onRepay}>Repay my loan</Primary>
       </Frame>
     );
   }
@@ -105,6 +98,17 @@ export default function MoveFlow({ onMoved, onRepay }) {
         <div className="text-center font-bold text-lg mb-2">Nila has moved to a new network</div>
         <p className="text-center text-sm mb-4" style={{ color: T.muted }}>Repay your loan first. Then you can move your wallet.</p>
         <Primary onClick={onRepay}>Repay my loan</Primary>
+      </Frame>
+    );
+  }
+  if (progress.error) {
+    // M4
+    return (
+      <Frame note="Still not working? Ask your union leader.">
+        <div className="flex justify-center mb-3"><div className="h-14 w-14 rounded-full flex items-center justify-center text-2xl" style={{ background: '#e8907f', color: T.ink }}>✕</div></div>
+        <div className="text-center font-bold text-lg mb-2">The move did not finish</div>
+        <p className="text-center text-sm" style={{ color: T.muted }}>Nothing is lost. Your wallet stays on the old network until the move is done.</p>
+        <Primary disabled={!online || !signer?.ready} onClick={run}>Try again</Primary>
       </Frame>
     );
   }
