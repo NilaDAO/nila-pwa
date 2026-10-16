@@ -10,6 +10,22 @@ import { sep10Local, sep10TestAnchor, sorobanAuth } from './stellarChecks';
 const FOODTOKEN = '0x27D83C98666AD0e5dA79e5FEE24133557Bd8D2e8';
 const MINT_ABI = ['function mintForBatchMember(uint256 batchId, uint32 landTitleId, uint32 harvestDate, uint256 quantity, uint128 fieldsBitmask, uint32 areaM2, uint16 farmerVarietyCode, uint32 sosDate)'];
 
+// P2: her sponsored Stellar account, made by the app after login.
+function StellarAccountPanel({ signer }) {
+  const { stellarAccount: a, stellarSetup: s } = signer;
+  const state = !a ? 'reading…' : a.exists ? 'exists' : `not yet (setup ${s.status})`;
+  return (
+    <div className="my-2 p-2 border rounded" data-testid="stellar-account">
+      <div>Stellar account: <b>{state}</b></div>
+      {a?.exists && (
+        <div>nIN {a.nin ? `${a.nin.balance} (trustline ${a.nin.authorized ? 'authorised' : 'unauthorised'})` : 'no trustline'}
+          {' · '}sponsor {a.sponsor ? `${a.sponsor.slice(0, 8)}…` : '—'}</div>
+      )}
+      {s.error && <div className="text-red-600">setup failed: {s.error} <button className="underline" onClick={s.retry}>retry</button></div>}
+    </div>
+  );
+}
+
 export default function P0Check() {
   const signer = useNilaSigner();
   const [results, setResults] = useState({});
@@ -66,6 +82,7 @@ export default function P0Check() {
     <div className="p-4 text-sm max-w-xl mx-auto">
       <h1 className="text-lg font-semibold">P0 — Privy checks</h1>
       <p className="break-all">Privy user {privyUserId ?? '—'} · Polygon {evm ?? '—'} · Stellar {stellar ?? '—'}</p>
+      <StellarAccountPanel signer={signer} />
       {Object.entries(checks).map(([k, [label, fn]]) => (
         <div key={k} className="my-2">
           <button className="border rounded px-2 py-1 mr-2" onClick={() => run(k, fn)}

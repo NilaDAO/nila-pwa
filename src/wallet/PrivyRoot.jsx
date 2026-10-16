@@ -12,6 +12,7 @@ import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-c
 import { polygon } from 'viem/chains';
 import { AUTH_EVENT, getLocalEvmWallet, hasSession } from './session';
 import { SignerContext } from './signer';
+import { useAccount, useSetupAccount } from '../stellar/hooks';
 
 const APP_ID = process.env.REACT_APP_PRIVY_APP_ID;
 
@@ -96,8 +97,20 @@ function SignerBridge({ children }) {
     return evmWallet.signTransaction(tx);
   }, [evmWallet]);
 
+  // Her Stellar account (P2): made at login once both keys are there (R4; the move M1 step 1 calls
+  // the same setup). The node sponsors it; it needs no land title (titles stay on Polygon).
+  const signersReady = ready && authenticated && !!evmWallet && !!stellar;
+  const account = useAccount(signersReady ? stellar.address : undefined);
+  const setup = useSetupAccount({ stellarAddress: stellar?.address, evmWallet, signHash });
+  const tried = useRef();
+  useEffect(() => {
+    if (!signersReady || account.data?.exists !== false || tried.current === stellar.address) return;
+    tried.current = stellar.address;
+    setup.mutate();
+  }, [signersReady, account.data, stellar, setup]);
+
   const value = useMemo(() => ({
-    ready: ready && authenticated && !!evmWallet && !!stellar,
+    ready: signersReady,
     authenticated,
     error,
     privyUserId: user?.id,
@@ -106,7 +119,11 @@ function SignerBridge({ children }) {
     stellarAddress: stellar?.address,
     signHash,
     signEvmTx,
-  }), [ready, authenticated, error, user, evmWallet, stellar, signHash, signEvmTx]);
+    // { exists, nin: { balance, authorized }, usdc, sponsor } once read; undefined before.
+    stellarAccount: account.data,
+    stellarSetup: { status: setup.status, error: setup.error?.message, retry: () => setup.mutate() },
+  }), [signersReady, authenticated, error, user, evmWallet, stellar, signHash, signEvmTx, account.data,
+    setup]);
 
   return <SignerContext.Provider value={value}>{children}</SignerContext.Provider>;
 }

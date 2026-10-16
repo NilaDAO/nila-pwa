@@ -7,5 +7,10 @@ export const privyEnabled = !!process.env.REACT_APP_PRIVY_APP_ID;
 
 export const SignerContext = createContext(null);
 
-/** null while Privy is off; otherwise { ready, authenticated, evmAddress, stellarAddress, signHash, signEvmTx }. */
+/**
+ * null while Privy is off; otherwise { ready, authenticated, evmAddress, stellarAddress, signHash,
+ * signEvmTx, stellarAccount, stellarSetup }. stellarAccount is her Stellar account as read from
+ * Horizon ({ exists, nin: { balance, authorized }, usdc, sponsor }); the app creates it by itself
+ * after login (stellarSetup: { status, error, retry }).
+ */
 export const useNilaSigner = () => useContext(SignerContext);
