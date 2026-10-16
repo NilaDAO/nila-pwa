@@ -1,7 +1,7 @@
 // Node proof for P0: run the Stellar checks with a throwaway testnet key whose only use is a
 // raw-hash callback, i.e. exactly what Privy's useSignRawHash returns. No Privy account needed.
 import { Keypair } from '@stellar/stellar-sdk';
-import { sorobanAuth, sep10Local, sep10TestAnchor } from '../src/checks.js';
+import { sorobanAuth, sep10Local, sep10TestAnchor } from '../src/wallet/stellarChecks.js';
 
 const kp = Keypair.random();
 const address = kp.publicKey();

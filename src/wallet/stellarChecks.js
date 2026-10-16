@@ -1,4 +1,4 @@
-// P0 spike: the Stellar checks, shared by the browser page (Privy) and the Node proof.
+// P0: the Stellar checks, shared by the /p0 page (Privy) and scripts/p0-rawhash-proof.mjs.
 // Every check gets only `signHash(hash32) -> 64-byte ed25519 signature`, the one primitive
 // Privy offers for Stellar (useSignRawHash). If these pass with that alone, Privy covers
 // Soroban auth entries and SEP-10 (design open item 43).

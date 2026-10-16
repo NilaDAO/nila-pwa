@@ -6,6 +6,7 @@ import { getSuperteamCookie } from "./getSuperTeamCookie";
 import { createItem } from '../../utils/db';
 import { InputButton, EnableNotifications } from '../../components/UI/buttons';
 import { signUp, getUserAttributes, initAuth, respondToAuthChallenge} from '../../utils/cognito_helpers'
+import { announceAuthChange } from '../../wallet/cognitoJwt'
 import { InformationCircleIcon, WifiIcon } from '@heroicons/react/24/outline'
 import MemberUnion from '../../components/Forms/memberUnion';
 import { setMetaThemeColor } from '../../utils/metaTheme';
@@ -155,7 +156,8 @@ const RegisterRecover = ( { setBootStage }) => {
             console.log("attributes", attributes);
 
             // Step 4: (re)set storage in indexedDB
-            handleStoreLocalData(attributes.UserAttributes,refresh_token, access_token)
+            // Privy (if on) picks up the Cognito session once the tokens are stored
+            handleStoreLocalData(attributes.UserAttributes,refresh_token, access_token).finally(announceAuthChange)
             setPage(5)
 
         } catch (error) {

@@ -9,6 +9,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { initInstallCapture, onInstallAvailable } from "./installPrompt";
 import PWA_diagnosis from "./features/registration/pwa_diagnosis.jsx";
 import RecordViewer from "./features/record/RecordViewer.js";
+import { lazy, Suspense } from 'react';
+import WalletRoot from './wallet/WalletRoot';
+
+// Inline env test so webpack drops the page when Privy is off (see wallet/WalletRoot.jsx).
+const P0Check = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./wallet/P0Check')) : null;
 
 // small util to mirror meta theme-color to CSS var (import path adjust if needed)
 import { setMetaThemeColor } from './utils/metaTheme.js';
@@ -71,6 +76,7 @@ function Layout() {
 
   return (
     <QueryClientProvider client={queryClientRef.current}>
+      <WalletRoot>
       <Router>
         <DataProvider>
           <TxProvider>
@@ -80,6 +86,7 @@ function Layout() {
                   <Routes>
                     <Route path="/diag" element={<PWA_diagnosis />} />
                     <Route path="/record/:hash" element={<RecordViewer />} />
+                    {P0Check && <Route path="/p0" element={<Suspense fallback={null}><P0Check /></Suspense>} />}
                     <Route path="/*" element={<App installAvailable={installAvailable} />} />
                   </Routes>
                 </ErrorBoundary>
@@ -88,6 +95,7 @@ function Layout() {
           </TxProvider>
         </DataProvider>
       </Router>
+      </WalletRoot>
     </QueryClientProvider>
   );
 }
