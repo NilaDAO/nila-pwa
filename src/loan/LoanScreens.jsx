@@ -175,7 +175,7 @@ export function MemberScan({ onDone }) {
     try { setReq(await checkRequest(text.trim(), { cfg, me: s?.stellarAddress })); } catch (e) { setError(e.message); }
   }, [cfg, s]);
 
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); setReq(undefined); onDone?.(); }} onRetry={() => confirm()} />;
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); setReq(undefined); onDone?.(); }} onRetry={() => tx.retry()} />;
   async function confirm() {
     await tx.run({
       label: `Crop share ${req.crop}`, rows: [['You get', inr(Number(BigInt(req.cash) / NIN))], ['For', `${req.crop} · ${req.area}`]],
