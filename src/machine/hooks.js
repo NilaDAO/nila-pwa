@@ -65,7 +65,8 @@ export function useVouchers(member) {
 export function useMachines() {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['stellar', 'machines', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 60_000,
+    // Every minute: an owner waiting at her farm sees her machine appear once the leader registered it.
+    queryKey: ['stellar', 'machines', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 60_000, refetchInterval: 60_000,
     queryFn: async () => {
       const out = [];
       for (let id = 1; id <= MAX_MACHINES; id++) {
