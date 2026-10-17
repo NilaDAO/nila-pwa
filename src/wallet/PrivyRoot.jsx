@@ -115,7 +115,7 @@ function SignerBridge({ children }) {
   useEffect(() => {
     if (!signersReady || !autoSetup || account.data?.exists !== false || tried.current === stellar.address) return;
     tried.current = stellar.address;
-    runSetup();
+    runSetup(undefined, { onError: (e) => console.error('[privy] Stellar account setup failed', e) });
   }, [signersReady, autoSetup, account.data, stellar, runSetup]);
 
   const value = useMemo(() => ({
