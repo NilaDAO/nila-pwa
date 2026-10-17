@@ -49,12 +49,15 @@ async function feeBump(xdr) {
 /** The RPC comes from the node's config: sign only the call she asked for. One op from her own account,
  * the same contract, function and arguments, and auth only by her account as source (no entry that
  * would sign for another address). */
+// stellar-sdk 17 exposes XDR fields as properties (union: `.type`); older builds as methods (`.switch()`).
+const credType = (a) => (typeof a.credentials === 'function' ? a.credentials().switch().name : a.credentials?.type);
+
 function checkPrepared(raw, tx, source) {
   const ops = tx.operations;
   const bad = () => { throw new Error('The network returned a different transaction. Nothing was signed.'); };
   if (tx.source !== source || ops.length !== 1 || ops[0].type !== 'invokeHostFunction' || (ops[0].source && ops[0].source !== source)) bad();
   if (ops[0].func.toXDR('base64') !== raw.operations[0].func.toXDR('base64')) bad();
-  if ((ops[0].auth || []).some((a) => a.credentials().switch().name !== 'sorobanCredentialsSourceAccount')) bad();
+  if ((ops[0].auth || []).some((a) => credType(a) !== 'sorobanCredentialsSourceAccount')) bad();
 }
 
 /** A sent transaction's status on the RPC: SUCCESS | FAILED | NOT_FOUND (null when the RPC fails). */
