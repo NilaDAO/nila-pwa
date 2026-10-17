@@ -29,7 +29,7 @@ const Row = ({ k, sub, v }) => (
 
 /** Parse a scanned voucher code. Throws a plain reason. */
 export function parseVoucherCode(text) {
-  const m = /^nila:voucher:([0-9a-f]{64}):([A-Z2-7]{26})$/.exec((text || '').trim());
+  const m = /^nila:voucher:([0-9a-f]{64}):([A-Z2-7]{26})$/.exec((text || '').trim().replace(/\s+/g, ''));
   if (!m) throw new Error('This is not a Nila voucher code.');
   return { token: m[1], code: m[2] };
 }
@@ -113,6 +113,8 @@ function Claim({ machine, rate, onBack }) {
   const [scan, setScan] = useState();
   const [error, setError] = useState();
   const [hours, setHours] = useState(1);
+  const [typing, setTyping] = useState(false);
+  const [typed, setTyped] = useState('');
   const read = async (text) => {
     setError(undefined);
     try {
@@ -155,9 +157,15 @@ function Claim({ machine, rate, onBack }) {
   }
   return (
     <Sheet landName="Nila" title="Scan her code" onBack={onBack}>
-      <Camera onText={read} />
+      {!typing ? <Camera onText={read} /> : (
+        <>
+          <textarea aria-label="The code" value={typed} onChange={(e) => setTyped(e.target.value)} style={{ width: '100%', minHeight: 90, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box' }} />
+          <Primary disabled={!typed.trim()} onClick={() => read(typed)}>Check the code</Primary>
+        </>
+      )}
       <p style={{ ...muted, textAlign: 'center' }}>Scan the code on her phone after the work.</p>
       {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
+      <button type="button" onClick={() => setTyping((t) => !t)} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>{typing ? 'Use the camera' : 'Type the code instead'}</button>
     </Sheet>
   );
 }
