@@ -19,6 +19,12 @@ const APP_ID = process.env.REACT_APP_PRIVY_APP_ID;
 const toHex = (u8) => '0x' + Array.from(u8, (b) => b.toString(16).padStart(2, '0')).join('');
 const fromHex = (h) => Uint8Array.from(h.slice(2).match(/../g), (x) => parseInt(x, 16));
 
+/** The Polygon (Ethereum) wallets linked to the Privy user. Not `user.wallet`: once her Stellar wallet is
+ *  made, Privy may report that one there, which looked like another login and logged her out. */
+const linkedEvm = (user) => (user?.linkedAccounts || [])
+  .filter((a) => a.type === 'wallet' && a.chainType === 'ethereum' && a.address)
+  .map((a) => a.address.toLowerCase());
+
 function useSession() {
   const [session, setSession] = useState({ loading: true, active: false });
   useEffect(() => {
@@ -53,8 +59,8 @@ function SignerBridge({ children }) {
   const busy = useRef(false);
   useEffect(() => {
     if (!ready || busy.current) return;
-    const linked = user?.wallet?.address?.toLowerCase();
-    if (authenticated && (!session.active || (evmWallet && linked && linked !== evmWallet.address.toLowerCase()))) {
+    const evm = linkedEvm(user);
+    if (authenticated && (!session.active || (evmWallet && evm.length && !evm.includes(evmWallet.address.toLowerCase())))) {
       busy.current = true;
       logout().finally(() => { busy.current = false; });
       return;
@@ -99,9 +105,9 @@ function SignerBridge({ children }) {
     return evmWallet.signTransaction(tx);
   }, [evmWallet]);
 
-  // Both wallets belong to the same login: the Privy user is the one her current key signed in
+  // Both wallets belong to the same login: her current Polygon key is linked to the Privy user
   // (during a key change the old user is still there for a moment).
-  const sameLogin = !!evmWallet && user?.wallet?.address?.toLowerCase() === evmWallet.address.toLowerCase();
+  const sameLogin = !!evmWallet && linkedEvm(user).includes(evmWallet.address.toLowerCase());
   const signersReady = ready && authenticated && sameLogin && !!stellar;
 
   // Her Stellar account (P2): the node sponsors it; it needs no land title (titles stay on Polygon).
@@ -123,7 +129,7 @@ function SignerBridge({ children }) {
     authenticated,
     error,
     privyUserId: user?.id,
-    privyEvmAddress: user?.wallet?.address,
+    privyEvmAddress: linkedEvm(user)[0],
     evmAddress: evmWallet?.address,
     stellarAddress: stellar?.address,
     signHash,
