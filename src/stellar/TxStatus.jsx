@@ -49,6 +49,7 @@ export function useSorobanTx() {
     }
     return run(l.params);
   }, [cfg, qc, run]);
+  const reset = useCallback(() => setTx({ status: 'idle' }), []);
   return { ...tx, run, retry, reset, ready: !!cfg && !!s?.ready };
 }
 
