@@ -102,8 +102,9 @@ export function TakeUp({ token, onBack }) {
   return (
     <Sheet landName="Nila" title={x.crop} onBack={onBack}>
       <p style={{ ...muted, textAlign: 'center' }}>Area {x.area} · {shareTag(x)}</p>
-      <Stepper label="Cash" value={c} set={setCash} step={100} max={caps.cash} fmt={inr} />
-      <Stepper label="Machine hours" value={h} set={setHours} step={1} max={caps.hours} fmt={(v) => `${v} h`} />
+      {/* The steppers only once the union's caps are read: before that the cap is 0 and the default would jump. */}
+      {checks.data && <Stepper label="Cash" value={c} set={setCash} step={100} max={caps.cash} fmt={inr} />}
+      {checks.data && <Stepper label="Machine hours" value={h} set={setHours} step={1} max={caps.hours} fmt={(v) => `${v} h`} />}
       {checks.isLoading && <p style={muted}>Checking the union…</p>}
       {checks.isError && <p style={{ color: C.coral }}>Could not read the union. Try again.</p>}
       {blocked.map((b) => <p key={b} style={{ color: C.coral }}>{b.replace(/^She needs/, 'You need').replace(/^She has/, 'You have')}</p>)}

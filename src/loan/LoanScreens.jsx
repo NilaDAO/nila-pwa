@@ -126,8 +126,8 @@ export function LeaderLoan() {
       })}
       {sel && (
         <>
-          <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />
-          <Stepper label="Machine hours" value={hours} set={setHours} step={1} max={caps.hours} fmt={(h) => `${h} h`} />
+          {checks.data && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
+          {checks.data && <Stepper label="Machine hours" value={hours} set={setHours} step={1} max={caps.hours} fmt={(h) => `${h} h`} />}
           {checks.isLoading && <p style={muted}>Checking the union…</p>}
           {checks.isError && <p style={{ color: C.coral }}>Could not read the union. Try again.</p>}
           {blocked.map((b) => <p key={b} style={{ color: C.coral }}>{b}</p>)}
