@@ -11,6 +11,9 @@ const VALID_S = 48 * 3600;
 const MAX_SKEW_S = 10 * 60;
 const enc = new TextEncoder();
 const b64u = (s) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+// Binary (the signature): plain base64url of the bytes. b64u above is for text and would UTF-8 encode
+// every byte above 127, so the signature no longer verified.
+const bytesB64u = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = (s) => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))));
 
 /** The signed text: fixed key order, so both sides hash the same bytes. */
@@ -23,7 +26,7 @@ export async function makeRequest(fields, { stellarAddress, signHash }) {
   const msg = canonical(r);
   const sigHex = await signStellarMessage(signHash, msg);
   // Compact for the QR: the signature as base64url (86 chars, not 128 hex).
-  const sig = b64u(String.fromCharCode(...sigHex.match(/../g).map((x) => parseInt(x, 16))));
+  const sig = bytesB64u(sigHex.match(/../g).map((x) => parseInt(x, 16)));
   return { request: r, qr: PREFIX + b64u(JSON.stringify({ m: msg, s: sig })), number: String(r.n).padStart(6, '0') };
 }
 
