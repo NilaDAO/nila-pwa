@@ -64,13 +64,14 @@ export function LeaderLoan() {
   const [req, setReq] = useState();
   const [img, setImg] = useState();
   const [error, setError] = useState();
-  useEffect(() => { if (req) QRCode.toDataURL(req.qr, { width: 280, margin: 1 }).then(setImg); }, [req]);
+  // Low error correction and a large image: a phone camera reads it at arm's length (the request is long).
+  useEffect(() => { if (req) QRCode.toDataURL(req.qr, { width: 360, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [req]);
 
   if (req) {
     return (
       <Sheet landName={`Land ${plan.land_id}`} title="Crop share request" onBack={() => setReq(undefined)}>
         <p style={{ ...muted, textAlign: 'center' }}>{req.request.crop} · {inr(Number(req.request.cash))} cash + {req.request.hours} machine hours</p>
-        {img && <img src={img} alt="Crop share request QR" style={{ display: 'block', margin: '0 auto', width: 280, height: 280, background: '#fff', borderRadius: 12 }} />}
+        {img && <img src={img} alt="Crop share request QR" style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: 360, aspectRatio: '1', background: '#fff', borderRadius: 12 }} />}
         <p style={{ textAlign: 'center', fontWeight: 700, letterSpacing: 2 }}>{req.number.slice(0, 3)} {req.number.slice(3)}</p>
         <p style={{ ...muted, textAlign: 'center' }}>Let her scan this with her phone.</p>
         <p style={muted}>For: Land {plan.land_id} · Valid for: 48 hours</p>

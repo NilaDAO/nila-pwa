@@ -20,7 +20,9 @@ export async function makeRequest(fields, { stellarAddress, signHash }) {
   const now = Math.floor(Date.now() / 1000);
   const r = { v: 1, ...fields, exp: now + VALID_S, n: Math.floor(Math.random() * 1e6), by: stellarAddress };
   const msg = canonical(r);
-  const sig = await signStellarMessage(signHash, msg);
+  const sigHex = await signStellarMessage(signHash, msg);
+  // Compact for the QR: the signature as base64url (86 chars, not 128 hex).
+  const sig = b64u(String.fromCharCode(...sigHex.match(/../g).map((x) => parseInt(x, 16))));
   return { request: r, qr: PREFIX + b64u(JSON.stringify({ m: msg, s: sig })), number: String(r.n).padStart(6, '0') };
 }
 
@@ -32,7 +34,9 @@ export async function checkRequest(text, { cfg, me }) {
   const r = JSON.parse(m);
   if (canonical(r) !== m) throw new Error('This code cannot be read.');
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(`Stellar Signed Message:\n${m}`)));
-  const sig = Uint8Array.from(s.match(/../g).map((x) => parseInt(x, 16)));
+  const sig = /^[0-9a-f]{128}$/i.test(s)
+    ? Uint8Array.from(s.match(/../g).map((x) => parseInt(x, 16)))
+    : Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (ch) => ch.charCodeAt(0));
   if (!Keypair.fromPublicKey(r.by).verify(Buffer.from(hash), Buffer.from(sig))) throw new Error('This code was not made by a Nila leader.');
   if (r.exp < Date.now() / 1000) throw new Error('This request has expired. Ask your leader for a new one.');
   if (r.member !== me) throw new Error('This request is for someone else.');

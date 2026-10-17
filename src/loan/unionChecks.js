@@ -36,7 +36,8 @@ export function useUnionChecks() {
       return {
         maxLoan, juniorFree,
         cashCap: Math.max(0, Math.min(maxLoan, juniorFree)),
-        hoursCap: ph > 0 ? Math.max(0, Math.floor(seniorFree / ph)) : 99,
+        // No machine rate set for the union → no machine hours can be granted yet.
+        hoursCap: ph > 0 ? Math.max(0, Math.floor(seniorFree / ph)) : 0,
         onHand: num(atHand) + num(treasury),
         rateBp: uc?.rate_bp,
       };
