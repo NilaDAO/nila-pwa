@@ -12,7 +12,7 @@ export function Sheet({ title, children, landName, onBack, map }) {
         )}
         <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: map ? 'absolute' : 'static', top: 18, zIndex: 2 }}>{landName}</span>
       </div>
-      <div style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 24px', position: 'relative', minHeight: 400 }}>
+      <div style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', minHeight: 400 }}>
         <div style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(255,255,255,.35)', margin: '0 auto 16px' }} />
         {title && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
         {children}
