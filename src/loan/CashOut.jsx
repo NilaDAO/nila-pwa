@@ -28,8 +28,8 @@ const hex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, '0')).join(
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
 const day = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
-/** 16 random bytes as 26 base32 letters (RFC 4648, no padding). */
-function newCode() {
+/** 16 random bytes as 26 base32 letters (RFC 4648, no padding). Also the A8a voucher code (P6). */
+export function newCode() {
   const b = crypto.getRandomValues(new Uint8Array(16));
   let bits = 0; let v = 0; let out = '';
   for (const x of b) { v = (v << 8) | x; bits += 8; while (bits >= 5) { out += B32[(v >>> (bits - 5)) & 31]; bits -= 5; } }
@@ -37,7 +37,7 @@ function newCode() {
   return out;
 }
 export const cleanCode = (t) => t.replace(/^nila:cash:/i, '').toUpperCase().replace(/[^A-Z2-7]/g, '');
-const grouped = (c) => c.replace(/(.{4})(?=.)/g, '$1 ');
+export const grouped = (c) => c.replace(/(.{4})(?=.)/g, '$1 ');
 
 /** Her saved codes with their state on chain: open | expired | waiting (sent, not seen yet). */
 function useMyCashOuts(cfg, me) {

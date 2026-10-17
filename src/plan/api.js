@@ -43,6 +43,8 @@ export function planClient({ stellarAddress, signHash }) {
     approve: (planId, decision, reason, note) => call('POST', `/plan/${planId}/approve`, { decision, reason, note }),
     mintList: (planId) => call('GET', `/plan/${planId}/mint`),
     gas: (planId) => call('POST', `/plan/${planId}/gas`, {}),
+    // P6 / O13: the 8 machine photos of L13 → their hash for machinery.register_machine.
+    machinePhotos: (photos) => call('POST', '/machines/photos', { photos }),
   };
 }
 

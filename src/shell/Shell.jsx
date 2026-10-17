@@ -16,6 +16,8 @@ import CashDesk from '../loan/CashDesk';
 import WalletQr from './WalletQr';
 import Investment from '../loan/Investment';
 import CashOut from '../loan/CashOut';
+import Machinery from '../machine/Machinery';
+import MyMachine from '../machine/MyMachine';
 import { TakeUp } from '../loan/MyShares';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
@@ -98,7 +100,8 @@ export default function Shell({ leader }) {
   if (view === 'assets') {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} moveNote={moveNote}
-      onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`share/${t}`)} />;
+      onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`share/${t}`)}
+      onMachinery={() => go('machinery')} onMachine={() => go('machine')} />;
   } else if (view === 'settings') body = <Settings onBack={() => go('assets')} />;
   else if (view === 'crop') body = leader ? <LeaderPlans /> : <CropPlanFlow />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
@@ -107,6 +110,8 @@ export default function Shell({ leader }) {
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
   else if (view === 'invested') body = <Investment onBack={() => go('assets')} />;
   else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
+  else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
+  else if (view === 'machine') body = <MyMachine onBack={() => go('assets')} />;
   else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go('assets')} />;
   else if (view === 'tasks') body = <Later title="Tasks" step={leader ? 'the leader steps' : 'P5'} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
