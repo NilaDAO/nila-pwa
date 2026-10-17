@@ -12,7 +12,7 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { useCropPlan, useLandTitles, usePlanClient } from '../plan/hooks';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { checkRows, useUnionChecks } from './unionChecks';
+import { capsFor, checkRows, useUnionChecks } from './unionChecks';
 
 const FLAG_DRAWN = 8;
 const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
@@ -67,17 +67,19 @@ export function TakeUp({ token, onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const shares = useMyShares();
-  const checks = useUnionChecks();
+  const checks = useUnionChecks(s?.stellarAddress);
   const tx = useSorobanTx();
   const x = shares.data?.find((y) => y.token_id === token);
   const [cash, setCash] = useState();
   const [hours, setHours] = useState();
   const [sure, setSure] = useState(false);
   if (!x) return <Sheet landName="Nila" title="Your crop share" onBack={onBack}><p style={muted}>…</p></Sheet>;
-  const c = cash ?? Math.min(checks.data?.cashCap ?? 10000, x.share.loan_amount || 0);
-  const h = hours ?? Math.min(checks.data?.hoursCap ?? 99, Math.round(x.share.hours || 0));
-  const rows = checkRows(checks.data, c, h);
-  const over = checks.data && (c > checks.data.cashCap || h > checks.data.hoursCap);
+  const caps = capsFor(checks.data, x.ft);
+  const blocked = checks.data?.blocked || [];
+  const c = cash ?? Math.min(caps.cash, Math.round(x.share.loan_amount || 0));
+  const h = hours ?? Math.min(caps.hours, Math.round(x.share.hours || 0));
+  const rows = checkRows(checks.data, c, h, caps);
+  const over = c > caps.cash || h > caps.hours;
   const draw = () => tx.run({
     label: `Crop share ${x.crop}`, rows: [['You get', inr(c)], ['For', `${x.crop} · Area ${x.area}`]],
     contractName: 'fund_core', fn: 'draw_loan',
@@ -100,15 +102,18 @@ export function TakeUp({ token, onBack }) {
   return (
     <Sheet landName="Nila" title={x.crop} onBack={onBack}>
       <p style={{ ...muted, textAlign: 'center' }}>Area {x.area} · {shareTag(x)}</p>
-      <Stepper label="Cash" value={c} set={setCash} step={100} max={checks.data?.cashCap ?? 10000} fmt={inr} />
-      <Stepper label="Machine hours" value={h} set={setHours} step={1} max={checks.data?.hoursCap ?? 99} fmt={(v) => `${v} h`} />
+      <Stepper label="Cash" value={c} set={setCash} step={100} max={caps.cash} fmt={inr} />
+      <Stepper label="Machine hours" value={h} set={setHours} step={1} max={caps.hours} fmt={(v) => `${v} h`} />
+      {checks.isLoading && <p style={muted}>Checking the union…</p>}
+      {checks.isError && <p style={{ color: C.coral }}>Could not read the union. Try again.</p>}
+      {blocked.map((b) => <p key={b} style={{ color: C.coral }}>{b.replace(/^She needs/, 'You need').replace(/^She has/, 'You have')}</p>)}
       {rows.map(([k, v, bad]) => (
         <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '4px 0' }}>
           <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: bad ? C.coral : C.text }}>{v}</span>
         </div>
       ))}
       {rows[0]?.[2] && <p style={{ ...muted, color: C.coral }}>Not enough cash at the office for this yet. Ask your leader.</p>}
-      <Primary disabled={(!c && !h) || over} onClick={() => setSure(true)}>Get cash and vouchers</Primary>
+      <Primary disabled={!checks.data || blocked.length > 0 || (!c && !h) || over} onClick={() => setSure(true)}>Get cash and vouchers</Primary>
     </Sheet>
   );
 }

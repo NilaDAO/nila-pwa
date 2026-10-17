@@ -8,6 +8,7 @@ import { readContract, sv } from '../stellar/soroban';
 
 const PREFIX = 'nila:loan:';
 const VALID_S = 48 * 3600;
+const MAX_SKEW_S = 10 * 60;
 const enc = new TextEncoder();
 const b64u = (s) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = (s) => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))));
@@ -31,14 +32,25 @@ export async function checkRequest(text, { cfg, me }) {
   if (!text?.startsWith(PREFIX)) throw new Error('This is not a Nila request.');
   let m; let s;
   try { ({ m, s } = JSON.parse(unb64u(text.slice(PREFIX.length)))); } catch { throw new Error('This code cannot be read.'); }
-  const r = JSON.parse(m);
-  if (canonical(r) !== m) throw new Error('This code cannot be read.');
+  let r;
+  try { r = JSON.parse(m); } catch { throw new Error('This code cannot be read.'); }
+  if (!r || typeof r !== 'object' || canonical(r) !== m) throw new Error('This code cannot be read.');
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(`Stellar Signed Message:\n${m}`)));
   const sig = /^[0-9a-f]{128}$/i.test(s)
     ? Uint8Array.from(s.match(/../g).map((x) => parseInt(x, 16)))
     : Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (ch) => ch.charCodeAt(0));
-  if (!Keypair.fromPublicKey(r.by).verify(Buffer.from(hash), Buffer.from(sig))) throw new Error('This code was not made by a Nila leader.');
-  if (r.exp < Date.now() / 1000) throw new Error('This request has expired. Ask your leader for a new one.');
+  let signed = false;
+  try { signed = Keypair.fromPublicKey(r.by).verify(Buffer.from(hash), Buffer.from(sig)); } catch { /* bad key */ }
+  if (!signed) throw new Error('This code was not made by a Nila leader.');
+  const now = Date.now() / 1000;
+  if (!(Number.isInteger(r.exp) && r.exp > now)) throw new Error('This request has expired. Ask your leader for a new one.');
+  if (r.exp > now + VALID_S + MAX_SKEW_S) throw new Error('This code cannot be read.');
+  // Only values the app can show exactly: whole rupees within the cap, whole hours, a 32-byte token id.
+  let cash;
+  try { cash = BigInt(r.cash); } catch { throw new Error('This code cannot be read.'); }
+  if (typeof r.cash !== 'string' || cash < 0n || cash % NIN !== 0n || cash > MAX_CASH) throw new Error('This code cannot be read.');
+  if (!Number.isInteger(r.hours) || r.hours < 0 || r.hours > 0xffffffff || (cash === 0n && r.hours === 0)) throw new Error('This code cannot be read.');
+  if (!/^[0-9a-f]{64}$/.test(r.token || '')) throw new Error('This code cannot be read.');
   if (r.member !== me) throw new Error('This request is for someone else.');
   if (r.union !== cfg.union) throw new Error('This request is for another union.');
   const leader = await readContract(cfg, 'roles', 'is_leader', [sv.address(r.union), sv.address(r.by)]);
@@ -47,3 +59,4 @@ export async function checkRequest(text, { cfg, me }) {
 }
 
 export const NIN = 10_000_000n; // 7 decimals
+const MAX_CASH = 10_000n * NIN; // ₹10,000 per loan (LOAN_RULES §5)

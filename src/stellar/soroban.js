@@ -46,6 +46,23 @@ async function feeBump(xdr) {
   return body.hash;
 }
 
+/** The RPC comes from the node's config: sign only the call she asked for. One op from her own account,
+ * the same contract, function and arguments, and auth only by her account as source (no entry that
+ * would sign for another address). */
+function checkPrepared(raw, tx, source) {
+  const ops = tx.operations;
+  const bad = () => { throw new Error('The network returned a different transaction. Nothing was signed.'); };
+  if (tx.source !== source || ops.length !== 1 || ops[0].type !== 'invokeHostFunction' || (ops[0].source && ops[0].source !== source)) bad();
+  if (ops[0].func.toXDR('base64') !== raw.operations[0].func.toXDR('base64')) bad();
+  if ((ops[0].auth || []).some((a) => a.credentials().switch().name !== 'sorobanCredentialsSourceAccount')) bad();
+}
+
+/** A sent transaction's status on the RPC: SUCCESS | FAILED | NOT_FOUND (null when the RPC fails). */
+export async function txStatus(cfg, hash) {
+  const r = await server(cfg).getTransaction(hash).catch(() => null);
+  return r?.status ?? null;
+}
+
 /** Her call: build → simulate → sign (her Privy wallet) → node fee-bump → wait. Returns { hash, result }. */
 export async function invokeContract({ cfg, source, signHash, contractName, fn, args, onSent }) {
   const s = server(cfg);
@@ -55,6 +72,7 @@ export async function invokeContract({ cfg, source, signHash, contractName, fn, 
   const raw = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
     .addOperation(new Contract(id).call(fn, ...args)).setTimeout(300).build();
   const tx = await s.prepareTransaction(raw);           // simulate + footprint + resource fee + auth
+  checkPrepared(raw, tx, source);
   tx.addSignature(source, b64(await signHash(tx.hash())));
   const hash = await feeBump(tx.toXDR());
   onSent?.(hash);

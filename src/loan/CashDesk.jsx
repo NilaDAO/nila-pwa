@@ -42,26 +42,52 @@ function Scan({ purpose, onBack }) {
   const [amount, setAmount] = useState(purpose === 'invest' ? 600 : 0);
   const [token, setToken] = useState();
   const [counting, setCounting] = useState(false);
-  // Repay: the loans drawn on approved plans (her token id and what she owes).
+  const [noPhotos, setNoPhotos] = useState(false);
+  // Repay: her open loans from fund_core.loans_of (the contract's list, so a loan never drops out when
+  // her plan is replaced). The members are the one typed here, else the holders of the approved plans'
+  // tokens. Owed = cash part with interest + the voucher part (owners' dues and the senior prepay).
+  const typed = isG(member.trim()) ? member.trim() : null;
   const loans = useQuery({
-    queryKey: ['stellar', 'loans', 'approved'], enabled: purpose === 'repay' && !!api && !!cfg,
+    queryKey: ['stellar', 'loans', 'open', typed], enabled: purpose === 'repay' && !!api && !!cfg,
     queryFn: async () => {
-      const out = [];
+      const crops = {};
+      const members = new Set(typed ? [typed] : []);
       for (const p of (await api.approvedPlans()).plans) {
         const { mints } = await api.mintList(p.id).catch(() => ({ mints: [] }));
         for (const m of mints.filter((x) => x.token_id)) {
-          const loan = await readContract(cfg, 'fund_core', 'get_loan', [sv.address(cfg.union), sv.bytes32(tokenHex(m.token_id))]).catch(() => null);
-          if (loan && !loan.closed) out.push({ ...m, land: p.land_id, loan });
+          crops[tokenHex(m.token_id)] = { crop: m.crop, land: p.land_id };
+          if (!typed) {
+            const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(tokenHex(m.token_id))]).catch(() => null);
+            if (ft?.member) members.add(ft.member);
+          }
+        }
+      }
+      const out = [];
+      for (const who of members) {
+        const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(who)]);
+        for (const id of ids || []) {
+          const h = Buffer.from(id).toString('hex');
+          const [loan, vb] = await Promise.all([
+            readContract(cfg, 'fund_core', 'get_loan', [sv.address(cfg.union), sv.bytes32(h)]),
+            readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(h)]).catch(() => null),
+          ]);
+          if (loan && !loan.closed) out.push({ token: h, ...(crops[h] || { crop: 'Crop share' }), loan, vb });
         }
       }
       return out;
     },
   });
-  const owed = (l) => Number((BigInt(l.principal) - BigInt(l.principal_paid) + BigInt(l.interest_accrued) - BigInt(l.interest_paid)) / NIN);
-  const sel = loans.data?.find((l) => l.token_id === token);
+  const owed = (l) => {
+    const cash = BigInt(l.loan.principal) - BigInt(l.loan.principal_paid) + BigInt(l.loan.interest_accrued) - BigInt(l.loan.interest_paid);
+    const voucher = l.vb ? BigInt(l.vb.senior_out) + (l.vb.dues || []).reduce((t, d) => t + BigInt(d.amount), 0n) : 0n;
+    return Math.ceil(Number(cash + voucher) / Number(NIN));
+  };
+  const sel = loans.data?.find((l) => l.token === token);
   const who = purpose === 'repay' ? sel?.loan?.borrower : member.trim();
   const record = async ({ total, s3Keys }) => {
     setAmount(total);
+    // The receipt is the stored photos: without them there is no unique scan, so nothing is recorded.
+    if (!s3Keys?.length) { setNoPhotos(true); return; }
     const amt = BigInt(Math.round(total)) * NIN;
     // The receipt: the stored photos of this count (one scan per receipt, ScanUsed on reuse).
     const scanHash = await sha(`${s3Keys.join('|')}|${who}|${purpose}|${amt}`);
@@ -70,36 +96,34 @@ function Scan({ purpose, onBack }) {
       rows: [['Amount', inr(total)], ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
       contractName: 'fx_pool', fn: 'cash_scan_mint',
       args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.u32(PURPOSE[purpose]), sv.address(who), sv.i128(amt), sv.bytes(scanHash),
-        purpose === 'repay' ? sv.bytes32(tokenHex(sel.token_id)) : sv.none()],
+        purpose === 'repay' ? sv.bytes32(sel.token) : sv.none()],
       invalidate: [['stellar', 'loans'], ['stellar', 'investment']],
     });
   };
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => { tx.reset(); setCounting(true); }} />;
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   if (counting) {
     return <PhotoCount name={purpose === 'invest' ? 'Invest' : `Repay · ${sel?.crop || ''}`} target={amount} verb={purpose === 'invest' ? 'Invest' : 'Repay'}
       onBack={() => setCounting(false)} onDone={(c) => { setCounting(false); record(c); }} />;
   }
   return (
     <Sheet landName="Cash" title={purpose === 'invest' ? 'Invest' : 'Repay'} onBack={onBack}>
-      {purpose === 'invest' && (
-        <>
-          <p style={muted}>Her wallet (scan her wallet QR, or paste it)</p>
-          <input aria-label="Her wallet" value={member} onChange={(e) => setMember(e.target.value)} placeholder="G…"
-            style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box' }} />
-        </>
-      )}
+      <p style={muted}>{purpose === 'invest' ? 'Her wallet (scan her wallet QR, or paste it)' : 'Her wallet (optional: only her loans)'}</p>
+      <input aria-label="Her wallet" value={member} onChange={(e) => setMember(e.target.value)} placeholder="G…"
+        style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box' }} />
       {purpose === 'repay' && (
         <>
           {loans.isLoading && <p style={muted}>…</p>}
-          {!loans.isLoading && !loans.data?.length && <p style={muted}>No open loans.</p>}
+          {loans.isError && <p style={{ color: C.coral }}>Could not read the loans. Try again.</p>}
+          {loans.isSuccess && !loans.data.length && <p style={muted}>No open loans.</p>}
           {loans.data?.map((l) => (
-            <Choice key={l.token_id} on={token === l.token_id} sub={`Land ${l.land} · owes about ${inr(owed(l.loan))}`} onClick={() => { setToken(l.token_id); setAmount(Math.min(10000, owed(l.loan))); }}>{l.crop}</Choice>
+            <Choice key={l.token} on={token === l.token} sub={`${l.land ? `Land ${l.land} · ` : ''}owes about ${inr(owed(l))}`} onClick={() => { setToken(l.token); setAmount(Math.min(10000, owed(l))); }}>{l.crop}</Choice>
           ))}
         </>
       )}
       <p style={{ ...muted, textAlign: 'center' }}>{purpose === 'invest' ? 'She brings' : 'She repays'}</p>
       <Amount value={amount} set={setAmount} />
-      <Primary disabled={!amount || !isG(who) || !tx.ready} onClick={() => setCounting(true)}>Photo count</Primary>
+      {noPhotos && <p style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</p>}
+      <Primary disabled={!amount || !isG(who) || !tx.ready} onClick={() => { setNoPhotos(false); setCounting(true); }}>Photo count</Primary>
     </Sheet>
   );
 }

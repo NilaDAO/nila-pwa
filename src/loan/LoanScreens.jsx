@@ -14,7 +14,7 @@ import { usePlanClient } from '../plan/hooks';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { NIN, checkRequest, makeRequest } from './request';
-import { checkRows, useUnionChecks } from './unionChecks';
+import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 
 const FLAG_DRAWN = 8;
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -57,8 +57,9 @@ export function LeaderLoan() {
       }));
     },
   });
-  const checks = useUnionChecks();
   const [pick, setPick] = useState();
+  const pickFt = shares.data?.find((x) => x.token_id === pick)?.ft;
+  const checks = useUnionChecks(pickFt?.member);
   const [cash, setCash] = useState(0);
   const [hours, setHours] = useState(0);
   const [req, setReq] = useState();
@@ -90,7 +91,12 @@ export function LeaderLoan() {
   const now = Date.now() / 1000;
   const sel = shares.data?.find((x) => x.token_id === pick);
   const row = sel && planRow(plan, sel.share);
-  const rate = (plan.plan.trees?.effective_rate_bp ?? 1250) / 100;
+  // The rate fund_core charges (uc.rate_bp). The plan's tree discount (LOAN_RULES §5) is not applied by the
+  // contract yet, so it is not promised here (contract gap, P5-Loan.md).
+  const rateBp = checks.data?.rateBp;
+  const caps = capsFor(checks.data, sel?.ft);
+  const blocked = checks.data?.blocked || [];
+  const repay = row && rateBp != null ? repayAbout(cash, rateBp, new Date(), row.finance.due) : null;
   const go = async () => {
     setError(undefined);
     try {
@@ -98,7 +104,7 @@ export function LeaderLoan() {
       setReq(await makeRequest({
         union: cfg.union, member: sel.ft.member, token: tokenHex(sel.token_id), cash: String(BigInt(Math.round(cash)) * NIN / 1n),
         hours: Math.round(hours), crop: row?.name || sel.share.crop, area: `Area ${area}`,
-        repay: row ? String(Math.round(cash * (1 + (rate / 100) * ((new Date(row.finance.due) - new Date(row.sow)) / 864e5) / 365))) : '',
+        repay: repay != null ? String(repay) : '',
         due: row?.finance?.due || '',
       }, s));
     } catch (e) { setError(e.message); }
@@ -113,31 +119,34 @@ export function LeaderLoan() {
         const tag = !x.ft ? 'Not attested yet' : drawn ? 'Financed' : ready ? 'Ready' : `From ${monthYear(Number(x.ft.from_date) * 1000)}`;
         return (
           <Choice key={x.token_id} on={pick === x.token_id} sub={`${x.share.zone} · ${tag}`}
-            onClick={() => { if (!ready) return; setPick(x.token_id); setCash(Math.min(checks.data?.cashCap ?? 10000, x.share.loan_amount || 0)); setHours(Math.min(checks.data?.hoursCap ?? 99, Math.round(x.share.hours || 0))); }}>
+            onClick={() => { if (!ready) return; setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0)); setHours(Math.round(x.share.hours || 0)); }}>
             {x.crop}
           </Choice>
         );
       })}
       {sel && (
         <>
-          <Stepper label="Cash" value={cash} set={setCash} step={100} max={checks.data?.cashCap ?? 10000} fmt={inr} />
-          <Stepper label="Machine hours" value={hours} set={setHours} step={1} max={checks.data?.hoursCap ?? 99} fmt={(h) => `${h} h`} />
-          {checkRows(checks.data, cash, hours).map(([k, v, bad]) => (
+          <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />
+          <Stepper label="Machine hours" value={hours} set={setHours} step={1} max={caps.hours} fmt={(h) => `${h} h`} />
+          {checks.isLoading && <p style={muted}>Checking the union…</p>}
+          {checks.isError && <p style={{ color: C.coral }}>Could not read the union. Try again.</p>}
+          {blocked.map((b) => <p key={b} style={{ color: C.coral }}>{b}</p>)}
+          {checkRows(checks.data, cash, hours, caps).map(([k, v, bad]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '4px 0' }}>
               <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: bad ? C.coral : C.text }}>{v}</span>
             </div>
           ))}
-          {checkRows(checks.data, cash, hours)[0]?.[2] && <p style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</p>}
-          <p style={muted}>Interest {rate}% a year{row ? ` · repay about ${inr(cash * (1 + (rate / 100) * ((new Date(row.finance.due) - new Date(row.sow)) / 864e5) / 365))} by end of ${monthYear(row.finance.due)}` : ''}</p>
+          {checkRows(checks.data, cash, hours, caps)[0]?.[2] && <p style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</p>}
+          {rateBp != null && <p style={muted}>Interest {rateBp / 100}% a year{repay != null ? ` · repay about ${inr(repay)} by end of ${monthYear(row.finance.due)}` : ''}</p>}
           {error && <p style={{ color: C.coral }}>{error}</p>}
-          <Primary disabled={(!cash && !hours) || (checks.data && (cash > checks.data.cashCap || hours > checks.data.hoursCap))} onClick={go}>Show QR to her</Primary>
+          <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={go}>Show QR to her</Primary>
         </>
       )}
     </Sheet>
   );
 }
 
-function Camera({ onText }) {
+export function Camera({ onText }) {
   const box = useRef();
   useEffect(() => {
     let scanner;
@@ -182,7 +191,7 @@ export function MemberScan({ onDone }) {
         <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>You get {inr(cash)}</p>
         <p style={{ ...muted, textAlign: 'center' }}>Made of {inr(cash)} cash{req.hours ? ` + ${req.hours} machine hours` : ''}</p>
         <p style={{ textAlign: 'center' }}>For {req.crop} · {req.area}</p>
-        {req.repay && <p style={{ ...muted, textAlign: 'center' }}>Repay about {inr(Number(req.repay))} · 3 weeks after harvest</p>}
+        {req.repay && <p style={{ ...muted, textAlign: 'center' }}>Repay {inr(Number(req.repay))} · 3 weeks after harvest</p>}
         <p style={{ color: C.gold, textAlign: 'center' }}>Only confirm when your leader is with you.</p>
         <Primary disabled={!tx.ready} onClick={confirm}>Confirm</Primary>
         <button type="button" onClick={() => setReq(undefined)} style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 }}>Cancel</button>
