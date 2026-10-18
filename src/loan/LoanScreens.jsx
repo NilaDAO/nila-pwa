@@ -71,7 +71,7 @@ export function LeaderLoan() {
   if (req) {
     return (
       <Sheet landName={`Land ${plan.land_id}`} title="Crop share request" onBack={() => setReq(undefined)}>
-        <p style={{ ...muted, textAlign: 'center' }}>{req.request.crop} · {inr(Number(req.request.cash))} cash + {req.request.hours} machine hours</p>
+        <p style={{ ...muted, textAlign: 'center' }}>{req.request.crop} · {inr(Number(BigInt(req.request.cash) / NIN))} cash + {req.request.hours} machine hours</p>
         {img && <img src={img} alt="Crop share request QR" style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: 360, aspectRatio: '1', background: '#fff', borderRadius: 12 }} />}
         <p style={{ textAlign: 'center', fontWeight: 700, letterSpacing: 2 }}>{req.number.slice(0, 3)} {req.number.slice(3)}</p>
         <p style={{ ...muted, textAlign: 'center' }}>Let her scan this with her phone.</p>
@@ -151,12 +151,18 @@ export function Camera({ onText }) {
   useEffect(() => {
     let scanner;
     let live = true;
+    let running = false;
+    // stop() throws synchronously while the scanner is not running yet (e.g. "Type the code instead" right away):
+    // never let that reach the screen.
+    const stop = () => { if (!running) return; running = false; try { scanner.stop().catch(() => {}); } catch { /* not running */ } };
     import('html5-qrcode').then(({ Html5Qrcode }) => {
       if (!live || !box.current) return;
       scanner = new Html5Qrcode(box.current.id);
-      scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 240 }, (t) => { onText(t); scanner.stop().catch(() => {}); }, () => {}).catch(() => {});
+      scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 240 }, (t) => { onText(t); stop(); }, () => {})
+        .then(() => { running = true; if (!live) stop(); })
+        .catch(() => {});
     });
-    return () => { live = false; scanner?.stop().catch(() => {}); };
+    return () => { live = false; stop(); };
   }, [onText]);
   return <div id="nila-scan" ref={box} style={{ width: '100%', minHeight: 260, background: '#000', borderRadius: 12 }} aria-label="Camera view" />;
 }

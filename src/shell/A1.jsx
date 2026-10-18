@@ -1,12 +1,14 @@
 // A1 Assets / A1L (nila-design boards/MemberAssets-ley3; A1L = the same board with the leader flag).
 // P1 shows what has a hook today: total balance (nIN), wallet chip, land title (Polygon, her titles stay
 // there), nIN. Rows whose hooks come later (investment, vouchers, crop shares, union fund, cash) are
-// left out until those hooks exist (design rule 3), not drawn with made-up numbers.
+// left out until those hooks exist (design rule 3), not drawn with made-up numbers. P6 adds Machinery (her
+// vouchers, A8) and Your machine (owner, A13).
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useLegacyBalances } from '../move/hooks';
 import { useInvestment } from '../stellar/hooks';
 import { ShareRows } from '../loan/MyShares';
+import { typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { C, FONT, R } from './tokens';
 import { ChevronIcon, HistoryIcon, LandIcon, QrIcon, RefreshIcon, SettingsIcon } from './icons';
 
@@ -51,7 +53,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested, onShare }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested, onShare, onMachinery, onMachine }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const legacy = useLegacyBalances(s?.evmAddress);
@@ -59,6 +61,10 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const titles = legacy.data?.titles;
   const inv = useInvestment(s?.stellarAddress);
   const invested = inv.data ? Number(inv.data.invested) / 1e7 : undefined;
+  const vouchers = useVouchers(s?.stellarAddress);
+  const vHours = (vouchers.data || []).reduce((a, v) => a + v.left, 0);
+  const vOpen = (vouchers.data || []).find((v) => v.code?.open);
+  const machine = useMyMachine(s?.stellarAddress).data;
   const refresh = () => qc.invalidateQueries({ queryKey: ['stellar', 'account'] });
 
   return (
@@ -97,6 +103,13 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
             value={Math.floor(invested)} valueSub={inr(invested)} onClick={onInvested} />
         )}
         {!leader && <ShareRows onOpen={onShare} />}
+        {vouchers.data?.length > 0 && (
+          <Row label="Open machinery" icon={<NinIcon />} title="Machinery" sub={vOpen ? `1 open code · ${Math.max(0, Math.floor((vOpen.code.expires - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
+            value={`${vHours} h`} valueSub="" onClick={onMachinery} />
+        )}
+        {machine && (
+          <Row label="Open your machine" icon={<NinIcon />} title="Your machine" sub={`${typeName(machine.machine_type)} · ${!machine.confirmed ? 'confirm it' : machine.on_hold ? 'on hold' : 'available'}`} onClick={onMachine} />
+        )}
         {moveNote && <p style={{ color: C.muted, fontSize: 14, margin: '4px 0 0' }} role="note">{moveNote}</p>}
       </section>
     </div>
