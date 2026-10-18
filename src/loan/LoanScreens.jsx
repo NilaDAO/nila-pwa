@@ -151,12 +151,18 @@ export function Camera({ onText }) {
   useEffect(() => {
     let scanner;
     let live = true;
+    let running = false;
+    // stop() throws synchronously while the scanner is not running yet (e.g. "Type the code instead" right away):
+    // never let that reach the screen.
+    const stop = () => { if (!running) return; running = false; try { scanner.stop().catch(() => {}); } catch { /* not running */ } };
     import('html5-qrcode').then(({ Html5Qrcode }) => {
       if (!live || !box.current) return;
       scanner = new Html5Qrcode(box.current.id);
-      scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 240 }, (t) => { onText(t); scanner.stop().catch(() => {}); }, () => {}).catch(() => {});
+      scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 240 }, (t) => { onText(t); stop(); }, () => {})
+        .then(() => { running = true; if (!live) stop(); })
+        .catch(() => {});
     });
-    return () => { live = false; scanner?.stop().catch(() => {}); };
+    return () => { live = false; stop(); };
   }, [onText]);
   return <div id="nila-scan" ref={box} style={{ width: '100%', minHeight: 260, background: '#000', borderRadius: 12 }} aria-label="Camera view" />;
 }
