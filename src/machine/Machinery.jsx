@@ -152,7 +152,13 @@ function Code({ v, saved, rate, onBack, onCancel, onNew }) {
   }
   return (
     <Sheet landName="Machinery" title={name} onBack={onBack}>
-      {img && <img src={img} alt="Your voucher code" style={{ display: 'block', margin: '0 auto', width: 260, height: 260, background: '#fff', borderRadius: 9999, padding: 24, boxSizing: 'border-box' }} />}
+      {/* The board's white circle; the square QR sits inside it whole (side ≤ diameter / √2): a clipped
+          corner square cannot be read by a camera. */}
+      {img && (
+        <div style={{ width: 280, height: 280, margin: '0 auto', borderRadius: 9999, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src={img} alt="Your voucher code" style={{ width: 190, height: 190, display: 'block' }} />
+        </div>
+      )}
       <p style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>{grouped(saved.code)}</p>
       <Row k="Paid from" v={`Machinery · ${v.code.max} h`} />
       {rate && <Row k="Value" v={inr(v.code.max * rate.total)} />}
