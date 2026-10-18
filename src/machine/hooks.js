@@ -15,7 +15,7 @@ const hexOf = (b) => Buffer.from(b).toString('hex');
 // union sets a rate for without a name here shows as "Machine type N". DESIGN GAP: no type names on-chain.
 export const TYPE_NAMES = { 1: 'Tractor', 2: 'Planter', 3: 'Power weeder' };
 export const typeName = (t) => TYPE_NAMES[t] || `Machine type ${t}`;
-export const PARTS = [['driver', 'Driver'], ['diesel', 'Diesel'], ['maintenance', 'Maintenance'],
+export const PARTS = [['diesel', 'Diesel'], ['driver', 'Driver'], ['maintenance', 'Maintenance'],
   ['insurance', 'Insurance'], ['depreciation', 'Depreciation'], ['margin', 'Margin']];
 export const HOLD_REASONS = { 1: 'In repair', 2: 'Driver not available', 3: 'Other' };
 const MAX_TYPES = 16;
@@ -61,16 +61,18 @@ export function useVouchers(member) {
   });
 }
 
-/** Every machine of the union with its id (machinery.machine(1..) until the first empty id). */
-export function useMachines() {
+/** Every machine of the union with its id (machinery.machine(1..) until the first empty id). A read error fails
+ *  the query, so the last good list stays (a cut-short list would hide her machine). `poll`: refresh every
+ *  minute (A13 while she waits for the leader's registration); elsewhere on open only. */
+export function useMachines({ poll = false } = {}) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    // Every minute: an owner waiting at her farm sees her machine appear once the leader registered it.
-    queryKey: ['stellar', 'machines', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 60_000, refetchInterval: 60_000,
+    queryKey: ['stellar', 'machines', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 60_000,
+    refetchInterval: poll ? 60_000 : false,
     queryFn: async () => {
       const out = [];
       for (let id = 1; id <= MAX_MACHINES; id++) {
-        const m = await readContract(cfg, 'machinery', 'machine', [sv.u64(id)]).catch(() => null);
+        const m = await readContract(cfg, 'machinery', 'machine', [sv.u64(id)]);
         if (!m) break;
         if (m.union === cfg.union) out.push({ id, ...m, machine_type: Number(m.machine_type), hours_per_week: Number(m.hours_per_week), hold_reason: Number(m.hold_reason) });
       }
@@ -79,16 +81,18 @@ export function useMachines() {
   });
 }
 
-/** Her machine as owner (A13): the newest machine she owns, with this week's hours. */
-export function useMyMachine(owner) {
-  const machines = useMachines();
+/** Her machines as owner (A13): `pick` (machine id) or the first not confirmed yet, else the newest; with this
+ *  week's hours and `all` her machines. */
+export function useMyMachine(owner, { pick, poll } = {}) {
+  const machines = useMachines({ poll });
   const { data: cfg } = useStellarConfig();
-  const mine = machines.data?.filter((m) => m.owner === owner).pop();
+  const all = machines.data?.filter((m) => m.owner === owner) || [];
+  const mine = all.find((m) => m.id === pick) || all.find((m) => !m.confirmed) || all[all.length - 1];
   const week = useQuery({
     queryKey: ['stellar', 'machine', mine?.id, 'week'], enabled: !!mine && !!cfg, staleTime: 30_000,
     queryFn: () => readContract(cfg, 'machinery', 'hours_this_week', [sv.u64(mine.id)]),
   });
-  return { ...machines, data: machines.data && (mine ? { ...mine, usedThisWeek: Number(week.data ?? 0) } : null) };
+  return { ...machines, data: machines.data && (mine ? { ...mine, usedThisWeek: Number(week.data ?? 0), all } : null) };
 }
 
 // The owner's jobs, kept on her phone from her claim results (no indexer yet, 17 Oct): the pending part

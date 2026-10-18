@@ -29,16 +29,18 @@ const Row = ({ k, sub, v }) => (
 
 /** Parse a scanned voucher code. Throws a plain reason. */
 export function parseVoucherCode(text) {
-  const m = /^nila:voucher:([0-9a-f]{64}):([A-Z2-7]{26})$/.exec((text || '').trim().replace(/\s+/g, ''));
+  // As scanned, or typed from A8a's text form (any case, spaces and dashes allowed).
+  const m = /^nila:voucher:([0-9a-f]{64}):([a-z2-7]{26})$/i.exec((text || '').trim().replace(/[\s-]+/g, ''));
   if (!m) throw new Error('This is not a Nila voucher code.');
-  return { token: m[1], code: m[2] };
+  return { token: m[1].toLowerCase(), code: m[2].toUpperCase() };
 }
 
 export default function MyMachine({ onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const me = s?.stellarAddress;
-  const machine = useMyMachine(me);
+  const [pick, setPick] = useState();
+  const machine = useMyMachine(me, { pick, poll: true });
   const dues = useOwnerDues(me);
   const rates = useRates();
   const tx = useSorobanTx();
@@ -89,12 +91,18 @@ export default function MyMachine({ onBack }) {
       {dues.isLoading && <p style={muted}>…</p>}
       {d && (
         <>
-          <Row k="Received" sub="In nIN, at the job" v={inr(d.received)} />
-          <Row k="Pending" sub="When the farmers repay" v={inr(d.pending)} />
+          <Row k="Received" sub="In nIN, at the job · jobs on this phone" v={inr(d.received)} />
+          <Row k="Pending" sub="When the farmers repay · jobs on this phone" v={inr(d.pending)} />
           {d.ready > 0 && <Row k="Repaid to you" sub="Ready to move to your wallet" v={inr(d.ready)} />}
           {d.ready > 0 && <Primary disabled={!tx.ready} onClick={() => tx.run({ label: 'Collect', rows: [['Amount', inr(d.ready)]], contractName: 'fund_core', fn: 'collect_dues',
             args: [sv.address(me), sv.address(cfg.union)], invalidate: [['stellar', 'dues'], ['stellar', 'account']] })}>Collect {inr(d.ready)}</Primary>}
           {d.jobs.map((j) => <Row key={`${j.token}-${j.ts}`} k={`${j.hours} h`} sub={new Date(j.ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} v={`${inr(j.prepay)} paid`} />)}
+        </>
+      )}
+      {m.all.length > 1 && (
+        <>
+          <h2 style={{ fontSize: 14, fontWeight: 700 }}>Your other machines</h2>
+          {m.all.filter((x) => x.id !== m.id).map((x) => <Choice key={x.id} sub={!x.confirmed ? 'Confirm it' : x.on_hold ? 'On hold' : 'Available'} onClick={() => setPick(x.id)}>{typeName(x.machine_type)}</Choice>)}
         </>
       )}
       <h2 style={{ fontSize: 14, fontWeight: 700 }}>This week</h2>

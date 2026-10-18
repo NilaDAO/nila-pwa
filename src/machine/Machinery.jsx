@@ -42,12 +42,15 @@ export default function Machinery({ onBack }) {
   const [picking, setPicking] = useState(false);
   const [hours, setHours] = useState(1);
   const [show, setShow] = useState();        // token whose code is on screen
+  const [lost, setLost] = useState();
   const codes = load();
   const list = vouchers.data || [];
   const balance = list.reduce((a, v) => a + v.left, 0);
   const maxOne = Math.max(0, ...list.filter((v) => !v.code?.open).map((v) => v.left));
   const open = list.find((v) => v.code?.open && codes[v.code.hash]);
   const expired = list.find((v) => v.code && !v.code.open && codes[v.code.hash]);
+  // An open code whose secret is not on this phone (cleared, another phone): it can still be cancelled.
+  const orphan = list.find((v) => v.code?.open && !codes[v.code.hash]);
   const rate = rates.data?.find((r) => r.type === type) || rates.data?.[0];
   const totals = (rates.data || []).map((r) => r.total);
   const value = totals.length ? (Math.min(...totals) === Math.max(...totals) ? inr(balance * totals[0]) : `${inr(balance * Math.min(...totals))}–${inr(balance * Math.max(...totals))}`) : '';
@@ -60,6 +63,8 @@ export default function Machinery({ onBack }) {
     const code = newCode();
     const hash = hex(await sha(code));
     save({ ...load(), [hash]: { code, token: v.token, hours: h, type: rate?.type, used: v.used } });   // before the call
+    // Without the code on her phone she could not show it: never open a code whose secret is not kept.
+    if (load()[hash]?.code !== code) { setLost('Your phone cannot keep the code (private mode or no space). Nothing was sent.'); return; }
     const out = await tx.run({
       label: `Code for ${h} h`, rows: [['Machine hours', `${h} h`], ['Valid', '48 hours']],
       contractName: 'machinery', fn: 'open_code',
@@ -104,6 +109,14 @@ export default function Machinery({ onBack }) {
           </div>
         </div>
       )}
+      {orphan && (
+        <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
+          <b>Open code not on this phone · {orphan.code.max} h</b>
+          <div style={muted}>Made on another phone or cleared here. Cancel it to use these hours again.</div>
+          <button type="button" onClick={() => cancel(orphan)} disabled={!tx.ready} style={{ ...b, width: '100%', fontSize: 14, marginTop: 8 }}>Cancel code</button>
+        </div>
+      )}
+      {lost && <p style={{ color: C.coral }}>{lost}</p>}
       {!open && expired && <Choice sub={`Was valid until ${when(expired.code.expires)}`} onClick={() => setShow(expired.token)}>Expired code</Choice>}
       {assisted() ? (
         <>
@@ -160,6 +173,11 @@ function Code({ v, saved, rate, onBack, onCancel, onNew }) {
         </div>
       )}
       <p style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>{grouped(saved.code)}</p>
+      {/* The typed fallback is the whole code (the token is needed for the claim). DESIGN GAP: long to type. */}
+      <details style={{ ...muted, marginBottom: 8 }}>
+        <summary>No camera? Type this</summary>
+        <p style={{ fontFamily: 'monospace', fontSize: 12, overflowWrap: 'anywhere' }}>{`nila:voucher:${v.token}:${saved.code}`.replace(/(.{8})(?=.)/g, '$1 ')}</p>
+      </details>
       <Row k="Paid from" v={`Machinery · ${v.code.max} h`} />
       {rate && <Row k="Value" v={inr(v.code.max * rate.total)} />}
       <Row k="Valid until" v={`${when(v.code.expires)} · ${hoursLeft(v.code.expires)} h left`} />
