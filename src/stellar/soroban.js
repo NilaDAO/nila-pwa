@@ -18,6 +18,7 @@ export const sv = {
   u32enum: (n) => nativeToScVal(Number(n), { type: 'u32' }),
   none: () => nativeToScVal(null),
   bool: (b) => nativeToScVal(!!b, { type: 'bool' }),
+  string: (t) => nativeToScVal(String(t), { type: 'string' }),
 };
 
 /** A uint256 token id (decimal string) as 32 bytes, big-endian, hex. */

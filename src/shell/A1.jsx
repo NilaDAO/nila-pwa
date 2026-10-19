@@ -2,13 +2,14 @@
 // P1 shows what has a hook today: total balance (nIN), wallet chip, land title (Polygon, her titles stay
 // there), nIN. Rows whose hooks come later (investment, vouchers, crop shares, union fund, cash) are
 // left out until those hooks exist (design rule 3), not drawn with made-up numbers. P6 adds Machinery (her
-// vouchers, A8) and Your machine (owner, A13).
+// vouchers, A8) and Your machine (owner, A13). P9 adds USDC for an LP (lp-open/2: her USDC row).
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useLegacyBalances } from '../move/hooks';
 import { useInvestment } from '../stellar/hooks';
 import { ShareRows } from '../loan/MyShares';
 import { typeName, useMyMachine, useVouchers } from '../machine/hooks';
+import { useLpStatus } from '../anchor/hooks';
 import { C, FONT, R } from './tokens';
 import { ChevronIcon, HistoryIcon, LandIcon, QrIcon, RefreshIcon, SettingsIcon } from './icons';
 
@@ -53,7 +54,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested, onShare, onMachinery, onMachine }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const legacy = useLegacyBalances(s?.evmAddress);
@@ -65,7 +66,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const vHours = (vouchers.data || []).reduce((a, v) => a + v.left, 0);
   const vOpen = (vouchers.data || []).find((v) => v.code?.open);
   const machine = useMyMachine(s?.stellarAddress).data;
-  const refresh = () => qc.invalidateQueries({ queryKey: ['stellar', 'account'] });
+  const lp = useLpStatus().data;
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['stellar', 'account'] }); qc.invalidateQueries({ queryKey: ['stellar', 'lp'] }); };
 
   return (
     <div style={{ fontFamily: FONT, color: C.text, padding: '20px 8px 0' }}>
@@ -109,6 +111,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         )}
         {machine && (
           <Row label="Open your machine" icon={<NinIcon />} title="Your machine" sub={`${typeName(machine.machine_type)} · ${!machine.confirmed ? 'confirm it' : machine.on_hold ? 'on hold' : 'available'}`} onClick={onMachine} />
+        )}
+        {lp?.trustline && (
+          <Row label="Open USDC" icon={<NinIcon />} title="USDC" sub="For cash offers as an LP" value={lp.usdc.toFixed(2)} valueSub="" onClick={onOffers} />
         )}
         {moveNote && <p style={{ color: C.muted, fontSize: 14, margin: '4px 0 0' }} role="note">{moveNote}</p>}
       </section>
