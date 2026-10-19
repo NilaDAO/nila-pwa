@@ -19,6 +19,9 @@ import CashOut from '../loan/CashOut';
 import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
 import { TakeUp } from '../loan/MyShares';
+import IdCheck from '../anchor/IdCheck';
+import LpOffers from '../anchor/LpOffers';
+import { useLpStatus } from '../anchor/hooks';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
 
@@ -43,18 +46,36 @@ function Later({ title, step }) {
   );
 }
 
-function Settings({ onBack }) {
+function Settings({ onBack, onIdCheck, onOffers }) {
   const logout = async () => { await deleteAllItems(); window.location.reload(); };
+  const lp = useLpStatus();
+  const { data: cfg } = useStellarConfig();
   return (
     <div style={{ padding: 16, fontFamily: FONT, color: C.text }}>
       <button type="button" onClick={onBack} style={{ background: 'none', border: 0, color: C.muted, padding: 0 }}>← Back</button>
       <h1 style={{ fontSize: 16, fontWeight: 700 }}>Settings</h1>
+      {/* A11 (board Settings): only for a member with a land title in the union, and only with an anchor. */}
+      {cfg?.anchor_url && lp.data?.member && (
+        <section aria-label="Become an LP" style={{ background: C.raised, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px' }}>{lp.data.lp ? 'You are an LP' : 'Become an LP'}</h2>
+          <p style={{ color: C.muted, fontSize: 14, margin: '0 0 12px' }}>Bring or collect cash at the union office for USDC. You earn 1% on each swap.</p>
+          <button type="button" onClick={lp.data.lp && lp.data.trustline ? onOffers : onIdCheck} style={{
+            width: '100%', height: 44, borderRadius: R.button, background: C.accent, color: C.ink, border: 0, fontWeight: 700, fontFamily: FONT,
+          }}>{lp.data.lp && lp.data.trustline ? 'Cash offers' : 'Check my identity'}</button>
+        </section>
+      )}
       <button type="button" onClick={logout} style={{
         width: '100%', height: 44, borderRadius: R.button, background: C.raised, color: C.text, border: 0,
         fontWeight: 700, fontFamily: FONT,
       }}>Log out</button>
     </div>
   );
+}
+
+function TasksView({ leader }) {
+  const lp = useLpStatus();
+  if (!leader && lp.data?.lp && lp.data?.trustline) return <LpOffers onBack={() => { window.location.hash = '#/assets'; }} />;
+  return <Later title="Tasks" step={leader ? 'the leader steps' : 'a later step'} />;
 }
 
 export default function Shell({ leader }) {
@@ -101,8 +122,10 @@ export default function Shell({ leader }) {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} moveNote={moveNote}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`share/${t}`)}
-      onMachinery={() => go('machinery')} onMachine={() => go('machine')} />;
-  } else if (view === 'settings') body = <Settings onBack={() => go('assets')} />;
+      onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')} />;
+  } else if (view === 'settings') body = <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />;
+  else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('offers')} />;
+  else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
   else if (view === 'crop') body = leader ? <LeaderPlans /> : <CropPlanFlow />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
   else if (view === 'loan') body = <LeaderLoan />;
@@ -113,7 +136,8 @@ export default function Shell({ leader }) {
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
   else if (view === 'machine') body = <MyMachine onBack={() => go('assets')} />;
   else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go('assets')} />;
-  else if (view === 'tasks') body = <Later title="Tasks" step={leader ? 'the leader steps' : 'P5'} />;
+  // A2 Tasks: for an LP the board's "Cash offers" section; the other task rows come in a later step.
+  else if (view === 'tasks') body = <TasksView leader={leader} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
 
   // No tab is active on task, settings, history and wallet screens.

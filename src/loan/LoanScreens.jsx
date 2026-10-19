@@ -15,6 +15,7 @@ import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { NIN, checkRequest, makeRequest } from './request';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
+import { PostBring } from '../anchor/LeaderLp';
 
 const FLAG_DRAWN = 8;
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -136,7 +137,10 @@ export function LeaderLoan() {
               <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: bad ? C.coral : C.text }}>{v}</span>
             </div>
           ))}
-          {checkRows(checks.data, cash, hours, caps)[0]?.[2] && <p style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</p>}
+          {/* L11 #short: the gap goes to the union's LPs as a Bring (P9). */}
+          {checkRows(checks.data, cash, hours, caps)[0]?.[2] && (cfg?.anchor_url
+            ? <PostBring gap={Math.ceil(cash - checks.data.onHand)} />
+            : <p style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</p>)}
           {rateBp != null && <p style={muted}>Interest {rateBp / 100}% a year{repay != null ? ` · repay about ${inr(repay)} by end of ${monthYear(row.finance.due)}` : ''}</p>}
           {error && <p style={{ color: C.coral }}>{error}</p>}
           <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={go}>Show QR to her</Primary>
