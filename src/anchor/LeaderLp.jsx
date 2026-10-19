@@ -113,6 +113,8 @@ export function ScanLp({ onBack }) {
   const o = useQuery({ queryKey: ['stellar', 'offer', id], enabled: !!cfg && id != null,
     queryFn: () => readContract(cfg, 'fx_pool', 'offer', [sv.u64(id)]) });
   const [proof, setProof] = useState();   // { ts, sig } from her code
+  const [typing, setTyping] = useState(false);
+  const [typed, setTyped] = useState('');
   const kind = Number(o.data?.kind);
   const inrAmt = o.data ? Number(BigInt(o.data.inr) / BigInt(U)) : 0;
   // The code is hers: signed by the LP who accepted this offer, less than 10 minutes ago.
@@ -127,13 +129,25 @@ export function ScanLp({ onBack }) {
     if (!m) { setBad('This is not an LP code.'); return; }
     setBad(undefined); setId(Number(m[1])); setProof({ ts: Number(m[2]), sig: m[3] });
   };
-  const again = () => { setId(undefined); setProof(undefined); setBad(undefined); };
+  const again = () => { setId(undefined); setProof(undefined); setBad(undefined); setTyped(''); };
   const live = o.data && Number(o.data.expires) > Date.now() / 1000;
   const ok = o.data && Number(o.data.state) === 1 && o.data.union === cfg.union && live && mine.data === true;
   const why = !o.data ? '' : !live ? 'expired' : ['not accepted by an LP yet', '', 'done already', 'cancelled', 'expired'][Number(o.data.state)] || 'not open';
   return (
     <Sheet landName="Cash" title="Scan an LP code" onBack={onBack}>
-      {id == null && <Camera onText={read} />}
+      {id == null && !typing && <Camera onText={read} />}
+      {id == null && typing && (
+        <>
+          <textarea aria-label="Her code" value={typed} onChange={(e) => setTyped(e.target.value)} rows={4}
+            style={{ width: '100%', borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box', fontFamily: 'monospace', fontSize: 13 }} />
+          <Primary disabled={!typed.trim()} onClick={() => read(typed)}>Check the code</Primary>
+        </>
+      )}
+      {id == null && (
+        <button type="button" onClick={() => setTyping((t) => !t)} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>
+          {typing ? 'Use the camera' : 'Type the code instead'}
+        </button>
+      )}
       {bad && <p style={{ color: C.coral }}>{bad}</p>}
       {id != null && o.isLoading && <p style={muted}>…</p>}
       {o.data === null && <p style={{ color: C.coral }}>No such offer.</p>}

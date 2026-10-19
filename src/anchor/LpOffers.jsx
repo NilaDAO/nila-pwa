@@ -74,6 +74,12 @@ export function LpCode({ swap, onBack }) {
         <>
           {code.isError && <p style={{ color: C.coral }}>Your code could not be made. Go back and open it again.</p>}
           {img && <img src={img} alt="Your LP code" style={{ display: 'block', margin: '0 auto', width: 260, height: 260, background: '#fff', borderRadius: 12 }} />}
+          {code.data && (
+            <details style={{ margin: '8px 0', fontSize: 13 }}>
+              <summary style={{ color: C.accent, fontWeight: 700 }}>No camera? Type this</summary>
+              <p style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{code.data}</p>
+            </details>
+          )}
           <Row k={bring ? 'You get' : 'You pay'} v={`${swap.usdc} USDC`} />
           <Row k="Where" v="Union office" />
           <Row k={bring ? 'Bring it by' : 'Collect it by'} v={by(swap.expires)} />
