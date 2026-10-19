@@ -47,6 +47,7 @@ export function useLpStatus() {
   const me = s?.stellarAddress;
   return useQuery({
     queryKey: ['stellar', 'lp', cfg?.union, me], enabled: !!cfg?.anchor_url && !!cfg?.contracts?.fx_pool && !!me, staleTime: 30_000,
+    refetchOnMount: 'always',   // Settings and A1 read it afresh (a title or the anchor's acceptance can land meanwhile)
     queryFn: async () => {
       const um = [sv.address(cfg.union), sv.address(me)];
       const [title, m, a] = await Promise.all([
