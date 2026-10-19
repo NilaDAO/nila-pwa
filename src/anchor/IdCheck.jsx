@@ -2,7 +2,9 @@
 // reviewed by hand by a trust operator for Nov 7 on testnet (LOAN_RULES §5, 19 Oct). Fields as SEP-9 names
 // (nila-anchor k1.py). When accepted: her USDC trustline (sponsored by the node, R11), then the offers.
 // DESIGN GAPs: "We send ₹1 to your bank account" is left out (no penny-drop vendor yet); "Accepted on <date>"
-// has no date (the SEP-12 answer carries none); the leader variant (#leader) is not built in P9.
+// has no date (the SEP-12 answer carries none); "Get offers from <union>" is "Get cash offers" (no union
+// names on the node); a "Start" step before the form (her SEP-10 signature) and the REJECTED and
+// "Waiting for the network" states have no board; the leader variant (#leader) is not built in P9.
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Primary, Sheet, muted } from '../plan/ui';
@@ -47,9 +49,14 @@ export default function IdCheck({ onBack, onOffers }) {
     refetchInterval: (q) => (q.state.data?.status === 'PROCESSING' ? 30_000 : false),
     queryFn: async () => getCustomer(info.data, await getToken()),
   });
+  // Accepted at the anchor: wait until set_lp is on-chain too (it lands a little later).
+  const lpNow = lp.data?.lp;
   useEffect(() => {
-    if (k1.data?.status === 'ACCEPTED') lp.refetch();
-  }, [k1.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (k1.data?.status !== 'ACCEPTED' || lpNow) return undefined;
+    const t = setInterval(() => lp.refetch(), 10_000);
+    return () => clearInterval(t);
+  }, [k1.data?.status, lpNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [selfieError, setSelfieError] = useState();
 
   const status = k1.data?.status;
   const needs = status === 'NEEDS_INFO' && Object.values(k1.data.provided_fields || {}).some((f) => f.error);
@@ -86,7 +93,6 @@ export default function IdCheck({ onBack, onOffers }) {
       </>
     );
   } else if (status === 'ACCEPTED') {
-    const ready = lp.data?.lp && lp.data?.trustline;
     body = (
       <>
         <h2 style={{ fontSize: 16 }}>Identity checked</h2>
@@ -95,7 +101,7 @@ export default function IdCheck({ onBack, onOffers }) {
         <Primary disabled={trust.isPending || !lp.data?.lp} onClick={async () => {
           if (!lp.data.trustline) await trust.mutateAsync().catch(() => null);
           if ((await lp.refetch()).data?.trustline) onOffers();
-        }}>{trust.isPending ? 'Opening your USDC account…' : ready ? 'Get cash offers' : 'Get cash offers'}</Primary>
+        }}>{trust.isPending ? 'Opening your USDC account…' : 'Get cash offers'}</Primary>
         {!lp.data?.lp && <p style={muted}>Waiting for the network…</p>}
       </>
     );
@@ -119,15 +125,25 @@ export default function IdCheck({ onBack, onOffers }) {
               onChange={(e) => setVals((v) => ({ ...v, [k]: e.target.value }))} style={input} />
           </label>
         ))}
+        {asked.includes('proof_of_liveness') && <h2 style={{ fontSize: 14, marginTop: 8 }}>Selfie</h2>}
         {asked.includes('proof_of_liveness') && (
           <label style={{ display: 'block', background: C.raised, borderRadius: 12, padding: 12, marginBottom: 10 }}>
             <span style={{ fontWeight: 700 }}>{selfie ? 'Selfie taken' : 'Take a selfie'}</span>
             <span style={{ ...muted, display: 'block' }}>We check it is really you, live.</span>
             {selfie && <img src={selfie.url} alt="Your selfie" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: R.round, marginTop: 8 }} />}
             <input aria-label="Take a selfie" type="file" accept="image/*" capture="user" style={{ display: 'none' }}
-              onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const blob = await selfieBlob(f); setSelfie({ blob, url: URL.createObjectURL(blob) }); } }} />
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                try {
+                  const blob = await selfieBlob(f);
+                  if (selfie?.url) URL.revokeObjectURL(selfie.url);
+                  setSelfie({ blob, url: URL.createObjectURL(blob) }); setSelfieError(undefined);
+                } catch { setSelfieError('That photo could not be read. Take it again.'); }
+              }} />
           </label>
         )}
+        {selfieError && <p style={{ color: C.coral }}>{selfieError}</p>}
         {!needs && (
           <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, margin: '8px 0' }}>
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} aria-label="I agree to the check" />

@@ -15,7 +15,7 @@ import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { NIN, checkRequest, makeRequest } from './request';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
-import { PostBring } from '../anchor/LeaderLp';
+import PostBring from '../anchor/PostBring';
 
 const FLAG_DRAWN = 8;
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });

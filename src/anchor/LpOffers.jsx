@@ -14,7 +14,7 @@ import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { loadSwaps, saveSwap, useAnchorInfo, useLpStatus, useOfferQuote, useSep10Token, useUnionOffers, usdcOf } from './hooks';
+import { CODE_TTL, loadSwaps, saveSwap, signedCode, useAnchorInfo, useLpStatus, useOfferQuote, useSep10Token, useUnionOffers, usdcOf } from './hooks';
 import { BRING, firmQuote, openSwap, swapStatus } from './sep';
 
 const until = (ts) => {
@@ -23,7 +23,6 @@ const until = (ts) => {
   return `within ${Math.round(s / 86400)} days`;
 };
 const by = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-export const offerQr = (id) => `nila:offer:${id}`;
 const hexBytes = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 
 function Row({ k, v }) {
@@ -43,16 +42,22 @@ function OfferRow({ o, onOpen }) {
 
 /** A7b: her code for the leader to scan, and how far the swap is. */
 export function LpCode({ swap, onBack }) {
+  const s = useNilaSigner();
   const info = useAnchorInfo();
   const getToken = useSep10Token();
   const { data: cfg } = useStellarConfig();
   const [img, setImg] = useState();
-  useEffect(() => { QRCode.toDataURL(offerQr(swap.offer), { width: 260, margin: 1 }).then(setImg); }, [swap.offer]);
+  // Her code is signed with her Stellar key (offer id + time) and made again before it runs out (10 min),
+  // so only the LP who accepted can show it (the offer id is public).
+  const code = useQuery({ queryKey: ['anchor', 'code', swap.offer], enabled: !!s?.signHash, staleTime: (CODE_TTL - 60) * 1000,
+    refetchInterval: (CODE_TTL - 60) * 1000, queryFn: () => signedCode(swap.offer, s.signHash) });
+  useEffect(() => { if (code.data) QRCode.toDataURL(code.data, { width: 260, margin: 1 }).then(setImg); }, [code.data]);
   const chain = useQuery({ queryKey: ['stellar', 'offer', swap.offer], enabled: !!cfg, refetchInterval: 10_000,
     queryFn: () => readContract(cfg, 'fx_pool', 'offer', [sv.u64(swap.offer)]) });
-  const st = useQuery({ queryKey: ['anchor', 'sep24', swap.sep24], enabled: !!info.data && Number(chain.data?.state) === 2,
+  const sep24 = swap.sep24 || chain.data?.sep24_id;
+  const st = useQuery({ queryKey: ['anchor', 'sep24', sep24], enabled: !!info.data && !!sep24 && Number(chain.data?.state) === 2,
     refetchInterval: (q) => (q.state.data?.status === 'completed' ? false : 10_000),
-    queryFn: async () => swapStatus(info.data, await getToken(), swap.sep24) });
+    queryFn: async () => swapStatus(info.data, await getToken(), sep24) });
   const state = Number(chain.data?.state);
   const bring = swap.kind === BRING;
   const done = state === 2;
@@ -67,6 +72,7 @@ export function LpCode({ swap, onBack }) {
         <p style={muted}>This offer {state === 3 ? 'was cancelled by the union' : 'expired'}. Nothing moved.</p>
       ) : (
         <>
+          {code.isError && <p style={{ color: C.coral }}>Your code could not be made. Go back and open it again.</p>}
           {img && <img src={img} alt="Your LP code" style={{ display: 'block', margin: '0 auto', width: 260, height: 260, background: '#fff', borderRadius: 12 }} />}
           <Row k={bring ? 'You get' : 'You pay'} v={`${swap.usdc} USDC`} />
           <Row k="Where" v="Union office" />
@@ -93,6 +99,7 @@ export default function LpOffers({ onBack }) {
   const [code, setCode] = useState();
   const [error, setError] = useState();
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState();   // the swap being accepted, for the code after a retry
   const me = s?.stellarAddress;
   const q = useOfferQuote(open?.kind, open?.inr || 0);
   const mine = (offers.data || []).filter((o) => o.state === 1 && o.lp === me);
@@ -108,6 +115,7 @@ export default function LpOffers({ onBack }) {
       const usdc = o.kind === BRING ? quote.buy_amount : quote.sell_amount;
       const swap = { offer: o.id, sep24, quote: quote.id, kind: o.kind, inr: o.inr, usdc: Number(usdc).toFixed(2), expires: o.expires, lp: me };
       saveSwap(swap);
+      setPending(swap);
       const out = await tx.run({
         label: `${o.kind === BRING ? 'Bring' : 'Collect'} ${inr(o.inr)}`,
         rows: [[o.kind === BRING ? 'You get' : 'You pay', `${swap.usdc} USDC`], ['By', by(o.expires)]],
@@ -115,11 +123,15 @@ export default function LpOffers({ onBack }) {
         args: [sv.address(me), sv.u64(o.id), sv.string(sep24), sv.string(quote.id), sv.i128(signed.usdc), sv.u64(signed.validUntil), sv.bytes(hexBytes(signed.sig))],
         invalidate: [['stellar', 'offers']],
       });
-      if (out) { tx.reset(); setOpen(undefined); setCode(swap); }
+      if (out) { tx.reset(); setOpen(undefined); setCode(swap); setPending(undefined); }
     } catch (e) { setError(e.message); }
     setBusy(false);
   };
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
+  if (tx.status !== 'idle') {
+    // After "Try again" lands, Close goes to her code, not back to the offer.
+    const close = () => { const ok = tx.status === 'success'; tx.reset(); if (ok && pending) { setOpen(undefined); setCode(pending); setPending(undefined); } };
+    return <TxScreens tx={tx} onClose={close} onRetry={() => tx.retry()} />;
+  }
   if (code) return <LpCode swap={code} onBack={() => setCode(undefined)} />;
   if (open) {
     const bring = open.kind === BRING;

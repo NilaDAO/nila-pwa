@@ -46,7 +46,7 @@ export function useLpStatus() {
   const { data: cfg } = useStellarConfig();
   const me = s?.stellarAddress;
   return useQuery({
-    queryKey: ['stellar', 'lp', cfg?.union, me], enabled: !!cfg?.contracts?.fx_pool && !!me, staleTime: 30_000,
+    queryKey: ['stellar', 'lp', cfg?.union, me], enabled: !!cfg?.anchor_url && !!cfg?.contracts?.fx_pool && !!me, staleTime: 30_000,
     queryFn: async () => {
       const um = [sv.address(cfg.union), sv.address(me)];
       const [title, m, a] = await Promise.all([
@@ -128,3 +128,16 @@ export const loadSwaps = () => { try { return JSON.parse(localStorage.getItem(KE
 export const saveSwap = (e) => {
   try { localStorage.setItem(KEY, JSON.stringify([...loadSwaps().filter((x) => x.offer !== e.offer), e])); } catch { /* private */ }
 };
+
+// Her LP code (A7b): the offer id, a time and her Stellar key's signature over both, so the leader's scan
+// can check the code comes from the LP who accepted the offer (the offer id alone is public).
+export const CODE_TTL = 600;
+const enc = (t) => new TextEncoder().encode(t);
+export async function codeHash(offer, ts) {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', enc(`nila-offer-code-v1\n${offer}\n${ts}`)));
+}
+const hex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, '0')).join('');
+export async function signedCode(offer, signHash) {
+  const ts = Math.floor(Date.now() / 1000);
+  return `nila:offer:${offer}:${ts}:${hex(await signHash(await codeHash(offer, ts)))}`;
+}
