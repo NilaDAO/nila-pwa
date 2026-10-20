@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
 import { useDataContext } from '../utils/NavigationContext';
 import { useMoveWallet, useOpenPolygonLoans } from './hooks';
+import FieldScene from '../register/FieldScene';
 
 const T = { ink: '#121212', raised: '#1f2733', text: '#f1f5f9', muted: '#94a3b8', accent: '#d4cf5a', gold: '#d4a634', ground: '#8a9a2e' };
 
@@ -20,13 +21,14 @@ function useOnline() {
 
 function Frame({ children, note }) {
   return (
-    <div className="min-h-screen flex flex-col pb-2" style={{ background: T.ground, fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div className="text-center font-bold text-lg pt-10" style={{ color: '#fff' }}>nila</div>
-      <div className="flex justify-center py-8"><img src="/bw.svg" alt="" width="120" height="118" style={{ filter: 'invert(1)' }} /></div>
+    <div className="min-h-screen flex flex-col pb-2" style={{ background: T.ground, fontFamily: "'Inter', system-ui, sans-serif", position: 'relative', overflow: 'hidden' }}>
+      <FieldScene />
+      <div className="relative text-center font-bold text-lg pt-10" style={{ color: '#fff' }}>nila</div>
+      <div className="relative flex justify-center py-8"><img src="/bw.svg" alt="" width="120" height="118" style={{ filter: 'invert(1)' }} /></div>
       <div className="flex-1" />
-      <div className="mx-2 rounded-3xl p-5" style={{ background: T.ink, color: T.text }}>{children}</div>
+      <div className="relative mx-2 rounded-3xl p-5" style={{ background: T.ink, color: T.text }}>{children}</div>
       {note && (
-        <div className="mx-2 mt-4 mb-2 rounded-3xl p-5 text-sm flex gap-3" style={{ background: T.ink, color: T.muted }}>
+        <div className="relative mx-2 mt-4 mb-2 rounded-3xl p-5 text-sm flex gap-3" style={{ background: T.ink, color: T.muted }}>
           <span aria-hidden>ⓘ</span><span>{note}</span>
         </div>
       )}

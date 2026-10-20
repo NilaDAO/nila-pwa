@@ -6,8 +6,8 @@
 // R4 is the phone's own number keyboard with the code suggested above it: one numeric input with
 // autocomplete="one-time-code" behind the six boxes.
 // Every new wallet is created on Stellar (notes move-spec "NEW REGISTRATIONS"); a chain from the invite link is ignored.
-// DESIGN GAP / OPEN: the code always comes by SMS through Cognito today (LOAN_RULES §5 "Login and Privy": WhatsApp
-// needs Privy's Scale plan, not used). 'Send code on WhatsApp' therefore also sends an SMS, and R3 says SMS.
+// SMS only (executive decision, 20 Oct; LOAN_RULES §5 "Login and Privy": no WhatsApp with Privy): R2 has one button,
+// 'Send code via SMS', and no WhatsApp line; R3 and R4 say SMS (the boards' #sms state).
 import { useEffect, useRef, useState } from 'react';
 import { createItem } from '../utils/db';
 import { signUp, initAuth, respondToAuthChallenge, getUserAttributes } from '../utils/cognito_helpers';
@@ -48,7 +48,7 @@ async function storeLocal({ phone, salt, attrs, refresh, access }) {
 /** R1: create a new wallet or recover one. */
 function Wallet({ onPick }) {
   return (
-    <RegFrame drop info="This is free of charge. In your wallet you hold your land title, vouchers and other tokens.">
+    <RegFrame drop zoom info="This is free of charge. In your wallet you hold your land title, vouchers and other tokens.">
       <button type="button" style={btnPrimary} onClick={() => onPick('create')}>Create a new digital wallet</button>
       <button type="button" style={btnSecondary} onClick={() => onPick('recover')}>Recover wallet</button>
     </RegFrame>
@@ -59,7 +59,7 @@ function Wallet({ onPick }) {
 function Phone({ busy, error, onSend }) {
   const [digits, setDigits] = useState('');
   const ok = /^[6-9]\d{9}$/.test(digits.replace(/\s/g, ''));
-  const send = (ch) => { if (ok && !busy) onSend(`+91${digits.replace(/\s/g, '')}`, ch); };
+  const send = () => { if (ok && !busy) onSend(`+91${digits.replace(/\s/g, '')}`, 'sms'); };
   return (
     <RegFrame info="We send a 6-digit code to this number.">
       <h1 style={cardTitle}>Your phone number</h1>
@@ -72,8 +72,7 @@ function Phone({ busy, error, onSend }) {
             fontFamily: 'inherit', fontSize: 16, outline: 'none' }} />
       </label>
       {error && <p role="alert" style={{ margin: 0, color: '#E69283', fontSize: 14 }}>{error}</p>}
-      <button type="button" style={ok && !busy ? btnPrimary : btnDisabled} disabled={!ok || busy} onClick={() => send('wa')}>Send code on WhatsApp</button>
-      <button type="button" style={ok && !busy ? btnSecondary : btnDisabled} disabled={!ok || busy} onClick={() => send('sms')}>No WhatsApp? Get the code by SMS</button>
+      <button type="button" style={ok && !busy ? btnPrimary : btnDisabled} disabled={!ok || busy} onClick={send}>Send code via SMS</button>
     </RegFrame>
   );
 }
@@ -93,7 +92,7 @@ function Code({ ch, verifying, error, onVerify, onResend, onBack, sent }) {
   const [left, setLeft] = useState(0);
   const [phase, setPhase] = useState('idle');           // idle | sending | offline
   const input = useRef(null);
-  const sms = ch === 'sms' || true;                      // today every code is an SMS (see the note at the top)
+  const sms = true;                                      // SMS only (see the note at the top)
   useEffect(() => { if (left <= 0) return undefined; const t = setTimeout(() => setLeft(left - 1), 1000); return () => clearTimeout(t); }, [left]);
   const resend = async () => {
     if (!navigator.onLine) { setPhase('offline'); return; }
@@ -106,7 +105,7 @@ function Code({ ch, verifying, error, onVerify, onResend, onBack, sent }) {
   const full = code.length === 6;
   const title = sent ? (sms ? 'We sent you a new code by SMS.' : 'We sent you a new code.') : (sms ? 'Enter the code we sent by SMS.' : 'Enter the code we sent to you.');
   return (
-    <RegFrame onBack={onBack} backLabel="Back: change my number" info={sms ? 'Open your SMS messages for a 6-digit code.' : 'Open WhatsApp for a 6-digit code.'}>
+    <RegFrame onBack={onBack} backLabel="Back: change my number" info="Open your SMS messages for a 6-digit code.">
       {phase === 'sending' && <Sending title="Resending the code" />}
       {phase === 'offline' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -142,7 +141,7 @@ export default function Start({ onDone }) {
   const [step, setStep] = useState('wallet');            // wallet | phone | code
   const [kind, setKind] = useState('create');
   const [phone, setPhone] = useState('');
-  const [ch, setCh] = useState('wa');
+  const [ch, setCh] = useState('sms');
   const [session, setSession] = useState(null);
   const [isNew, setIsNew] = useState(true);
   const [sent, setSent] = useState(false);

@@ -2,6 +2,7 @@
 // RegUnion-nj7b, RegAssist, RegNotify-52am, RegDone-fji8): the olive field ground, the 'nila' wordmark and the logo,
 // one dark card at the bottom, and the info note under it. Markup and values copied from the boards.
 import { C, FONT } from '../shell/tokens';
+import FieldScene from './FieldScene';
 
 const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
 
@@ -19,21 +20,6 @@ export const anim = {
   confirm: `confirm-rise 450ms ${EASE} both`, scrim: 'scrim-in 250ms ease both',
 };
 
-function Ground() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-      <rect width="390" height="844" fill="#7a8a2a" />
-      <path d="M0 0 L390 0 L390 844 L0 844 Z" fill="#8a9a2e" />
-      <path d="M0 120 Q100 90 200 130 T390 110 L390 300 L0 320 Z" fill="#a0b035" opacity="0.6" />
-      <path d="M0 420 Q120 380 260 440 T390 420 L390 640 L0 660 Z" fill="#6d7d24" opacity="0.7" />
-      <path d="M-20 700 Q150 660 300 720 T420 700 L420 844 L-20 844 Z" fill="#5c6c1f" opacity="0.8" />
-      <path d="M60 0 L90 844" stroke="#4f5f1a" strokeWidth="10" opacity="0.5" />
-      <path d="M300 0 L330 844" stroke="#4f5f1a" strokeWidth="8" opacity="0.4" />
-    </svg>
-  );
-}
-
 const InfoIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
@@ -49,12 +35,12 @@ export const btnQuiet = { minHeight: 44, border: 0, background: 'transparent', p
   lineHeight: 1.5, color: '#94A3B8', width: '100%', cursor: 'pointer' };
 
 /** onBack: the round back button (R3, R4); info: the note under the card; logo=false for long cards (R5 list). */
-export default function RegFrame({ onBack, backLabel = 'Back', info, logo = true, drop = false, children }) {
+export default function RegFrame({ onBack, backLabel = 'Back', info, logo = true, drop = false, zoom = false, children }) {
   return (
     <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#8a9a2e', display: 'flex', flexDirection: 'column',
       fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
       <style>{MOTION_CSS}</style>
-      <Ground />
+      <FieldScene mode={zoom ? 'zoom' : 'close'} />
       {onBack && (
         <button type="button" onClick={onBack} aria-label={backLabel} style={{ position: 'absolute', left: 8, top: 52, zIndex: 5,
           width: 40, height: 40, borderRadius: 9999, background: '#1F2733', border: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -83,36 +69,23 @@ export default function RegFrame({ onBack, backLabel = 'Back', info, logo = true
   );
 }
 
-// ── R5–R8: the field ground (boards SendLocation-*, SheetVerify-88ia) ──
-// Dark field map, her saved points as gold dots (the last one with a halo), and one bottom sheet with a drag line,
-// kept 72 px above the bottom (notes reg-recover: the tab bar height of later screens). The ground is drawn, not a
-// live map, as on the boards.
+// ── R5–R8 (boards SendLocation-*, SheetVerify-88ia) ──
+// The field scene, close, under a 45 % black layer; her saved points as gold dots (the last one with a halo), or the
+// plastic sheet and its marker; one bottom sheet with a drag line, 72 px above the bottom (notes reg-recover).
 const DOTS = [[150, 365], [260, 290], [110, 250], [290, 420], [200, 200], [70, 400]];
 
 function FieldGround({ points = 0, sheet = false }) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-      <rect width="390" height="844" fill="#25361f" />
-      <path d="M0 200 Q120 160 240 220 T390 190 L390 420 L0 460 Z" fill="#2f4a26" />
+    <FieldScene dim>
       {sheet ? (
         <>
-          <path d="M40 150 L230 130 L260 330 L70 360 Z" fill="#3a5a2c" stroke="#4e7a3a" strokeWidth="2" />
-          <path d="M0 400 L390 370" stroke="#8a7f5a" strokeWidth="6" fill="none" />
           <rect x="128" y="218" width="44" height="44" rx="2" fill="#F1F5F9" transform="rotate(-8 150 240)" />
           <circle cx="186" cy="214" r="9" fill="#D4A634" stroke="#121212" strokeWidth="3" />
         </>
-      ) : points === 0 ? (
-        <path d="M0 520 Q150 480 300 540 T390 520 L390 844 L0 844 Z" fill="#2a4123" />
-      ) : (
-        <>
-          <path d="M0 640 L390 600" stroke="#8a7f5a" strokeWidth="6" fill="none" />
-          {DOTS.slice(0, points).map(([x, y], i) => (i === points - 1 ? (
-            <g key={i}><circle cx={x} cy={y} r="22" fill="rgba(212,166,52,0.25)" /><circle cx={x} cy={y} r="9" fill="#D4A634" stroke="#121212" strokeWidth="3" /></g>
-          ) : <circle key={i} cx={x} cy={y} r="9" fill="#121212" stroke="#D4A634" strokeWidth="3" />))}
-        </>
-      )}
-    </svg>
+      ) : DOTS.slice(0, points).map(([x, y], i) => (i === points - 1 ? (
+        <g key={i}><circle cx={x} cy={y} r="22" fill="rgba(212,166,52,0.25)" /><circle cx={x} cy={y} r="9" fill="#D4A634" stroke="#121212" strokeWidth="3" /></g>
+      ) : <circle key={i} cx={x} cy={y} r="9" fill="#121212" stroke="#D4A634" strokeWidth="3" />))}
+    </FieldScene>
   );
 }
 
@@ -122,7 +95,7 @@ export const fieldInput = { display: 'block', width: '100%', height: 44, borderR
 
 export function FieldFrame({ points, sheet, children }) {
   return (
-    <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#25361f', display: 'flex', flexDirection: 'column',
+    <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#8a9a2e', display: 'flex', flexDirection: 'column',
       fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
       <style>{MOTION_CSS}</style>
       <FieldGround points={points} sheet={sheet} />
