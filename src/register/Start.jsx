@@ -24,7 +24,8 @@ const NEW_CHAIN = 'stellar';
 const DEMO = DEMO_COGNITO;                               // utils/demoMode.js: never in a real build
 const DEMO_CODE = '000000';
 // The input drops one leading 0 (an Indian trunk prefix), so 0000000000 arrives as +91 and 9 or 10 zeros.
-const demoNumber = (p) => (/^\+910{9,10}$/.test(p) ? '+910000000000' : /^\+911{10}$/.test(p) ? '+911111111111' : null);
+const demoNumber = (p) => (/^\+910{9,10}$/.test(p) ? '+910000000000' : /^\+911{10}$/.test(p) ? '+911111111111'
+  : /^\+912{10}$/.test(p) ? '+912222222222' : null);
 // The board's field around today's phone input (features/registration: +91 put in on focus; backspace changes it).
 const PHONE_CSS = `.nl-phone{display:flex;align-items:center;gap:8px;width:100%}
 .nl-phone .PhoneInputCountry{display:flex;align-items:center;gap:6px}
@@ -76,7 +77,7 @@ function Wallet({ onPick }) {
 /** R2: her phone number. Today's input, with +91 already in it; it can be deleted to give another country code. */
 function Phone({ busy, error, onSend }) {
   const [phone, setPhone] = useState('+91');         // shown from the start; backspace changes it
-  // Demo only: the dummy numbers 0000000000 (the demo leader) and 1111111111 (the demo member) are accepted too.
+  // Demo only: the dummy numbers 0000000000 (leader), 1111111111 (new member) and 2222222222 (member with a title).
   const ok = !!phone && (isValidPhoneNumber(phone) || (DEMO && !!demoNumber(phone)));
   return (
     <RegFrame info="We send a 6-digit code to this number.">
