@@ -17,6 +17,7 @@ import { subscribeUser } from '../features/apis/pushManager';
 import { useMyBorderJob, useSendFieldPoints } from '../border/hooks';
 import { Page, PointsStep, Waiting, clearPoints, readPoints, useOnline } from '../border/SendLocation';
 import { C, R } from '../shell/tokens';
+import { Loading } from './Boot';
 import { FieldFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, sheetText } from './RegFrame';
 
 // Today's one union (the Polygon registry's entry, src/components/Forms/memberUnion.js). DESIGN GAP: from the node.
@@ -206,7 +207,7 @@ export default function Registration({ onTitle }) {
   const step = open ? 'done' : (STEPS.includes(reg.step) ? reg.step : 'points');
   const next = (extra = {}) => save({ ...extra, step: STEPS[STEPS.indexOf(step) + 1] });
 
-  if (mine.isLoading) return <Page title="Send your field location"><p style={{ color: C.muted }}>…</p></Page>;
+  if (mine.isLoading) return <Loading />;
   if (step === 'points') return <PointsStep evm={evm} onDone={() => next()} />;
   if (step === 'sheet') return <SheetStep onDone={(sheet) => next({ sheet })} />;
   if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={(union) => next({ union })} />;
