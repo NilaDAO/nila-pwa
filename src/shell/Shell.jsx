@@ -23,6 +23,7 @@ import IdCheck from '../anchor/IdCheck';
 import LpOffers from '../anchor/LpOffers';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
+import LeaderTasks from '../leader/LeaderTasks';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
 
@@ -73,8 +74,9 @@ function Settings({ onBack, onIdCheck, onOffers }) {
   );
 }
 
-function TasksView({ leader }) {
+function TasksView({ leader, go }) {
   const lp = useLpStatus();
+  if (leader) return <LeaderTasks go={go} />;
   if (!leader && lp.data?.lp && lp.data?.trustline) return <LpOffers onBack={() => { window.location.hash = '#/assets'; }} />;
   return <Later title="Tasks" step={leader ? 'the leader steps' : 'a later step'} />;
 }
@@ -143,7 +145,7 @@ export default function Shell({ leader }) {
   else if (view === 'machine') body = <MyMachine onBack={() => go('assets')} />;
   else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go('assets')} />;
   // A2 Tasks: for an LP the board's "Cash offers" section; the other task rows come in a later step.
-  else if (view === 'tasks') body = <TasksView leader={leader} />;
+  else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
 
   // No tab is active on task, settings, history and wallet screens.

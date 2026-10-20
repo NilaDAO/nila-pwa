@@ -85,3 +85,72 @@ export function useUnionBook(api) {
     },
   });
 }
+
+/**
+ * The union's members the leader's app knows (L5 "Who is it for?"): the holders of the approved plans' food tokens,
+ * with their land, plus the borrowers in the node's loan list. DESIGN GAP: no names (the contact book is not wired);
+ * a member is shown by land and short address. Members without an approved plan or a loan are found by scanning.
+ */
+export function useKnownMembers(api) {
+  const { data: cfg } = useStellarConfig();
+  return useQuery({
+    queryKey: ['stellar', 'knownMembers', cfg?.union], enabled: !!api && !!cfg?.contracts?.fund_core, staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const by = new Map();
+      const add = (g, land) => { if (!g) return; const m = by.get(g) || { address: g, lands: new Set() }; if (land) m.lands.add(land); by.set(g, m); };
+      const plans = (await api.approvedPlans().catch(() => ({ plans: [] }))).plans || [];
+      for (const p of plans) {
+        const { mints } = await api.mintList(p.id).catch(() => ({ mints: [] }));
+        const first = mints.find((m) => m.token_id);
+        if (!first) continue;
+        const hex = BigInt(first.token_id).toString(16).padStart(64, '0');
+        const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(hex)]).catch(() => null);
+        add(ft?.member, p.land_id);
+      }
+      const { loans } = await api.unionLoans().catch(() => ({ loans: [] }));
+      for (const l of loans) add(l.borrower);
+      return [...by.values()].map((m) => ({ address: m.address, lands: [...m.lands].sort((a, b) => a - b) }));
+    },
+  });
+}
+
+/** The union's to-do items for L1, from what the contracts and the node give today. */
+export function useLeaderTodo(api, cash) {
+  const { data: cfg } = useStellarConfig();
+  return useQuery({
+    queryKey: ['stellar', 'leaderTodo', cfg?.union], enabled: !!api && !!cfg?.contracts?.fund_core, staleTime: 60_000, refetchInterval: 60_000,
+    queryFn: async () => {
+      const u = sv.address(cfg.union);
+      const now = Date.now() / 1000;
+      const out = [];
+      const pending = (await api.pendingApprovals().catch(() => ({ plans: [] }))).plans || [];
+      for (const p of pending) out.push({ key: `approve-${p.id}`, title: 'Approve crop plan', who: `Land ${p.land_id}`, to: 'crop' });
+      // A crop share request: an approved plan with a share that is ready (from its SOS) and not drawn.
+      const approved = (await api.approvedPlans().catch(() => ({ plans: [] }))).plans || [];
+      for (const p of approved) {
+        const { mints } = await api.mintList(p.id).catch(() => ({ mints: [] }));
+        let ready = 0; let amount = 0;
+        for (const m of mints.filter((x) => x.token_id)) {
+          const hex = BigInt(m.token_id).toString(16).padStart(64, '0');
+          const ft = await readContract(cfg, 'fund_core', 'food_token', [u, sv.bytes32(hex)]).catch(() => null);
+          if (ft && Number(ft.from_date) <= now && !(Number(ft.loan?.flags ?? 0) & 8)) { ready += 1; amount += n(ft.amount); }
+        }
+        if (ready) out.push({ key: `share-${p.id}`, title: 'Crop share request', amount, who: `Land ${p.land_id}`, to: 'cash/loan' });
+      }
+      const { loans } = await api.unionLoans().catch(() => ({ loans: [] }));
+      for (const l of loans) {
+        const [g, due] = await Promise.all([
+          readContract(cfg, 'fund_core', 'get_loan', [u, sv.bytes32(l.token_id)]).catch(() => null),
+          readContract(cfg, 'fund_core', 'due_date', [u, sv.bytes32(l.token_id)]).catch(() => null),
+        ]);
+        if (!g || g.closed) continue;
+        const owed = n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid);
+        const d = Number(due || 0);
+        const who = `${l.borrower.slice(0, 4)}…${l.borrower.slice(-4)}`;
+        if (g.overdue || (d && d < now)) out.push({ key: `collect-${l.token_id}`, title: 'Collect repayment', amount: owed, who, to: 'cash/repay', urgent: true });
+        else if (d && d - now < 14 * 86400) out.push({ key: `payback-${l.token_id}`, title: 'Payback coming', amount: owed, who, to: 'cash/repay' });
+      }
+      return out;
+    },
+  });
+}
