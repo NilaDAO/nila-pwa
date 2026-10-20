@@ -3,8 +3,17 @@ import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-
 
 const ClientId = process.env.REACT_APP_COGNITO_CLIENTID
 
+// Demo stack only (REACT_APP_COGNITO_DEMO=1, set by nila-integrations scripts/demo-stack.sh): the same calls go to
+// the demo server's Cognito stand-in on this origin (fixed code, wallets made on the fork), never to AWS. Unset in
+// every real build.
+const DEMO_COGNITO = process.env.REACT_APP_COGNITO_DEMO === '1';
+
 // Initialize AWS Cognito
-const client = new CognitoIdentityProviderClient({ 
+const client = new CognitoIdentityProviderClient(DEMO_COGNITO ? {
+    region: 'ap-south-1',
+    endpoint: `${window.location.origin}/__demo/cognito`,
+    credentials: { accessKeyId: 'demo', secretAccessKey: 'demo' },
+  } : {
     region: 'ap-south-1',
     credentials: {
         accessKeyId: process.env.REACT_APP_NILAAPP_AWS,
