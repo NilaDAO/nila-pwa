@@ -12,6 +12,8 @@ import { useEffect, useState, useCallback,useRef } from 'react';
 import { lazy, Suspense } from 'react';
 // Stellar mode (P3): only with Privy on; the inline env test lets webpack drop it otherwise.
 const StellarGate = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./move/StellarGate')) : null;
+// The new registration start R1–R4 (src/register/Start.jsx), same Privy gate; today's RegisterRecover otherwise.
+const NewStart = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/Start')) : null;
 import { Routes, Route } from 'react-router-dom';
 
 // 🛠️ UI pieces (place‑holders)
@@ -329,7 +331,9 @@ function App({installAvailable}) {
   // Render routes once we know where to go
   return (
       <Routes>
-        {bootStage === 'register' && <Route path="/*" element={<RegisterRecover setBootStage={setBootStage} />} />}
+        {bootStage === 'register' && <Route path="/*" element={NewStart
+          ? <Suspense fallback={null}><NewStart onDone={() => setBootStage('loading')} /></Suspense>
+          : <RegisterRecover setBootStage={setBootStage} />} />}
         {bootStage === 'ready' && <Route path="/*" element={StellarGate
           ? <Suspense fallback={null}><StellarGate><Wallet LAND={LAND} selected={false} /></StellarGate></Suspense>
           : <Wallet LAND={LAND} selected={false} />} />}

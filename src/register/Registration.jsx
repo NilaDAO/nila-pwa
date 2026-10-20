@@ -10,6 +10,8 @@
 // what is missing) is not built here.
 import { useEffect, useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
+import { useIsLeader } from '../hooks/useLoadFunds.ts';
+import { setDBitem } from '../utils/db';
 import { useNilaSigner } from '../wallet/signer';
 import { subscribeUser } from '../features/apis/pushManager';
 import { useMyBorderJob, useSendFieldPoints } from '../border/hooks';
@@ -17,7 +19,8 @@ import { Page, PointsStep, Waiting, clearPoints, primary, readPoints, secondary,
 import { C, R } from '../shell/tokens';
 
 // Today's one union (the Polygon registry's entry, src/components/Forms/memberUnion.js). DESIGN GAP: from the node.
-const UNIONS = [{ name: 'Mother Theresa Union', rep: 'Mrs. Rosalie Susairaj' }];
+const UNIONS = [{ name: 'Mother Theresa Union', rep: 'Mrs. Rosalie Susairaj', polygon: '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070',
+  location: [11.878671, 78.964561] }];
 const STEPS = ['points', 'sheet', 'union', 'mode', 'notify', 'done'];
 
 const regKey = (evm) => `nila.reg.${(evm || 'none').toLowerCase()}`;
@@ -25,7 +28,6 @@ const readReg = (evm) => { try { return JSON.parse(localStorage.getItem(regKey(e
 const writeReg = (evm, v) => { try { localStorage.setItem(regKey(evm), JSON.stringify(v)); } catch { /* kept in memory only */ } };
 const setMode = (m) => { try { localStorage.setItem('nila.mode', m); } catch { /* kept for this session only */ } };
 
-const Wordmark = () => <div style={{ fontWeight: 700, fontSize: 22, color: '#FFFFFF' }}>nila</div>;
 
 /** The confirm card over a 60% dark layer (notes: confirms are overlays; tapping the layer = Cancel). */
 function Confirm({ title, text, onCancel, onAccept }) {
@@ -84,18 +86,28 @@ function Choice({ checked, onClick, title, sub }) {
 }
 
 /** R9: select a union. */
-function UnionStep({ union, onDone }) {
+function UnionStep({ union, evm, onDone }) {
   const [pick, setPick] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const { isLeader } = useIsLeader({ address: evm });
+  // As today's union step (components/Forms/memberUnion.js): the union goes into Init with the leader check on
+  // the Polygon RolesRegistry, so a leader opens the leader app.
+  const saveUnion = async () => {
+    setBusy(true);
+    const u = UNIONS[pick];
+    let leader;
+    try { leader = Boolean(await isLeader(u.polygon, evm)); } catch { leader = undefined; }
+    await setDBitem('union', { leader, transfer: true, address: u.polygon, rep: u.rep, name: u.name, chain: 137, location: u.location }, 'Init');
+    setBusy(false);
+    onDone({ ...u, address: union, leader: !!leader });
+  };
   return (
-    <Page>
-      <Wordmark />
-      <h1 style={{ fontSize: 16, margin: 0 }}>Select a union</h1>
+    <Page title="Select a union" info="Select a reputable union in your area that offers financial services tailored to your needs as a farmer. Go to settings to switch unions.">
       <div role="radiogroup" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {UNIONS.map((u, i) => <Choice key={u.name} checked={pick === i} onClick={() => setPick(i)} title={u.name} sub={u.rep} />)}
       </div>
-      <button type="button" style={primary} disabled={!union} onClick={() => onDone({ ...UNIONS[pick], address: union })}>Save</button>
+      <button type="button" style={primary} disabled={!union || busy} onClick={saveUnion}>Save</button>
       <button type="button" style={secondary}>Filter on my region</button>
-      <p style={{ margin: 0, color: C.muted, fontSize: 14 }}>Select a reputable union in your area that offers financial services tailored to your needs as a farmer. Go to settings to switch unions.</p>
     </Page>
   );
 }
@@ -105,15 +117,12 @@ function ModeStep({ rep, onDone }) {
   const [mode, setM] = useState('self');
   const name = (rep || '').replace(/^(Mrs?|Ms)\.\s*/, '');
   return (
-    <Page>
-      <Wordmark />
-      <h1 style={{ fontSize: 16, margin: 0 }}>Who uses the app?</h1>
+    <Page title="Who uses the app?" info="You can change this later in Settings.">
       <div role="radiogroup" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Choice checked={mode === 'self'} onClick={() => setM('self')} title="I do it myself" sub="You send, spend and register yourself." />
         <Choice checked={mode === 'assist'} onClick={() => setM('assist')} title="My union leader helps me" sub={`${name || 'Your union leader'} does the steps. You look and press Confirm.`} />
       </div>
       <button type="button" style={primary} onClick={() => { setMode(mode); onDone(); }}>Save</button>
-      <p style={{ margin: 0, color: C.muted, fontSize: 14 }}>You can change this later in Settings.</p>
     </Page>
   );
 }
@@ -129,9 +138,7 @@ function NotifyStep({ evm, onDone }) {
     onDone();
   };
   return (
-    <Page>
-      <Wordmark />
-      <h1 style={{ fontSize: 16, margin: 0 }}>Your union would like to send you updates.</h1>
+    <Page title="Your union would like to send you updates.">
       <button type="button" style={primary} disabled={busy} onClick={enable}>Enable</button>
       <button type="button" style={secondary} onClick={() => setSkip(true)}>Skip</button>
       {skip && <Confirm title="You need to enable notifications so your union can send you information requests."
@@ -154,6 +161,8 @@ function DoneStep({ evm, reg, onTitle, onRestart }) {
     }
   }, [online, pending, send, mine.isLoading, mine.data, q, reg, evm]);
   useEffect(() => { if (mine.data?.status === 'minted') onTitle(); }, [mine.data, onTitle]);
+  // A union leader does not wait on R14: once her points are with the node the app opens as the leader app.
+  useEffect(() => { if (reg.union?.leader && !pending && mine.data) window.location.reload(); }, [reg.union, pending, mine.data]);
   const failed = mine.data?.status === 'failed' && !pending;
   return <Waiting job={failed ? mine.data : null} sending={pending && !online} error={send.error?.message}
     onRetry={failed ? onRestart : () => send.reset()} />;
@@ -174,7 +183,7 @@ export default function Registration({ onTitle }) {
   if (mine.isLoading) return <Page title="Send your field location"><p style={{ color: C.muted }}>…</p></Page>;
   if (step === 'points') return <PointsStep evm={evm} onDone={() => next()} />;
   if (step === 'sheet') return <SheetStep onDone={(sheet) => next({ sheet })} />;
-  if (step === 'union') return <UnionStep union={cfg?.union} onDone={(union) => next({ union })} />;
+  if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={(union) => next({ union })} />;
   if (step === 'mode') return <ModeStep rep={reg.union?.rep} onDone={() => next()} />;
   if (step === 'notify') return <NotifyStep evm={evm} onDone={() => next()} />;
   return <DoneStep evm={evm} reg={reg} onTitle={onTitle} onRestart={() => { clearPoints(evm); save({ step: 'points' }); }} />;

@@ -5,6 +5,7 @@
 // DESIGN GAP: the boards have no farm-name field; the title mint needs a name, so an optional one is asked here.
 import { useEffect, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
+import RegFrame, { cardTitle } from '../register/RegFrame';
 
 const MAX = 6;
 const EMPTY = { points: [], farm: '', finish: false };
@@ -27,13 +28,13 @@ export function useOnline() {
 export const primary = { width: '100%', height: 44, borderRadius: R.button, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontSize: 14, fontFamily: FONT };
 export const secondary = { ...primary, background: C.raised, color: C.text };
 
-export function Page({ title, onBack, children }) {
+/** A registration step on the board frame (src/register/RegFrame.jsx): the card holds the title and the step. */
+export function Page({ title, onBack, info, logo, children }) {
   return (
-    <div style={{ padding: '16px 16px 88px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {onBack && <button type="button" onClick={onBack} style={{ background: 'none', border: 0, color: C.muted, padding: 0, alignSelf: 'flex-start' }}>← Back</button>}
-      {title && <h1 style={{ fontSize: 16, margin: 0 }}>{title}</h1>}
+    <RegFrame onBack={onBack} info={info} logo={logo}>
+      {title && <h1 style={cardTitle}>{title}</h1>}
       {children}
-    </div>
+    </RegFrame>
   );
 }
 
@@ -41,8 +42,7 @@ export function Page({ title, onBack, children }) {
 export function Waiting({ job, sending, error, onRetry }) {
   return (
     <Page>
-      <div style={{ fontWeight: 700, fontSize: 22, color: '#FFFFFF' }}>nila</div>
-      <h1 style={{ fontSize: 16, margin: 0 }}>Your union will mint your land title</h1>
+      <h1 style={cardTitle}>Your union will mint your land title</h1>
       <p style={{ margin: 0, color: C.muted }}>Please wait for your union to finish.</p>
       {sending && <p role="status" style={{ margin: 0, color: C.muted }}>Your points are sent when you are online.</p>}
       {job?.status === 'failed' && <p role="alert" style={{ margin: 0, color: C.coral }}>{job.mint?.error || 'Your fields could not be drawn.'} Send your field location again.</p>}

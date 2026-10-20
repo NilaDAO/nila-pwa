@@ -33,7 +33,8 @@ export default function StellarGate({ children }) {
   useEffect(() => { setMode(readMode(addr)); }, [addr]);
   const choose = (m) => { try { sessionStorage.setItem(modeKey(addr), m); } catch { /* private mode */ } setMode(m); };
 
-  if (db?.chain === STELLAR_CHAIN) return signer ? <Shell /> : <Holding />;
+  // A Stellar wallet: a union leader (Init union.leader, set at R9 from the Polygon RolesRegistry) gets the leader app.
+  if (db?.chain === STELLAR_CHAIN) return signer ? <Shell leader={Boolean(db?.union?.leader)} /> : <Holding />;
   if (!signer || db?.chain !== '137') return children;
   if (mode === 'old') return children;
   if (db?.union?.leader) {
