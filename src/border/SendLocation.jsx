@@ -113,7 +113,7 @@ function FirstPoint({ onLocate, onPanPoint, pan, setPan, busy, error }) {
         : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>}
       {pan
         ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
-        : <button type="button" style={btnSecondary} onClick={() => { setPan(true); if (!me) locateOnly(); }}>Pan the map</button>}
+        : <button type="button" style={btnSecondary} onClick={() => { setPan(true); if (!me) locateOnly(); }}>Choose on the map</button>}
     </MapFrame>
   );
 }

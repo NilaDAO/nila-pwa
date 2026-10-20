@@ -14,7 +14,7 @@ const OPTIONS = {
   rotateControl: false, scrollwheel: false, draggable: false, zoom: 21, tilt: 0, keyboardShortcuts: false,
   clickableIcons: false, disableDefaultUI: true, mapId: MAP_ID,
 };
-// Pan the map (R5, executive decision 20 Oct): today's off-site options — she moves the map; her point is its centre.
+// Choose on the map (R5, executive decision 20 Oct): today's off-site options — she moves the map; her point is its centre.
 const PAN_OPTIONS = { ...OPTIONS, draggable: true, gestureHandling: 'greedy', scrollwheel: true, zoomControl: true };
 const STYLE = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
 

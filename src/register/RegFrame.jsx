@@ -106,7 +106,7 @@ function MapOrScene({ map, points, me, pan, onCenter, start }) {
   );
 }
 
-/** Pan the map: the pin at the map's centre marks where her point goes. */
+/** Choose on the map: the pin at the map's centre marks where her point goes. */
 function PanPin() {
   return (
     <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 2 }}>
