@@ -4,6 +4,7 @@ import axios from 'axios';                    // latest axios
 import { useHardReload } from '../../hooks/useHardReload';
 import Spinner from './spinner';
 import { ClaimButton } from './buttons';
+import { NotFoundPage } from '../../register/Boot';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL 
 const NEW_LOOK = Boolean(process.env.REACT_APP_PRIVY_APP_ID);
@@ -30,20 +31,8 @@ const ErrorScreen = ({ error, errorInfo }) => {
     setTimeout(() => window.location.reload(), 3000);
   };
 
-  // The new app (Privy builds): the start screens' style (S5), with the Nila logo, not the old font glyph.
-  if (NEW_LOOK) {
-    return (
-      <div style={{ minHeight: '100dvh', background: 'linear-gradient(180deg, #121212 0%, #1E2738 100%)', color: '#F1F5F9',
-        fontFamily: "'Inter', system-ui, sans-serif", display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 12, padding: '0 24px', textAlign: 'center' }}>
-        <img src={`${process.env.PUBLIC_URL || ''}/images/reg-logo.png`} alt="Nila" style={{ width: 72, height: 72 }} />
-        <span role="heading" aria-level="1" style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, marginTop: 8 }}>Something went wrong</span>
-        <span style={{ fontSize: 14, lineHeight: 1.5, color: '#94A3B8' }}>We’ve sent a crash report to our backend.</span>
-        <button type="button" onClick={reload} style={{ height: 44, borderRadius: 12, fontSize: 14, fontWeight: 700, border: 0, padding: '0 24px',
-          color: '#121212', background: '#D4CF5A', alignSelf: 'stretch', marginTop: 20, fontFamily: 'inherit', cursor: 'pointer' }}>Reload</button>
-      </div>
-    );
-  }
+  // The new app (Privy builds): the crash screen is S5 (board BootNotFound), with its Reload.
+  if (NEW_LOOK) return <NotFoundPage />;
 
   return (
     <div className="flex flex-col items-center bg-gradient-to-b dark:from-darkgrey dark:to-slate-800 from-white to-slate-100 justify-center h-screen px-12">
