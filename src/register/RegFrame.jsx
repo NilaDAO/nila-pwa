@@ -3,6 +3,7 @@
 // one dark card at the bottom, and the info note under it. Markup and values copied from the boards.
 import { C, FONT } from '../shell/tokens';
 import FieldScene from './FieldScene';
+import FieldMap, { useFieldMapLoaded } from './FieldMap';
 
 const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
 
@@ -93,12 +94,18 @@ export const sheetText = { fontSize: 14, color: '#94A3B8', lineHeight: 1.5 };
 export const fieldInput = { display: 'block', width: '100%', height: 44, borderRadius: 12, background: '#1F2733', padding: '0 14px',
   fontSize: 16, color: '#F1F5F9', border: 0, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', flexShrink: 0 };
 
-export function FieldFrame({ points, sheet, children }) {
+/** R5–R7: the satellite map (FieldMap) once Google Maps is loaded; until then, offline or without a key, the scene. */
+function MapOrScene({ map, points }) {
+  const { ok } = useFieldMapLoaded();
+  return ok ? <FieldMap points={map} /> : <FieldGround points={points} />;
+}
+
+export function FieldFrame({ points, sheet, map, children }) {
   return (
     <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#8a9a2e', display: 'flex', flexDirection: 'column',
       fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
       <style>{MOTION_CSS}</style>
-      <FieldGround points={points} sheet={sheet} />
+      {map ? <MapOrScene map={map} points={points} /> : <FieldGround points={points} sheet={sheet} />}
       <div className="nila-motion" style={{ animation: anim.rise, position: 'relative', marginTop: 'auto', marginBottom: 72, background: '#121212', borderRadius: 24,
         boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '18px 22px',
         display: 'flex', flexDirection: 'column', gap: 14 }}>

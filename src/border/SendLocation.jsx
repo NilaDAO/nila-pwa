@@ -90,7 +90,7 @@ export function PointsStep({ evm, onDone }) {
   const n = q.points.length;
   const first = n === 0;
   return (
-    <FieldFrame points={n}>
+    <FieldFrame points={n} map={q.points}>
       <div style={cardTitle}>{first ? 'Walk to your first field' : 'Walk to the center of your next field'}</div>
       {first && <div style={sheetText}>Stand in the middle of your field. Send a point for each field where you have the right to cultivate.</div>}
       {!online && (
