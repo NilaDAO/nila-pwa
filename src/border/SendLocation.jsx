@@ -5,7 +5,7 @@
 // The boards ask a field name per point (R6, R7), no farm name: the title's name is given by the leader at L4.
 import { useEffect, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
-import RegFrame, { Bouncing, FieldFrame, MapFrame, anim, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
+import RegFrame, { Bouncing, FieldFrame, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
 const MAX = 6;
 const EMPTY = { points: [], farm: '', finish: false };
@@ -70,63 +70,46 @@ const PinIcon = () => (
   </svg>
 );
 
-/** R5's confirm card (board SendLocation-v3np default state): over a 60 % dark layer; tapping the layer = Not now. */
-function ShareLocation({ onAllow, onNotNow }) {
-  return (
-    <>
-      <div aria-hidden="true" className="nila-motion" onClick={onNotNow} style={{ animation: anim.scrim, position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.6)' }} />
-      <div role="dialog" aria-modal="true" aria-labelledby="loc-title" aria-describedby="loc-body" className="nila-motion" style={{ animation: anim.confirm,
-        position: 'absolute', left: 8, right: 8, bottom: 88, zIndex: 21, background: '#121212', borderRadius: 24,
-        boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '14px 22px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0 0' }}>
-          <PinIcon />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div id="loc-title" style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Share your location</div>
-            <div id="loc-body" style={{ fontSize: 14, lineHeight: 1.5, color: '#94A3B8' }}>Nila uses it only to place a point in your field, for your land title.</div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" style={{ ...btnSecondary, flex: 1 }} onClick={onNotNow}>Not now</button>
-          <button type="button" style={{ ...btnPrimary, flex: 1 }} onClick={onAllow}>Allow</button>
-        </div>
-      </div>
-    </>
-  );
-}
 
 /** R5 (board SendLocation-v3np, notes reg-r5): 'Mint your land title'. Default: the Share your location card; Allow →
  *  the browser's location prompt → #on (her blue dot and accuracy circle, 'Send my location' → R6); Not now → #off
  *  ('Share my location' opens the card again). Location already allowed → #on straight away.
  *  DESIGN GAP (open point in reg-r5): a location the browser has blocked; the card cannot help, so a line says to
  *  turn it on in the settings. */
-function FirstPoint({ onLocate, busy, error }) {
+function FirstPoint({ onLocate, onPanPoint, pan, setPan, busy, error }) {
+  // R5 (executive decision 20 Oct): no confirm card — "Share my location" asks the phone for it directly; "Pan the
+  // map" lets her move the map instead (today's off-site mode) and her point is the pin at its centre.
   const [loc, setLoc] = useState('ask');                 // ask | on | off
   const [me, setMe] = useState(null);
   const [blocked, setBlocked] = useState(false);
-  const watch = () => navigator.geolocation?.getCurrentPosition(
+  const [centre, setCentre] = useState(null);
+  const share = () => { setPan(false); navigator.geolocation?.getCurrentPosition(
     (p) => { setMe({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }); setBlocked(false); setLoc('on'); },
     (e) => { setBlocked(e.code === 1); setLoc('off'); },
     { enableHighAccuracy: true, timeout: 30_000, maximumAge: 0 },
-  );
+  ); };
   useEffect(() => {
     let live = true;
-    navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (live && r.state === 'granted') watch(); }).catch(() => {});
+    navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (live && r.state === 'granted') share(); }).catch(() => {});
     return () => { live = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const canSend = pan ? !!centre : loc === 'on';
   return (
-    <MapFrame header="Mint your land title" me={me}
-      info="Stand in the middle of your field. Send a point for each field where you have the right to cultivate."
-      overlay={loc === 'ask' ? <ShareLocation onAllow={watch} onNotNow={() => setLoc('off')} /> : null}>
+    <MapFrame header="Mint your land title" me={pan ? null : me} pan={pan} onCenter={setCentre}
+      info="Stand in the middle of your field. Send a point for each field where you have the right to cultivate.">
       <div style={cardTitle}>Walk to your first field</div>
-      {loc === 'off' && (
+      {!pan && loc === 'off' && (
         <div style={{ ...sheetText, textAlign: 'center' }}>{blocked
           ? 'Allow location for this app in your phone settings.'
           : 'Your location is off. Nila needs it to place a point in your field.'}</div>
       )}
-      {error && loc === 'on' && <div role="alert" style={{ ...sheetText, color: C.coral, textAlign: 'center' }}>{error}</div>}
-      {loc === 'on' && <button type="button" style={busy ? btnDisabled : btnPrimary} disabled={busy} onClick={onLocate}>Send my location</button>}
-      {loc === 'off' && <button type="button" style={btnPrimary} onClick={() => setLoc('ask')}>Share my location</button>}
-      {loc === 'ask' && <button type="button" style={btnDisabled} disabled>Send my location</button>}
+      {error && <div role="alert" style={{ ...sheetText, color: C.coral, textAlign: 'center' }}>{error}</div>}
+      {canSend
+        ? <button type="button" style={busy ? btnDisabled : btnPrimary} disabled={busy} onClick={() => (pan ? onPanPoint(centre) : onLocate())}>Send my location</button>
+        : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>}
+      {pan
+        ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
+        : <button type="button" style={btnSecondary} onClick={() => setPan(true)}>Pan the map</button>}
     </MapFrame>
   );
 }
@@ -136,7 +119,15 @@ export function PointsStep({ evm, onDone }) {
   const [q, setQ] = useState(() => readPoints(evm));
   const [name, setName] = useState('');
   const [gps, setGps] = useState(null);
+  const [centre, setCentre] = useState(null);
   const save = (v) => { setQ(v); write(evm, v); };
+  const pan = !!q.pan;                                   // chosen at R5, kept for R6/R7
+  const setPan = (on) => save({ ...q, pan: on });
+  const addPoint = (c) => {                              // pan mode: the map's centre (as today's off-site points)
+    save({ ...q, points: [...q.points, { lat: c.lat, lng: c.lng, acc: 0, manual: true, ts: Math.floor(Date.now() / 1000),
+      name: name.trim() || undefined }].slice(0, MAX) });
+    setName('');
+  };
 
   const locate = () => {
     if (!navigator.geolocation) { setGps({ error: 'This phone cannot find its location.' }); return; }
@@ -156,9 +147,9 @@ export function PointsStep({ evm, onDone }) {
 
   const n = q.points.length;
   const first = n === 0;
-  if (first) return <FirstPoint onLocate={locate} busy={gps?.busy} error={gps?.error} />;
+  if (first) return <FirstPoint onLocate={locate} onPanPoint={addPoint} pan={pan} setPan={setPan} busy={gps?.busy} error={gps?.error} />;
   return (
-    <FieldFrame points={n} map={q.points}>
+    <FieldFrame points={n} map={q.points} pan={pan} onCenter={setCentre}>
       <div style={cardTitle}>{first ? 'Walk to your first field' : 'Walk to the center of your next field'}</div>
       {first && <div style={sheetText}>Stand in the middle of your field. Send a point for each field where you have the right to cultivate.</div>}
       {!online && (
@@ -179,7 +170,8 @@ export function PointsStep({ evm, onDone }) {
       )}
       {gps?.error && <div role="alert" style={{ ...sheetText, color: C.coral }}>{gps.error}</div>}
       {n < MAX && (
-        <button type="button" style={gps?.busy ? btnDisabled : btnPrimary} disabled={gps?.busy} onClick={locate}>
+        <button type="button" style={gps?.busy || (pan && !centre) ? btnDisabled : btnPrimary} disabled={gps?.busy || (pan && !centre)}
+          onClick={() => (pan ? addPoint(centre) : locate())}>
           {!online ? 'Save this location' : first ? 'Send my location' : 'Send another location'}
         </button>
       )}

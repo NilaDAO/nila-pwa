@@ -14,6 +14,8 @@ const OPTIONS = {
   rotateControl: false, scrollwheel: false, draggable: false, zoom: 21, tilt: 0, keyboardShortcuts: false,
   clickableIcons: false, disableDefaultUI: true, mapId: MAP_ID,
 };
+// Pan the map (R5, executive decision 20 Oct): today's off-site options — she moves the map; her point is its centre.
+const PAN_OPTIONS = { ...OPTIONS, draggable: true, gestureHandling: 'greedy', scrollwheel: true, zoomControl: true };
 const STYLE = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
 
 function dot() {   // today's marker (fieldRegMaps.js createCircleIcon)
@@ -49,7 +51,7 @@ function meDot() {   // R5 #on: her location, a blue dot (board SendLocation-v3n
 }
 
 /** points: her saved points; me: {lat, lng, acc} her live location (R5 #on: blue dot and accuracy circle). */
-export default function FieldMap({ points = [], me = null }) {
+export default function FieldMap({ points = [], me = null, pan = false, onCenter }) {
   const map = useRef(null);
   const marks = useRef([]);
   const line = useRef(null);
@@ -80,9 +82,9 @@ export default function FieldMap({ points = [], me = null }) {
           fillColor: '#3B82F6', fillOpacity: 0.18, strokeColor: '#3B82F6', strokeOpacity: 0.4, strokeWeight: 1, clickable: false });
         if (g.marker?.AdvancedMarkerElement) meMark.current = new g.marker.AdvancedMarkerElement({ position: { lat: me.lat, lng: me.lng }, map: m, content: meDot() });
       }
-      m.setCenter(center);
+      if (!pan) m.setCenter(center);          // panning: she moves the map, it never jumps back
     } catch (e) { console.error('[field map] markers not drawn', e); }
-  }, [points, center, me]);
+  }, [points, center, me, pan]);
 
   useEffect(() => { draw(); }, [draw]);
   useEffect(() => () => {
@@ -91,7 +93,8 @@ export default function FieldMap({ points = [], me = null }) {
   }, []);
 
   return (
-    <GoogleMap mapContainerStyle={STYLE} center={center} zoom={21} options={OPTIONS}
-      onLoad={(m) => { map.current = m; draw(); }} onUnmount={() => { map.current = null; }} />
+    <GoogleMap mapContainerStyle={STYLE} center={pan ? undefined : center} zoom={21} options={pan ? PAN_OPTIONS : OPTIONS}
+      onLoad={(m) => { map.current = m; m.setCenter(center); draw(); }} onUnmount={() => { map.current = null; }}
+      onIdle={() => { const c = map.current?.getCenter(); if (pan && c && onCenter) onCenter({ lat: c.lat(), lng: c.lng() }); }} />
   );
 }

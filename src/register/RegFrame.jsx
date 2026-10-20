@@ -95,21 +95,37 @@ export const fieldInput = { display: 'block', width: '100%', height: 44, borderR
   fontSize: 16, color: '#F1F5F9', border: 0, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', flexShrink: 0 };
 
 /** R5–R7: the satellite map (FieldMap) once Google Maps is loaded; until then, offline or without a key, the scene. */
-function MapOrScene({ map, points, me }) {
+function MapOrScene({ map, points, me, pan, onCenter }) {
   const { ok } = useFieldMapLoaded();
-  return ok ? <FieldMap points={map} me={me} /> : <FieldGround points={points} />;
+  if (!ok) return <FieldGround points={points} />;
+  return (
+    <>
+      <FieldMap points={map} me={me} pan={pan} onCenter={onCenter} />
+      {pan && <PanPin />}
+    </>
+  );
+}
+
+/** Pan the map: the pin at the map's centre marks where her point goes. */
+function PanPin() {
+  return (
+    <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 2 }}>
+      <svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="rgba(212,166,52,0.25)" />
+        <circle cx="22" cy="22" r="9" fill="#D4A634" stroke="#121212" strokeWidth="3" /></svg>
+    </div>
+  );
 }
 
 /** R5 (board SendLocation-v3np, notes reg-r5, artifact v1755): the satellite map, a dark top gradient with the
  *  header in the place of the wordmark (no logo), one card dropping in, the info note at the bottom; `overlay` is
  *  the Share your location confirm. Background: the Google satellite map (executive decision 20 Oct: the same map as
  *  today's field registration; the note names Esri imagery), the field scene when Maps cannot load. */
-export function MapFrame({ header, map = [], me, info, overlay, children }) {
+export function MapFrame({ header, map = [], me, info, overlay, pan, onCenter, children }) {
   return (
     <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#4a6632', display: 'flex', flexDirection: 'column',
       fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
       <style>{MOTION_CSS}</style>
-      <MapOrScene map={map} points={map.length} me={me} />
+      <MapOrScene map={map} points={map.length} me={me} pan={pan} onCenter={onCenter} />
       <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 160, pointerEvents: 'none',
         background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)' }} />
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 44, pointerEvents: 'none' }}>
@@ -134,12 +150,12 @@ export function MapFrame({ header, map = [], me, info, overlay, children }) {
   );
 }
 
-export function FieldFrame({ points, sheet, map, children }) {
+export function FieldFrame({ points, sheet, map, pan, onCenter, children }) {
   return (
     <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#8a9a2e', display: 'flex', flexDirection: 'column',
       fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
       <style>{MOTION_CSS}</style>
-      {map ? <MapOrScene map={map} points={points} /> : <FieldGround points={points} sheet={sheet} />}
+      {map ? <MapOrScene map={map} points={points} pan={pan} onCenter={onCenter} /> : <FieldGround points={points} sheet={sheet} />}
       <div className="nila-motion" style={{ animation: anim.rise, position: 'relative', marginTop: 'auto', marginBottom: 72, background: '#121212', borderRadius: 24,
         boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '18px 22px',
         display: 'flex', flexDirection: 'column', gap: 14 }}>
