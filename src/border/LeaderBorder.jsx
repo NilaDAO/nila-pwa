@@ -132,6 +132,7 @@ function Check({ job, n, onDone, onBack }) {
 /** L4: every field accepted (or left out): mint her land title. */
 function Done({ job, onField, onBack }) {
   const mint = useMintLandTitle(job.id);
+  const [farm, setFarm] = useState('');   // the title's name: hers from R6, else the leader names it here
   const ok = job.fields.filter((f) => f.state === 'accepted');
   const total = ok.reduce((a, f) => a + (shapeFor(f, job.plan)?.acres || 0), 0);
   const st = job.status === 'minted' || job.mint?.status === 'minted' ? 'minted'
@@ -147,7 +148,14 @@ function Done({ job, onField, onBack }) {
       {st === 'minting' && <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Minting the land title. She gets a notification when it is ready.</p>}
       {st === 'minted' && <p role="status" style={{ margin: 0, fontSize: 14, color: C.accent, fontWeight: 700 }}>Land title minted.</p>}
       {(st === 'failed' || mint.error) && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{mint.error?.message || job.mint?.error || 'The mint failed.'}</p>}
-      {!st && <button type="button" disabled={mint.isPending || !ok.length} style={{ ...btn(true), flex: 'none' }} onClick={() => mint.mutate({})}>Mint land title</button>}
+      {!st && !job.farm && (
+        <label style={{ display: 'grid', gap: 4, fontSize: 14 }}>Name of the land
+          <input value={farm} onChange={(e) => setFarm(e.target.value)} maxLength={64}
+            style={{ padding: 10, fontSize: 16, borderRadius: 8, border: `1px solid ${C.muted}`, background: C.raised, color: C.text }} />
+        </label>
+      )}
+      {!st && <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim())} style={{ ...btn(true), flex: 'none' }}
+        onClick={() => mint.mutate(job.farm ? {} : { farm: farm.trim() })}>Mint land title</button>}
       {st === 'minted' && <button type="button" style={{ ...btn(false), flex: 'none' }} onClick={onBack}>Back to tasks</button>}
     </Frame>
   );
