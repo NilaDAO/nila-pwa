@@ -64,7 +64,10 @@ const WifiOff = () => (
  *  Before the first point: "Share my location" asks the phone; "Choose on the map" lets her move the map instead
  *  (today's off-site mode, the pin is her point). Then for every field: "Save this location" puts the point on the
  *  map (R6's marker: black inside, amber border); the buttons wait until she names it; the name shows on the map as a
- *  chip (A4: tap = selected, accent) and in the list under the name input. "All my fields have a point" ends it. */
+ *  chip (A4: tap = selected, accent) and in the list under the name input. Once a name is typed, the primary turns
+ *  "Next point" and stores it. "Take a second point": when she cannot stand in the middle of the field, a second point
+ *  and the field's point becomes the middle of the two. A selected chip in the list has a cross that removes the
+ *  point. "All my fields have a point" ends it (executive decisions 20 Oct). */
 export function PointsStep({ evm, onDone }) {
   const online = useOnline();
   const [q, setQ] = useState(() => readPoints(evm));
@@ -109,6 +112,21 @@ export function PointsStep({ evm, onDone }) {
     const pts = q.points.slice(); pts[n - 1] = { ...pts[n - 1], name: v.slice(0, 40) };
     save({ ...q, points: pts }); setName('');
   };
+  // A second point for the same field: the field's point is the middle of the two (she cannot stand in the middle).
+  const secondPoint = () => {
+    setError(null);
+    const mid = (b) => {
+      const pts = q.points.slice(); const a = pts[n - 1];
+      const first = a.parts ? a.parts[0] : a;
+      pts[n - 1] = { ...a, lat: (first.lat + b.lat) / 2, lng: (first.lng + b.lng) / 2, two: true, parts: [first, b], acc: Math.max(first.acc || 0, b.acc || 0) };
+      save({ ...q, points: pts });
+    };
+    if (pan) { if (centre) mid({ lat: centre.lat, lng: centre.lng, acc: 0, manual: true }); return; }
+    setBusy(true);
+    fix((m) => { setMe(m); mid(m); setBusy(false); },
+      (e) => { setBusy(false); setError(e.code === 1 ? 'Allow location for this app in your phone settings.' : 'Your location was not found. Try again outside.'); });
+  };
+  const remove = (i) => { save({ ...q, points: q.points.filter((_, k) => k !== i) }); setSelected(null); };
   const finish = () => { save({ ...q, finish: true }); onDone(); };
 
   const ready = pan ? !!centre : loc === 'on';           // she can save a point now
@@ -130,22 +148,34 @@ export function PointsStep({ evm, onDone }) {
       )}
       {n > 0 && (
         <input type="text" aria-label="Field name" placeholder="Field name" value={name} maxLength={40} disabled={!unnamed}
-          onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') storeName(); }} onBlur={storeName}
+          onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') storeName(); }}
           style={{ ...fieldInput, opacity: unnamed ? 1 : 0.5 }} />
       )}
       {q.points.some((p) => p.name) && (
         <div role="list" aria-label="Your fields" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {q.points.map((p, i) => (p.name ? (
-            <button key={i} type="button" role="listitem" onClick={() => setSelected(selected === i ? null : i)}
-              style={{ padding: '0 10px', height: 32, borderRadius: 9999, border: 0, fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
-                background: selected === i ? '#D4CF5A' : '#1F2733', color: selected === i ? '#121212' : '#F1F5F9', cursor: 'pointer' }}>{p.name}</button>
+            <span key={i} role="listitem" style={{ display: 'inline-flex', alignItems: 'center', height: 32, borderRadius: 9999,
+              background: selected === i ? '#D4CF5A' : '#1F2733', color: selected === i ? '#121212' : '#F1F5F9' }}>
+              <button type="button" onClick={() => setSelected(selected === i ? null : i)}
+                style={{ padding: selected === i ? '0 4px 0 10px' : '0 10px', height: 32, border: 0, background: 'transparent', color: 'inherit',
+                  fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>{p.name}</button>
+              {selected === i && (
+                <button type="button" aria-label={`Remove ${p.name}`} onClick={() => remove(i)}
+                  style={{ width: 28, height: 32, border: 0, background: 'transparent', color: 'inherit', fontSize: 16, fontWeight: 700, cursor: 'pointer', paddingRight: 8 }}>✕</button>
+              )}
+            </span>
           ) : null))}
         </div>
       )}
       {error && <div role="alert" style={{ ...sheetText, color: C.coral, textAlign: 'center' }}>{error}</div>}
-      {n < MAX && (ready
-        ? <button type="button" style={wait ? btnDisabled : btnPrimary} disabled={wait} onClick={saveHere}>Save this location</button>
-        : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>)}
+      {unnamed && name.trim()
+        ? <button type="button" style={btnPrimary} onClick={storeName}>Next point</button>
+        : n < MAX && (ready
+          ? <button type="button" style={wait ? btnDisabled : btnPrimary} disabled={wait} onClick={saveHere}>Save this location</button>
+          : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>)}
+      {unnamed && !q.points[n - 1].two && (
+        <button type="button" style={busy ? btnDisabled : btnSecondary} disabled={busy} onClick={secondPoint}>Take a second point</button>
+      )}
       {n === 0 && (pan
         ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
         : <button type="button" style={btnSecondary} onClick={choose}>Choose on the map</button>)}
