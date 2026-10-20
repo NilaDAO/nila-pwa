@@ -127,10 +127,10 @@ const INFO_R5 = 'Stand in the middle of your field. Send a point for each field 
 export function MapStage({ header = 'Mint your land title', children }) {
   const [view, setView] = useState({ map: [], me: null, start: null, pan: false, info: INFO_R5 });
   const centre = useRef(null);
-  const ctx = useMemo(() => ({ setView, centre, select }), []);
   const onCenter = useCallback((c) => centre.current?.(c), []);
   const select = useRef(null);
   const onSelect = useCallback((i) => select.current?.(i), []);
+  const ctx = useMemo(() => ({ setView, centre, select }), []);
   return (
     <MapCtx.Provider value={ctx}>
       <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#4a6632', display: 'flex', flexDirection: 'column',
