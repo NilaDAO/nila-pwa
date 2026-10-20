@@ -14,13 +14,15 @@ const ZOOM_CSS = `.nl-fz{transform-box:view-box;transform-origin:200px 396px}
 let played = false;   // the zoom plays once per app start (README rule 2): memory only, never storage
 
 export default function FieldScene({ mode = 'close', dim = false, children }) {
-  // Decided once when the screen appears: a re-render (typing, a query) must not cut the zoom off mid-play.
-  const [zoom] = useState(() => { const z = mode === 'zoom' && !played; if (z) played = true; return z; });
+  // Decided once when the screen appears (a re-render must not cut the zoom off), and "played" only once the zoom has
+  // finished: R1 can be mounted twice while the app boots, and the first mount must not use up the zoom.
+  const [zoom] = useState(() => mode === 'zoom' && !played);
   return (
     <svg aria-hidden="true" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice"
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
       <style>{ZOOM_CSS}</style>
-      <g className={`nl-fz ${zoom ? 'nl-fz-play' : 'nl-fz-close'}`} dangerouslySetInnerHTML={{ __html: FIELD_SCENE }} />
+      <g className={`nl-fz ${zoom ? 'nl-fz-play' : 'nl-fz-close'}`} onAnimationEnd={() => { played = true; }}
+        dangerouslySetInnerHTML={{ __html: FIELD_SCENE }} />
       {dim && <rect width="390" height="844" fill="rgba(0,0,0,0.45)" />}
       {children}
     </svg>
