@@ -1,6 +1,6 @@
-// Recover (nila-design notes reg-recover): after R1 'Recover wallet' → R2 → R3 the wallet and its data load, and only
-// what is missing is asked, in the order of a new registration:
-//   R9  when this phone holds no union for this wallet (a new phone, or after Reset account),
+// Existing Privy user (LOAN_RULES §5, 20 Oct: Privy decides after the code, not R1's button; src/register/AfterCode.jsx):
+// the wallet and its data load, then
+//   R9  always (executive decision 20 Oct, "exists → R9"; replaces notes reg-recover's 'R9 only without a stored union'),
 //   R13 when no mode is stored ('nila.mode'),
 //   R10 when notifications are not allowed yet.
 // R5–R8 and R14 are always skipped. When her union is on the phone, R9 is not shown but its record is written again
@@ -23,7 +23,9 @@ export default function RecoverSteps({ evm, onDone }) {
   const { isLeader } = useIsLeader({ address: evm });
   const [stored] = useState(() => unionByPolygon(readUnion(evm)?.polygon));
   const [rep, setRep] = useState(stored?.rep);
-  const [step, setStep] = useState(() => (stored ? 'restore' : 'union'));
+  // An existing Privy user always goes to R9 (LOAN_RULES §5, 20 Oct "New or existing after the code"); the stored
+  // union is preselected there.
+  const [step, setStep] = useState('union');
 
   const after = (from) => {
     const order = ['union', 'mode', 'notify'];

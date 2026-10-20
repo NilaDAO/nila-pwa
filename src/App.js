@@ -16,6 +16,7 @@ const StellarGate = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./mo
 const NewStart = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/Start')) : null;
 // Recover asks only what is missing (R9 / R13 / R10, notes reg-recover), same gate.
 const RecoverSteps = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/RecoverSteps')) : null;
+const AfterCode = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/AfterCode')) : null;
 import { Routes, Route } from 'react-router-dom';
 
 // 🛠️ UI pieces (place‑holders)
@@ -43,6 +44,7 @@ function App({installAvailable}) {
   const { setTokenData,setGrantData, db, setDb, setUnionFunds, setDebts, setFieldActivity, keyMalformed } = useDataContext();
   const [ bootStage, setBootStage]                                                      = useState('loading');
   const [ fromRegister, setFromRegister ]                                               = useState(false); // R3 done: load on the R ground
+  const [ codeDone, setCodeDone ]                                                       = useState(false); // R3 done: Privy decides R5 or R9
   const [ recovered, setRecovered ]                                                     = useState(null);  // her Polygon address after a recover
   const [ chain, setChain]                                                              = useState();
   const [ address, setAddress]                                                          = useState('');
@@ -343,10 +345,10 @@ function App({installAvailable}) {
         {bootStage === 'register' && <Route path="/*" element={NewStart
           ? <Suspense fallback={<NewBoot.RegLoading />}>{recovered
             ? <RecoverSteps evm={recovered} onDone={() => { setFromRegister(true); setBootStage('loading'); }} />
-            : <NewStart onDone={({ isNew, address }) => {
-              if (!isNew && address) { setRecovered(address); return; }
-              setFromRegister(true); setBootStage('loading');
-            }} />}</Suspense>
+            : codeDone
+              // Privy decides new (R5) or existing (R9), not R1's button (LOAN_RULES §5, 20 Oct).
+              ? <AfterCode onNew={() => { setFromRegister(true); setBootStage('loading'); }} onExisting={(evm) => setRecovered(evm)} />
+              : <NewStart onDone={() => setCodeDone(true)} />}</Suspense>
           : <RegisterRecover setBootStage={setBootStage} />} />}
         {bootStage === 'ready' && <Route path="/*" element={StellarGate
           ? <Suspense fallback={fromRegister ? <NewBoot.RegLoading /> : null}><StellarGate><Wallet LAND={LAND} selected={false} /></StellarGate></Suspense>

@@ -136,7 +136,8 @@ export default function Shell({ leader }) {
   // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
   // Until her titles are known, a member sees the registration ground, not a flash of the tab bar.
   if (!leader && !legacy.data && legacy.isLoading) return <RegLoading />;
-  if (!leader && legacy.data && legacy.data.titles === 0) {
+  // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
+  if (!leader && legacy.data && legacy.data.titles === 0 && s?.privyNew === true) {
     const onTitle = () => { qc.invalidateQueries({ queryKey: ['polygon', 'legacy'] }); go('crop'); };
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
   }
