@@ -130,7 +130,8 @@ export function MapStage({ header = 'Mint your land title', children }) {
   const onCenter = useCallback((c) => centre.current?.(c), []);
   const select = useRef(null);
   const onSelect = useCallback((i) => select.current?.(i), []);
-  const ctx = useMemo(() => ({ setView, centre, select }), []);
+  const [lowered, setLowered] = useState(false);         // the card dragged down: the info footer slides out
+  const ctx = useMemo(() => ({ setView, centre, select, setLowered }), []);
   return (
     <MapCtx.Provider value={ctx}>
       <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#4a6632', display: 'flex', flexDirection: 'column',
@@ -152,10 +153,12 @@ export function MapStage({ header = 'Mint your land title', children }) {
         {children}
         <div style={{ height: 28 }} />
         {view.info && (
+          <div style={{ transform: lowered ? 'translateY(110%)' : 'translateY(0)', transition: `transform 450ms ${EASE}` }}>
           <div className="nila-motion" style={{ animation: anim.swap, position: 'relative', margin: '16px 8px 0 8px', background: '#121212',
             padding: '14px 16px 30px', display: 'flex', gap: 12, alignItems: 'flex-start', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
             <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><InfoIcon /></div>
             <div style={{ fontSize: 14, color: '#94A3B8', lineHeight: 1.5, alignSelf: 'center' }}>{view.info}</div>
+          </div>
           </div>
         )}
       </div>
@@ -172,16 +175,59 @@ export function MapFrame({ header, map = [], me = null, start = null, info = INF
   useEffect(() => { if (ctx) { ctx.centre.current = onCenter; ctx.select.current = onSelect; } }, [ctx, onCenter, onSelect]);
   const card = (
     <>
-      <div className="nila-motion" style={{ animation: anim.drop, position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
-        boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '18px 22px',
-        display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {children}
-      </div>
+      <DragCard onLowered={(v) => ctx?.setLowered(v)}>{children}</DragCard>
       {overlay}
     </>
   );
   if (ctx) return card;
   return <MapStage header={header}><StandaloneView view={{ header, map, me, start, info, pan, selected }} onCenter={onCenter} onSelect={onSelect}>{card}</StandaloneView></MapStage>;
+}
+
+/** The map card with the standard drag line (map cards): drag down lowers the card — never off the screen, the top
+ *  strip stays — and the info footer slides out (the reverse of its slide in); drag up or a tap on the line brings
+ *  both back. Releasing snaps to the nearer end. */
+function DragCard({ onLowered, children }) {
+  const ref = useRef(null);
+  const drag = useRef(null);
+  const [off, setOff] = useState(0);
+  const [moving, setMoving] = useState(false);
+  const maxOff = () => {
+    const el = ref.current;
+    if (!el) return 0;
+    const top = el.getBoundingClientRect().top - off;      // the card's top when not lowered
+    return Math.max(0, Math.round(window.innerHeight - 72 - top));
+  };
+  const setLow = (v) => { setOff(v ? maxOff() : 0); onLowered?.(v); };
+  const down = (e) => { drag.current = { y: e.clientY, off, max: maxOff(), moved: false }; setMoving(true); e.currentTarget.setPointerCapture?.(e.pointerId); };
+  const move = (e) => {
+    const d = drag.current; if (!d) return;
+    const dy = e.clientY - d.y;
+    if (Math.abs(dy) > 4) d.moved = true;
+    const v = Math.min(d.max, Math.max(0, d.off + dy));
+    setOff(v);
+    onLowered?.(v > 24);
+  };
+  const up = () => {
+    const d = drag.current; drag.current = null; setMoving(false);
+    if (!d) return;
+    if (!d.moved) { setLow(off < 24); return; }                // a tap toggles
+    setLow(off > d.max / 2);
+  };
+  return (
+    <div ref={ref} style={{ position: 'relative', zIndex: 4, transform: `translateY(${off}px)`, transition: moving ? 'none' : `transform 300ms ${EASE}` }}>
+    <div className="nila-motion" style={{ animation: anim.drop, position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
+      boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '10px 22px 18px',
+      display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div role="button" tabIndex={0} aria-label="Drag to move the card up or down"
+        onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setLow(off < 24); }}
+        style={{ alignSelf: 'center', padding: '8px 60px', margin: '-4px 0 -6px', cursor: 'grab', touchAction: 'none' }}>
+        <div style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.35)' }} />
+      </div>
+      {children}
+    </div>
+    </div>
+  );
 }
 
 function StandaloneView({ view, onCenter, onSelect, children }) {
