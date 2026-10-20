@@ -29,9 +29,9 @@ export const primary = { width: '100%', height: 44, borderRadius: R.button, bord
 export const secondary = { ...primary, background: C.raised, color: C.text };
 
 /** A registration step on the board frame (src/register/RegFrame.jsx): the card holds the title and the step. */
-export function Page({ title, onBack, info, logo, children }) {
+export function Page({ title, onBack, info, logo, drop, children }) {
   return (
-    <RegFrame onBack={onBack} info={info} logo={logo}>
+    <RegFrame onBack={onBack} info={info} logo={logo} drop={drop}>
       {title && <h1 style={cardTitle}>{title}</h1>}
       {children}
     </RegFrame>

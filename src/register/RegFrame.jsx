@@ -5,6 +5,20 @@ import { C, FONT } from '../shell/tokens';
 
 const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
 
+// Motion from the boards (Reg*, SendLocation*, SheetVerify-88ia): the card drops in (R1, R10), the info note slides
+// up 120 ms later, the field sheet rises, confirms rise over a fading layer. Off with reduced motion.
+const EASE = 'cubic-bezier(0.2,0.8,0.2,1)';
+export const MOTION_CSS = `@keyframes card-drop{from{transform:translateY(-60px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes card-swap{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes card-rise{from{transform:translateY(100vh)}to{transform:translateY(0)}}
+@keyframes confirm-rise{from{transform:translateY(600px)}to{transform:translateY(0)}}
+@keyframes scrim-in{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion: reduce){.nila-motion{animation:none!important}}`;
+export const anim = {
+  drop: `card-drop 450ms ${EASE} both`, swap: `card-swap 450ms ${EASE} 120ms both`, rise: `card-rise 450ms ${EASE} both`,
+  confirm: `confirm-rise 450ms ${EASE} both`, scrim: 'scrim-in 250ms ease both',
+};
+
 function Ground() {
   return (
     <svg aria-hidden="true" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice"
@@ -35,10 +49,11 @@ export const btnQuiet = { minHeight: 44, border: 0, background: 'transparent', p
   lineHeight: 1.5, color: '#94A3B8', width: '100%', cursor: 'pointer' };
 
 /** onBack: the round back button (R3, R4); info: the note under the card; logo=false for long cards (R5 list). */
-export default function RegFrame({ onBack, backLabel = 'Back', info, logo = true, children }) {
+export default function RegFrame({ onBack, backLabel = 'Back', info, logo = true, drop = false, children }) {
   return (
     <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#8a9a2e', display: 'flex', flexDirection: 'column',
       fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
+      <style>{MOTION_CSS}</style>
       <Ground />
       {onBack && (
         <button type="button" onClick={onBack} aria-label={backLabel} style={{ position: 'absolute', left: 8, top: 52, zIndex: 5,
@@ -51,14 +66,14 @@ export default function RegFrame({ onBack, backLabel = 'Back', info, logo = true
         {logo && <img src={LOGO} alt="Nila" style={{ width: 120, height: 120 }} />}
       </div>
       <div style={{ flexGrow: 1, minHeight: 24 }} />
-      <div style={{ position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
+      <div className="nila-motion" style={{ animation: drop ? anim.drop : undefined, position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
         boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '18px 22px',
         display: 'flex', flexDirection: 'column', gap: 14 }}>
         {children}
       </div>
       <div style={{ height: 28 }} />
       {info ? (
-        <div style={{ position: 'relative', margin: '16px 8px 0 8px', background: '#121212', padding: '14px 16px', display: 'flex',
+        <div className="nila-motion" style={{ animation: anim.swap, position: 'relative', margin: '16px 8px 0 8px', background: '#121212', padding: '14px 16px', display: 'flex',
           gap: 12, alignItems: 'flex-start', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
           <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><InfoIcon /></div>
           <div style={{ fontSize: 14, color: '#94A3B8', lineHeight: 1.5, paddingBottom: 16 }}>{info}</div>
@@ -109,8 +124,9 @@ export function FieldFrame({ points, sheet, children }) {
   return (
     <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#25361f', display: 'flex', flexDirection: 'column',
       fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
+      <style>{MOTION_CSS}</style>
       <FieldGround points={points} sheet={sheet} />
-      <div style={{ position: 'relative', marginTop: 'auto', marginBottom: 72, background: '#121212', borderRadius: 24,
+      <div className="nila-motion" style={{ animation: anim.rise, position: 'relative', marginTop: 'auto', marginBottom: 72, background: '#121212', borderRadius: 24,
         boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '18px 22px',
         display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div aria-hidden="true" style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.35)', alignSelf: 'center' }} />

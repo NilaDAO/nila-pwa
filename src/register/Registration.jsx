@@ -18,7 +18,7 @@ import { useMyBorderJob, useSendFieldPoints } from '../border/hooks';
 import { Page, PointsStep, Waiting, clearPoints, readPoints, useOnline } from '../border/SendLocation';
 import { C, R } from '../shell/tokens';
 import { Loading } from './Boot';
-import { FieldFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, sheetText } from './RegFrame';
+import { FieldFrame, anim, btnDisabled, btnPrimary, btnSecondary, cardTitle, sheetText } from './RegFrame';
 
 // Today's one union (the Polygon registry's entry, src/components/Forms/memberUnion.js). DESIGN GAP: from the node.
 const UNIONS = [{ name: 'Mother Theresa Union', rep: 'Mrs. Rosalie Susairaj', polygon: '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070',
@@ -36,8 +36,8 @@ const setMode = (m) => { try { localStorage.setItem('nila.mode', m); } catch { /
 function Confirm({ text, onCancel, onAccept }) {
   return (
     <>
-      <div aria-hidden="true" onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.6)' }} />
-      <div role="dialog" aria-modal="true" aria-describedby="confirm-body" style={{ position: 'fixed', left: 8, right: 8, bottom: 88, zIndex: 21,
+      <div aria-hidden="true" className="nila-motion" onClick={onCancel} style={{ animation: anim.scrim, position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.6)' }} />
+      <div role="dialog" aria-modal="true" aria-describedby="confirm-body" className="nila-motion" style={{ animation: anim.confirm, position: 'fixed', left: 8, right: 8, bottom: 88, zIndex: 21,
         background: '#121212', borderRadius: 24, boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px',
         padding: '14px 22px 22px', display: 'flex', flexDirection: 'column', gap: 16, fontFamily: 'inherit' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0' }}>
@@ -164,7 +164,7 @@ function NotifyStep({ evm, onDone }) {
     onDone();
   };
   return (
-    <Page title="Your union would like to send you updates." info="You need to enable notifications so your union can send you information requests.">
+    <Page drop title="Your union would like to send you updates." info="You need to enable notifications so your union can send you information requests.">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 24, paddingBottom: 24 }}>
         <button type="button" style={busy ? btnDisabled : btnPrimary} disabled={busy} onClick={enable}>Enable</button>
         <button type="button" style={btnSecondary} onClick={() => setSkip(true)}>Skip</button>

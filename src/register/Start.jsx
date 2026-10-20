@@ -48,7 +48,7 @@ async function storeLocal({ phone, salt, attrs, refresh, access }) {
 /** R1: create a new wallet or recover one. */
 function Wallet({ onPick }) {
   return (
-    <RegFrame info="This is free of charge. In your wallet you hold your land title, vouchers and other tokens.">
+    <RegFrame drop info="This is free of charge. In your wallet you hold your land title, vouchers and other tokens.">
       <button type="button" style={btnPrimary} onClick={() => onPick('create')}>Create a new digital wallet</button>
       <button type="button" style={btnSecondary} onClick={() => onPick('recover')}>Recover wallet</button>
     </RegFrame>
