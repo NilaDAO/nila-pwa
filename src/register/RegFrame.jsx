@@ -95,9 +95,43 @@ export const fieldInput = { display: 'block', width: '100%', height: 44, borderR
   fontSize: 16, color: '#F1F5F9', border: 0, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', flexShrink: 0 };
 
 /** R5–R7: the satellite map (FieldMap) once Google Maps is loaded; until then, offline or without a key, the scene. */
-function MapOrScene({ map, points }) {
+function MapOrScene({ map, points, me }) {
   const { ok } = useFieldMapLoaded();
-  return ok ? <FieldMap points={map} /> : <FieldGround points={points} />;
+  return ok ? <FieldMap points={map} me={me} /> : <FieldGround points={points} />;
+}
+
+/** R5 (board SendLocation-v3np, notes reg-r5, artifact v1755): the satellite map, a dark top gradient with the
+ *  header in the place of the wordmark (no logo), one card dropping in, the info note at the bottom; `overlay` is
+ *  the Share your location confirm. Background: the Google satellite map (executive decision 20 Oct: the same map as
+ *  today's field registration; the note names Esri imagery), the field scene when Maps cannot load. */
+export function MapFrame({ header, map = [], me, info, overlay, children }) {
+  return (
+    <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#4a6632', display: 'flex', flexDirection: 'column',
+      fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
+      <style>{MOTION_CSS}</style>
+      <MapOrScene map={map} points={map.length} me={me} />
+      <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 160, pointerEvents: 'none',
+        background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)' }} />
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 44, pointerEvents: 'none' }}>
+        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, lineHeight: 1.3, color: '#FFFFFF' }}>{header}</h1>
+      </div>
+      <div style={{ flexGrow: 1, minHeight: 24 }} />
+      <div className="nila-motion" style={{ animation: anim.drop, position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
+        boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '18px 22px',
+        display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {children}
+      </div>
+      <div style={{ height: 28 }} />
+      {info && (
+        <div className="nila-motion" style={{ animation: anim.swap, position: 'relative', margin: '16px 8px 0 8px', background: '#121212',
+          padding: '14px 16px 30px', display: 'flex', gap: 12, alignItems: 'flex-start', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
+          <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><InfoIcon /></div>
+          <div style={{ fontSize: 14, color: '#94A3B8', lineHeight: 1.5, alignSelf: 'center' }}>{info}</div>
+        </div>
+      )}
+      {overlay}
+    </div>
+  );
 }
 
 export function FieldFrame({ points, sheet, map, children }) {

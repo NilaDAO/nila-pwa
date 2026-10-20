@@ -5,7 +5,7 @@
 // The boards ask a field name per point (R6, R7), no farm name: the title's name is given by the leader at L4.
 import { useEffect, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
-import RegFrame, { Bouncing, FieldFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
+import RegFrame, { Bouncing, FieldFrame, MapFrame, anim, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
 const MAX = 6;
 const EMPTY = { points: [], farm: '', finish: false };
@@ -64,6 +64,73 @@ const WifiOff = () => (
  *  on the phone; from the second field on she names the field before sending its point; offline the points wait
  *  ("Saved, not sent yet"). "All my fields have a point" ends the step.
  *  DESIGN GAP: a location error (permission off, not found) has no board; a short line in the sheet says what to do. */
+const PinIcon = () => (
+  <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" />
+  </svg>
+);
+
+/** R5's confirm card (board SendLocation-v3np default state): over a 60 % dark layer; tapping the layer = Not now. */
+function ShareLocation({ onAllow, onNotNow }) {
+  return (
+    <>
+      <div aria-hidden="true" className="nila-motion" onClick={onNotNow} style={{ animation: anim.scrim, position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.6)' }} />
+      <div role="dialog" aria-modal="true" aria-labelledby="loc-title" aria-describedby="loc-body" className="nila-motion" style={{ animation: anim.confirm,
+        position: 'absolute', left: 8, right: 8, bottom: 88, zIndex: 21, background: '#121212', borderRadius: 24,
+        boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '14px 22px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0 0' }}>
+          <PinIcon />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div id="loc-title" style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Share your location</div>
+            <div id="loc-body" style={{ fontSize: 14, lineHeight: 1.5, color: '#94A3B8' }}>Nila uses it only to place a point in your field, for your land title.</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" style={{ ...btnSecondary, flex: 1 }} onClick={onNotNow}>Not now</button>
+          <button type="button" style={{ ...btnPrimary, flex: 1 }} onClick={onAllow}>Allow</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** R5 (board SendLocation-v3np, notes reg-r5): 'Mint your land title'. Default: the Share your location card; Allow →
+ *  the browser's location prompt → #on (her blue dot and accuracy circle, 'Send my location' → R6); Not now → #off
+ *  ('Share my location' opens the card again). Location already allowed → #on straight away.
+ *  DESIGN GAP (open point in reg-r5): a location the browser has blocked; the card cannot help, so a line says to
+ *  turn it on in the settings. */
+function FirstPoint({ onLocate, busy, error }) {
+  const [loc, setLoc] = useState('ask');                 // ask | on | off
+  const [me, setMe] = useState(null);
+  const [blocked, setBlocked] = useState(false);
+  const watch = () => navigator.geolocation?.getCurrentPosition(
+    (p) => { setMe({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }); setBlocked(false); setLoc('on'); },
+    (e) => { setBlocked(e.code === 1); setLoc('off'); },
+    { enableHighAccuracy: true, timeout: 30_000, maximumAge: 0 },
+  );
+  useEffect(() => {
+    let live = true;
+    navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (live && r.state === 'granted') watch(); }).catch(() => {});
+    return () => { live = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <MapFrame header="Mint your land title" me={me}
+      info="Stand in the middle of your field. Send a point for each field where you have the right to cultivate."
+      overlay={loc === 'ask' ? <ShareLocation onAllow={watch} onNotNow={() => setLoc('off')} /> : null}>
+      <div style={cardTitle}>Walk to your first field</div>
+      {loc === 'off' && (
+        <div style={{ ...sheetText, textAlign: 'center' }}>{blocked
+          ? 'Allow location for this app in your phone settings.'
+          : 'Your location is off. Nila needs it to place a point in your field.'}</div>
+      )}
+      {error && loc === 'on' && <div role="alert" style={{ ...sheetText, color: C.coral, textAlign: 'center' }}>{error}</div>}
+      {loc === 'on' && <button type="button" style={busy ? btnDisabled : btnPrimary} disabled={busy} onClick={onLocate}>Send my location</button>}
+      {loc === 'off' && <button type="button" style={btnPrimary} onClick={() => setLoc('ask')}>Share my location</button>}
+      {loc === 'ask' && <button type="button" style={btnDisabled} disabled>Send my location</button>}
+    </MapFrame>
+  );
+}
+
 export function PointsStep({ evm, onDone }) {
   const online = useOnline();
   const [q, setQ] = useState(() => readPoints(evm));
@@ -89,6 +156,7 @@ export function PointsStep({ evm, onDone }) {
 
   const n = q.points.length;
   const first = n === 0;
+  if (first) return <FirstPoint onLocate={locate} busy={gps?.busy} error={gps?.error} />;
   return (
     <FieldFrame points={n} map={q.points}>
       <div style={cardTitle}>{first ? 'Walk to your first field' : 'Walk to the center of your next field'}</div>

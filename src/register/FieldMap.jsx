@@ -41,11 +41,22 @@ export function useFieldMapLoaded() {
   return { ok: !!key && isLoaded && !loadError && !failed && navigator.onLine };
 }
 
-export default function FieldMap({ points = [] }) {
+function meDot() {   // R5 #on: her location, a blue dot (board SendLocation-v3np #on)
+  const c = document.createElement('div');
+  Object.assign(c.style, { width: '16px', height: '16px', backgroundColor: '#3B82F6', borderRadius: '50%', border: '3px solid #FFFFFF',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.4)', transform: 'translate(0%, 50%)' });
+  return c;
+}
+
+/** points: her saved points; me: {lat, lng, acc} her live location (R5 #on: blue dot and accuracy circle). */
+export default function FieldMap({ points = [], me = null }) {
   const map = useRef(null);
   const marks = useRef([]);
   const line = useRef(null);
-  const center = useMemo(() => (points.length ? { lat: points.at(-1).lat, lng: points.at(-1).lng } : UNION_LOCATION), [points]);
+  const meMark = useRef(null);
+  const meCircle = useRef(null);
+  const center = useMemo(() => (points.length ? { lat: points.at(-1).lat, lng: points.at(-1).lng }
+    : me ? { lat: me.lat, lng: me.lng } : UNION_LOCATION), [points, me]);
 
   const draw = useCallback(() => {
     const m = map.current;
@@ -61,12 +72,23 @@ export default function FieldMap({ points = [] }) {
         line.current = new g.Polyline({ path: points, geodesic: true, strokeColor: '#D4CF5A', strokeOpacity: 0.3, strokeWeight: 1 });
         line.current.setMap(m);
       }
+      if (meMark.current) meMark.current.map = null;
+      meCircle.current?.setMap(null);
+      meMark.current = null; meCircle.current = null;
+      if (me) {
+        meCircle.current = new g.Circle({ map: m, center: { lat: me.lat, lng: me.lng }, radius: Math.max(5, me.acc || 10),
+          fillColor: '#3B82F6', fillOpacity: 0.18, strokeColor: '#3B82F6', strokeOpacity: 0.4, strokeWeight: 1, clickable: false });
+        if (g.marker?.AdvancedMarkerElement) meMark.current = new g.marker.AdvancedMarkerElement({ position: { lat: me.lat, lng: me.lng }, map: m, content: meDot() });
+      }
       m.setCenter(center);
     } catch (e) { console.error('[field map] markers not drawn', e); }
-  }, [points, center]);
+  }, [points, center, me]);
 
   useEffect(() => { draw(); }, [draw]);
-  useEffect(() => () => { marks.current.forEach((x) => { x.map = null; }); line.current?.setMap(null); }, []);
+  useEffect(() => () => {
+    marks.current.forEach((x) => { x.map = null; }); line.current?.setMap(null);
+    if (meMark.current) meMark.current.map = null; meCircle.current?.setMap(null);
+  }, []);
 
   return (
     <GoogleMap mapContainerStyle={STYLE} center={center} zoom={21} options={OPTIONS}
