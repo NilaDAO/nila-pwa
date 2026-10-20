@@ -18,11 +18,25 @@ const OPTIONS = {
 const PAN_OPTIONS = { ...OPTIONS, draggable: true, gestureHandling: 'greedy', scrollwheel: true, zoomControl: true };
 const STYLE = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
 
-function dot() {   // today's marker (fieldRegMaps.js createCircleIcon)
-  const c = document.createElement('div');
-  Object.assign(c.style, { width: '12px', height: '12px', backgroundColor: '#D4CF5A', borderRadius: '50%', border: '1px solid green',
-    opacity: '0.45', transform: 'translate(0%, 50%)' });
-  return c;
+// Her point (board R6 SendLocation-af51-95is: black inside, amber border) with its field name as a chip (A4's map
+// labels: dark pill; selected = accent). Tapping the chip selects it.
+function pointMark(p, on, onTap) {
+  const box = document.createElement('div');
+  Object.assign(box.style, { position: 'relative', width: '18px', height: '18px', transform: 'translateY(50%)' });
+  const d = document.createElement('div');
+  Object.assign(d.style, { width: '18px', height: '18px', boxSizing: 'border-box', borderRadius: '50%', background: '#121212', border: '3px solid #D4A634' });
+  box.appendChild(d);
+  if (p.name) {
+    const c = document.createElement('button');
+    c.type = 'button';
+    c.textContent = p.name;
+    Object.assign(c.style, { position: 'absolute', left: '50%', bottom: '24px', transform: 'translateX(-50%)', padding: '0 8px', borderRadius: '9999px',
+      fontSize: '14px', lineHeight: '1.5', fontWeight: '700', whiteSpace: 'nowrap', border: '0', fontFamily: 'Inter, system-ui, sans-serif',
+      background: on ? '#D4CF5A' : 'rgba(18,18,18,0.8)', color: on ? '#121212' : '#F1F5F9', cursor: 'pointer' });
+    c.addEventListener('click', (e) => { e.stopPropagation(); onTap(); });
+    box.appendChild(c);
+  }
+  return box;
 }
 
 // A refused key (RefererNotAllowedMapError, a wrong key) calls window.gm_authFailure: from then on the field scene
@@ -51,7 +65,7 @@ function meDot() {   // R5 #on: her location, a blue dot (board SendLocation-v3n
 }
 
 /** points: her saved points; me: {lat, lng, acc} her live location (R5 #on: blue dot and accuracy circle). */
-export default function FieldMap({ points = [], me = null, pan = false, onCenter, start = null }) {
+export default function FieldMap({ points = [], me = null, pan = false, onCenter, start = null, selected = null, onSelect }) {
   const map = useRef(null);
   const marks = useRef([]);
   const line = useRef(null);
@@ -75,7 +89,8 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
     try {
       marks.current.forEach((x) => { x.map = null; });
       marks.current = g.marker?.AdvancedMarkerElement
-        ? points.map((p, i) => new g.marker.AdvancedMarkerElement({ position: { lat: p.lat, lng: p.lng }, map: m, title: `P${i + 1}`, content: dot() }))
+        ? points.map((p, i) => new g.marker.AdvancedMarkerElement({ position: { lat: p.lat, lng: p.lng }, map: m, title: p.name || `P${i + 1}`,
+          content: pointMark(p, selected === i, () => onSelect?.(selected === i ? null : i)), gmpClickable: true }))
         : [];
       if (line.current) line.current.setPath(points);
       else if (points.length) {
@@ -92,7 +107,7 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
       }
       if (!pan) m.setCenter(center);          // panning: she moves the map, it never jumps back
     } catch (e) { console.error('[field map] markers not drawn', e); }
-  }, [points, center, me, pan]);
+  }, [points, center, me, pan, selected, onSelect]);
 
   useEffect(() => { draw(); }, [draw]);
   useEffect(() => () => {

@@ -96,12 +96,12 @@ export const fieldInput = { display: 'block', width: '100%', height: 44, borderR
   fontSize: 16, color: '#F1F5F9', border: 0, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', flexShrink: 0 };
 
 /** R5–R7: the satellite map (FieldMap) once Google Maps is loaded; until then, offline or without a key, the scene. */
-function MapOrScene({ map, points, me, pan, onCenter, start }) {
+function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect }) {
   const { ok } = useFieldMapLoaded();
   if (!ok) return <FieldGround points={points} />;
   return (
     <>
-      <FieldMap points={map} me={me} pan={pan} onCenter={onCenter} start={start} />
+      <FieldMap points={map} me={me} pan={pan} onCenter={onCenter} start={start} selected={selected} onSelect={onSelect} />
       {pan && <PanPin />}
     </>
   );
@@ -127,14 +127,17 @@ const INFO_R5 = 'Stand in the middle of your field. Send a point for each field 
 export function MapStage({ header = 'Mint your land title', children }) {
   const [view, setView] = useState({ map: [], me: null, start: null, pan: false, info: INFO_R5 });
   const centre = useRef(null);
-  const ctx = useMemo(() => ({ setView, centre }), []);
+  const ctx = useMemo(() => ({ setView, centre, select }), []);
   const onCenter = useCallback((c) => centre.current?.(c), []);
+  const select = useRef(null);
+  const onSelect = useCallback((i) => select.current?.(i), []);
   return (
     <MapCtx.Provider value={ctx}>
       <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#4a6632', display: 'flex', flexDirection: 'column',
         fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
         <style>{MOTION_CSS}</style>
-        <MapOrScene map={view.map} points={view.map.length} me={view.me} start={view.start} pan={view.pan} onCenter={onCenter} />
+        <MapOrScene map={view.map} points={view.map.length} me={view.me} start={view.start} pan={view.pan} onCenter={onCenter}
+          selected={view.selected} onSelect={onSelect} />
         <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 160, pointerEvents: 'none',
           background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)' }} />
         {/* The standard header chip (boards A6 TreeMap and the other map screens): a dark pill in the middle of the header. */}
@@ -162,11 +165,11 @@ export function MapStage({ header = 'Mint your land title', children }) {
 
 /** A step on the map screen: tells the stage what to show and renders its card (and an optional overlay). Outside a
  *  MapStage it brings its own stage. */
-export function MapFrame({ header, map = [], me = null, start = null, info = INFO_R5, overlay, pan = false, onCenter, children }) {
+export function MapFrame({ header, map = [], me = null, start = null, info = INFO_R5, overlay, pan = false, onCenter, selected = null, onSelect, children }) {
   const ctx = useContext(MapCtx);
-  const key = JSON.stringify([header, map, me, start, info, pan]);
-  useEffect(() => { if (ctx) ctx.setView({ header, map, me, start, info, pan }); }, [ctx, key]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (ctx) ctx.centre.current = onCenter; }, [ctx, onCenter]);
+  const key = JSON.stringify([header, map, me, start, info, pan, selected]);
+  useEffect(() => { if (ctx) ctx.setView({ header, map, me, start, info, pan, selected }); }, [ctx, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ctx) { ctx.centre.current = onCenter; ctx.select.current = onSelect; } }, [ctx, onCenter, onSelect]);
   const card = (
     <>
       <div className="nila-motion" style={{ animation: anim.drop, position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
@@ -178,14 +181,14 @@ export function MapFrame({ header, map = [], me = null, start = null, info = INF
     </>
   );
   if (ctx) return card;
-  return <MapStage header={header}><StandaloneView view={{ header, map, me, start, info, pan }} onCenter={onCenter}>{card}</StandaloneView></MapStage>;
+  return <MapStage header={header}><StandaloneView view={{ header, map, me, start, info, pan, selected }} onCenter={onCenter} onSelect={onSelect}>{card}</StandaloneView></MapStage>;
 }
 
-function StandaloneView({ view, onCenter, children }) {
+function StandaloneView({ view, onCenter, onSelect, children }) {
   const ctx = useContext(MapCtx);
   const key = JSON.stringify(view);
   useEffect(() => { ctx.setView(view); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { ctx.centre.current = onCenter; }, [ctx, onCenter]);
+  useEffect(() => { ctx.centre.current = onCenter; ctx.select.current = onSelect; }, [ctx, onCenter, onSelect]);
   return children;
 }
 

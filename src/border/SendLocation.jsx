@@ -60,126 +60,96 @@ const WifiOff = () => (
   </svg>
 );
 
-/** R5 / R6 / R7 (boards SendLocation-v3np, SendLocation-af51-95is, SendLocationOffline): one point per field, saved
- *  on the phone; from the second field on she names the field before sending its point; offline the points wait
- *  ("Saved, not sent yet"). "All my fields have a point" ends the step.
- *  DESIGN GAP: a location error (permission off, not found) has no board; a short line in the sheet says what to do. */
-const PinIcon = () => (
-  <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
-    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" />
-  </svg>
-);
-
-
-/** R5 (board SendLocation-v3np, notes reg-r5): 'Mint your land title'. Default: the Share your location card; Allow →
- *  the browser's location prompt → #on (her blue dot and accuracy circle, 'Send my location' → R6); Not now → #off
- *  ('Share my location' opens the card again). Location already allowed → #on straight away.
- *  DESIGN GAP (open point in reg-r5): a location the browser has blocked; the card cannot help, so a line says to
- *  turn it on in the settings. */
-function FirstPoint({ onLocate, onPanPoint, pan, setPan, busy, error }) {
-  // R5 (executive decision 20 Oct): no confirm card — "Share my location" asks the phone for it directly; "Pan the
-  // map" lets her move the map instead (today's off-site mode) and her point is the pin at its centre.
-  const [loc, setLoc] = useState('ask');                 // ask | on | off
-  const [me, setMe] = useState(null);
+/** R5 / R6 / R7 (boards SendLocation-v3np, SendLocation-af51-95is, SendLocationOffline; executive decisions 20 Oct).
+ *  Before the first point: "Share my location" asks the phone; "Choose on the map" lets her move the map instead
+ *  (today's off-site mode, the pin is her point). Then for every field: "Save this location" puts the point on the
+ *  map (R6's marker: black inside, amber border); the buttons wait until she names it; the name shows on the map as a
+ *  chip (A4: tap = selected, accent) and in the list under the name input. "All my fields have a point" ends it. */
+export function PointsStep({ evm, onDone }) {
+  const online = useOnline();
+  const [q, setQ] = useState(() => readPoints(evm));
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [loc, setLoc] = useState('ask');                 // ask | on | off (her location shared?)
   const [blocked, setBlocked] = useState(false);
+  const [me, setMe] = useState(null);
   const [centre, setCentre] = useState(null);
-  const share = () => { setPan(false); navigator.geolocation?.getCurrentPosition(
-    (p) => { setMe({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }); setBlocked(false); setLoc('on'); },
-    (e) => { setBlocked(e.code === 1); setLoc('off'); },
-    { enableHighAccuracy: true, timeout: 30_000, maximumAge: 0 },
-  ); };
+  const [selected, setSelected] = useState(null);
+  const save = (v) => { setQ(v); write(evm, v); };
+  const pan = !!q.pan;
+  const n = q.points.length;
+  const unnamed = n > 0 && !q.points[n - 1].name;       // the last saved point still waits for its name
+
+  const fix = (ok, fail) => navigator.geolocation?.getCurrentPosition(
+    (p) => ok({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), ts: Math.floor(p.timestamp / 1000) }),
+    (e) => fail?.(e), { enableHighAccuracy: true, timeout: 30_000, maximumAge: 0 });
+  const share = () => {
+    if (pan) save({ ...q, pan: false });
+    fix((m) => { setMe(m); setBlocked(false); setLoc('on'); }, (e) => { setBlocked(e.code === 1); setLoc('off'); });
+  };
+  const choose = () => { save({ ...q, pan: true }); if (!me) fix(setMe); };
   useEffect(() => {
     let live = true;
     navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (live && r.state === 'granted') share(); }).catch(() => {});
     return () => { live = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // Pan mode starts where she is: one position, no blue dot.
-  const locateOnly = () => navigator.geolocation?.getCurrentPosition(
-    (p) => setMe({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }), () => {},
-    { enableHighAccuracy: true, timeout: 30_000, maximumAge: 0 });
-  const canSend = pan ? !!centre : loc === 'on';
-  return (
-    <MapFrame header="Mint your land title" me={pan ? null : me} start={me} pan={pan} onCenter={setCentre}
-      info="Stand in the middle of your field. Send a point for each field where you have the right to cultivate.">
-      <div style={cardTitle}>Walk to your first field</div>
-      {!pan && loc === 'off' && (
-        <div style={{ ...sheetText, textAlign: 'center' }}>{blocked
-          ? 'Allow location for this app in your phone settings.'
-          : 'Your location is off. Nila needs it to place a point in your field.'}</div>
-      )}
-      {error && <div role="alert" style={{ ...sheetText, color: C.coral, textAlign: 'center' }}>{error}</div>}
-      {canSend
-        ? <button type="button" style={busy ? btnDisabled : btnPrimary} disabled={busy} onClick={() => (pan ? onPanPoint(centre) : onLocate())}>Send my location</button>
-        : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>}
-      {pan
-        ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
-        : <button type="button" style={btnSecondary} onClick={() => { setPan(true); if (!me) locateOnly(); }}>Choose on the map</button>}
-    </MapFrame>
-  );
-}
 
-export function PointsStep({ evm, onDone }) {
-  const online = useOnline();
-  const [q, setQ] = useState(() => readPoints(evm));
-  const [name, setName] = useState('');
-  const [gps, setGps] = useState(null);
-  const [centre, setCentre] = useState(null);
-  const save = (v) => { setQ(v); write(evm, v); };
-  const pan = !!q.pan;                                   // chosen at R5, kept for R6/R7
-  const setPan = (on) => save({ ...q, pan: on });
-  const addPoint = (c) => {                              // pan mode: the map's centre (as today's off-site points)
-    save({ ...q, points: [...q.points, { lat: c.lat, lng: c.lng, acc: 0, manual: true, ts: Math.floor(Date.now() / 1000),
-      name: name.trim() || undefined }].slice(0, MAX) });
-    setName('');
+  const add = (pt) => { save({ ...q, points: [...q.points, pt].slice(0, MAX) }); setName(''); };
+  const saveHere = () => {
+    setError(null);
+    if (pan) { if (centre) add({ lat: centre.lat, lng: centre.lng, acc: 0, manual: true, ts: Math.floor(Date.now() / 1000) }); return; }
+    setBusy(true);
+    fix((m) => { setMe(m); add(m); setBusy(false); },
+      (e) => { setBusy(false); setError(e.code === 1 ? 'Allow location for this app in your phone settings.' : 'Your location was not found. Try again outside.'); });
   };
-
-  const locate = () => {
-    if (!navigator.geolocation) { setGps({ error: 'This phone cannot find its location.' }); return; }
-    setGps({ busy: true });
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        const pt = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), ts: Math.floor(p.timestamp / 1000),
-          name: name.trim() || undefined };
-        save({ ...q, points: [...q.points, pt].slice(0, MAX) });
-        setName(''); setGps(null);
-      },
-      (e) => setGps({ error: e.code === 1 ? 'Allow location for this app in your phone settings.' : 'Your location was not found. Try again outside.' }),
-      { enableHighAccuracy: true, timeout: 30_000, maximumAge: 0 },
-    );
+  const storeName = () => {
+    const v = name.trim();
+    if (!v || !unnamed) return;
+    const pts = q.points.slice(); pts[n - 1] = { ...pts[n - 1], name: v.slice(0, 40) };
+    save({ ...q, points: pts }); setName('');
   };
   const finish = () => { save({ ...q, finish: true }); onDone(); };
 
-  const n = q.points.length;
-  const first = n === 0;
-  if (first) return <FirstPoint onLocate={locate} onPanPoint={addPoint} pan={pan} setPan={setPan} busy={gps?.busy} error={gps?.error} />;
+  const ready = pan ? !!centre : loc === 'on';           // she can save a point now
+  const wait = unnamed || busy;
   return (
-    <MapFrame map={q.points} pan={pan} onCenter={setCentre}>
-      <div style={cardTitle}>{first ? 'Walk to your first field' : 'Walk to the center of your next field'}</div>
-      {first && <div style={sheetText}>Stand in the middle of your field. Send a point for each field where you have the right to cultivate.</div>}
+    <MapFrame map={q.points} me={pan ? null : me} start={me} pan={pan} onCenter={setCentre}
+      selected={selected} onSelect={setSelected}>
+      <div style={cardTitle}>{n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field'}</div>
       {!online && (
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', ...sheetText }}>
           <div style={{ width: 20, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><WifiOff /></div>
           <span>You are offline. Your points stay on this phone and are sent when you are online.</span>
         </div>
       )}
-      {!online && n > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, minHeight: 44, borderRadius: 12,
-          background: '#1F2733', padding: '0 14px', fontSize: 14, lineHeight: 1.5 }}>
-          <span style={{ color: '#94A3B8' }}>Saved, not sent yet</span><span style={{ fontWeight: 700 }}>{n} {n === 1 ? 'point' : 'points'}</span>
+      {!pan && loc === 'off' && n === 0 && (
+        <div style={{ ...sheetText, textAlign: 'center' }}>{blocked
+          ? 'Allow location for this app in your phone settings.'
+          : 'Your location is off. Nila needs it to place a point in your field.'}</div>
+      )}
+      {n > 0 && (
+        <input type="text" aria-label="Field name" placeholder="Field name" value={name} maxLength={40} disabled={!unnamed}
+          onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') storeName(); }} onBlur={storeName}
+          style={{ ...fieldInput, opacity: unnamed ? 1 : 0.5 }} />
+      )}
+      {q.points.some((p) => p.name) && (
+        <div role="list" aria-label="Your fields" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {q.points.map((p, i) => (p.name ? (
+            <button key={i} type="button" role="listitem" onClick={() => setSelected(selected === i ? null : i)}
+              style={{ padding: '0 10px', height: 32, borderRadius: 9999, border: 0, fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
+                background: selected === i ? '#D4CF5A' : '#1F2733', color: selected === i ? '#121212' : '#F1F5F9', cursor: 'pointer' }}>{p.name}</button>
+          ) : null))}
         </div>
       )}
-      {!first && n < MAX && (
-        <input type="text" aria-label="Field name" placeholder="Field name" value={name} maxLength={40}
-          onChange={(e) => setName(e.target.value)} style={fieldInput} />
-      )}
-      {gps?.error && <div role="alert" style={{ ...sheetText, color: C.coral }}>{gps.error}</div>}
-      {n < MAX && (
-        <button type="button" style={gps?.busy || (pan && !centre) ? btnDisabled : btnPrimary} disabled={gps?.busy || (pan && !centre)}
-          onClick={() => (pan ? addPoint(centre) : locate())}>
-          {!online ? 'Save this location' : first ? 'Send my location' : 'Send another location'}
-        </button>
-      )}
-      {n > 0 && <button type="button" style={btnSecondary} onClick={finish}>All my fields have a point</button>}
+      {error && <div role="alert" style={{ ...sheetText, color: C.coral, textAlign: 'center' }}>{error}</div>}
+      {n < MAX && (ready
+        ? <button type="button" style={wait ? btnDisabled : btnPrimary} disabled={wait} onClick={saveHere}>Save this location</button>
+        : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>)}
+      {n === 0 && (pan
+        ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
+        : <button type="button" style={btnSecondary} onClick={choose}>Choose on the map</button>)}
+      {n > 0 && <button type="button" style={wait ? btnDisabled : btnSecondary} disabled={wait} onClick={finish}>All my fields have a point</button>}
     </MapFrame>
   );
 }
