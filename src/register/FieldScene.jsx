@@ -15,7 +15,8 @@ const ZOOM_CSS = `.nl-fz{transform-box:view-box;transform-origin:200px 396px}
 
 let played = false;   // the zoom plays once per app start (README rule 2): memory only, never storage
 
-export default function FieldScene({ mode = 'close', dim = false, children }) {
+/** pull: 0..1 while she drags the logo down (0 = close view, 1 = the wide view); null = not dragging. */
+export default function FieldScene({ mode = 'close', dim = false, pull = null, children }) {
   // Decided once when the screen appears (a re-render must not cut the zoom off), and "played" only once the zoom has
   // finished: R1 can be mounted twice while the app boots, and the first mount must not use up the zoom.
   const [zoom, setZoom] = useState(() => mode === 'zoom' && !played);
@@ -24,6 +25,9 @@ export default function FieldScene({ mode = 'close', dim = false, children }) {
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
       <style>{ZOOM_CSS}</style>
       <g className={`nl-fz ${zoom ? 'nl-fz-play' : 'nl-fz-close'}`} onAnimationEnd={() => { played = true; setZoom(false); }}
+        // The logo game: dragging the logo down zooms the scene out; on release it springs back to the close view.
+        style={zoom ? undefined : { transform: `scale(${pull == null ? 5.5 : 5.5 - 4.5 * pull})`,
+          transition: pull == null ? 'transform 700ms cubic-bezier(.2,.8,.2,1)' : 'none' }}
         dangerouslySetInnerHTML={{ __html: FIELD_SCENE }} />
       {dim && <rect width="390" height="844" fill="rgba(0,0,0,0.45)" />}
       {children}

@@ -38,11 +38,13 @@ export const btnQuiet = { minHeight: 44, border: 0, background: 'transparent', p
 
 /** onBack: the round back button (R3, R4); info: the note under the card; logo=false for long cards (R5 list). */
 export default function RegFrame({ onBack, backLabel = 'Back', info, logo = true, drop = false, zoom = false, children }) {
+  const [pull, setPull] = useState(null);
+  const grab = useRef(null);
   return (
     <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#8a9a2e', display: 'flex', flexDirection: 'column',
       fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
       <style>{MOTION_CSS}</style>
-      <FieldScene mode={zoom ? 'zoom' : 'close'} />
+      <FieldScene mode={zoom ? 'zoom' : 'close'} pull={pull} />
       {onBack && (
         <button type="button" onClick={onBack} aria-label={backLabel} style={{ position: 'absolute', left: 8, top: 52, zIndex: 5,
           width: 40, height: 40, borderRadius: 9999, background: '#1F2733', border: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -51,7 +53,15 @@ export default function RegFrame({ onBack, backLabel = 'Back', info, logo = true
       )}
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 44, gap: 60 }}>
         <div style={{ fontSize: 19, fontWeight: 700, color: '#FFFFFF' }}>nila</div>
-        {logo && <img src={LOGO} alt="Nila" style={{ width: 120, height: 120 }} />}
+        {logo && (
+          // A small game: drag the logo down and the field scene zooms out; let go and both spring back.
+          <img src={LOGO} alt="Nila" draggable={false}
+            onPointerDown={(e) => { grab.current = e.clientY; e.currentTarget.setPointerCapture?.(e.pointerId); setPull(0); }}
+            onPointerMove={(e) => { if (grab.current != null) setPull(Math.min(1, Math.max(0, (e.clientY - grab.current) / 260))); }}
+            onPointerUp={() => { grab.current = null; setPull(null); }} onPointerCancel={() => { grab.current = null; setPull(null); }}
+            style={{ width: 120, height: 120, touchAction: 'none', cursor: 'grab', userSelect: 'none',
+              transform: `translateY(${pull == null ? 0 : pull * 220}px)`, transition: pull == null ? 'transform 700ms cubic-bezier(.2,.8,.2,1)' : 'none' }} />
+        )}
       </div>
       <div style={{ flexGrow: 1, minHeight: 24 }} />
       <div className="nila-motion" style={{ animation: drop ? anim.drop : undefined, position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
