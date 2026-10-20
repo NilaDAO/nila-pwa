@@ -118,12 +118,18 @@ function Check({ job, n, onDone, onBack }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
         <span style={{ color: C.muted }}>Area</span><b>{chosen ? acres(chosen.acres) : '—'}</b>
       </div>
+      {/* DESIGN GAP: no board for a field whose every shape overlaps an accepted field (e.g. two points a few metres
+          apart): say so, Accept stays off, None fit draws it again from a moved point. */}
+      {shapes.length === 0 && (
+        <p role="note" style={{ margin: 0, fontSize: 14, color: C.text }}>No shape fits next to the fields you accepted. Press None fit to draw this field again from a point a few metres away.</p>
+      )}
       {holds > 0 && <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>{holds + 1} points in this field</p>}
       {moved.length > 0 && <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>{moved.map((k) => `Field ${k}`).join(', ')} {moved.length > 1 ? 'change' : 'changes'} too</p>}
       {err && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{err.message}</p>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="button" disabled={busy} style={btn(false)} onClick={() => noneFit.mutate({ field: n }, { onSuccess: onDone })}>None fit</button>
-        <button type="button" disabled={busy || !sel} style={btn(true)} onClick={() => accept.mutate({ field: n, shape: sel }, { onSuccess: onDone })}>Accept</button>
+        <button type="button" disabled={busy || !sel} style={{ ...btn(true), opacity: busy || !sel ? 0.4 : 1 }}
+          onClick={() => accept.mutate({ field: n, shape: sel }, { onSuccess: onDone })}>{accept.isPending ? 'Accepting…' : 'Accept'}</button>
       </div>
     </Frame>
   );
