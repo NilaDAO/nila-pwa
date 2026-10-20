@@ -68,7 +68,7 @@ function Phone({ busy, error, onSend }) {
       <style>{PHONE_CSS}</style>
       <h1 style={cardTitle}>Your phone number</h1>
       <div style={{ display: 'flex', alignItems: 'center', height: 44, borderRadius: 12, background: '#1F2733', padding: '0 14px', boxSizing: 'border-box' }}>
-        <PhoneInput className="nl-phone" international flags={flags} value={phone} autoComplete="tel" aria-label="Phone number"
+        <PhoneInput className="nl-phone" international defaultCountry="IN" flags={flags} value={phone} autoComplete="tel" aria-label="Phone number"
           onChange={(v) => setPhone(v || '')} />
       </div>
       {error && <p role="alert" style={{ margin: 0, color: '#E69283', fontSize: 14 }}>{error}</p>}
