@@ -12,8 +12,9 @@ export async function signStellarMessage(signHash, message) {
   return hex(await signHash(h));
 }
 
-export function planClient({ stellarAddress, signHash }) {
-  async function call(method, path, body) {
+/** A signed fetch to the node, for /plan and the other signed APIs (border O16 …). */
+export function signedCall({ stellarAddress, signHash }) {
+  return async function call(method, path, body) {
     const raw = body === undefined ? '' : JSON.stringify(body);
     const ts = Math.floor(Date.now() / 1000);
     const msg = `nila-plan\n${method} ${path.split('?')[0]}\n${ts}\n${hex(await sha256(enc.encode(raw)))}`;
@@ -30,7 +31,11 @@ export function planClient({ stellarAddress, signHash }) {
       throw e;
     }
     return out;
-  }
+  };
+}
+
+export function planClient(signer) {
+  const call = signedCall(signer);
   return {
     makePlan: (landId, intake, extra = {}) => call('POST', '/plan/jobs', { land_id: landId, intake, ...extra }),
     job: (jobId) => call('GET', `/plan/jobs/${jobId}`),

@@ -29,9 +29,8 @@ const labelEl = (text, sub) => {
   return el;
 };
 
-/** labels: zone_id → { text, sub, colour } (default "Area n"). */
-export default function AreaMap({ record, labels = {}, height = 220 }) {
-  const box = useRef();
+/** True once Leaflet is loaded (shared with the border map, P11). */
+export function useLeaflet() {
   const [ready, setReady] = useState(!!window.L);
   useEffect(() => {
     if (window.L) return undefined;
@@ -40,6 +39,13 @@ export default function AreaMap({ record, labels = {}, height = 220 }) {
     load('script', JS).then(() => live && window.L && setReady(true)).catch(() => {});
     return () => { live = false; };
   }, []);
+  return ready;
+}
+
+/** labels: zone_id → { text, sub, colour } (default "Area n"). */
+export default function AreaMap({ record, labels = {}, height = 220 }) {
+  const box = useRef();
+  const ready = useLeaflet();
   useEffect(() => {
     if (!ready || !window.L || !box.current || !record) return undefined;
     const L = window.L;
