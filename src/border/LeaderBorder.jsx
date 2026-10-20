@@ -107,7 +107,7 @@ function Check({ job, n, onDone, onBack }) {
       <Head title={`Field ${n}`} sub={memberName(job)} />
       <div role="group" aria-label={`Shapes for field ${n}`} style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
         {shapes.map((s, i) => (
-          <button key={s.id} type="button" aria-label={`Shape ${i + 1}`} aria-pressed={s.id === sel} onClick={() => pick(s.id)} style={{
+          <button key={s.id} type="button" aria-label={`Shape ${i + 1}, ${acres(s.acres)}`} aria-pressed={s.id === sel} onClick={() => pick(s.id)} style={{
             flex: '1 0 72px', minWidth: 0, border: `2px solid ${s.id === sel ? C.accent : C.raised}`, borderRadius: 12, background: C.raised,
             padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', color: C.text, fontFamily: FONT }}>
             <ShapeThumb geometry={s.geometry} />
@@ -135,8 +135,10 @@ function Done({ job, onField, onBack }) {
   const [farm, setFarm] = useState('');   // the title's name: hers from R6, else the leader names it here
   const ok = job.fields.filter((f) => f.state === 'accepted');
   const total = ok.reduce((a, f) => a + (shapeFor(f, job.plan)?.acres || 0), 0);
+  // A failed mint, or an error the beat recorded while it retries, shows even while the job is still 'minting'.
   const st = job.status === 'minted' || job.mint?.status === 'minted' ? 'minted'
-    : job.status === 'minting' || ['pending', 'processing'].includes(job.mint?.status) ? 'minting' : job.mint?.status === 'failed' ? 'failed' : null;
+    : job.mint?.status === 'failed' || job.mint?.error ? 'failed'
+      : job.status === 'minting' || ['pending', 'processing'].includes(job.mint?.status) ? 'minting' : null;
   return (
     <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} />}>
@@ -172,7 +174,7 @@ export default function LeaderBorder({ id, field, go }) {
     return <div style={{ padding: 16, fontFamily: FONT, color: q.error ? C.coral : C.muted }}>{q.error ? q.error.message : '…'}</div>;
   }
   if (job.status === 'failed') {
-    return <div style={{ padding: 16, fontFamily: FONT, color: C.coral }}>The shapes could not be drawn. <button type="button" onClick={toTasks} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700 }}>Back to tasks</button></div>;
+    return <div style={{ padding: 16, fontFamily: FONT, color: C.coral }}>{job.mint?.error || 'The shapes could not be drawn.'} She sends her field location again. <button type="button" onClick={toTasks} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700 }}>Back to tasks</button></div>;
   }
   if (job.status === 'drawing') return <Fetch job={job} onBack={toTasks} />;
   if (field && !['minting', 'minted'].includes(job.status)) return <Check key={`${field}:${job.updated}`} job={job} n={Number(field)} onDone={toPlan} onBack={toPlan} />;
