@@ -128,9 +128,14 @@ export function MapFrame({ header, map = [], me, start, info, overlay, pan, onCe
       <MapOrScene map={map} points={map.length} me={me} start={start} pan={pan} onCenter={onCenter} />
       <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 160, pointerEvents: 'none',
         background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)' }} />
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 44, pointerEvents: 'none' }}>
-        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, lineHeight: 1.3, color: '#FFFFFF' }}>{header}</h1>
-      </div>
+      {/* The standard header chip (boards A6 TreeMap and the other map screens): a dark pill in the middle of the header. */}
+      <h1 style={{ position: 'absolute', left: 56, right: 56, top: 52, height: 40, margin: 0, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', zIndex: 3, pointerEvents: 'none' }}>
+        <span style={{ padding: '0 14px', height: 40, borderRadius: 9999, background: 'rgba(18,18,18,0.85)',
+          boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', display: 'flex', alignItems: 'center',
+          fontSize: 16, fontWeight: 700, lineHeight: 1.3, whiteSpace: 'nowrap', color: '#F1F5F9' }}>{header}</span>
+      </h1>
+      <div style={{ height: 92 }} />
       <div style={{ flexGrow: 1, minHeight: 24 }} />
       <div className="nila-motion" style={{ animation: anim.drop, position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
         boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '18px 22px',
