@@ -1,13 +1,13 @@
-// Registration for a new member (P11; nila-design notes reg-recover): after the login (R1–R4, the existing
-// Cognito/demo login, not rebuilt here) a member with no land title goes
+// Registration for a new member (P11; nila-design notes reg-recover): after R1–R4 (src/register/Start.jsx) a member
+// with no land title goes
 //   R5–R7 field points → R8 plastic sheet → R9 union → R13 who uses the app → R10 updates → R14 wait for the title.
 // Her points are sent at the end, with the union she chose (O16 POST /border/points); offline they stay on the
 // phone (R7) and go out from R14 once she is online. R14 ends when her land title is on Polygon (notes
 // r14-title-check) → the crop plan (CP1).
 // DESIGN GAPS (Docs/P11-Field-Borders.md): R8 has no detection behind it on the Stellar path (her choice is kept on
 // the phone); R9 lists today's one union from /stellar/config, its name and leader from the app (no union names on
-// the node yet), and 'Filter on my region' changes nothing with one union; recover (skip R5–R8 and R14, ask only
-// what is missing) is not built here.
+// the node yet), and 'Filter on my region' changes nothing with one union. Recover (only the missing R9 / R13 / R10)
+// is src/register/RecoverSteps.jsx.
 import { useEffect, useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
 import { useIsLeader } from '../hooks/useLoadFunds.ts';
@@ -16,7 +16,6 @@ import { useNilaSigner } from '../wallet/signer';
 import { subscribeUser } from '../features/apis/pushManager';
 import { useMyBorderJob, useSendFieldPoints } from '../border/hooks';
 import { Page, PointsStep, Waiting, clearPoints, readPoints, useOnline } from '../border/SendLocation';
-import { C, R } from '../shell/tokens';
 import { Loading } from './Boot';
 import { FieldFrame, anim, btnDisabled, btnPrimary, btnSecondary, cardTitle, sheetText } from './RegFrame';
 
@@ -24,6 +23,22 @@ import { FieldFrame, anim, btnDisabled, btnPrimary, btnSecondary, cardTitle, she
 const UNIONS = [{ name: 'Mother Theresa Union', rep: 'Mrs. Rosalie Susairaj', polygon: '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070',
   location: [11.878671, 78.964561] }];
 const STEPS = ['points', 'sheet', 'union', 'mode', 'notify', 'done'];
+
+// Her union per wallet, on the phone (notes reg-recover: a recover skips R9 when it is there). The leader flag is
+// checked again on the chain at every recover, never taken from here.
+const unionKey = (evm) => `nila.union.${(evm || 'none').toLowerCase()}`;
+export const readUnion = (evm) => { try { return JSON.parse(localStorage.getItem(unionKey(evm))) || null; } catch { return null; } };
+const writeUnion = (evm, u) => { try { localStorage.setItem(unionKey(evm), JSON.stringify(u)); } catch { /* asked again at the next recover */ } };
+
+/** The union record in Init, with the leader check on the Polygon RolesRegistry (as memberUnion.js). */
+export async function saveUnionRecord(isLeader, u, evm) {
+  let leader;
+  try { const r = await isLeader(u.polygon, evm); leader = r === undefined ? undefined : Boolean(r); } catch { leader = undefined; }
+  await setDBitem('union', { leader, transfer: true, address: u.polygon, rep: u.rep, name: u.name, chain: 137, location: u.location }, 'Init');
+  writeUnion(evm, { name: u.name, polygon: u.polygon });
+  return leader;
+}
+export const unionByPolygon = (polygon) => UNIONS.find((u) => u.polygon.toLowerCase() === String(polygon || '').toLowerCase());
 
 const regKey = (evm) => `nila.reg.${(evm || 'none').toLowerCase()}`;
 const readReg = (evm) => { try { return JSON.parse(localStorage.getItem(regKey(evm))) || {}; } catch { return {}; } };
@@ -112,7 +127,7 @@ function Choice({ checked, onClick, title, sub, icon }) {
 }
 
 /** R9: select a union. */
-function UnionStep({ union, evm, onDone }) {
+export function UnionStep({ union, evm, onDone }) {
   const [pick, setPick] = useState(0);
   const [busy, setBusy] = useState(false);
   const { isLeader } = useIsLeader({ address: evm });
@@ -121,9 +136,7 @@ function UnionStep({ union, evm, onDone }) {
   const saveUnion = async () => {
     setBusy(true);
     const u = UNIONS[pick];
-    let leader;
-    try { leader = Boolean(await isLeader(u.polygon, evm)); } catch { leader = undefined; }
-    await setDBitem('union', { leader, transfer: true, address: u.polygon, rep: u.rep, name: u.name, chain: 137, location: u.location }, 'Init');
+    const leader = await saveUnionRecord(isLeader, u, evm);
     setBusy(false);
     onDone({ ...u, address: union, leader: !!leader });
   };
@@ -139,7 +152,7 @@ function UnionStep({ union, evm, onDone }) {
 }
 
 /** R13: who uses the app (stored as nila.mode, self | assist). */
-function ModeStep({ rep, onDone }) {
+export function ModeStep({ rep, onDone }) {
   const [mode, setM] = useState('self');
   const name = (rep || '').replace(/^(Mrs?|Ms)\.\s*/, '');
   return (
@@ -154,7 +167,7 @@ function ModeStep({ rep, onDone }) {
 }
 
 /** R10 (board RegNotify-52am): updates (push notifications from her union); Skip asks to confirm. */
-function NotifyStep({ evm, onDone }) {
+export function NotifyStep({ evm, onDone }) {
   const [skip, setSkip] = useState(false);
   const [busy, setBusy] = useState(false);
   const enable = async () => {

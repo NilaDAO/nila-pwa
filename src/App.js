@@ -14,6 +14,8 @@ import { lazy, Suspense } from 'react';
 const StellarGate = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./move/StellarGate')) : null;
 // The new registration start R1–R4 (src/register/Start.jsx), same Privy gate; today's RegisterRecover otherwise.
 const NewStart = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/Start')) : null;
+// Recover asks only what is missing (R9 / R13 / R10, notes reg-recover), same gate.
+const RecoverSteps = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/RecoverSteps')) : null;
 import { Routes, Route } from 'react-router-dom';
 
 // 🛠️ UI pieces (place‑holders)
@@ -41,6 +43,7 @@ function App({installAvailable}) {
   const { setTokenData,setGrantData, db, setDb, setUnionFunds, setDebts, setFieldActivity, keyMalformed } = useDataContext();
   const [ bootStage, setBootStage]                                                      = useState('loading');
   const [ fromRegister, setFromRegister ]                                               = useState(false); // R3 done: load on the R ground
+  const [ recovered, setRecovered ]                                                     = useState(null);  // her Polygon address after a recover
   const [ chain, setChain]                                                              = useState();
   const [ address, setAddress]                                                          = useState('');
   const [ hasRelatedApp, setHasRelatedApp]                                              = useState(false);
@@ -338,7 +341,12 @@ function App({installAvailable}) {
   return (
       <Routes>
         {bootStage === 'register' && <Route path="/*" element={NewStart
-          ? <Suspense fallback={null}><NewStart onDone={() => { setFromRegister(true); setBootStage('loading'); }} /></Suspense>
+          ? <Suspense fallback={<NewBoot.RegLoading />}>{recovered
+            ? <RecoverSteps evm={recovered} onDone={() => { setFromRegister(true); setBootStage('loading'); }} />
+            : <NewStart onDone={({ isNew, address }) => {
+              if (!isNew && address) { setRecovered(address); return; }
+              setFromRegister(true); setBootStage('loading');
+            }} />}</Suspense>
           : <RegisterRecover setBootStage={setBootStage} />} />}
         {bootStage === 'ready' && <Route path="/*" element={StellarGate
           ? <Suspense fallback={fromRegister ? <NewBoot.RegLoading /> : null}><StellarGate><Wallet LAND={LAND} selected={false} /></StellarGate></Suspense>

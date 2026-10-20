@@ -15,12 +15,13 @@ import '../components/UI/phone_input.css';
 import { createItem } from '../utils/db';
 import { signUp, initAuth, respondToAuthChallenge, getUserAttributes } from '../utils/cognito_helpers';
 import { announceAuthChange } from '../wallet/session';
+import { DEMO_COGNITO } from '../utils/demoMode';
 import RegFrame, { Bouncing, btnDisabled, btnPrimary, btnSecondary, cardTitle } from './RegFrame';
 
 const NEW_CHAIN = 'stellar';
-// Demo stack only (REACT_APP_COGNITO_DEMO=1): R2 sends nothing; R3 takes the dummy code 000000, and only then the
+// Demo stack only (utils/demoMode.js): R2 sends nothing; R3 takes the dummy code 000000, and only then the
 // wallet is made (the demo's Cognito stand-in, never AWS). Unset in every real build.
-const DEMO = process.env.REACT_APP_COGNITO_DEMO === '1';
+const DEMO = DEMO_COGNITO;                               // utils/demoMode.js: never in a real build
 const DEMO_CODE = '000000';
 // The board's field around today's phone input (features/registration: +91 put in on focus; backspace changes it).
 const PHONE_CSS = `.nl-phone{display:flex;align-items:center;gap:8px;width:100%}
@@ -149,19 +150,24 @@ export default function Start({ onDone }) {
   const [error, setError] = useState(null);
   const salt = useRef(Math.random().toString(36).substring(2, 15));
 
+  // New or recovered is decided once, at the first send for this number: a resend signs up again and gets
+  // UsernameExists for the user that first send made, which must not turn a new wallet into a recovery.
+  const decided = useRef(null);                          // { phone, isNew }
+  const decide = (p, v) => { if (!decided.current || decided.current.phone !== p) { decided.current = { phone: p, isNew: v }; setIsNew(v); } };
+
   // As registerRecover.js: create falls back to recover when the number exists, recover to create when it does not.
   const begin = async (p, k) => {
     if (k === 'create') {
-      try { await signUp(p, NEW_CHAIN); setIsNew(true); } catch (e) {
+      try { await signUp(p, NEW_CHAIN); decide(p, true); } catch (e) {
         if (errName(e) !== 'UsernameExistsException') throw e;
-        setIsNew(false);
+        decide(p, false);
       }
     }
     let ses = await initAuth(p);
     if (!ses && k === 'recover') {                       // initAuth swallows UserNotFound: sign up instead
-      await signUp(p, NEW_CHAIN); setIsNew(true);
+      await signUp(p, NEW_CHAIN); decide(p, true);
       ses = await initAuth(p);
-    } else if (k === 'recover') setIsNew(false);
+    } else if (k === 'recover') decide(p, false);
     if (!ses?.Session) throw new Error('The code could not be sent. Try again.');
     setSession(ses.Session);
     sessionRef.current = ses.Session;
@@ -195,7 +201,8 @@ export default function Start({ onDone }) {
       const attrs = (await getUserAttributes(access)).UserAttributes;
       await storeLocal({ phone, salt: salt.current, attrs, refresh: r.AuthenticationResult.RefreshToken, access });
       announceAuthChange();
-      onDone({ isNew });
+      onDone({ isNew: decided.current ? decided.current.isNew : isNew,
+        address: attrs.find((x) => x.Name === 'custom:address')?.Value });
     } catch (e) {
       setError(errName(e) === 'NotAuthorizedException' || errName(e) === 'CodeMismatchException'
         ? 'This code is not right. Check the message and try again.' : (e?.message || 'Something went wrong. Try again.'));
