@@ -10,7 +10,7 @@ import BorderMap, { ShapeThumb } from './BorderMap';
 import { useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
-export const memberName = (job) => job?.farm || short(job?.member || job?.polygon);
+export const memberName = (job) => job?.farm || short(job?.polygon || job?.member);   // her Polygon address, as the union knows her
 const pill = { background: 'rgba(18,18,18,0.85)', borderRadius: R.round, boxShadow: SHADOW };
 const btn = (primary) => ({ flex: 1, height: 44, borderRadius: R.button, border: 0, fontWeight: 700, fontSize: 14, fontFamily: FONT,
   background: primary ? C.accent : C.raised, color: primary ? C.ink : C.text });
