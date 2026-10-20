@@ -24,6 +24,7 @@ import LpOffers from '../anchor/LpOffers';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
 import LeaderTasks from '../leader/LeaderTasks';
+import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
 
@@ -132,6 +133,7 @@ export default function Shell({ leader }) {
       ? <LeaderSettings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />
       : <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />;
   }
+  else if (view === 'history') body = <History onBack={() => go('assets')} />;
   else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('offers')} />;
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
   else if (view === 'crop') body = leader ? <LeaderPlans /> : <CropPlanFlow />;
