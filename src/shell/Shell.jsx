@@ -27,6 +27,7 @@ import LeaderTasks from '../leader/LeaderTasks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration from '../register/Registration';
 import { RegLoading } from '../register/Boot';
+import { demoNew } from '../register/AfterCode';
 import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
@@ -137,7 +138,7 @@ export default function Shell({ leader }) {
   // Until her titles are known, a member sees the registration ground, not a flash of the tab bar.
   if (!leader && !legacy.data && legacy.isLoading) return <RegLoading />;
   // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
-  if (!leader && legacy.data && legacy.data.titles === 0 && s?.privyNew === true) {
+  if (!leader && legacy.data && legacy.data.titles === 0 && (s?.privyNew === true || demoNew(s?.evmAddress))) {
     const onTitle = () => { qc.invalidateQueries({ queryKey: ['polygon', 'legacy'] }); go('crop'); };
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
   }

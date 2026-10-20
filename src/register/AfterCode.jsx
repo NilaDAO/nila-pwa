@@ -12,7 +12,7 @@ import RegFrame from './RegFrame';
 import { DEMO_COGNITO } from '../utils/demoMode';
 
 // Demo only: the stand-in's "new" mark for a pooled wallet (src/register/Start.jsx), never in a real build.
-const demoNew = (evm) => { if (!DEMO_COGNITO || !evm) return false; try { return sessionStorage.getItem(`nila.demoNew.${evm.toLowerCase()}`) === '1'; } catch { return false; } };
+export const demoNew = (evm) => { if (!DEMO_COGNITO || !evm) return false; try { return sessionStorage.getItem(`nila.demoNew.${evm.toLowerCase()}`) === '1'; } catch { return false; } };
 import { RegLoading } from './Boot';
 
 export default function AfterCode({ onNew, onExisting }) {
