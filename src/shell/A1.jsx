@@ -3,7 +3,8 @@
 // there), nIN. Rows whose hooks come later (investment, vouchers, crop shares, union fund, cash) are
 // left out until those hooks exist (design rule 3), not drawn with made-up numbers. P6 adds Machinery (her
 // vouchers, A8) and Your machine (owner, A13). P9 adds USDC for an LP (lp-open/2: her USDC row). P10 (A1L): for a
-// leader, the cash and LP slides and the Union rows (treasury, cash).
+// leader, the cash and LP slides and the Union rows (treasury, cash). P11: a member without a land title opens
+// R5 (send her field points) from the Land title row.
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useLegacyBalances } from '../move/hooks';
@@ -56,7 +57,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onTreasury, onSettle, onScanLp }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onTreasury, onSettle, onScanLp, onLand }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const legacy = useLegacyBalances(s?.evmAddress);
@@ -102,8 +103,10 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         <h2 style={{ textAlign: 'center', fontSize: 16, fontWeight: 700, margin: '0 0 8px' }}>Assets</h2>
         {leader && <UnionRows Row={Row} Icon={NinIcon} onTreasury={onTreasury} onSettle={onSettle} />}
         {leader && <span style={{ fontWeight: 700, color: C.muted }}>Yours</span>}
-        <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
-          value={titles ?? '…'} valueSub="—" />
+        {titles === 0 && !leader
+          ? <Row label="Send your field location" icon={<LandIcon />} title="Land title" sub="Send your field location" onClick={onLand} />
+          : <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
+            value={titles ?? '…'} valueSub="—" />}
         <Row label="Open nIN" icon={<NinIcon />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />
         {invested !== undefined && (
           <Row label="Open nIN invested" icon={<NinIcon />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}
