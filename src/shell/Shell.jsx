@@ -22,6 +22,7 @@ import { TakeUp } from '../loan/MyShares';
 import IdCheck from '../anchor/IdCheck';
 import LpOffers from '../anchor/LpOffers';
 import { useLpStatus } from '../anchor/hooks';
+import LeaderSettings from '../leader/LeaderSettings';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
 
@@ -124,7 +125,11 @@ export default function Shell({ leader }) {
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`share/${t}`)}
       onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')}
       onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} />;
-  } else if (view === 'settings') body = <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />;
+  } else if (view === 'settings') {
+    body = leader
+      ? <LeaderSettings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />
+      : <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />;
+  }
   else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('offers')} />;
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
   else if (view === 'crop') body = leader ? <LeaderPlans /> : <CropPlanFlow />;
