@@ -23,6 +23,7 @@ const NEW_CHAIN = 'stellar';
 // wallet is made (the demo's Cognito stand-in, never AWS). Unset in every real build.
 const DEMO = DEMO_COGNITO;                               // utils/demoMode.js: never in a real build
 const DEMO_CODE = '000000';
+const DEMO_NUMBERS = ['+910000000000', '+911111111111'];
 // The board's field around today's phone input (features/registration: +91 put in on focus; backspace changes it).
 const PHONE_CSS = `.nl-phone{display:flex;align-items:center;gap:8px;width:100%}
 .nl-phone .PhoneInputCountry{display:flex;align-items:center;gap:6px}
@@ -51,7 +52,13 @@ async function storeLocal({ phone, salt, attrs, refresh, access }) {
   // Demo only (DEMO_COGNITO: flag + chain 31337 + localhost): the stand-in marks a pooled wallet handed to a new
   // number as new, so the new-user path (R5) runs without making a Privy user (AfterCode reads it).
   if (DEMO_COGNITO) {
-    try { sessionStorage.setItem(`nila.demoNew.${String(get('custom:address')).toLowerCase()}`, get('custom:demo_new') === '1' ? '1' : '0'); } catch { /* not kept */ }
+    const a = String(get('custom:address')).toLowerCase();
+    const fresh = get('custom:demo_new') === '1';
+    try {
+      sessionStorage.setItem(`nila.demoNew.${a}`, fresh ? '1' : '0');
+      // A demo wallet handed out fresh starts registration from R5: drop what an earlier run left on this phone.
+      if (fresh) { localStorage.removeItem(`nila.reg.${a}`); localStorage.removeItem(`nila.border.points.${a}`); localStorage.removeItem(`nila.privyNew.${a}`); }
+    } catch { /* not kept */ }
   }
 }
 
@@ -68,7 +75,8 @@ function Wallet({ onPick }) {
 /** R2: her phone number. Today's input, with +91 already in it; it can be deleted to give another country code. */
 function Phone({ busy, error, onSend }) {
   const [phone, setPhone] = useState('+91');         // shown from the start; backspace changes it
-  const ok = !!phone && isValidPhoneNumber(phone);
+  // Demo only: the dummy numbers 0000000000 (the demo leader) and 1111111111 (the demo member) are accepted too.
+  const ok = !!phone && (isValidPhoneNumber(phone) || (DEMO && DEMO_NUMBERS.includes(phone)));
   return (
     <RegFrame info="We send a 6-digit code to this number.">
       <style>{PHONE_CSS}</style>
