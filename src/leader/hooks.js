@@ -17,24 +17,19 @@ export function useUnionCash({ poll = 30_000 } = {}) {
       const u = [sv.address(cfg.union)];
       const fx = (fn, args = u) => readContract(cfg, 'fx_pool', fn, args);
       const fc = (fn, args = u) => readContract(cfg, 'fund_core', fn, args);
-      const [treasury, rainy, atHand, ids, lpUsdc, dom, off, floor, earmark, rate, junior, senior, hold] = await Promise.all([
+      const [treasury, rainy, atHand, ids, lpUsdc, dom, off, hold] = await Promise.all([
         fc('union_treasury'), fc('union_rainy_day').catch(() => 0n), fx('cash_at_hand'), fx('escrows_of'),
         fx('lp_usdc').catch(() => 0n), fx('senior_usdc', [...u, sv.u32(1)]).catch(() => 0n), fx('senior_usdc', [...u, sv.u32(0)]).catch(() => 0n),
-        fx('voucher_floor').catch(() => 0n), fc('senior_earmark').catch(() => 0n), fx('rate', []).catch(() => null),
-        fc('get_junior_market'), fc('get_senior_market'), fc('on_hold').catch(() => 0),
+        fc('on_hold').catch(() => 0),
       ]);
       const escrows = (await Promise.all((ids || []).map(async (id) => {
         const e = await fx('get_escrow', [sv.u64(id)]).catch(() => null);
         return e && { id: Number(id), member: e.member, purpose: PURPOSES[Number(e.purpose)] || 'Cash', amount: n(e.amount), remaining: n(e.remaining), expires: Number(e.expires) };
       }))).filter(Boolean).sort((a, b) => a.expires - b.expires);
-      const inrPerUsd = rate ? n(rate.inr_per_usd) : null;
       return {
         treasury: n(treasury), rainy: n(rainy), atHand: n(atHand), escrows,
         // The union's USDC per tag (R24): what LPs brought in (domestic) and senior USDC, domestic and offshore.
         usdc: { lp: n(lpUsdc), domestic: n(dom), offshore: n(off) },
-        voucherFloor: n(floor), earmark: n(earmark),
-        rate: rate ? { inrPerUsd, validUntil: Number(rate.valid_until) } : null,
-        junior: { cash: n(junior?.cash) }, senior: { cash: n(senior?.cash) },
         // Lending is on hold while a loan is overdue (fund_core.on_hold: the count).
         overdue: Number(hold || 0),
         // Available to cash in = treasury − cash in circulation (cash at hand never exceeds the treasury).
@@ -50,8 +45,8 @@ export const SEARCH_WINDOWS = [['24h', 'the last 24 hours'], ['week', 'the last 
 /**
  * The union's book (C1/C2, LOAN_RULES §5 20 Oct): the node's loan list (async list, O15) with each loan's live
  * numbers from fund_core.get_loan. Interest pending = accrued and unpaid plus simple interest since the last accrual
- * at the loan's rate (as fund_core accrues); earnings pending = the union's share of it (treasury + rainy-day fee
- * over the rate, as the old app). Accounted for: the list's outstanding cash principal against the chain's junior
+ * at the loan's rate (as fund_core accrues); earnings pending = the union's cut of it as fund_core pays it
+ * (treasury + rainy-day fee, in basis points of the interest). Accounted for: the list's outstanding cash principal against the chain's junior
  * borrows (fund_core.get_junior_market.total_borrows). DESIGN GAP: "Member contributions" and the fund total have no
  * formula in the design; here junior cash + borrows, and that plus the senior pool.
  */
@@ -77,7 +72,8 @@ export function useUnionBook(api) {
       const open = rows.filter(Boolean);
       const feeBp = Number(uc?.treasury_fee_bp ?? 0) + Number(uc?.rainy_fee_bp ?? 0);
       const interestPending = open.reduce((t, r) => t + r.interest, 0);
-      const earningsPending = open.reduce((t, r) => t + (r.rateBp > feeBp ? (r.interest * feeBp) / r.rateBp : 0), 0);
+      // The union's cut of interest as fund_core pays it (distribute_interest: interest × fee_bp / 10,000).
+      const earningsPending = open.reduce((t, r) => t + (r.interest * feeBp) / 10_000, 0);
       const listed = open.reduce((t, r) => t + r.outstanding, 0);
       const chain = n(junior?.total_borrows);
       const contributions = n(junior?.cash) + n(junior?.total_borrows);

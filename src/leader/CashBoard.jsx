@@ -11,7 +11,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { useUnionOffers, usdcOf } from '../anchor/hooks';
+import { useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
 import { COLLECT } from '../anchor/sep';
 import { C, FONT, R } from '../shell/tokens';
@@ -24,6 +24,9 @@ const card = { background: C.ink, borderRadius: R.card, padding: '18px 22px', ma
 const rowS = { display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '6px 0' };
 const pill = { height: 36, padding: '0 14px', borderRadius: R.round, background: C.raised, border: 0, color: C.text, fontWeight: 700, fontFamily: FONT };
 const primary = { width: '100%', height: 44, borderRadius: R.button, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: FONT, marginTop: 12 };
+
+/** The N1–N3 screens over the whole tab, not inside a card. */
+const Over = ({ children }) => <div style={{ position: 'fixed', inset: 0, zIndex: 50, overflowY: 'auto', background: C.ink }}>{children}</div>;
 
 function Row({ k, v, accent, coral }) {
   return <div style={rowS}><span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: coral ? C.coral : accent ? C.accent : C.text }}>{v}</span></div>;
@@ -47,28 +50,40 @@ function Chip({ book, api, onFound }) {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState();
+  const [added, setAdded] = useState(0);
+  const [gapInStore, setGapInStore] = useState(false);
   if (!book) return <p style={{ color: C.muted, textAlign: 'center' }}>…</p>;
   if (book.gap <= 0) {
-    return <p style={{ textAlign: 'center', margin: '8px 0 0' }}><b>✓ Every rupee is accounted for</b><br /><span style={{ color: C.muted, fontSize: 14 }}>{note || 'Treasury and share list agree'}</span></p>;
+    return <p style={{ textAlign: 'center', margin: '8px 0 0' }}><b>✓ Every rupee is accounted for</b><br /><span style={{ color: C.muted, fontSize: 14 }}>{added ? `${added} share${added > 1 ? 's' : ''} added to the list` : 'Treasury and share list agree'}</span></p>;
   }
   const [win, label] = SEARCH_WINDOWS[Math.min(step, SEARCH_WINDOWS.length - 1)];
   const search = async () => {
     setBusy(true);
     try {
+      const before = book.loans.length;
       const r = await api.unionSearch(win);
-      setNote(`Searched ${label} · ${r.loans.length ? `${r.loans.length} share${r.loans.length > 1 ? 's' : ''} in the list` : 'nothing new'}`);
+      if (r.store_gap) setGapInStore(true);
+      const after = (await onFound()).data?.loans.length ?? before;
+      const n = Math.max(0, after - before);
+      setAdded((x) => x + n);
+      setNote(`Searched ${label} · ${n ? `${n} share${n > 1 ? 's' : ''} added` : 'nothing new'}`);
       setStep((x) => x + 1);
-      await onFound();
     } catch (e) { setNote(e.message); }
     setBusy(false);
   };
-  const done = step >= SEARCH_WINDOWS.length;
+  const done = step >= SEARCH_WINDOWS.length || gapInStore;
+  if (busy) {
+    return (
+      <p style={{ textAlign: 'center', margin: '8px 0 0' }}><b>Searching {label}…</b><br />
+        <span style={{ color: C.muted, fontSize: 14 }}>{win === '6months' ? 'This can take a few minutes. You can leave this screen.' : 'A few seconds'}</span></p>
+    );
+  }
+  const next = SEARCH_WINDOWS[Math.min(step, SEARCH_WINDOWS.length - 1)][1];
   return (
-    <button type="button" onClick={done || busy ? undefined : search} style={{ ...pill, display: 'block', margin: '8px auto 0', height: 'auto', padding: '8px 16px', color: C.coral, textAlign: 'center' }}>
+    <button type="button" onClick={done ? undefined : search} style={{ ...pill, display: 'block', margin: '8px auto 0', height: 'auto', padding: '8px 16px', color: C.coral, textAlign: 'center' }}>
       {inr(book.gap)} not accounted for<br />
       <span style={{ color: C.muted, fontWeight: 400, fontSize: 13 }}>
-        {busy ? `Searching ${label}…${win === '6months' ? ' This can take a few minutes. You can leave this screen.' : ' A few seconds.'}`
-          : done ? `${note ? `${note}. ` : ''}Ask Nila support.` : `${note ? `${note}. ` : ''}Tap to search ${label}.`}
+        {done ? `${note ? `${note}. ` : ''}Ask Nila support.` : `${note ? `${note}. ` : ''}Tap to search ${next}.`}
       </span>
     </button>
   );
@@ -80,17 +95,20 @@ function Adjust({ cash, onClose }) {
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
   const [dir, setDir] = useState('deposit');
+  const [rainy, setRainy] = useState(false);
   const [amount, setAmount] = useState(0);
   const mine = Math.floor(s?.stellarAccount?.nin?.balance ?? 0);
-  const max = dir === 'deposit' ? mine : Math.floor(cash.free);
+  const fromRainy = dir === 'withdraw' && rainy;
+  const max = dir === 'deposit' ? mine : fromRainy ? Math.floor(cash.rainy) : Math.floor(cash.free);
   const a = Math.min(amount, max);
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onClose(); }} onRetry={() => tx.retry()} />;
+  if (tx.status !== 'idle') return <Over><TxScreens tx={tx} onClose={() => { tx.reset(); onClose(); }} onRetry={() => tx.retry()} /></Over>;
   const go = () => tx.run({
-    label: dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`, rows: [['Amount', inr(a)], ['Union treasury after', inr(cash.treasury + (dir === 'deposit' ? a : -a))]],
+    label: dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`,
+    rows: [['Amount', inr(a)], fromRainy ? ['Rainy day fund after', inr(cash.rainy - a)] : ['Union treasury after', inr(cash.treasury + (dir === 'deposit' ? a : -a))]],
     contractName: 'fund_core', fn: dir === 'deposit' ? 'leader_deposit_treasury' : 'withdraw_union_treasury',
     args: dir === 'deposit'
       ? [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * U)]
-      : [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * U), sv.bool(false)],
+      : [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * U), sv.bool(fromRainy)],
     invalidate: [['stellar', 'unionCash'], ['stellar', 'account']],
   });
   const seg = (on) => ({ flex: 1, height: 40, borderRadius: R.button, border: 0, background: on ? C.accent : C.raised, color: on ? C.ink : C.text, fontWeight: 700, fontFamily: FONT });
@@ -100,8 +118,14 @@ function Adjust({ cash, onClose }) {
         <button type="button" style={seg(dir === 'deposit')} onClick={() => setDir('deposit')}>Deposit into the fund</button>
         <button type="button" style={seg(dir === 'withdraw')} onClick={() => setDir('withdraw')}>Withdraw from the fund</button>
       </div>
+      {dir === 'withdraw' && (
+        <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14 }}>
+          <input type="checkbox" checked={rainy} onChange={(e) => setRainy(e.target.checked)} aria-label="From the rainy day fund" />
+          From the rainy day fund ({inr(cash.rainy)})
+        </label>
+      )}
       <Stepper value={a} set={setAmount} max={max} />
-      <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />
+      {fromRainy ? <Row k="Rainy day fund after" v={inr(cash.rainy - a)} /> : <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />}
       <Row k="Your nIN after" v={`${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />
       <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={go}>{dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`}</button>
     </>
@@ -118,16 +142,23 @@ function useCountdown(ts) {
 
 /** C4: the Cash card (time left, let an LP collect it) and the LP cards. */
 function CashCard({ cash, open, setOpen, onScanLp }) {
+  const s = useNilaSigner();
   const offers = useUnionOffers().data || [];
   const { tx, post } = usePost();
+  const cancel = useSorobanTx();
+  const [sure, setSure] = useState();   // a second tap cancels (an accepted offer is the LP's swap too)
   const promised = offers.filter((o) => o.kind === COLLECT && o.state <= 1).reduce((t, o) => t + o.inr, 0);
   const max = Math.max(0, Math.min(10000, Math.floor(cash.atHand) - promised));
   const [amount, setAmount] = useState(0);
   const a = Math.min(amount, max);
   const first = cash.escrows.find((e) => e.remaining > 0);
   const left = useCountdown(first?.expires);
-  const fee = Math.round(a / 100);
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
+  const q = useOfferQuote(COLLECT, a);
+  const feeBp = q.data ? Number(q.data.fee_bp) : 100;
+  const fee = Math.round((a * feeBp) / 10_000);
+  const t = tx.status !== 'idle' ? tx : cancel.status !== 'idle' ? cancel : null;
+  if (t) return <Over><TxScreens tx={t} onClose={() => t.reset()} onRetry={() => t.retry()} /></Over>;
+  const until = (ts) => { const sec = ts - Date.now() / 1000; return sec < 86400 ? `${Math.max(1, Math.ceil(sec / 3600))} h left` : `In ${Math.ceil(sec / 86400)} d`; };
   const now = Date.now() / 1000;
   const live = offers.filter((o) => o.state <= 1 && o.expires > now);
   return (
@@ -145,8 +176,8 @@ function CashCard({ cash, open, setOpen, onScanLp }) {
             <Row k="After the deadline" v="Treasury covers it" />
             <h3 style={{ fontSize: 14, margin: '14px 0 0' }}>Cash for your LPs to collect</h3>
             <Stepper value={a} set={setAmount} max={max} />
-            <Row k="LP fee (1%)" v={a ? inr(fee) : '—'} />
-            <Row k="Into the union treasury" v={a ? inr(a - fee) : '—'} />
+            <Row k={`LP fee (${feeBp / 100}%)`} v={a ? inr(fee) : '—'} />
+            <Row k="Into the union treasury" v={a ? `${inr(a - fee)}${q.data ? ` · ${usdcOf(q.data.usdc)} USDC` : ''}` : '—'} />
             {promised > 0 && <p style={{ color: C.muted, fontSize: 13 }}>{inr(promised)} is offered to LPs already.</p>}
             <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={() => post(COLLECT, a)}>Let LPs collect {inr(a)}</button>
           </>
@@ -158,12 +189,18 @@ function CashCard({ cash, open, setOpen, onScanLp }) {
             <section key={o.id} style={{ ...card, flex: '0 0 85%', scrollSnapAlign: 'center', marginBottom: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <b>{o.state === 1 ? `LP ${short(o.lp)}` : o.kind === 0 ? 'LP brings cash' : 'Give cash'}</b>
-                <span style={{ color: o.state === 1 ? C.accent : C.muted, fontWeight: 700 }}>{o.state === 1 ? 'Here' : `${Math.ceil((o.expires - now) / 3600)} h left`}</span>
+                <span style={{ color: o.state === 1 ? C.accent : C.muted, fontWeight: 700 }}>{o.state === 1 ? 'Here' : until(o.expires)}</span>
               </div>
               <Row k="Amount" v={inr(o.inr)} />
-              <Row k="Fee (1%)" v={inr(o.inr / 100)} />
+              <Row k={`Fee (${feeBp / 100}%)`} v={inr((o.inr * feeBp) / 10_000)} />
               {o.state === 1 ? <Row k="USDC" v={usdcOf(o.usdc)} /> : <Row k="Status" v="Waiting" />}
               {o.state === 1 && <button type="button" style={primary} onClick={onScanLp}>Scan code</button>}
+              <button type="button" onClick={() => (sure === o.id ? cancel.run({
+                label: `Cancel the offer of ${inr(o.inr)}`, rows: [['Offer', `${o.kind === 0 ? 'LP brings cash' : 'Give cash'} ${inr(o.inr)}`]],
+                contractName: 'fx_pool', fn: 'cancel_offer', args: [sv.address(s.stellarAddress), sv.u64(o.id)], invalidate: [['stellar', 'offers']],
+              }) : setSure(o.id))} style={{ background: 'none', border: 0, padding: 0, color: C.coral, fontWeight: 700, marginTop: 8 }}>
+                {sure === o.id ? (o.state === 1 ? 'Tap again: the LP accepted it' : 'Tap again to cancel') : 'Cancel'}
+              </button>
             </section>
           ))}
         </div>

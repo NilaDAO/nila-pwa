@@ -3,7 +3,7 @@
 // DESIGN GAPs: LP names (the node has none) are short wallet addresses; the member slides (repay, invest,
 // withdrawal) and the Tasks badge come with their own steps.
 import { useEffect, useState } from 'react';
-import { useUnionOffers, usdcOf } from '../anchor/hooks';
+import { useUnionOffers } from '../anchor/hooks';
 import { C, FONT, R } from '../shell/tokens';
 import { useUnionCash } from './hooks';
 
@@ -43,7 +43,8 @@ export function LeaderSlides({ onSettle, onScanLp }) {
           <span style={{ fontSize: 28, fontWeight: 700 }}>{inr(cash.atHand)}</span>
           {first && <span style={{ color: left < 86400 ? C.coral : C.muted, fontWeight: 700 }}>{leftText(first.expires, now)}</span>}
         </div>
-        {first && <div style={{ height: 8, background: C.raised, borderRadius: R.round }}><div style={{ width: `${Math.max(0, Math.min(100, (100 * left) / WEEK))}%`, height: 8, background: left < 86400 ? C.coral : C.accent, borderRadius: R.round }} /></div>}
+        {/* The 7-day window filling up (the board: "Day N of 7"). */}
+        {first && <div style={{ height: 8, background: C.raised, borderRadius: R.round }}><div style={{ width: `${Math.max(0, Math.min(100, (100 * (WEEK - left)) / WEEK))}%`, height: 8, background: left < 86400 ? C.coral : C.accent, borderRadius: R.round }} /></div>}
         <span style={{ color: C.muted, fontSize: 14 }}>After 7 days the treasury covers it.</span>
         <button type="button" style={btn} onClick={onSettle}>Lend out or settle</button>
       </section>,
@@ -58,7 +59,7 @@ export function LeaderSlides({ onSettle, onScanLp }) {
         {live.slice(0, 3).map((o) => {
           const bring = o.kind === 0;
           const title = o.state === 1 ? 'LP arrived' : bring ? 'LP brings cash' : 'Give cash';
-          const sub = o.state === 1 ? `${short(o.lp)} · ${usdcOf(o.usdc)} USDC` : `${bring ? 'Tops up the cash' : 'The LP deposits USDC'} · expires in ${expiresIn(o.expires, now)}`;
+          const sub = o.state === 1 ? `${short(o.lp)} · fee ${inr(o.inr / 100)} (1%)` : `${bring ? 'Tops up the cash' : 'The LP deposits USDC'} · expires in ${expiresIn(o.expires, now)}`;
           return (
             <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 14 }}>
               <span style={{ display: 'flex', flexDirection: 'column' }}><b>{title} · {inr(o.inr)}</b><span style={{ color: C.muted }}>{sub}</span></span>

@@ -20,11 +20,23 @@ the union's loan list (O15, event search), no waiting cash-outs list on C4. Back
 - "Member contributions" (junior cash + borrows) and the union fund (that plus the senior pool) have no formula in
   the design.
 - Interest pending: accrued and unpaid plus simple interest since the last accrual, per loan of the node's list;
-  earnings pending: the union's fee share of it (treasury + rainy over the rate), as the old app.
+  earnings pending: the union's cut of it as fund_core pays it (interest × (treasury + rainy fee bp) / 10,000).
+- The reconcile chip compares the node list's outstanding cash principal with fund_core's junior `total_borrows`
+  (the loans' part of the fund), not the whole fund total the board names; a gap the node's history cannot cover
+  (`store_gap`) ends the search with "Ask Nila support".
+- Hooks and keys: `useUnionCash` (`['stellar','unionCash']`) and `useUnionBook` (`['stellar','unionBook']`) stand for
+  the design's useUnionFund / useCashAtHand / useUnionCropShares / useLoanEvents; `useTreasuryAdjust` is inline in C3.
+- LP offers are cancelled from the C4 LP cards (two taps); the earlier "Let an LP collect it" screen (LetCollect) is
+  replaced by the board's Cash card.
 - No waiting cash-outs list (decided); LP names are short addresses; "Take a tour" not built.
 - The cash tasks the design puts on L1 (crop share request, invest, repay, pay out, register a machine, scan an LP
   code) are listed under the board's cards until L1 exists.
 - A9 (the leader's own USDC, send / swap) is not built: Stellar has no leader swap.
 - LS: no signers list (no on-chain list), no contact-book union key (Q17, new encryption work), no "Propose new
-  factors", seed prices, notifications or theme rows; the leader K1 is not built.
+  factors", seed prices, notifications or theme rows; the leader K1 is not built. Also left out: Representative,
+  Union name and Change union, Farm name, Currency, Phone number (no source on Stellar yet). Network sits in the union
+  card. The Reset confirm drops "and a new WhatsApp code" (login is SMS through Cognito, LOAN_RULES §5). The Voucher
+  prices text is reworded to what is shown (machine rates only).
+- C1: "Union fund" instead of the fund's name (not on-chain); "N shares overdue" has no "In Tasks ›" link (no L1);
+  an extra "Union USDC" row (LP and senior USDC, R24) — the board has no place for it and A9 is not built.
 - A1L's member slides (repay, invest, withdrawal) and the Tasks badge come with their own steps.
