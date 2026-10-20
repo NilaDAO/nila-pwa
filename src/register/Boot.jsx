@@ -178,5 +178,5 @@ export function NotMobile() {
 /** After R3 the wallet loads on the registration ground (field scene + waiting card), not on S1, so R1 → R14 is one
  *  continuous flow. */
 export function RegLoading() {
-  return <RegFrame><Bouncing pad={48} /></RegFrame>;
+  return <RegFrame><Bouncing /></RegFrame>;   // the same bounce as R14
 }

@@ -87,7 +87,7 @@ function Sending({ title }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{ ...cardTitle, padding: '8px 0 0 0' }}>{title}</div>
-      <Bouncing pad={48} />
+      <Bouncing />
     </div>
   );
 }
