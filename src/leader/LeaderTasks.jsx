@@ -4,10 +4,13 @@
 // row opening the flow that exists. DESIGN GAPs: no member names (land and short address); not built yet and left
 // out of the list: Add a member (L14, keypad), Make a crop plan with a member, Change her crop plan, Get cash and
 // vouchers for her, Withdraw her investment, Use machine hours / seeds for her, Register trees, Add field note,
-// Add a water source, Farm improvements; "Your own" tasks; crop not seen, price updates, field border checks.
+// Add a water source, Farm improvements; "Your own" tasks; crop not seen, price updates. P11: field border checks
+// (L1 "Check field borders" → L2a–L4) from the node's border jobs (O16).
 import { useState } from 'react';
 import { usePlanClient } from '../plan/hooks';
 import { useUnionOffers } from '../anchor/hooks';
+import { useBorderJobs } from '../border/hooks';
+import { memberName } from '../border/LeaderBorder';
 import { C, FONT, R } from '../shell/tokens';
 import { useKnownMembers, useLeaderTodo, useUnionCash } from './hooks';
 
@@ -56,6 +59,7 @@ export default function LeaderTasks({ go }) {
   const cash = useUnionCash().data;
   const todo = useLeaderTodo(api, cash);
   const offers = useUnionOffers().data || [];
+  const borders = useBorderJobs().data || [];
   const [q, setQ] = useState('');
   const now = Date.now() / 1000;
   const items = [...(todo.data || [])];
@@ -66,6 +70,9 @@ export default function LeaderTasks({ go }) {
   }
   for (const o of offers.filter((x) => x.state === 1 && x.expires > now)) {
     items.unshift({ key: `lp-${o.id}`, title: o.kind === 0 ? 'LP brings cash' : 'LP collects cash', amount: o.inr, who: `LP ${short(o.lp)} · Here`, to: 'cash/lpscan' });
+  }
+  for (const j of borders.filter((x) => x.status !== 'minted')) {
+    items.unshift({ key: `border-${j.id}`, title: 'Check field borders', who: `${memberName(j)} · ${j.fields} fields`, to: `tasks/border/${j.id}`, urgent: j.status === 'ready' });
   }
   const shown = items.filter((t) => !q || `${t.title} ${t.who}`.toLowerCase().includes(q.toLowerCase()));
   return (

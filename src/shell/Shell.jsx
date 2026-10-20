@@ -24,6 +24,8 @@ import LpOffers from '../anchor/LpOffers';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
 import LeaderTasks from '../leader/LeaderTasks';
+import LeaderBorder from '../border/LeaderBorder';
+import SendLocation from '../border/SendLocation';
 import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
@@ -75,8 +77,13 @@ function Settings({ onBack, onIdCheck, onOffers }) {
   );
 }
 
+// tasks/border/<job id>[/<field>]: L2a–L4 for a leader.
+const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+))?/) || [];
+
 function TasksView({ leader, go }) {
   const lp = useLpStatus();
+  const [, borderId, field] = readBorder();
+  if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
   if (leader) return <LeaderTasks go={go} />;
   if (!leader && lp.data?.lp && lp.data?.trustline) return <LpOffers onBack={() => { window.location.hash = '#/assets'; }} />;
   return <Later title="Tasks" step={leader ? 'the leader steps' : 'a later step'} />;
@@ -87,8 +94,10 @@ export default function Shell({ leader }) {
   useEffect(loadInter, []);
   const tabs = leader ? LEADER_TABS : assisted() ? ASSISTED_TABS : MEMBER_TABS;
   const [view, setView] = useState(() => readTab() || 'assets');
+  const [, setHash] = useState(window.location.hash);
   useEffect(() => {
-    const on = () => setView(readTab() || 'assets');
+    // The full hash too, so moving inside a tab (tasks → tasks/border/<id>/<field>) renders again.
+    const on = () => { setView(readTab() || 'assets'); setHash(window.location.hash); };
     window.addEventListener('hashchange', on);
     return () => window.removeEventListener('hashchange', on);
   }, []);
@@ -127,12 +136,15 @@ export default function Shell({ leader }) {
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} moveNote={moveNote}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`share/${t}`)}
       onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')}
-      onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} />;
+      onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')}
+      onLand={() => go('land')} />;
   } else if (view === 'settings') {
     body = leader
       ? <LeaderSettings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />
       : <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />;
   }
+  // R5–R7 / R14: a member without a land title sends her field points.
+  else if (view === 'land') body = <SendLocation onBack={() => go('assets')} />;
   else if (view === 'history') body = <History onBack={() => go('assets')} />;
   else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('offers')} />;
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
