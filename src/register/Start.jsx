@@ -23,7 +23,8 @@ const NEW_CHAIN = 'stellar';
 // wallet is made (the demo's Cognito stand-in, never AWS). Unset in every real build.
 const DEMO = DEMO_COGNITO;                               // utils/demoMode.js: never in a real build
 const DEMO_CODE = '000000';
-const DEMO_NUMBERS = ['+910000000000', '+911111111111'];
+// The input drops one leading 0 (an Indian trunk prefix), so 0000000000 arrives as +91 and 9 or 10 zeros.
+const demoNumber = (p) => (/^\+910{9,10}$/.test(p) ? '+910000000000' : /^\+911{10}$/.test(p) ? '+911111111111' : null);
 // The board's field around today's phone input (features/registration: +91 put in on focus; backspace changes it).
 const PHONE_CSS = `.nl-phone{display:flex;align-items:center;gap:8px;width:100%}
 .nl-phone .PhoneInputCountry{display:flex;align-items:center;gap:6px}
@@ -76,7 +77,7 @@ function Wallet({ onPick }) {
 function Phone({ busy, error, onSend }) {
   const [phone, setPhone] = useState('+91');         // shown from the start; backspace changes it
   // Demo only: the dummy numbers 0000000000 (the demo leader) and 1111111111 (the demo member) are accepted too.
-  const ok = !!phone && (isValidPhoneNumber(phone) || (DEMO && DEMO_NUMBERS.includes(phone)));
+  const ok = !!phone && (isValidPhoneNumber(phone) || (DEMO && !!demoNumber(phone)));
   return (
     <RegFrame info="We send a 6-digit code to this number.">
       <style>{PHONE_CSS}</style>
@@ -86,7 +87,7 @@ function Phone({ busy, error, onSend }) {
           onChange={(v) => setPhone(v || '')} />
       </div>
       {error && <p role="alert" style={{ margin: 0, color: '#E69283', fontSize: 14 }}>{error}</p>}
-      <button type="button" style={ok && !busy ? btnPrimary : btnDisabled} disabled={!ok || busy} onClick={() => onSend(phone)}>Send code via SMS</button>
+      <button type="button" style={ok && !busy ? btnPrimary : btnDisabled} disabled={!ok || busy} onClick={() => onSend((DEMO && demoNumber(phone)) || phone)}>Send code via SMS</button>
     </RegFrame>
   );
 }
