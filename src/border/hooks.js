@@ -55,13 +55,13 @@ function useJobWrite(id, fn) {
   });
 }
 
-/** R5–R7: she sends her points (finalize starts the border job). */
+/** R5–R7 → R14: her points, with the union she chose (R9), sent at the end of registration (starts the border job). */
 export function useSendFieldPoints() {
   const s = useNilaSigner();
   const api = useBorderClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ points, farm }) => api.sendPoints({ polygon: s.evmAddress, farm, points }),
+    mutationFn: ({ points, farm, union }) => api.sendPoints({ polygon: s.evmAddress, farm, union, points }),
     onSuccess: (job) => qc.setQueryData(qkBorder.mine(s?.stellarAddress), job),
   });
 }

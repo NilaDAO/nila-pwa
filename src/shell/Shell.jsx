@@ -2,7 +2,7 @@
 // and to leaders who chose "New Nila". Today's cards stay for Polygon wallets (StellarGate).
 // Tabs are kept in the URL hash (#/assets …) so the phone's back button works.
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { getMoveStatus, requestMoveNin } from '../move/api';
 import { useLegacyBalances } from '../move/hooks';
@@ -25,7 +25,7 @@ import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
 import LeaderTasks from '../leader/LeaderTasks';
 import LeaderBorder from '../border/LeaderBorder';
-import SendLocation from '../border/SendLocation';
+import Registration from '../register/Registration';
 import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
@@ -108,6 +108,7 @@ export default function Shell({ leader }) {
   // Her nIN move was refused before anything was burned: she can ask again (moved from StellarHome).
   const { data: cfg } = useStellarConfig();
   const legacy = useLegacyBalances(s?.evmAddress);
+  const qc = useQueryClient();
   const [retry, setRetry] = useState();
   const again = async () => {
     setRetry('…');
@@ -130,21 +131,25 @@ export default function Shell({ leader }) {
     </>
   );
 
+  // Registration (R5–R14, notes reg-recover): a member whose wallet holds no land title on Polygon registers her
+  // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
+  if (!leader && legacy.data && legacy.data.titles === 0) {
+    const onTitle = () => { qc.invalidateQueries({ queryKey: ['polygon', 'legacy'] }); go('crop'); };
+    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
+  }
+
   let body;
   if (view === 'assets') {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} moveNote={moveNote}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`share/${t}`)}
       onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')}
-      onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')}
-      onLand={() => go('land')} />;
+      onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} />;
   } else if (view === 'settings') {
     body = leader
       ? <LeaderSettings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />
       : <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />;
   }
-  // R5–R7 / R14: a member without a land title sends her field points.
-  else if (view === 'land') body = <SendLocation onBack={() => go('assets')} />;
   else if (view === 'history') body = <History onBack={() => go('assets')} />;
   else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('offers')} />;
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;

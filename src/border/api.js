@@ -9,7 +9,7 @@ const listOf = (r) => (Array.isArray(r) ? r : r?.jobs || []);
 export function borderClient(signer) {
   const call = signedCall(signer);
   return {
-    sendPoints: ({ polygon, farm, points }) => call('POST', '/border/points', { polygon, farm: farm || undefined, points }).then(jobOf),
+    sendPoints: ({ polygon, farm, union, points }) => call('POST', '/border/points', { polygon, farm: farm || undefined, union: union || undefined, points }).then(jobOf),
     mine: () => call('GET', '/border/mine').then(jobOf),
     jobs: () => call('GET', '/border/jobs').then(listOf),
     job: (id) => call('GET', `/border/job/${id}`).then(jobOf),
