@@ -9,24 +9,28 @@
 // SMS only (executive decision, 20 Oct; LOAN_RULES §5 "Login and Privy": no WhatsApp with Privy): R2 has one button,
 // 'Send code via SMS', and no WhatsApp line; R3 and R4 say SMS (the boards' #sms state).
 import { useEffect, useRef, useState } from 'react';
+import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
+import flags from 'react-phone-number-input/flags';
+import '../components/UI/phone_input.css';
 import { createItem } from '../utils/db';
 import { signUp, initAuth, respondToAuthChallenge, getUserAttributes } from '../utils/cognito_helpers';
 import { announceAuthChange } from '../wallet/session';
 import RegFrame, { Bouncing, btnDisabled, btnPrimary, btnQuiet, btnSecondary, cardTitle } from './RegFrame';
 
 const NEW_CHAIN = 'stellar';
+// Demo stack only (REACT_APP_COGNITO_DEMO=1): R2 sends nothing; R3 takes the dummy code 000000, and only then the
+// wallet is made (the demo's Cognito stand-in, never AWS). Unset in every real build.
+const DEMO = process.env.REACT_APP_COGNITO_DEMO === '1';
+const DEMO_CODE = '000000';
+// The board's field around today's phone input (features/registration: +91 put in on focus; backspace changes it).
+const PHONE_CSS = `.nl-phone{display:flex;align-items:center;gap:8px;width:100%}
+.nl-phone .PhoneInputCountry{display:flex;align-items:center;gap:6px}
+.nl-phone .PhoneInputCountrySelect{background:#1F2733;color:#F1F5F9}
+.nl-phone .PhoneInputCountryIcon{width:24px;height:16px;border-radius:2px;overflow:hidden}
+.nl-phone .PhoneInputCountrySelectArrow{color:#94A3B8}
+.nl-phone .PhoneInputInput{flex:1;min-width:0;height:44px;padding:0;border:0;background:transparent;color:#F1F5F9;font-family:inherit;font-size:16px;outline:none}`;
 const BOX = { width: 44, height: 44, borderRadius: 12, background: '#1F2733', display: 'flex', alignItems: 'center',
   justifyContent: 'center', fontSize: 16, fontWeight: 700 };
-
-function India() {
-  return (
-    <svg role="img" aria-label="India" width="24" height="16" viewBox="0 0 24 16" style={{ flexShrink: 0, borderRadius: 2, marginRight: 2 }}>
-      <rect width="24" height="16" fill="#FF9933" /><rect y="5.33" width="24" height="5.34" fill="#FFFFFF" />
-      <rect y="10.67" width="24" height="5.33" fill="#138808" />
-      <circle cx="12" cy="8" r="2.1" fill="none" stroke="#000080" strokeWidth="0.8" />
-    </svg>
-  );
-}
 
 const errName = (e) => e?.name || e?.__type || '';
 
@@ -55,24 +59,20 @@ function Wallet({ onPick }) {
   );
 }
 
-/** R2: her phone number (+91). */
+/** R2: her phone number. Today's input: +91 is put in on focus and can be deleted to give another country code. */
 function Phone({ busy, error, onSend }) {
-  const [digits, setDigits] = useState('');
-  const ok = /^[6-9]\d{9}$/.test(digits.replace(/\s/g, ''));
-  const send = () => { if (ok && !busy) onSend(`+91${digits.replace(/\s/g, '')}`, 'sms'); };
+  const [phone, setPhone] = useState('');
+  const ok = !!phone && isValidPhoneNumber(phone);
   return (
     <RegFrame info="We send a 6-digit code to this number.">
+      <style>{PHONE_CSS}</style>
       <h1 style={cardTitle}>Your phone number</h1>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, height: 44, borderRadius: 12, background: '#1F2733', padding: '0 14px',
-        fontSize: 16, color: '#F1F5F9', boxSizing: 'border-box', cursor: 'text' }}>
-        <India /><span style={{ color: '#94A3B8', flexShrink: 0 }}>+91</span>
-        <input type="tel" inputMode="numeric" autoComplete="tel-national" aria-label="Phone number" value={digits}
-          onChange={(e) => setDigits(e.target.value.replace(/[^\d ]/g, '').slice(0, 11))}
-          style={{ flex: 1, minWidth: 0, height: '100%', padding: 0, border: 0, background: 'transparent', color: '#F1F5F9',
-            fontFamily: 'inherit', fontSize: 16, outline: 'none' }} />
-      </label>
+      <div style={{ display: 'flex', alignItems: 'center', height: 44, borderRadius: 12, background: '#1F2733', padding: '0 14px', boxSizing: 'border-box' }}>
+        <PhoneInput className="nl-phone" flags={flags} value={phone} autoComplete="tel" aria-label="Phone number"
+          onFocus={() => { if (!phone) setPhone('+91'); }} onChange={(v) => setPhone(v || '')} />
+      </div>
       {error && <p role="alert" style={{ margin: 0, color: '#E69283', fontSize: 14 }}>{error}</p>}
-      <button type="button" style={ok && !busy ? btnPrimary : btnDisabled} disabled={!ok || busy} onClick={send}>Send code via SMS</button>
+      <button type="button" style={ok && !busy ? btnPrimary : btnDisabled} disabled={!ok || busy} onClick={() => onSend(phone)}>Send code via SMS</button>
     </RegFrame>
   );
 }
@@ -87,7 +87,7 @@ function Sending({ title }) {
 }
 
 /** R3 / R4: the 6-digit code; resend waits 30 s; offline says so. */
-function Code({ ch, verifying, error, onVerify, onResend, onBack, sent }) {
+function Code({ verifying, error, onVerify, onResend, onBack, sent }) {
   const [code, setCode] = useState('');
   const [left, setLeft] = useState(0);
   const [phase, setPhase] = useState('idle');           // idle | sending | offline
@@ -141,8 +141,8 @@ export default function Start({ onDone }) {
   const [step, setStep] = useState('wallet');            // wallet | phone | code
   const [kind, setKind] = useState('create');
   const [phone, setPhone] = useState('');
-  const [ch, setCh] = useState('sms');
   const [session, setSession] = useState(null);
+  const sessionRef = useRef(null);
   const [isNew, setIsNew] = useState(true);
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -164,14 +164,17 @@ export default function Start({ onDone }) {
     } else if (k === 'recover') setIsNew(false);
     if (!ses?.Session) throw new Error('The code could not be sent. Try again.');
     setSession(ses.Session);
+    sessionRef.current = ses.Session;
   };
 
-  const send = async (p, c) => {
+  const beginDemo = async (p, k) => { await begin(p, k); return sessionRef.current; };
+
+  const send = async (p) => {
+    if (DEMO) { setPhone(p); setError(null); setSent(false); setStep('code'); return; }   // demo: no SMS is sent
     if (!navigator.onLine) { setError('No internet on this phone. Turn on mobile data and try again.'); return; }
     setBusy(true); setError(null);
     try {
-      setPhone(p); setCh(c);
-      try { if (c === 'sms') sessionStorage.setItem('nila.otp', 'sms'); else sessionStorage.removeItem('nila.otp'); } catch { /* not kept */ }
+      setPhone(p);
       await begin(p, kind);
       setSent(false); setStep('code');
     } catch (e) { setError(e?.message || 'The code could not be sent. Try again.'); }
@@ -181,7 +184,12 @@ export default function Start({ onDone }) {
   const verify = async (code) => {
     setBusy(true); setError(null);
     try {
-      const r = await respondToAuthChallenge(phone, code, session, salt.current);
+      let ses = session;
+      if (DEMO) {                                        // demo: the dummy code, then the stand-in makes the wallet
+        if (code !== DEMO_CODE) throw Object.assign(new Error('wrong code'), { name: 'CodeMismatchException' });
+        ses = await beginDemo(phone, kind);
+      }
+      const r = await respondToAuthChallenge(phone, code, ses, salt.current);
       await new Promise((res) => setTimeout(res, 1500));  // as today: the Lambda writes the wallet first
       const access = r.AuthenticationResult.AccessToken;
       const attrs = (await getUserAttributes(access)).UserAttributes;
@@ -197,6 +205,6 @@ export default function Start({ onDone }) {
 
   if (step === 'wallet') return <Wallet onPick={(k) => { setKind(k); setStep('phone'); }} />;
   if (step === 'phone') return <Phone busy={busy} error={error} onSend={send} />;
-  return <Code ch={ch} sent={sent} verifying={busy} error={error} onBack={() => { setError(null); setStep('phone'); }}
-    onVerify={verify} onResend={async () => { await begin(phone, kind); setSent(true); }} />;
+  return <Code sent={sent} verifying={busy} error={error} onBack={() => { setError(null); setStep('phone'); }}
+    onVerify={verify} onResend={async () => { if (!DEMO) await begin(phone, kind); setSent(true); }} />;
 }
