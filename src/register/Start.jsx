@@ -23,9 +23,8 @@ const NEW_CHAIN = 'stellar';
 // wallet is made (the demo's Cognito stand-in, never AWS). Unset in every real build.
 const DEMO = DEMO_COGNITO;                               // utils/demoMode.js: never in a real build
 const DEMO_CODE = '000000';
-// The input drops one leading 0 (an Indian trunk prefix), so 0000000000 arrives as +91 and 9 or 10 zeros.
-const demoNumber = (p) => (/^\+910{9,10}$/.test(p) ? '+910000000000' : /^\+911{10}$/.test(p) ? '+911111111111'
-  : /^\+912{10}$/.test(p) ? '+912222222222' : null);
+// Any length from 6 digits (the input drops one leading 0, an Indian trunk prefix): all 0s, all 1s or all 2s.
+const demoNumber = (p) => { const m = /^\+91(0{5,10}|1{6,10}|2{6,10})$/.exec(p || ''); return m ? `+91${m[1][0].repeat(10)}` : null; };
 // The board's field around today's phone input (features/registration: +91 put in on focus; backspace changes it).
 const PHONE_CSS = `.nl-phone{display:flex;align-items:center;gap:8px;width:100%}
 .nl-phone .PhoneInputCountry{display:flex;align-items:center;gap:6px}
