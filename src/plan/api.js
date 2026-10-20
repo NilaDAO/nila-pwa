@@ -45,6 +45,9 @@ export function planClient({ stellarAddress, signHash }) {
     gas: (planId) => call('POST', `/plan/${planId}/gas`, {}),
     // P6 / O13: the 8 machine photos of L13 → their hash for machinery.register_machine.
     machinePhotos: (photos) => call('POST', '/machines/photos', { photos }),
+    // P10 / O15: the union's loan list (the async list) and C2's event search, one window per tap.
+    unionLoans: () => call('GET', '/stellar/union/loans'),
+    unionSearch: (window) => call('POST', '/stellar/union/search', { window }),
   };
 }
 

@@ -17,7 +17,8 @@ import { PayOut } from './CashOut';
 import { NIN } from './request';
 import PhotoCount from './PhotoCount';
 import RegisterMachine from '../machine/RegisterMachine';
-import { LetCollect, ScanLp } from '../anchor/LeaderLp';
+import { ScanLp } from '../anchor/LeaderLp';
+import CashBoard from '../leader/CashBoard';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
@@ -130,24 +131,27 @@ function Scan({ purpose, onBack }) {
   );
 }
 
-export default function CashDesk() {
-  const [view, setView] = useState();
+const OPEN = { lpscan: 'lpscan' };   // #/cash/<arg> from A1L's slides and rows (settle opens the Cash card)
+
+export default function CashDesk({ initial }) {
+  const [view, setView] = useState(OPEN[initial]);
   const back = useMemo(() => () => setView(undefined), []);
   if (view === 'loan') return <LeaderLoan />;
   if (view === 'invest' || view === 'repay') return <Scan purpose={view} onBack={back} />;
   if (view === 'payout') return <PayOut onBack={back} />;
   if (view === 'machine') return <RegisterMachine onBack={back} />;
-  if (view === 'collect') return <LetCollect onBack={back} />;
   if (view === 'lpscan') return <ScanLp onBack={back} />;
+  // The Cash tab is the C1–C4 board (P10); the cash tasks that the design puts on L1 follow below its cards.
   return (
-    <Sheet landName="Cash" title="Start a task">
-      <Choice sub="For a crop plan the member accepted" onClick={() => setView('loan')}>Crop share request</Choice>
-      <Choice sub="Cash in: she invests in the union" onClick={() => setView('invest')}>Invest</Choice>
-      <Choice sub="Cash in: the member repays her crop share" onClick={() => setView('repay')}>Repay</Choice>
-      <Choice sub="Scan her code, pay cash, burn her nIN" onClick={() => setView('payout')}>Pay out a cash-out</Choice>
-      <Choice sub="At the owner's farm: 8 photos, hours a week" onClick={() => setView('machine')}>Register a machine</Choice>
-      <Choice sub="Spare cash at the office: an LP takes it for USDC" onClick={() => setView('collect')}>Let an LP collect it</Choice>
-      <Choice sub="An LP brings or collects cash: scan her code" onClick={() => setView('lpscan')}>Scan an LP code</Choice>
-    </Sheet>
+    <CashBoard settle={initial === 'settle'} onScanLp={() => setView('lpscan')} tasks={(
+      <Sheet landName="Cash" title="Start a task">
+        <Choice sub="For a crop plan the member accepted" onClick={() => setView('loan')}>Crop share request</Choice>
+        <Choice sub="Cash in: she invests in the union" onClick={() => setView('invest')}>Invest</Choice>
+        <Choice sub="Cash in: the member repays her crop share" onClick={() => setView('repay')}>Repay</Choice>
+        <Choice sub="Scan her code, pay cash, burn her nIN" onClick={() => setView('payout')}>Pay out a cash-out</Choice>
+        <Choice sub="At the owner's farm: 8 photos, hours a week" onClick={() => setView('machine')}>Register a machine</Choice>
+        <Choice sub="An LP brings or collects cash: scan her code" onClick={() => setView('lpscan')}>Scan an LP code</Choice>
+      </Sheet>
+    )} />
   );
 }

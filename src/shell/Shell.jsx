@@ -122,14 +122,15 @@ export default function Shell({ leader }) {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} moveNote={moveNote}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`share/${t}`)}
-      onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')} />;
+      onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')}
+      onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} />;
   } else if (view === 'settings') body = <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />;
   else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('offers')} />;
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
   else if (view === 'crop') body = leader ? <LeaderPlans /> : <CropPlanFlow />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
   else if (view === 'loan') body = <LeaderLoan />;
-  else if (view === 'cash' && leader) body = <CashDesk />;
+  else if (view === 'cash' && leader) body = <CashDesk key={readArg() || 'menu'} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
   else if (view === 'invested') body = <Investment onBack={() => go('assets')} />;
   else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
