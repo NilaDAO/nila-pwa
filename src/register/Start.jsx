@@ -15,7 +15,7 @@ import '../components/UI/phone_input.css';
 import { createItem } from '../utils/db';
 import { signUp, initAuth, respondToAuthChallenge, getUserAttributes } from '../utils/cognito_helpers';
 import { announceAuthChange } from '../wallet/session';
-import RegFrame, { Bouncing, btnDisabled, btnPrimary, btnQuiet, btnSecondary, cardTitle } from './RegFrame';
+import RegFrame, { Bouncing, btnDisabled, btnPrimary, btnSecondary, cardTitle } from './RegFrame';
 
 const NEW_CHAIN = 'stellar';
 // Demo stack only (REACT_APP_COGNITO_DEMO=1): R2 sends nothing; R3 takes the dummy code 000000, and only then the
@@ -28,7 +28,7 @@ const PHONE_CSS = `.nl-phone{display:flex;align-items:center;gap:8px;width:100%}
 .nl-phone .PhoneInputCountrySelect{background:#1F2733;color:#F1F5F9}
 .nl-phone .PhoneInputCountryIcon{width:24px;height:16px;border-radius:2px;overflow:hidden}
 .nl-phone .PhoneInputCountrySelectArrow{color:#94A3B8}
-.nl-phone .PhoneInputInput{flex:1;min-width:0;height:44px;padding:0;border:0;background:transparent;color:#F1F5F9;font-family:inherit;font-size:16px;outline:none}`;
+.nl-phone .PhoneInputInput{flex:1;min-width:0;height:44px;padding:0;border:0;background:#1F2733!important;color:#FFFFFF!important;font-family:inherit;font-size:16px;outline:none}`;
 const BOX = { width: 44, height: 44, borderRadius: 12, background: '#1F2733', display: 'flex', alignItems: 'center',
   justifyContent: 'center', fontSize: 16, fontWeight: 700 };
 
@@ -59,17 +59,17 @@ function Wallet({ onPick }) {
   );
 }
 
-/** R2: her phone number. Today's input: +91 is put in on focus and can be deleted to give another country code. */
+/** R2: her phone number. Today's input, with +91 already in it; it can be deleted to give another country code. */
 function Phone({ busy, error, onSend }) {
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState('+91');         // shown from the start; backspace changes it
   const ok = !!phone && isValidPhoneNumber(phone);
   return (
     <RegFrame info="We send a 6-digit code to this number.">
       <style>{PHONE_CSS}</style>
       <h1 style={cardTitle}>Your phone number</h1>
       <div style={{ display: 'flex', alignItems: 'center', height: 44, borderRadius: 12, background: '#1F2733', padding: '0 14px', boxSizing: 'border-box' }}>
-        <PhoneInput className="nl-phone" flags={flags} value={phone} autoComplete="tel" aria-label="Phone number"
-          onFocus={() => { if (!phone) setPhone('+91'); }} onChange={(v) => setPhone(v || '')} />
+        <PhoneInput className="nl-phone" international flags={flags} value={phone} autoComplete="tel" aria-label="Phone number"
+          onChange={(v) => setPhone(v || '')} />
       </div>
       {error && <p role="alert" style={{ margin: 0, color: '#E69283', fontSize: 14 }}>{error}</p>}
       <button type="button" style={ok && !busy ? btnPrimary : btnDisabled} disabled={!ok || busy} onClick={() => onSend(phone)}>Send code via SMS</button>
@@ -87,7 +87,7 @@ function Sending({ title }) {
 }
 
 /** R3 / R4: the 6-digit code; resend waits 30 s; offline says so. */
-function Code({ verifying, error, onVerify, onResend, onBack, sent }) {
+function Code({ verifying, error, onVerify, onResend, sent }) {
   const [code, setCode] = useState('');
   const [left, setLeft] = useState(0);
   const [phase, setPhase] = useState('idle');           // idle | sending | offline
@@ -105,7 +105,7 @@ function Code({ verifying, error, onVerify, onResend, onBack, sent }) {
   const full = code.length === 6;
   const title = sent ? (sms ? 'We sent you a new code by SMS.' : 'We sent you a new code.') : (sms ? 'Enter the code we sent by SMS.' : 'Enter the code we sent to you.');
   return (
-    <RegFrame onBack={onBack} backLabel="Back: change my number" info="Open your SMS messages for a 6-digit code.">
+    <RegFrame info="Open your SMS messages for a 6-digit code.">
       {phase === 'sending' && <Sending title="Resending the code" />}
       {phase === 'offline' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -140,7 +140,7 @@ function Code({ verifying, error, onVerify, onResend, onBack, sent }) {
 export default function Start({ onDone }) {
   const [step, setStep] = useState('wallet');            // wallet | phone | code
   const [kind, setKind] = useState('create');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState('+91');         // shown from the start; backspace changes it
   const [session, setSession] = useState(null);
   const sessionRef = useRef(null);
   const [isNew, setIsNew] = useState(true);
@@ -205,6 +205,7 @@ export default function Start({ onDone }) {
 
   if (step === 'wallet') return <Wallet onPick={(k) => { setKind(k); setStep('phone'); }} />;
   if (step === 'phone') return <Phone busy={busy} error={error} onSend={send} />;
-  return <Code sent={sent} verifying={busy} error={error} onBack={() => { setError(null); setStep('phone'); }}
+  // No back arrow on R3 (executive decision, 20 Oct).
+  return <Code sent={sent} verifying={busy} error={error}
     onVerify={verify} onResend={async () => { if (!DEMO) await begin(phone, kind); setSent(true); }} />;
 }
