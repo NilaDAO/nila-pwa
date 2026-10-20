@@ -8,6 +8,7 @@
 // (L1 "Check field borders" → L2a–L4) from the node's border jobs (O16).
 import { useState } from 'react';
 import { usePlanClient } from '../plan/hooks';
+import { useLpStatus } from '../anchor/hooks';
 import { useUnionOffers } from '../anchor/hooks';
 import { useBorderJobs } from '../border/hooks';
 import { memberName } from '../border/LeaderBorder';
@@ -60,6 +61,7 @@ export default function LeaderTasks({ go }) {
   const todo = useLeaderTodo(api, cash);
   const offers = useUnionOffers().data || [];
   const borders = useBorderJobs().data || [];
+  const lp = useLpStatus().data;
   const [q, setQ] = useState('');
   const now = Date.now() / 1000;
   const items = [...(todo.data || [])];
@@ -85,6 +87,14 @@ export default function LeaderTasks({ go }) {
         {todo.isLoading && <p style={{ color: C.muted }}>…</p>}
         {shown.map((t) => <TaskRow key={t.key} title={t.title} sub={t.who} value={t.amount ? inr(t.amount) : undefined} urgent={t.urgent} onClick={() => go(t.to)} />)}
         {todo.isSuccess && !shown.length && <p style={{ color: C.muted }}>{q ? 'No tasks match.' : 'Nothing to do now.'}</p>}
+      </section>
+      {/* L1 'Your own' (notes leader-missing): her member tasks — a leader is also a member. Today the member app's own
+          task is the LP's cash offers; her crop plan and shares are on the Crop plan and Assets tabs. */}
+      <section style={card} aria-label="Your own">
+        <h2 style={{ fontSize: 16, margin: '0 0 10px' }}>Your own</h2>
+        {lp?.lp && lp?.trustline
+          ? <TaskRow title="Cash offers" sub="As an LP" onClick={() => go('offers')} />
+          : <p style={{ color: C.muted, margin: 0 }}>Nothing of your own to do.</p>}
       </section>
       <section style={card} aria-label="Start a task">
         <h2 style={{ fontSize: 16, margin: '0 0 10px' }}>Start a task</h2>

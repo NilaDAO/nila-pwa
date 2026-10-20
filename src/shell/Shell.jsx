@@ -135,10 +135,11 @@ export default function Shell({ leader }) {
 
   // Registration (R5–R14, notes reg-recover): a member whose wallet holds no land title on Polygon registers her
   // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
-  // Until her titles are known, a member sees the registration ground, not a flash of the tab bar.
-  if (!leader && !legacy.data && legacy.isLoading) return <RegLoading />;
+  // A leader is also a member (notes leader-missing): the same gate applies to her; with a title she never sees it.
+  // Until her titles are known she sees the registration ground, not a flash of the tab bar.
+  if (!legacy.data && legacy.isLoading) return <RegLoading />;
   // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
-  if (!leader && legacy.data && legacy.data.titles === 0 && (s?.privyNew === true || demoNew(s?.evmAddress))) {
+  if (legacy.data && legacy.data.titles === 0 && (s?.privyNew === true || demoNew(s?.evmAddress))) {
     const onTitle = () => { qc.invalidateQueries({ queryKey: ['polygon', 'legacy'] }); go('crop'); };
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
   }
@@ -158,7 +159,10 @@ export default function Shell({ leader }) {
   else if (view === 'history') body = <History onBack={() => go('assets')} />;
   else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('offers')} />;
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
-  else if (view === 'crop') body = leader ? <LeaderPlans /> : <CropPlanFlow />;
+  // The leader app is the member app, extended (notes leader-missing): her Crop plan tab is her own plan (CP13 with
+  // the leader tab bar); the union's plans to approve (L12) open from L1's To do.
+  else if (view === 'crop') body = <CropPlanFlow />;
+  else if (view === 'approvals' && leader) body = <LeaderPlans />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
   else if (view === 'loan') body = <LeaderLoan />;
   else if (view === 'cash' && leader) body = <CashDesk key={readArg() || 'menu'} initial={readArg()} />;
