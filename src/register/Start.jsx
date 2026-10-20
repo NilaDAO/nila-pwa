@@ -12,12 +12,11 @@ import { useEffect, useRef, useState } from 'react';
 import { createItem } from '../utils/db';
 import { signUp, initAuth, respondToAuthChallenge, getUserAttributes } from '../utils/cognito_helpers';
 import { announceAuthChange } from '../wallet/session';
-import RegFrame, { btnDisabled, btnPrimary, btnQuiet, btnSecondary, cardTitle } from './RegFrame';
+import RegFrame, { Bouncing, btnDisabled, btnPrimary, btnQuiet, btnSecondary, cardTitle } from './RegFrame';
 
 const NEW_CHAIN = 'stellar';
 const BOX = { width: 44, height: 44, borderRadius: 12, background: '#1F2733', display: 'flex', alignItems: 'center',
   justifyContent: 'center', fontSize: 16, fontWeight: 700 };
-const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
 
 function India() {
   return (
@@ -83,10 +82,7 @@ function Sending({ title }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{ ...cardTitle, padding: '8px 0 0 0' }}>{title}</div>
-      <div role="status" aria-label={title} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '48px 0' }}>
-        <img src={LOGO} alt="" style={{ width: 48, height: 48, animation: 'nila-bounce 1s ease-in-out infinite' }} />
-        <div style={{ width: 32, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.18)' }} />
-      </div>
+      <Bouncing pad={48} />
     </div>
   );
 }

@@ -15,8 +15,9 @@ import { setDBitem } from '../utils/db';
 import { useNilaSigner } from '../wallet/signer';
 import { subscribeUser } from '../features/apis/pushManager';
 import { useMyBorderJob, useSendFieldPoints } from '../border/hooks';
-import { Page, PointsStep, Waiting, clearPoints, primary, readPoints, secondary, useOnline } from '../border/SendLocation';
+import { Page, PointsStep, Waiting, clearPoints, readPoints, useOnline } from '../border/SendLocation';
 import { C, R } from '../shell/tokens';
+import { FieldFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, sheetText } from './RegFrame';
 
 // Today's one union (the Polygon registry's entry, src/components/Forms/memberUnion.js). DESIGN GAP: from the node.
 const UNIONS = [{ name: 'Mother Theresa Union', rep: 'Mrs. Rosalie Susairaj', polygon: '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070',
@@ -29,58 +30,82 @@ const writeReg = (evm, v) => { try { localStorage.setItem(regKey(evm), JSON.stri
 const setMode = (m) => { try { localStorage.setItem('nila.mode', m); } catch { /* kept for this session only */ } };
 
 
-/** The confirm card over a 60% dark layer (notes: confirms are overlays; tapping the layer = Cancel). */
-function Confirm({ title, text, onCancel, onAccept }) {
+/** The confirm card over a 60% dark layer (boards SheetVerify-88ia #later, RegNotify-52am #skip): a warning line,
+ *  Cancel and Accept; tapping the layer = Cancel. */
+function Confirm({ text, onCancel, onAccept }) {
   return (
-    <div role="dialog" aria-modal="true" onClick={onCancel}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', zIndex: 50 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ margin: '0 8px 88px', width: '100%', background: C.raised, borderRadius: R.card,
-        padding: '14px 22px 22px', display: 'flex', flexDirection: 'column', gap: 16, color: C.text }}>
-        {title && <b>{title}</b>}
-        <p style={{ margin: 0, color: C.muted }}>{text}</p>
+    <>
+      <div aria-hidden="true" onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.6)' }} />
+      <div role="dialog" aria-modal="true" aria-describedby="confirm-body" style={{ position: 'fixed', left: 8, right: 8, bottom: 88, zIndex: 21,
+        background: '#121212', borderRadius: 24, boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px',
+        padding: '14px 22px 22px', display: 'flex', flexDirection: 'column', gap: 16, fontFamily: 'inherit' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0' }}>
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" />
+          </svg>
+          <div id="confirm-body" style={{ fontSize: 14, lineHeight: 1.5, color: '#F1F5F9' }}>{text}</div>
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" style={secondary} onClick={onCancel}>Cancel</button>
-          <button type="button" style={primary} onClick={onAccept}>Accept</button>
+          <button type="button" style={{ ...btnSecondary, flex: 1 }} onClick={onCancel}>Cancel</button>
+          <button type="button" style={{ ...btnPrimary, flex: 1 }} onClick={onAccept}>Accept</button>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
-function Fact({ k, v }) {
+const SizeIcon = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1" /><path d="M4 9h16" /><path d="M9 4v16" /></svg>;
+const DaysIcon = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18" /><path d="M8 3v4" /><path d="M16 3v4" /></svg>;
+
+function Fact({ icon, k, v, line }) {
   return (
-    <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', display: 'flex', justifyContent: 'space-between' }}>
-      <span style={{ color: C.muted }}>{k}</span><b>{v}</b>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 52, padding: '8px 0', boxSizing: 'border-box', fontSize: 14,
+      lineHeight: 1.5, borderTop: line ? '1px solid #1F2733' : 'none' }}>
+      <span aria-hidden="true" style={{ width: 32, height: 32, flexShrink: 0, borderRadius: 9999, background: '#1F2733', display: 'flex',
+        alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
+      <span style={{ flexGrow: 1, color: '#94A3B8' }}>{k}</span><span style={{ fontWeight: 700 }}>{v}</span>
     </div>
   );
 }
 
-/** R8: a plastic sheet in one field, seen on the next satellite overpass. */
+/** R8 (board SheetVerify-88ia): a plastic sheet in one field, seen on the next satellite overpass. */
 function SheetStep({ onDone }) {
   const [later, setLater] = useState(false);
   return (
-    <Page title="Place a plastic sheet in your field">
-      <h2 style={{ fontSize: 16, margin: 0 }}>Place a plastic sheet in one of your fields</h2>
-      <p style={{ margin: 0, color: C.muted }}>Lay a plastic sheet flat on the ground inside one of your fields. Make sure it is plastic. Weigh the corners down with stones so it stays in place. On the next satellite overpass we will detect it.</p>
-      <Fact k="Size" v="at least 4 m × 4 m" />
-      <Fact k="Leave it in place" v="11 days" />
-      <button type="button" style={primary} onClick={() => onDone('placed')}>I placed the sheet</button>
-      <button type="button" style={secondary} onClick={() => setLater(true)}>I can do this later</button>
+    <FieldFrame sheet>
+      <div style={cardTitle}>Place a plastic sheet in one of your fields</div>
+      <div style={sheetText}>Lay a plastic sheet flat on the ground inside one of your fields. Make sure it is plastic. Weigh the corners down with stones so it stays in place. On the next satellite overpass we will detect it.</div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <Fact icon={<SizeIcon />} k="Size" v="at least 4 m × 4 m" />
+        <Fact icon={<DaysIcon />} k="Leave it in place" v="11 days" line />
+      </div>
+      <button type="button" style={btnPrimary} onClick={() => onDone('placed')}>I placed the sheet</button>
+      <button type="button" style={btnSecondary} onClick={() => setLater(true)}>I can do this later</button>
       {later && <Confirm text="Until the plastic sheet is detected on your field, some services are unavailable."
         onCancel={() => setLater(false)} onAccept={() => onDone('later')} />}
-    </Page>
+    </FieldFrame>
   );
 }
 
-function Choice({ checked, onClick, title, sub }) {
+const UnionIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
+const SelfIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 12 0v1" /><path d="m17 11 2 2 4-4" /></svg>;
+
+/** A radio row (boards RegUnion-nj7b, RegAssist): icon, name and line, the radio mark on the right. */
+function Choice({ checked, onClick, title, sub, icon }) {
   return (
     <button type="button" role="radio" aria-checked={checked} onClick={onClick} style={{
-      display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', width: '100%', padding: '14px 16px',
-      background: C.raised, color: C.text, border: checked ? `2px solid ${C.accent}` : '2px solid transparent', borderRadius: 12,
-    }}>
-      <span aria-hidden style={{ width: 18, height: 18, borderRadius: R.round, marginTop: 2, flexShrink: 0,
-        border: `2px solid ${checked ? C.accent : C.muted}`, background: checked ? C.accent : 'transparent' }} />
-      <span><b style={{ display: 'block' }}>{title}</b>{sub && <span style={{ color: C.muted, fontSize: 14 }}>{sub}</span>}</span>
+      display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 52, padding: '12px 16px', boxSizing: 'border-box', border: 0,
+      borderRadius: 12, background: '#1F2733', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.5, color: '#F1F5F9', textAlign: 'left',
+      cursor: 'pointer', boxShadow: checked ? 'inset 0 0 0 2px #D4CF5A' : 'none' }}>
+      <span aria-hidden="true" style={{ width: 32, height: 32, flexShrink: 0, borderRadius: 9999, background: '#121212', display: 'flex',
+        alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
+      <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <span style={{ fontWeight: 700 }}>{title}</span>{sub && <span style={{ color: '#94A3B8' }}>{sub}</span>}
+      </span>
+      <span aria-hidden="true" style={{ width: 20, height: 20, flexShrink: 0, boxSizing: 'border-box', borderRadius: 9999,
+        border: `2px solid ${checked ? '#D4CF5A' : '#94A3B8'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {checked && <span style={{ width: 10, height: 10, borderRadius: 9999, background: '#D4CF5A' }} />}
+      </span>
     </button>
   );
 }
@@ -104,10 +129,10 @@ function UnionStep({ union, evm, onDone }) {
   return (
     <Page title="Select a union" info="Select a reputable union in your area that offers financial services tailored to your needs as a farmer. Go to settings to switch unions.">
       <div role="radiogroup" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {UNIONS.map((u, i) => <Choice key={u.name} checked={pick === i} onClick={() => setPick(i)} title={u.name} sub={u.rep} />)}
+        {UNIONS.map((u, i) => <Choice key={u.name} icon={<UnionIcon />} checked={pick === i} onClick={() => setPick(i)} title={u.name} sub={u.rep} />)}
       </div>
-      <button type="button" style={primary} disabled={!union || busy} onClick={saveUnion}>Save</button>
-      <button type="button" style={secondary}>Filter on my region</button>
+      <button type="button" style={!union || busy ? btnDisabled : btnPrimary} disabled={!union || busy} onClick={saveUnion}>Save</button>
+      <button type="button" style={btnSecondary}>Filter on my region</button>
     </Page>
   );
 }
@@ -119,15 +144,15 @@ function ModeStep({ rep, onDone }) {
   return (
     <Page title="Who uses the app?" info="You can change this later in Settings.">
       <div role="radiogroup" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <Choice checked={mode === 'self'} onClick={() => setM('self')} title="I do it myself" sub="You send, spend and register yourself." />
-        <Choice checked={mode === 'assist'} onClick={() => setM('assist')} title="My union leader helps me" sub={`${name || 'Your union leader'} does the steps. You look and press Confirm.`} />
+        <Choice icon={<SelfIcon />} checked={mode === 'self'} onClick={() => setM('self')} title="I do it myself" sub="You send, spend and register yourself." />
+        <Choice icon={<UnionIcon />} checked={mode === 'assist'} onClick={() => setM('assist')} title="My union leader helps me" sub={`${name || 'Your union leader'} does the steps. You look and press Confirm.`} />
       </div>
-      <button type="button" style={primary} onClick={() => { setMode(mode); onDone(); }}>Save</button>
+      <button type="button" style={btnPrimary} onClick={() => { setMode(mode); onDone(); }}>Save</button>
     </Page>
   );
 }
 
-/** R10: updates (push notifications from her union). */
+/** R10 (board RegNotify-52am): updates (push notifications from her union); Skip asks to confirm. */
 function NotifyStep({ evm, onDone }) {
   const [skip, setSkip] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -138,11 +163,12 @@ function NotifyStep({ evm, onDone }) {
     onDone();
   };
   return (
-    <Page title="Your union would like to send you updates.">
-      <button type="button" style={primary} disabled={busy} onClick={enable}>Enable</button>
-      <button type="button" style={secondary} onClick={() => setSkip(true)}>Skip</button>
-      {skip && <Confirm title="You need to enable notifications so your union can send you information requests."
-        text="Until you enable notifications, some services are unavailable." onCancel={() => setSkip(false)} onAccept={onDone} />}
+    <Page title="Your union would like to send you updates." info="You need to enable notifications so your union can send you information requests.">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 24, paddingBottom: 24 }}>
+        <button type="button" style={busy ? btnDisabled : btnPrimary} disabled={busy} onClick={enable}>Enable</button>
+        <button type="button" style={btnSecondary} onClick={() => setSkip(true)}>Skip</button>
+      </div>
+      {skip && <Confirm text="Until you enable notifications, some services are unavailable." onCancel={() => setSkip(false)} onAccept={onDone} />}
     </Page>
   );
 }
@@ -157,7 +183,7 @@ function DoneStep({ evm, reg, onTitle, onRestart }) {
   useEffect(() => {
     if (online && pending && !send.isPending && !send.isSuccess && !send.isError && !mine.isLoading
       && !(mine.data && mine.data.status !== 'failed')) {
-      send.mutate({ points: q.points, farm: q.farm.trim(), union: reg.union?.address }, { onSuccess: () => clearPoints(evm) });
+      send.mutate({ points: q.points, farm: (q.farm || '').trim(), union: reg.union?.address }, { onSuccess: () => clearPoints(evm) });
     }
   }, [online, pending, send, mine.isLoading, mine.data, q, reg, evm]);
   useEffect(() => { if (mine.data?.status === 'minted') onTitle(); }, [mine.data, onTitle]);

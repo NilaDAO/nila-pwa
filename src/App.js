@@ -18,7 +18,8 @@ import { Routes, Route } from 'react-router-dom';
 
 // 🛠️ UI pieces (place‑holders)
 import RegisterRecover from './features/registration/registerRecover.js';
-import { NotMobile, InstallApp, NotFoundPage, MoveToStandalone, MismatchDevice } from './features/registration/preLoadPages.js';
+import * as OldBoot from './features/registration/preLoadPages.js';
+import * as NewBoot from './register/Boot';
 import Wallet from './features/wallet/Wallet.js'
 import Spinner from './components/UI/spinner.js';
 
@@ -29,6 +30,10 @@ import { useErc20Balances, useGrantInfo, useLandTitle } from './hooks/useLoadETH
 import { useUnionGenericFunds } from './hooks/useLoadFunds.ts';
 import { useDataContext } from './utils/NavigationContext.js';
 import { deleteAllItems } from "./utils/db.js";
+
+// S1–S6 from the boards (src/register/Boot.jsx) in Privy builds; today's screens otherwise.
+const NEW_BOOT = Boolean(process.env.REACT_APP_PRIVY_APP_ID);
+const { NotMobile, InstallApp, NotFoundPage, MoveToStandalone, MismatchDevice } = NEW_BOOT ? NewBoot : OldBoot;
 
 function App({installAvailable}) {
   // bootStage controls what gets rendered while we init
@@ -322,7 +327,7 @@ function App({installAvailable}) {
   }, [isInstalled,bootstrap]);
 
   // ------------- conditional renders --------------
-  if (bootStage === 'loading') return (<div className='flex h-full justify-center'><Spinner stages={loadStage} /></div>);
+  if (bootStage === 'loading') return NEW_BOOT ? <NewBoot.Loading /> : (<div className='flex h-full justify-center'><Spinner stages={loadStage} /></div>);
   if (bootStage === 'notMobile') return <NotMobile />;
   if (bootStage === 'moveToStandalone') return <MoveToStandalone installPrompt={installPromptEvent} setInstallPromptEvent={setInstallPromptEvent} />;
   if (bootStage === 'install') return <InstallApp installAvailable={installAvailable} />;
