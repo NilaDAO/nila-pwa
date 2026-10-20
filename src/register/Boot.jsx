@@ -6,7 +6,7 @@ import QRCode from 'qrcode';
 import { handleInstall } from '../installPrompt';
 import { useHardReload } from '../hooks/useHardReload';
 import { deleteAllItems } from '../utils/db';
-import { Bouncing, btnPrimary, btnSecondary } from './RegFrame';
+import RegFrame, { Bouncing, btnPrimary, btnSecondary } from './RegFrame';
 
 const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
 const ground = { minHeight: '100dvh', boxSizing: 'border-box', background: 'linear-gradient(180deg, #121212 0%, #1E2738 100%)',
@@ -173,4 +173,10 @@ export function NotMobile() {
       </div>
     </div>
   );
+}
+
+/** After R3 the wallet loads on the registration ground (field scene + waiting card), not on S1, so R1 → R14 is one
+ *  continuous flow. */
+export function RegLoading() {
+  return <RegFrame><Bouncing pad={48} /></RegFrame>;
 }

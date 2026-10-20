@@ -40,6 +40,7 @@ function App({installAvailable}) {
   // 'loading' | 'install' | 'register' | 'ready' | 'notMobile'
   const { setTokenData,setGrantData, db, setDb, setUnionFunds, setDebts, setFieldActivity, keyMalformed } = useDataContext();
   const [ bootStage, setBootStage]                                                      = useState('loading');
+  const [ fromRegister, setFromRegister ]                                               = useState(false); // R3 done: load on the R ground
   const [ chain, setChain]                                                              = useState();
   const [ address, setAddress]                                                          = useState('');
   const [ hasRelatedApp, setHasRelatedApp]                                              = useState(false);
@@ -327,7 +328,7 @@ function App({installAvailable}) {
   }, [isInstalled,bootstrap]);
 
   // ------------- conditional renders --------------
-  if (bootStage === 'loading') return NEW_BOOT ? <NewBoot.Loading /> : (<div className='flex h-full justify-center'><Spinner stages={loadStage} /></div>);
+  if (bootStage === 'loading') return NEW_BOOT ? (fromRegister ? <NewBoot.RegLoading /> : <NewBoot.Loading />) : (<div className='flex h-full justify-center'><Spinner stages={loadStage} /></div>);
   if (bootStage === 'notMobile') return <NotMobile />;
   if (bootStage === 'moveToStandalone') return <MoveToStandalone installPrompt={installPromptEvent} setInstallPromptEvent={setInstallPromptEvent} />;
   if (bootStage === 'install') return <InstallApp installAvailable={installAvailable} />;
@@ -337,10 +338,10 @@ function App({installAvailable}) {
   return (
       <Routes>
         {bootStage === 'register' && <Route path="/*" element={NewStart
-          ? <Suspense fallback={null}><NewStart onDone={() => setBootStage('loading')} /></Suspense>
+          ? <Suspense fallback={null}><NewStart onDone={() => { setFromRegister(true); setBootStage('loading'); }} /></Suspense>
           : <RegisterRecover setBootStage={setBootStage} />} />}
         {bootStage === 'ready' && <Route path="/*" element={StellarGate
-          ? <Suspense fallback={null}><StellarGate><Wallet LAND={LAND} selected={false} /></StellarGate></Suspense>
+          ? <Suspense fallback={fromRegister ? <NewBoot.RegLoading /> : null}><StellarGate><Wallet LAND={LAND} selected={false} /></StellarGate></Suspense>
           : <Wallet LAND={LAND} selected={false} />} />}
         {/* fallback: if route mismatch, shove user to root */}
         <Route path="*" element={<NotFoundPage />} />

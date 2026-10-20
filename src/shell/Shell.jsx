@@ -26,6 +26,7 @@ import LeaderSettings from '../leader/LeaderSettings';
 import LeaderTasks from '../leader/LeaderTasks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration from '../register/Registration';
+import { RegLoading } from '../register/Boot';
 import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
@@ -133,6 +134,8 @@ export default function Shell({ leader }) {
 
   // Registration (R5–R14, notes reg-recover): a member whose wallet holds no land title on Polygon registers her
   // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
+  // Until her titles are known, a member sees the registration ground, not a flash of the tab bar.
+  if (!leader && !legacy.data && legacy.isLoading) return <RegLoading />;
   if (!leader && legacy.data && legacy.data.titles === 0) {
     const onTitle = () => { qc.invalidateQueries({ queryKey: ['polygon', 'legacy'] }); go('crop'); };
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
