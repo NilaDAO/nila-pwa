@@ -12,6 +12,19 @@ import { useRates } from '../machine/hooks';
 import { deleteAllItems } from '../utils/db';
 import { C, FONT, R } from '../shell/tokens';
 
+/** Reset account, as the current app does (features/wallet/Settings.js handleLogout): clear the field-registration
+ *  leftovers and the offsite cookie, fire the IndexedDB wipe and reload at once — the delete stays blocked while the
+ *  app holds the DB open, and the reload is what closes it, so it is never awaited. */
+function resetAccount() {
+  try {
+    localStorage.removeItem('fields');
+    localStorage.removeItem('positions');
+    document.cookie = 'offsite=; Max-Age=0; path=/;';
+  } catch (_) { /* storage blocked: the wipe and reload still run */ }
+  deleteAllItems();
+  window.location.reload();
+}
+
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
 const card = { background: C.ink, borderRadius: R.card, padding: '18px 22px', marginBottom: 12 };
@@ -76,7 +89,7 @@ export default function LeaderSettings({ onBack, onIdCheck, onOffers }) {
             <p style={muted}>Remove your account from this phone? Your assets and your signer role stay with your wallet. To open it again you need your phone number.</p>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" onClick={() => setReset(false)} style={{ flex: 1, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontWeight: 700 }}>Cancel</button>
-              <button type="button" onClick={async () => { await deleteAllItems(); window.location.reload(); }} style={{ flex: 1, height: 44, borderRadius: R.button, border: 0, background: C.coral, color: C.ink, fontWeight: 700 }}>Reset</button>
+              <button type="button" onClick={resetAccount} style={{ flex: 1, height: 44, borderRadius: R.button, border: 0, background: C.coral, color: C.ink, fontWeight: 700 }}>Reset</button>
             </div>
           </div>
         )}
