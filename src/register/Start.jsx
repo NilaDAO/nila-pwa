@@ -48,6 +48,11 @@ async function storeLocal({ phone, salt, attrs, refresh, access }) {
   await createItem({ id: 'invest', value: undefined }, 'FarmData');
   await createItem({ id: 'chain', value: get('custom:chain') }, 'Init');
   await createItem({ id: 'address', value: get('custom:address') }, 'Init');
+  // Demo only (DEMO_COGNITO: flag + chain 31337 + localhost): the stand-in marks a pooled wallet handed to a new
+  // number as new, so the new-user path (R5) runs without making a Privy user (AfterCode reads it).
+  if (DEMO_COGNITO) {
+    try { sessionStorage.setItem(`nila.demoNew.${String(get('custom:address')).toLowerCase()}`, get('custom:demo_new') === '1' ? '1' : '0'); } catch { /* not kept */ }
+  }
 }
 
 /** R1: create a new wallet or recover one. */

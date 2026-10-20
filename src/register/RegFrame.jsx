@@ -1,6 +1,7 @@
 // The registration frame (boards RegWallet-ss0b, RegPhone-a6bc, RegCode-nflo, SendLocation-*, SheetVerify-88ia,
 // RegUnion-nj7b, RegAssist, RegNotify-52am, RegDone-fji8): the olive field ground, the 'nila' wordmark and the logo,
 // one dark card at the bottom, and the info note under it. Markup and values copied from the boards.
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { C, FONT } from '../shell/tokens';
 import FieldScene from './FieldScene';
 import FieldMap, { useFieldMapLoaded } from './FieldMap';
@@ -116,43 +117,76 @@ function PanPin() {
   );
 }
 
-/** R5 (board SendLocation-v3np, notes reg-r5, artifact v1755): the satellite map, a dark top gradient with the
- *  header in the place of the wordmark (no logo), one card dropping in, the info note at the bottom; `overlay` is
- *  the Share your location confirm. Background: the Google satellite map (executive decision 20 Oct: the same map as
- *  today's field registration; the note names Esri imagery), the field scene when Maps cannot load. */
-export function MapFrame({ header, map = [], me, start, info, overlay, pan, onCenter, children }) {
+/** R5–R8 are one screen (executive decision 20 Oct): the satellite map, the header chip and the info footer are
+ *  mounted once by MapStage; each step (R5, R6, R7, R8) only swaps its card. A step says what the map shows through
+ *  MapFrame, which inside a MapStage renders just the card. Background: the Google satellite map (today's field
+ *  registration settings), the field scene when Maps cannot load. Boards SendLocation-v3np (R5, artifact v1755). */
+const MapCtx = createContext(null);
+const INFO_R5 = 'Stand in the middle of your field. Send a point for each field where you have the right to cultivate.';
+
+export function MapStage({ header = 'Mint your land title', children }) {
+  const [view, setView] = useState({ map: [], me: null, start: null, pan: false, info: INFO_R5 });
+  const centre = useRef(null);
+  const ctx = useMemo(() => ({ setView, centre }), []);
+  const onCenter = useCallback((c) => centre.current?.(c), []);
   return (
-    <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#4a6632', display: 'flex', flexDirection: 'column',
-      fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
-      <style>{MOTION_CSS}</style>
-      <MapOrScene map={map} points={map.length} me={me} start={start} pan={pan} onCenter={onCenter} />
-      <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 160, pointerEvents: 'none',
-        background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)' }} />
-      {/* The standard header chip (boards A6 TreeMap and the other map screens): a dark pill in the middle of the header. */}
-      <h1 style={{ position: 'absolute', left: 56, right: 56, top: 52, height: 40, margin: 0, display: 'flex', alignItems: 'center',
-        justifyContent: 'center', zIndex: 3, pointerEvents: 'none' }}>
-        <span style={{ padding: '0 14px', height: 40, borderRadius: 9999, background: 'rgba(18,18,18,0.85)',
-          boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', display: 'flex', alignItems: 'center',
-          fontSize: 16, fontWeight: 700, lineHeight: 1.3, whiteSpace: 'nowrap', color: '#F1F5F9' }}>{header}</span>
-      </h1>
-      <div style={{ height: 92 }} />
-      <div style={{ flexGrow: 1, minHeight: 24 }} />
+    <MapCtx.Provider value={ctx}>
+      <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#4a6632', display: 'flex', flexDirection: 'column',
+        fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
+        <style>{MOTION_CSS}</style>
+        <MapOrScene map={view.map} points={view.map.length} me={view.me} start={view.start} pan={view.pan} onCenter={onCenter} />
+        <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 160, pointerEvents: 'none',
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)' }} />
+        {/* The standard header chip (boards A6 TreeMap and the other map screens): a dark pill in the middle of the header. */}
+        <h1 style={{ position: 'absolute', left: 56, right: 56, top: 52, height: 40, margin: 0, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 3, pointerEvents: 'none' }}>
+          <span style={{ padding: '0 14px', height: 40, borderRadius: 9999, background: 'rgba(18,18,18,0.85)',
+            boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', display: 'flex', alignItems: 'center',
+            fontSize: 16, fontWeight: 700, lineHeight: 1.3, whiteSpace: 'nowrap', color: '#F1F5F9' }}>{view.header || header}</span>
+        </h1>
+        <div style={{ height: 92 }} />
+        <div style={{ flexGrow: 1, minHeight: 24 }} />
+        {children}
+        <div style={{ height: 28 }} />
+        {view.info && (
+          <div className="nila-motion" style={{ animation: anim.swap, position: 'relative', margin: '16px 8px 0 8px', background: '#121212',
+            padding: '14px 16px 30px', display: 'flex', gap: 12, alignItems: 'flex-start', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
+            <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><InfoIcon /></div>
+            <div style={{ fontSize: 14, color: '#94A3B8', lineHeight: 1.5, alignSelf: 'center' }}>{view.info}</div>
+          </div>
+        )}
+      </div>
+    </MapCtx.Provider>
+  );
+}
+
+/** A step on the map screen: tells the stage what to show and renders its card (and an optional overlay). Outside a
+ *  MapStage it brings its own stage. */
+export function MapFrame({ header, map = [], me = null, start = null, info = INFO_R5, overlay, pan = false, onCenter, children }) {
+  const ctx = useContext(MapCtx);
+  const key = JSON.stringify([header, map, me, start, info, pan]);
+  useEffect(() => { if (ctx) ctx.setView({ header, map, me, start, info, pan }); }, [ctx, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ctx) ctx.centre.current = onCenter; }, [ctx, onCenter]);
+  const card = (
+    <>
       <div className="nila-motion" style={{ animation: anim.drop, position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
         boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '18px 22px',
         display: 'flex', flexDirection: 'column', gap: 14 }}>
         {children}
       </div>
-      <div style={{ height: 28 }} />
-      {info && (
-        <div className="nila-motion" style={{ animation: anim.swap, position: 'relative', margin: '16px 8px 0 8px', background: '#121212',
-          padding: '14px 16px 30px', display: 'flex', gap: 12, alignItems: 'flex-start', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
-          <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><InfoIcon /></div>
-          <div style={{ fontSize: 14, color: '#94A3B8', lineHeight: 1.5, alignSelf: 'center' }}>{info}</div>
-        </div>
-      )}
       {overlay}
-    </div>
+    </>
   );
+  if (ctx) return card;
+  return <MapStage header={header}><StandaloneView view={{ header, map, me, start, info, pan }} onCenter={onCenter}>{card}</StandaloneView></MapStage>;
+}
+
+function StandaloneView({ view, onCenter, children }) {
+  const ctx = useContext(MapCtx);
+  const key = JSON.stringify(view);
+  useEffect(() => { ctx.setView(view); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { ctx.centre.current = onCenter; }, [ctx, onCenter]);
+  return children;
 }
 
 export function FieldFrame({ points, sheet, map, pan, onCenter, children }) {

@@ -17,7 +17,7 @@ import { subscribeUser } from '../features/apis/pushManager';
 import { useMyBorderJob, useSendFieldPoints } from '../border/hooks';
 import { Page, PointsStep, Waiting, clearPoints, readPoints, useOnline } from '../border/SendLocation';
 import { Loading } from './Boot';
-import { FieldFrame, anim, btnDisabled, btnPrimary, btnSecondary, cardTitle, sheetText } from './RegFrame';
+import { MapFrame, MapStage, anim, btnDisabled, btnPrimary, btnSecondary, cardTitle, sheetText } from './RegFrame';
 
 // Today's one union (the Polygon registry's entry, src/components/Forms/memberUnion.js). DESIGN GAP: from the node.
 const UNIONS = [{ name: 'Mother Theresa Union', rep: 'Mrs. Rosalie Susairaj', polygon: '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070',
@@ -85,10 +85,10 @@ function Fact({ icon, k, v, line }) {
 }
 
 /** R8 (board SheetVerify-88ia): a plastic sheet in one field, seen on the next satellite overpass. */
-function SheetStep({ onDone }) {
+function SheetStep({ evm, onDone }) {
   const [later, setLater] = useState(false);
   return (
-    <FieldFrame sheet>
+    <MapFrame map={readPoints(evm).points}>
       <div style={cardTitle}>Place a plastic sheet in one of your fields</div>
       <div style={sheetText}>Lay a plastic sheet flat on the ground inside one of your fields. Make sure it is plastic. Weigh the corners down with stones so it stays in place. On the next satellite overpass we will detect it.</div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -99,7 +99,7 @@ function SheetStep({ onDone }) {
       <button type="button" style={btnSecondary} onClick={() => setLater(true)}>I can do this later</button>
       {later && <Confirm text="Until the plastic sheet is detected on your field, some services are unavailable."
         onCancel={() => setLater(false)} onAccept={() => onDone('later')} />}
-    </FieldFrame>
+    </MapFrame>
   );
 }
 
@@ -221,8 +221,14 @@ export default function Registration({ onTitle }) {
   const next = (extra = {}) => save({ ...extra, step: STEPS[STEPS.indexOf(step) + 1] });
 
   if (mine.isLoading) return <Loading />;
-  if (step === 'points') return <PointsStep evm={evm} onDone={() => next()} />;
-  if (step === 'sheet') return <SheetStep onDone={(sheet) => next({ sheet })} />;
+  // R5–R8: one map screen; the stage stays mounted, only the card changes (no remount of the map).
+  if (step === 'points' || step === 'sheet') {
+    return (
+      <MapStage>
+        {step === 'points' ? <PointsStep evm={evm} onDone={() => next()} /> : <SheetStep evm={evm} onDone={(sheet) => next({ sheet })} />}
+      </MapStage>
+    );
+  }
   if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={(union) => next({ union })} />;
   if (step === 'mode') return <ModeStep rep={reg.union?.rep} onDone={() => next()} />;
   if (step === 'notify') return <NotifyStep evm={evm} onDone={() => next()} />;

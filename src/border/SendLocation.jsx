@@ -5,7 +5,7 @@
 // The boards ask a field name per point (R6, R7), no farm name: the title's name is given by the leader at L4.
 import { useEffect, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
-import RegFrame, { Bouncing, FieldFrame, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
+import RegFrame, { Bouncing, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
 const MAX = 6;
 const EMPTY = { points: [], farm: '', finish: false };
@@ -153,7 +153,7 @@ export function PointsStep({ evm, onDone }) {
   const first = n === 0;
   if (first) return <FirstPoint onLocate={locate} onPanPoint={addPoint} pan={pan} setPan={setPan} busy={gps?.busy} error={gps?.error} />;
   return (
-    <FieldFrame points={n} map={q.points} pan={pan} onCenter={setCentre}>
+    <MapFrame map={q.points} pan={pan} onCenter={setCentre}>
       <div style={cardTitle}>{first ? 'Walk to your first field' : 'Walk to the center of your next field'}</div>
       {first && <div style={sheetText}>Stand in the middle of your field. Send a point for each field where you have the right to cultivate.</div>}
       {!online && (
@@ -180,6 +180,6 @@ export function PointsStep({ evm, onDone }) {
         </button>
       )}
       {n > 0 && <button type="button" style={btnSecondary} onClick={finish}>All my fields have a point</button>}
-    </FieldFrame>
+    </MapFrame>
   );
 }
