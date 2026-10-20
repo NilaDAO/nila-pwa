@@ -2,6 +2,7 @@
 // design artifact v1752. R1 zooms from the wide view to the close view once per app start; every other frame, and
 // R1 when she comes back, shows the close view. R5–R8 add a 45 % black layer; their markers are children, above it,
 // in the same viewBox units so they never scale with the zoom. Reduced motion: the CSS jumps to the close view.
+import { useState } from 'react';
 import { FIELD_SCENE } from './fieldSceneSvg';
 
 const ZOOM_CSS = `.nl-fz{transform-box:view-box;transform-origin:200px 396px}
@@ -13,8 +14,8 @@ const ZOOM_CSS = `.nl-fz{transform-box:view-box;transform-origin:200px 396px}
 let played = false;   // the zoom plays once per app start (README rule 2): memory only, never storage
 
 export default function FieldScene({ mode = 'close', dim = false, children }) {
-  const zoom = mode === 'zoom' && !played;
-  if (zoom) played = true;
+  // Decided once when the screen appears: a re-render (typing, a query) must not cut the zoom off mid-play.
+  const [zoom] = useState(() => { const z = mode === 'zoom' && !played; if (z) played = true; return z; });
   return (
     <svg aria-hidden="true" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice"
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
