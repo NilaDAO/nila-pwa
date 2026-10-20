@@ -5,9 +5,11 @@
 // The boards ask a field name per point (R6, R7), no farm name: the title's name is given by the leader at L4.
 import { useEffect, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
+import { DEMO_COGNITO } from '../utils/demoMode';
 import RegFrame, { Bouncing, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
 const MAX = 6;
+const DEMO_START = { lat: 11.878671, lng: 78.964561, acc: 0 };   // Viriyur, TN (components/Forms/memberUnion.js)
 const EMPTY = { points: [], farm: '', finish: false };
 // Per account: on a shared phone (assisted mode) one member's points never go out under the next member's login.
 const keyOf = (evm) => `nila.border.points.${(evm || 'none').toLowerCase()}`;
@@ -91,7 +93,9 @@ export function PointsStep({ evm, onDone }) {
     if (pan) save({ ...q, pan: false });
     fix((m) => { setMe(m); setBlocked(false); setLoc('on'); }, (e) => { setBlocked(e.code === 1); setLoc('off'); });
   };
-  const choose = () => { save({ ...q, pan: true }); if (!me) fix(setMe); };
+  // Demo only (localhost + chain 31337 + flag): "Choose on the map" starts in Viriyur, Tamil Nadu (the union's
+  // place), not at the laptop's location; a real build starts where she is.
+  const choose = () => { save({ ...q, pan: true }); if (DEMO_COGNITO) setMe(DEMO_START); else if (!me) fix(setMe); };
   useEffect(() => {
     let live = true;
     navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (live && r.state === 'granted') share(); }).catch(() => {});
