@@ -265,14 +265,14 @@ export function FieldFrame({ points, sheet, map, pan, onCenter, children }) {
 }
 
 // The bouncing logo (boards RegDone-fji8, RegCode-nflo sending): keyframes from the boards, off with reduced motion.
-const KEYFRAMES = `@keyframes nila-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-18px)}}
-@keyframes nila-shadow{0%,100%{transform:scaleX(1);opacity:1}50%{transform:scaleX(0.6);opacity:0.5}}
+const KEYFRAMES = `@keyframes nila-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-40px)}}
+@keyframes nila-shadow{0%,100%{transform:scaleX(1);opacity:1}50%{transform:scaleX(0.45);opacity:0.35}}
 @media (prefers-reduced-motion: reduce){.nila-bounce,.nila-shadow{animation:none!important}}`;
 
 export function Bouncing({ pad = 64, size = 48 }) {
   return (
-    // Room above the logo for its 18 px bounce (it rose into the card's title before).
-    <div role="status" aria-label="Loading" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingTop: pad + 80, paddingBottom: pad + 24 }}>
+    // The bounce: the logo rises 40 px above its shadow (16 px apart at rest); room above it for that.
+    <div role="status" aria-label="Loading" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, paddingTop: pad + 40, paddingBottom: pad }}>
       <style>{KEYFRAMES}</style>
       <img className="nila-bounce" src={LOGO} alt="" style={{ width: size, height: size, animation: 'nila-bounce 1s ease-in-out infinite' }} />
       <div className="nila-shadow" style={{ width: size === 56 ? 36 : 32, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', animation: 'nila-shadow 1s ease-in-out infinite' }} />
