@@ -51,14 +51,22 @@ function meDot() {   // R5 #on: her location, a blue dot (board SendLocation-v3n
 }
 
 /** points: her saved points; me: {lat, lng, acc} her live location (R5 #on: blue dot and accuracy circle). */
-export default function FieldMap({ points = [], me = null, pan = false, onCenter }) {
+export default function FieldMap({ points = [], me = null, pan = false, onCenter, start = null }) {
   const map = useRef(null);
   const marks = useRef([]);
   const line = useRef(null);
   const meMark = useRef(null);
   const meCircle = useRef(null);
+  // Her last point, else where she is (`me`, or `start` in pan mode); the union's spot only until the phone answers.
+  const here = me || start;
   const center = useMemo(() => (points.length ? { lat: points.at(-1).lat, lng: points.at(-1).lng }
-    : me ? { lat: me.lat, lng: me.lng } : UNION_LOCATION), [points, me]);
+    : here ? { lat: here.lat, lng: here.lng } : UNION_LOCATION), [points, here]);
+  const placed = useRef(false);   // pan mode: centred on her once, then she moves the map
+  useEffect(() => {
+    if (!map.current || !pan || placed.current || (!here && !points.length)) return;
+    placed.current = true;
+    map.current.setCenter(center);
+  }, [pan, here, points.length, center]);
 
   const draw = useCallback(() => {
     const m = map.current;

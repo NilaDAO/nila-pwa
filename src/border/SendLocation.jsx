@@ -93,9 +93,13 @@ function FirstPoint({ onLocate, onPanPoint, pan, setPan, busy, error }) {
     navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (live && r.state === 'granted') share(); }).catch(() => {});
     return () => { live = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Pan mode starts where she is: one position, no blue dot.
+  const locateOnly = () => navigator.geolocation?.getCurrentPosition(
+    (p) => setMe({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }), () => {},
+    { enableHighAccuracy: true, timeout: 30_000, maximumAge: 0 });
   const canSend = pan ? !!centre : loc === 'on';
   return (
-    <MapFrame header="Mint your land title" me={pan ? null : me} pan={pan} onCenter={setCentre}
+    <MapFrame header="Mint your land title" me={pan ? null : me} start={me} pan={pan} onCenter={setCentre}
       info="Stand in the middle of your field. Send a point for each field where you have the right to cultivate.">
       <div style={cardTitle}>Walk to your first field</div>
       {!pan && loc === 'off' && (
@@ -109,7 +113,7 @@ function FirstPoint({ onLocate, onPanPoint, pan, setPan, busy, error }) {
         : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>}
       {pan
         ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
-        : <button type="button" style={btnSecondary} onClick={() => setPan(true)}>Pan the map</button>}
+        : <button type="button" style={btnSecondary} onClick={() => { setPan(true); if (!me) locateOnly(); }}>Pan the map</button>}
     </MapFrame>
   );
 }
