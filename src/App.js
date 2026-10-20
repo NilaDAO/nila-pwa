@@ -12,11 +12,17 @@ import { useEffect, useState, useCallback,useRef } from 'react';
 import { lazy, Suspense } from 'react';
 // Stellar mode (P3): only with Privy on; the inline env test lets webpack drop it otherwise.
 const StellarGate = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./move/StellarGate')) : null;
+// The new registration start R1–R4 (src/register/Start.jsx), same Privy gate; today's RegisterRecover otherwise.
+const NewStart = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/Start')) : null;
+// Recover asks only what is missing (R9 / R13 / R10, notes reg-recover), same gate.
+const RecoverSteps = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/RecoverSteps')) : null;
+const AfterCode = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/AfterCode')) : null;
 import { Routes, Route } from 'react-router-dom';
 
 // 🛠️ UI pieces (place‑holders)
 import RegisterRecover from './features/registration/registerRecover.js';
-import { NotMobile, InstallApp, NotFoundPage, MoveToStandalone, MismatchDevice } from './features/registration/preLoadPages.js';
+import * as OldBoot from './features/registration/preLoadPages.js';
+import * as NewBoot from './register/Boot';
 import Wallet from './features/wallet/Wallet.js'
 import Spinner from './components/UI/spinner.js';
 
@@ -28,11 +34,18 @@ import { useUnionGenericFunds } from './hooks/useLoadFunds.ts';
 import { useDataContext } from './utils/NavigationContext.js';
 import { deleteAllItems } from "./utils/db.js";
 
+// S1–S6 from the boards (src/register/Boot.jsx) in Privy builds; today's screens otherwise.
+const NEW_BOOT = Boolean(process.env.REACT_APP_PRIVY_APP_ID);
+const { NotMobile, InstallApp, NotFoundPage, MoveToStandalone, MismatchDevice } = NEW_BOOT ? NewBoot : OldBoot;
+
 function App({installAvailable}) {
   // bootStage controls what gets rendered while we init
   // 'loading' | 'install' | 'register' | 'ready' | 'notMobile'
   const { setTokenData,setGrantData, db, setDb, setUnionFunds, setDebts, setFieldActivity, keyMalformed } = useDataContext();
   const [ bootStage, setBootStage]                                                      = useState('loading');
+  const [ fromRegister, setFromRegister ]                                               = useState(false); // R3 done: load on the R ground
+  const [ codeDone, setCodeDone ]                                                       = useState(false); // R3 done: Privy decides R5 or R9
+  const [ recovered, setRecovered ]                                                     = useState(null);  // her Polygon address after a recover
   const [ chain, setChain]                                                              = useState();
   const [ address, setAddress]                                                          = useState('');
   const [ hasRelatedApp, setHasRelatedApp]                                              = useState(false);
@@ -320,7 +333,7 @@ function App({installAvailable}) {
   }, [isInstalled,bootstrap]);
 
   // ------------- conditional renders --------------
-  if (bootStage === 'loading') return (<div className='flex h-full justify-center'><Spinner stages={loadStage} /></div>);
+  if (bootStage === 'loading') return NEW_BOOT ? (fromRegister ? <NewBoot.RegLoading /> : <NewBoot.Loading />) : (<div className='flex h-full justify-center'><Spinner stages={loadStage} /></div>);
   if (bootStage === 'notMobile') return <NotMobile />;
   if (bootStage === 'moveToStandalone') return <MoveToStandalone installPrompt={installPromptEvent} setInstallPromptEvent={setInstallPromptEvent} />;
   if (bootStage === 'install') return <InstallApp installAvailable={installAvailable} />;
@@ -329,9 +342,16 @@ function App({installAvailable}) {
   // Render routes once we know where to go
   return (
       <Routes>
-        {bootStage === 'register' && <Route path="/*" element={<RegisterRecover setBootStage={setBootStage} />} />}
+        {bootStage === 'register' && <Route path="/*" element={NewStart
+          ? <Suspense fallback={<NewBoot.RegLoading />}>{recovered
+            ? <RecoverSteps evm={recovered} onDone={() => { setFromRegister(true); setBootStage('loading'); }} />
+            : codeDone
+              // Privy decides new (R5) or existing (R9), not R1's button (LOAN_RULES §5, 20 Oct).
+              ? <AfterCode onNew={() => { setFromRegister(true); setBootStage('loading'); }} onExisting={(evm) => setRecovered(evm)} />
+              : <NewStart onDone={() => setCodeDone(true)} />}</Suspense>
+          : <RegisterRecover setBootStage={setBootStage} />} />}
         {bootStage === 'ready' && <Route path="/*" element={StellarGate
-          ? <Suspense fallback={null}><StellarGate><Wallet LAND={LAND} selected={false} /></StellarGate></Suspense>
+          ? <Suspense fallback={fromRegister ? <NewBoot.RegLoading /> : null}><StellarGate><Wallet LAND={LAND} selected={false} /></StellarGate></Suspense>
           : <Wallet LAND={LAND} selected={false} />} />}
         {/* fallback: if route mismatch, shove user to root */}
         <Route path="*" element={<NotFoundPage />} />

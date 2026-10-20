@@ -2,7 +2,7 @@
 // and to leaders who chose "New Nila". Today's cards stay for Polygon wallets (StellarGate).
 // Tabs are kept in the URL hash (#/assets …) so the phone's back button works.
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { getMoveStatus, requestMoveNin } from '../move/api';
 import { useLegacyBalances } from '../move/hooks';
@@ -22,6 +22,13 @@ import { TakeUp } from '../loan/MyShares';
 import IdCheck from '../anchor/IdCheck';
 import LpOffers from '../anchor/LpOffers';
 import { useLpStatus } from '../anchor/hooks';
+import LeaderSettings from '../leader/LeaderSettings';
+import LeaderTasks from '../leader/LeaderTasks';
+import LeaderBorder from '../border/LeaderBorder';
+import Registration from '../register/Registration';
+import { RegLoading } from '../register/Boot';
+import { demoNew } from '../register/AfterCode';
+import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
 
@@ -72,8 +79,14 @@ function Settings({ onBack, onIdCheck, onOffers }) {
   );
 }
 
-function TasksView({ leader }) {
+// tasks/border/<job id>[/<field>]: L2a–L4 for a leader.
+const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+))?/) || [];
+
+function TasksView({ leader, go }) {
   const lp = useLpStatus();
+  const [, borderId, field] = readBorder();
+  if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
+  if (leader) return <LeaderTasks go={go} />;
   if (!leader && lp.data?.lp && lp.data?.trustline) return <LpOffers onBack={() => { window.location.hash = '#/assets'; }} />;
   return <Later title="Tasks" step={leader ? 'the leader steps' : 'a later step'} />;
 }
@@ -83,8 +96,10 @@ export default function Shell({ leader }) {
   useEffect(loadInter, []);
   const tabs = leader ? LEADER_TABS : assisted() ? ASSISTED_TABS : MEMBER_TABS;
   const [view, setView] = useState(() => readTab() || 'assets');
+  const [, setHash] = useState(window.location.hash);
   useEffect(() => {
-    const on = () => setView(readTab() || 'assets');
+    // The full hash too, so moving inside a tab (tasks → tasks/border/<id>/<field>) renders again.
+    const on = () => { setView(readTab() || 'assets'); setHash(window.location.hash); };
     window.addEventListener('hashchange', on);
     return () => window.removeEventListener('hashchange', on);
   }, []);
@@ -95,6 +110,7 @@ export default function Shell({ leader }) {
   // Her nIN move was refused before anything was burned: she can ask again (moved from StellarHome).
   const { data: cfg } = useStellarConfig();
   const legacy = useLegacyBalances(s?.evmAddress);
+  const qc = useQueryClient();
   const [retry, setRetry] = useState();
   const again = async () => {
     setRetry('…');
@@ -117,19 +133,39 @@ export default function Shell({ leader }) {
     </>
   );
 
+  // Registration (R5–R14, notes reg-recover): a member whose wallet holds no land title on Polygon registers her
+  // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
+  // A leader is also a member (notes leader-missing): the same gate applies to her; with a title she never sees it.
+  // Until her titles are known she sees the registration ground, not a flash of the tab bar.
+  if (!legacy.data && legacy.isLoading) return <RegLoading />;
+  // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
+  if (legacy.data && legacy.data.titles === 0 && (s?.privyNew === true || demoNew(s?.evmAddress))) {
+    const onTitle = () => { qc.invalidateQueries({ queryKey: ['polygon', 'legacy'] }); go('crop'); };
+    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
+  }
+
   let body;
   if (view === 'assets') {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} moveNote={moveNote}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`share/${t}`)}
-      onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')} />;
-  } else if (view === 'settings') body = <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />;
+      onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')}
+      onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} />;
+  } else if (view === 'settings') {
+    body = leader
+      ? <LeaderSettings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />
+      : <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />;
+  }
+  else if (view === 'history') body = <History onBack={() => go('assets')} />;
   else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('offers')} />;
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
-  else if (view === 'crop') body = leader ? <LeaderPlans /> : <CropPlanFlow />;
+  // The leader app is the member app, extended (notes leader-missing): her Crop plan tab is her own plan (CP13 with
+  // the leader tab bar); the union's plans to approve (L12) open from L1's To do.
+  else if (view === 'crop') body = <CropPlanFlow />;
+  else if (view === 'approvals' && leader) body = <LeaderPlans />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
   else if (view === 'loan') body = <LeaderLoan />;
-  else if (view === 'cash' && leader) body = <CashDesk />;
+  else if (view === 'cash' && leader) body = <CashDesk key={readArg() || 'menu'} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
   else if (view === 'invested') body = <Investment onBack={() => go('assets')} />;
   else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
@@ -137,7 +173,7 @@ export default function Shell({ leader }) {
   else if (view === 'machine') body = <MyMachine onBack={() => go('assets')} />;
   else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go('assets')} />;
   // A2 Tasks: for an LP the board's "Cash offers" section; the other task rows come in a later step.
-  else if (view === 'tasks') body = <TasksView leader={leader} />;
+  else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
 
   // No tab is active on task, settings, history and wallet screens.

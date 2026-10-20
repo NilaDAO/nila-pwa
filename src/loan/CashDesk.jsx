@@ -17,7 +17,9 @@ import { PayOut } from './CashOut';
 import { NIN } from './request';
 import PhotoCount from './PhotoCount';
 import RegisterMachine from '../machine/RegisterMachine';
-import { LetCollect, ScanLp } from '../anchor/LeaderLp';
+import { ScanLp } from '../anchor/LeaderLp';
+import CashBoard from '../leader/CashBoard';
+import { PickMember } from '../leader/LeaderTasks';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
@@ -35,12 +37,12 @@ function Amount({ value, set, max = 10000 }) {
   );
 }
 
-function Scan({ purpose, onBack }) {
+function Scan({ purpose, onBack, initialMember = '' }) {
   const s = useNilaSigner();
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
-  const [member, setMember] = useState('');
+  const [member, setMember] = useState(initialMember);
   const [amount, setAmount] = useState(purpose === 'invest' ? 600 : 0);
   const [token, setToken] = useState();
   const [counting, setCounting] = useState(false);
@@ -130,24 +132,23 @@ function Scan({ purpose, onBack }) {
   );
 }
 
-export default function CashDesk() {
-  const [view, setView] = useState();
-  const back = useMemo(() => () => setView(undefined), []);
+// #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
+const OPEN = { lpscan: 'lpscan', loan: 'loan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine' };
+const TITLES = { invest: 'Invest', repay: 'Repay', machine: 'Register a machine' };
+
+export default function CashDesk({ initial }) {
+  const [view, setView] = useState(OPEN[initial]);
+  const [member, setMember] = useState();      // L5's pick (or '' to type / scan her wallet)
+  const back = useMemo(() => () => { setView(undefined); setMember(undefined); }, []);
+  // L5 first for a task about a member: the members the app knows, or scan her wallet.
+  if (TITLES[view] && member === undefined) {
+    return <PickMember title={TITLES[view]} onBack={back} onPick={setMember} onScan={() => setMember('')} />;
+  }
   if (view === 'loan') return <LeaderLoan />;
-  if (view === 'invest' || view === 'repay') return <Scan purpose={view} onBack={back} />;
+  if (view === 'invest' || view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
   if (view === 'payout') return <PayOut onBack={back} />;
-  if (view === 'machine') return <RegisterMachine onBack={back} />;
-  if (view === 'collect') return <LetCollect onBack={back} />;
+  if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member} />;
   if (view === 'lpscan') return <ScanLp onBack={back} />;
-  return (
-    <Sheet landName="Cash" title="Start a task">
-      <Choice sub="For a crop plan the member accepted" onClick={() => setView('loan')}>Crop share request</Choice>
-      <Choice sub="Cash in: she invests in the union" onClick={() => setView('invest')}>Invest</Choice>
-      <Choice sub="Cash in: the member repays her crop share" onClick={() => setView('repay')}>Repay</Choice>
-      <Choice sub="Scan her code, pay cash, burn her nIN" onClick={() => setView('payout')}>Pay out a cash-out</Choice>
-      <Choice sub="At the owner's farm: 8 photos, hours a week" onClick={() => setView('machine')}>Register a machine</Choice>
-      <Choice sub="Spare cash at the office: an LP takes it for USDC" onClick={() => setView('collect')}>Let an LP collect it</Choice>
-      <Choice sub="An LP brings or collects cash: scan her code" onClick={() => setView('lpscan')}>Scan an LP code</Choice>
-    </Sheet>
-  );
+  // The Cash tab is the C1–C4 board (P10); the cash tasks are on the Tasks tab (L1).
+  return <CashBoard settle={initial === 'settle'} onScanLp={() => setView('lpscan')} />;
 }

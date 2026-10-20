@@ -2,7 +2,9 @@
 // P1 shows what has a hook today: total balance (nIN), wallet chip, land title (Polygon, her titles stay
 // there), nIN. Rows whose hooks come later (investment, vouchers, crop shares, union fund, cash) are
 // left out until those hooks exist (design rule 3), not drawn with made-up numbers. P6 adds Machinery (her
-// vouchers, A8) and Your machine (owner, A13). P9 adds USDC for an LP (lp-open/2: her USDC row).
+// vouchers, A8) and Your machine (owner, A13). P9 adds USDC for an LP (lp-open/2: her USDC row). P10 (A1L): for a
+// leader, the cash and LP slides and the Union rows (treasury, cash). P11: a member with no land title registers
+// first (src/register/Registration.jsx, from the Shell), so A1 always shows her title row.
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useLegacyBalances } from '../move/hooks';
@@ -10,6 +12,7 @@ import { useInvestment } from '../stellar/hooks';
 import { ShareRows } from '../loan/MyShares';
 import { typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
+import { LeaderSlides, UnionRows } from '../leader/UnionCards';
 import { C, FONT, R } from './tokens';
 import { ChevronIcon, HistoryIcon, LandIcon, QrIcon, RefreshIcon, SettingsIcon } from './icons';
 
@@ -54,7 +57,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onTreasury, onSettle, onScanLp }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const legacy = useLegacyBalances(s?.evmAddress);
@@ -94,8 +97,11 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         }}><QrIcon color={C.text} />{short(s?.stellarAddress)}</button>
       </section>
 
+      {leader && <LeaderSlides onSettle={onSettle} onScanLp={onScanLp} />}
+
       <section aria-label="Assets" style={{ background: C.ink, borderRadius: R.card, padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <h2 style={{ textAlign: 'center', fontSize: 16, fontWeight: 700, margin: '0 0 8px' }}>Assets</h2>
+        {leader && <UnionRows Row={Row} Icon={NinIcon} onTreasury={onTreasury} onSettle={onSettle} />}
         {leader && <span style={{ fontWeight: 700, color: C.muted }}>Yours</span>}
         <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
           value={titles ?? '…'} valueSub="—" />
@@ -104,7 +110,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           <Row label="Open nIN invested" icon={<NinIcon />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}
             value={Math.floor(invested)} valueSub={inr(invested)} onClick={onInvested} />
         )}
-        {!leader && <ShareRows onOpen={onShare} />}
+        {/* Her own crop shares, also for a leader (a leader is also a member; A1L 'Yours'). */}
+        <ShareRows onOpen={onShare} />
         {vouchers.data?.length > 0 && (
           <Row label="Open machinery" icon={<NinIcon />} title="Machinery" sub={vOpen ? `1 open code · ${Math.max(0, Math.floor((vOpen.code.expires - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
             value={`${vHours} h`} valueSub="" onClick={onMachinery} />

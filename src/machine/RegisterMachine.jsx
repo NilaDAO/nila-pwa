@@ -36,13 +36,13 @@ async function shrink(file) {
   return { content_type: 'image/jpeg', data_b64: btoa(bin), url: URL.createObjectURL(blob) };
 }
 
-export default function RegisterMachine({ onBack }) {
+export default function RegisterMachine({ onBack, initialOwner = '' }) {
   const s = useNilaSigner();
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
   const rates = useRates();
   const tx = useSorobanTx();
-  const [owner, setOwner] = useState('');
+  const [owner, setOwner] = useState(initialOwner);
   const [scanning, setScanning] = useState(false);
   const [type, setType] = useState();
   const [picking, setPicking] = useState(false);

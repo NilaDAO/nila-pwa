@@ -12,8 +12,9 @@ export async function signStellarMessage(signHash, message) {
   return hex(await signHash(h));
 }
 
-export function planClient({ stellarAddress, signHash }) {
-  async function call(method, path, body) {
+/** A signed fetch to the node, for /plan and the other signed APIs (border O16 …). */
+export function signedCall({ stellarAddress, signHash }) {
+  return async function call(method, path, body) {
     const raw = body === undefined ? '' : JSON.stringify(body);
     const ts = Math.floor(Date.now() / 1000);
     const msg = `nila-plan\n${method} ${path.split('?')[0]}\n${ts}\n${hex(await sha256(enc.encode(raw)))}`;
@@ -30,7 +31,11 @@ export function planClient({ stellarAddress, signHash }) {
       throw e;
     }
     return out;
-  }
+  };
+}
+
+export function planClient(signer) {
+  const call = signedCall(signer);
   return {
     makePlan: (landId, intake, extra = {}) => call('POST', '/plan/jobs', { land_id: landId, intake, ...extra }),
     job: (jobId) => call('GET', `/plan/jobs/${jobId}`),
@@ -45,6 +50,9 @@ export function planClient({ stellarAddress, signHash }) {
     gas: (planId) => call('POST', `/plan/${planId}/gas`, {}),
     // P6 / O13: the 8 machine photos of L13 → their hash for machinery.register_machine.
     machinePhotos: (photos) => call('POST', '/machines/photos', { photos }),
+    // P10 / O15: the union's loan list (the async list) and C2's event search, one window per tap.
+    unionLoans: () => call('GET', '/stellar/union/loans'),
+    unionSearch: (window) => call('POST', '/stellar/union/search', { window }),
   };
 }
 

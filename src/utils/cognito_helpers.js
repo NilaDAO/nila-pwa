@@ -1,10 +1,18 @@
 import { SignUpCommand, ConfirmSignUpCommand,UpdateUserAttributesCommand,RespondToAuthChallengeCommand,GetUserCommand,ForgotPasswordCommand,ConfirmForgotPasswordCommand,InitiateAuthCommand,AdminUpdateUserAttributesCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
+import { DEMO_COGNITO } from './demoMode';
 
 const ClientId = process.env.REACT_APP_COGNITO_CLIENTID
 
+// Demo stack only (utils/demoMode.js: the flag, chain 31337 and a localhost page): the same calls go to the demo
+// server's Cognito stand-in on this origin (fixed code, wallets made on the fork), never to AWS.
+
 // Initialize AWS Cognito
-const client = new CognitoIdentityProviderClient({ 
+const client = new CognitoIdentityProviderClient(DEMO_COGNITO ? {
+    region: 'ap-south-1',
+    endpoint: `${window.location.origin}/__demo/cognito`,
+    credentials: { accessKeyId: 'demo', secretAccessKey: 'demo' },
+  } : {
     region: 'ap-south-1',
     credentials: {
         accessKeyId: process.env.REACT_APP_NILAAPP_AWS,

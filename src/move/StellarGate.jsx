@@ -12,6 +12,8 @@ import { useDataContext } from '../utils/NavigationContext';
 import { useNilaSigner } from '../wallet/signer';
 import MoveFlow, { LeaderStart } from './MoveFlow';
 import Shell from '../shell/Shell';
+import RegFrame from '../register/RegFrame';
+import { RegLoading } from '../register/Boot';
 import { STELLAR_CHAIN } from './hooks';
 
 // This start only, per wallet: 'old' (today's app) or 'new' (Stellar, leaders).
@@ -22,7 +24,9 @@ const readMode = (addr) => { try { return sessionStorage.getItem(modeKey(addr));
 function Holding() {
   const [late, setLate] = useState(false);
   useEffect(() => { const t = setTimeout(() => setLate(true), 20_000); return () => clearTimeout(t); }, []);
-  return <div className="p-4 text-sm">{late ? 'Check your internet and open the app again.' : '…'}</div>;
+  // On the registration ground, so R3 → R5 stays one flow. DESIGN GAP: the late line has no board.
+  return late ? <RegFrame><p style={{ margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>Check your internet and open the app again.</p></RegFrame>
+    : <RegLoading />;
 }
 
 export default function StellarGate({ children }) {
@@ -33,7 +37,8 @@ export default function StellarGate({ children }) {
   useEffect(() => { setMode(readMode(addr)); }, [addr]);
   const choose = (m) => { try { sessionStorage.setItem(modeKey(addr), m); } catch { /* private mode */ } setMode(m); };
 
-  if (db?.chain === STELLAR_CHAIN) return signer ? <Shell /> : <Holding />;
+  // A Stellar wallet: a union leader (Init union.leader, set at R9 from the Polygon RolesRegistry) gets the leader app.
+  if (db?.chain === STELLAR_CHAIN) return signer ? <Shell leader={Boolean(db?.union?.leader)} /> : <Holding />;
   if (!signer || db?.chain !== '137') return children;
   if (mode === 'old') return children;
   if (db?.union?.leader) {

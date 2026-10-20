@@ -2,8 +2,8 @@
 // Collect; L11 #short posts a Bring for the gap (PostBring); A1b #leader scans an LP's code and confirms
 // (fx_pool.confirm: Bring pays her the USDC, Collect takes it). The node sponsors post_offer, confirm and
 // cancel_offer for a leader of the union (O14). Offers run 48 h (≤ 7 days in fx_pool).
-// DESIGN GAPs: LP names ("LP Suresh K.") are shown as short wallet addresses; the Bring scan confirms the
-// rupees by the leader's word (no C6 photo count for an LP's cash yet). Her code is signed by her Stellar
+// On a Bring the leader counts the LP's rupees with the C6 photo count (P10) before confirming.
+// DESIGN GAP: LP names ("LP Suresh K.") are shown as short wallet addresses. Her code is signed by her Stellar
 // key (offer id + time, 10 min): the scan checks it is the LP who accepted (the offer id alone is public).
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Camera } from '../loan/LoanScreens';
+import PhotoCount from '../loan/PhotoCount';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { Keypair } from '@stellar/stellar-sdk';
@@ -115,6 +116,8 @@ export function ScanLp({ onBack }) {
   const [proof, setProof] = useState();   // { ts, sig } from her code
   const [typing, setTyping] = useState(false);
   const [typed, setTyped] = useState('');
+  const [counting, setCounting] = useState(false);
+  const [counted, setCounted] = useState(null);   // rupees counted on C6 for a Bring
   const kind = Number(o.data?.kind);
   const inrAmt = o.data ? Number(BigInt(o.data.inr) / BigInt(U)) : 0;
   // The code is hers: signed by the LP who accepted this offer, less than 10 minutes ago.
@@ -129,7 +132,11 @@ export function ScanLp({ onBack }) {
     if (!m) { setBad('This is not an LP code.'); return; }
     setBad(undefined); setId(Number(m[1])); setProof({ ts: Number(m[2]), sig: m[3] });
   };
-  const again = () => { setId(undefined); setProof(undefined); setBad(undefined); setTyped(''); };
+  const again = () => { setId(undefined); setProof(undefined); setBad(undefined); setTyped(''); setCounted(null); };
+  if (counting) {
+    return <PhotoCount name="LP brings cash" target={inrAmt} verb="Counted" onBack={() => setCounting(false)}
+      onDone={({ total }) => { setCounted(total); setCounting(false); }} />;
+  }
   const live = o.data && Number(o.data.expires) > Date.now() / 1000;
   const ok = o.data && Number(o.data.state) === 1 && o.data.union === cfg.union && live && mine.data === true;
   const why = !o.data ? '' : !live ? 'expired' : ['not accepted by an LP yet', '', 'done already', 'cancelled', 'expired'][Number(o.data.state)] || 'not open';
@@ -160,11 +167,14 @@ export function ScanLp({ onBack }) {
           <Choice sub={`LP ${short(o.data.lp)} · ${usdcOf(o.data.usdc)} USDC`}>{kind === BRING ? `She brings ${inr(inrAmt)}` : `She collects ${inr(inrAmt)}`}</Choice>
           <p style={muted}>{kind === BRING ? 'Count the cash she hands over. Confirming pays her the USDC from the union.'
             : 'Hand over the cash. Confirming takes her USDC into the union.'}</p>
-          <Primary disabled={!tx.ready} onClick={() => tx.run({
+          {kind === BRING && counted == null && <Primary disabled={!tx.ready} onClick={() => setCounting(true)}>Count the cash</Primary>}
+          {kind === BRING && counted != null && counted < inrAmt && <p style={{ color: C.coral }}>Counted {inr(counted)} of {inr(inrAmt)}: count again before you confirm.</p>}
+          {(kind !== BRING || (counted != null && counted >= inrAmt)) && <Primary disabled={!tx.ready} onClick={() => tx.run({
             label: kind === BRING ? `Got ${inr(inrAmt)} from the LP` : `Gave ${inr(inrAmt)} to the LP`,
             rows: [['LP', short(o.data.lp)], ['USDC', usdcOf(o.data.usdc)]],
             contractName: 'fx_pool', fn: 'confirm', args: [sv.address(s.stellarAddress), sv.u64(id)], invalidate: [['stellar', 'offers'], ['stellar', 'cashAtHand']],
-          })}>{kind === BRING ? `I got ${inr(inrAmt)}` : `I gave ${inr(inrAmt)}`}</Primary>
+          })}>{kind === BRING ? `I got ${inr(inrAmt)}` : `I gave ${inr(inrAmt)}`}</Primary>}
+          {kind === BRING && counted != null && counted < inrAmt && <button type="button" onClick={() => setCounting(true)} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Count again</button>}
         </>
       )}
     </Sheet>

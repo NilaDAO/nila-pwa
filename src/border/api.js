@@ -1,0 +1,29 @@
+// The node's border job (oracle O16, nila-sensing docs/stellar/O16.md): her GPS points (R5–R7), the leader's
+// check (L1–L4) and the title mint. Signed like /plan (her or the leader's Stellar wallet, SEP-53).
+import { signedCall } from '../plan/api';
+
+/** GET /border/mine and /border/job answer the job itself or { job }; GET /border/jobs a list or { jobs }. */
+const jobOf = (r) => (r && r.job !== undefined ? r.job : r);
+const listOf = (r) => (Array.isArray(r) ? r : r?.jobs || []);
+
+export function borderClient(signer) {
+  const call = signedCall(signer);
+  return {
+    sendPoints: ({ polygon, farm, union, points }) => call('POST', '/border/points', { polygon, farm: farm || undefined, union: union || undefined, points }).then(jobOf),
+    mine: () => call('GET', '/border/mine').then(jobOf),
+    jobs: () => call('GET', '/border/jobs').then(listOf),
+    job: (id) => call('GET', `/border/job/${id}`).then(jobOf),
+    preview: (id, field, shape) => call('POST', `/border/job/${id}/preview`, { field, shape }),
+    accept: (id, field, shape) => call('POST', `/border/job/${id}/decide`, { field, action: 'accept', shape }).then(jobOf),
+    noneFit: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit' }).then(jobOf),
+    mint: (id, farm) => call('POST', `/border/job/${id}/mint`, farm ? { farm } : {}).then(jobOf),
+  };
+}
+
+/** The shape shown for a field: the accepted one, else the plan's (or a preview's). */
+export function shapeFor(field, plan = {}) {
+  const id = field.accepted || plan[String(field.n)];
+  return field.shapes?.find((s) => s.id === id) || null;
+}
+
+export const acres = (a) => `${Number(a || 0).toFixed(2)} acres`;

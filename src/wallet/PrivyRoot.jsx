@@ -25,6 +25,12 @@ const linkedEvm = (user) => (user?.linkedAccounts || [])
   .filter((a) => a.type === 'wallet' && a.chainType === 'ethereum' && a.address)
   .map((a) => a.address.toLowerCase());
 
+// New or existing Privy user (LOAN_RULES §5, 20 Oct "New or existing after the code (R4)"): decided at the login
+// after the code and kept per wallet on the phone, so a reload during registration keeps the same path.
+const newKey = (a) => `nila.privyNew.${(a || '').toLowerCase()}`;
+const readNew = (a) => { try { const v = localStorage.getItem(newKey(a)); return v === '1' ? true : v === '0' ? false : undefined; } catch { return undefined; } };
+const writeNew = (a, v) => { try { localStorage.setItem(newKey(a), v ? '1' : '0'); } catch { /* kept in memory only */ } };
+
 function useSession() {
   const [session, setSession] = useState({ loading: true, active: false });
   useEffect(() => {
@@ -40,7 +46,15 @@ function useSession() {
 function SignerBridge({ children }) {
   const session = useSession();
   const { ready, authenticated, user, logout } = usePrivy();
-  const { generateSiweMessage, loginWithSiwe } = useLoginWithSiwe();
+  const loginFor = useRef(null);                         // the Polygon address our silent login is for
+  const [privyNew, setPrivyNew] = useState();
+  const { generateSiweMessage, loginWithSiwe } = useLoginWithSiwe({
+    onComplete: ({ isNewUser }) => {
+      if (!loginFor.current) return;
+      writeNew(loginFor.current, !!isNewUser);
+      setPrivyNew(!!isNewUser);
+    },
+  });
   const { createWallet } = useCreateWallet();
   const { signRawHash } = useSignRawHash();
   const [evmWallet, setEvmWallet] = useState();
@@ -67,15 +81,32 @@ function SignerBridge({ children }) {
     }
     if (authenticated || !evmWallet) return;
     busy.current = true;
+    loginFor.current = evmWallet.address;
     (async () => {
       const message = await generateSiweMessage({ address: evmWallet.address, chainId: `eip155:${polygon.id}` });
       const signature = await evmWallet.signMessage(message);
-      await loginWithSiwe({ message, signature });
+      const u = await loginWithSiwe({ message, signature });
+      // onComplete normally said it; if not, a user made in the last two minutes is a new one.
+      if (readNew(evmWallet.address) === undefined) {
+        const made = u?.createdAt ? new Date(u.createdAt).getTime() : 0;
+        const fresh = made > 0 && Date.now() - made < 120_000;
+        writeNew(evmWallet.address, fresh); setPrivyNew(fresh);
+      }
       setError(undefined);
     })()
       .catch((e) => { console.error('[privy] silent login failed', e); setError(e.message); })
       .finally(() => { busy.current = false; });
   }, [ready, authenticated, user, session, evmWallet, generateSiweMessage, loginWithSiwe, logout]);
+
+  useEffect(() => {
+    if (!evmWallet) { setPrivyNew(undefined); return; }
+    const v = readNew(evmWallet.address);
+    if (v !== undefined) { setPrivyNew(v); return; }
+    // Logged in to Privy without our login just now (a session already on this phone): an existing user.
+    if (ready && authenticated && !busy.current && linkedEvm(user).includes(evmWallet.address.toLowerCase())) {
+      writeNew(evmWallet.address, false); setPrivyNew(false);
+    }
+  }, [evmWallet, ready, authenticated, user]);
 
   const stellar = user?.linkedAccounts?.find((a) => a.type === 'wallet' && a.chainType === 'stellar');
 
@@ -129,6 +160,8 @@ function SignerBridge({ children }) {
     authenticated,
     error,
     privyUserId: user?.id,
+    // true: Privy made her user at this login (→ R5); false: it existed (→ R9); undefined: not known yet.
+    privyNew,
     privyEvmAddress: linkedEvm(user)[0],
     evmAddress: evmWallet?.address,
     stellarAddress: stellar?.address,
@@ -147,7 +180,7 @@ function SignerBridge({ children }) {
       if (!evmWallet) throw new Error('no Polygon key');
       return evmWallet.signMessage(msg);
     },
-  }), [signersReady, authenticated, error, user, evmWallet, stellar, signHash, signEvmTx, account.data,
+  }), [signersReady, authenticated, error, user, privyNew, evmWallet, stellar, signHash, signEvmTx, account.data,
     setupStatus, setupError, runSetup, runSetupAsync]);
 
   return <SignerContext.Provider value={value}>{children}</SignerContext.Provider>;
