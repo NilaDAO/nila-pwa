@@ -105,7 +105,18 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
           fillColor: '#3B82F6', fillOpacity: 0.18, strokeColor: '#3B82F6', strokeOpacity: 0.4, strokeWeight: 1, clickable: false });
         if (g.marker?.AdvancedMarkerElement) meMark.current = new g.marker.AdvancedMarkerElement({ position: { lat: me.lat, lng: me.lng }, map: m, content: meDot() });
       }
-      if (!pan) m.setCenter(center);          // panning: she moves the map, it never jumps back
+      if (!pan) {                            // panning: she moves the map, it never jumps back
+        // Her points sit in the part above the card (the card covers the lower half of the screen).
+        const pad = { top: 120, bottom: Math.round(window.innerHeight * 0.55), left: 48, right: 48 };
+        if (points.length > 1) {
+          const b = new g.LatLngBounds();
+          points.forEach((p) => b.extend({ lat: p.lat, lng: p.lng }));
+          m.fitBounds(b, pad);
+        } else {
+          m.setCenter(center);
+          m.panBy(0, Math.round(window.innerHeight * 0.2));
+        }
+      }
     } catch (e) { console.error('[field map] markers not drawn', e); }
   }, [points, center, me, pan, selected, onSelect]);
 
