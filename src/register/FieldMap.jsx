@@ -3,7 +3,7 @@
 // not draggable, map ID 8fa18e8fd7e4c318, her points as the same small gold markers joined by a faint line, centred
 // on her last point (before the first one: the union's location, as today). The script loader id is today's, so the
 // two never load Maps twice. Offline or without a key it is not shown and the field scene stays (FieldFrame).
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
 
 const LIBRARIES = ['maps', 'marker'];
@@ -23,11 +23,22 @@ function dot() {   // today's marker (fieldRegMaps.js createCircleIcon)
   return c;
 }
 
+// A refused key (RefererNotAllowedMapError, a wrong key) calls window.gm_authFailure: from then on the field scene
+// shows instead, and no marker is made (they throw on a refused map).
+let authFailed = false;
+const listeners = new Set();
+if (typeof window !== 'undefined') {
+  const prev = window.gm_authFailure;
+  window.gm_authFailure = () => { authFailed = true; listeners.forEach((f) => f()); if (typeof prev === 'function') prev(); };
+}
+
 export function useFieldMapLoaded() {
+  const [failed, setFailed] = useState(authFailed);
+  useEffect(() => { const f = () => setFailed(true); listeners.add(f); return () => listeners.delete(f); }, []);
   const key = process.env.REACT_APP_GOOGLE_MAPS;
   const { isLoaded, loadError } = useJsApiLoader({ id: 'script-loader', googleMapsApiKey: key || '', libraries: LIBRARIES,
     version: 'weekly', mapIds: [MAP_ID] });
-  return { ok: !!key && isLoaded && !loadError && navigator.onLine };
+  return { ok: !!key && isLoaded && !loadError && !failed && navigator.onLine };
 }
 
 export default function FieldMap({ points = [] }) {
@@ -39,15 +50,19 @@ export default function FieldMap({ points = [] }) {
   const draw = useCallback(() => {
     const m = map.current;
     const g = window.google?.maps;
-    if (!m || !g) return;
-    marks.current.forEach((x) => { x.map = null; });
-    marks.current = points.map((p, i) => new g.marker.AdvancedMarkerElement({ position: { lat: p.lat, lng: p.lng }, map: m, title: `P${i + 1}`, content: dot() }));
-    if (line.current) line.current.setPath(points);
-    else if (points.length) {
-      line.current = new g.Polyline({ path: points, geodesic: true, strokeColor: '#D4CF5A', strokeOpacity: 0.3, strokeWeight: 1 });
-      line.current.setMap(m);
-    }
-    m.setCenter(center);
+    if (!m || !g || authFailed) return;
+    try {
+      marks.current.forEach((x) => { x.map = null; });
+      marks.current = g.marker?.AdvancedMarkerElement
+        ? points.map((p, i) => new g.marker.AdvancedMarkerElement({ position: { lat: p.lat, lng: p.lng }, map: m, title: `P${i + 1}`, content: dot() }))
+        : [];
+      if (line.current) line.current.setPath(points);
+      else if (points.length) {
+        line.current = new g.Polyline({ path: points, geodesic: true, strokeColor: '#D4CF5A', strokeOpacity: 0.3, strokeWeight: 1 });
+        line.current.setMap(m);
+      }
+      m.setCenter(center);
+    } catch (e) { console.error('[field map] markers not drawn', e); }
   }, [points, center]);
 
   useEffect(() => { draw(); }, [draw]);
