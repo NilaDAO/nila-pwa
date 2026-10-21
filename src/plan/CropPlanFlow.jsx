@@ -7,7 +7,7 @@ import { Bouncing } from '../register/RegFrame';
 import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
-import { C } from '../shell/tokens';
+import { C, FONT } from '../shell/tokens';
 import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, useDiscardPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { BasisDrawer, Drawer, InfoButton } from './Drawer';
@@ -44,7 +44,7 @@ function Making({ jobId, onDone, onError }) {
   );
 }
 
-const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, cursor: 'pointer' };
+const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
 function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) => z }) {
   const p = plan.plan;
