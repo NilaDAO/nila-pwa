@@ -125,7 +125,8 @@ export default function CashOut({ onBack }) {
   const [amount, setAmount] = useState(1000);
   const [show, setShow] = useState();      // hash of the code on screen
   const [img, setImg] = useState();
-  const list = mine.data || [];
+  const [closed, setClosed] = useState([]);   // paid codes she tapped Done on (before the list is read again)
+  const list = (mine.data || []).filter((e) => !closed.includes(e.hash));
   // A code just paid opens on its own (A7b #paid); else the one she picked or just sent.
   const shown = list.find((e) => e.hash === show) || list.find((e) => e.state === 'paid');
   useEffect(() => { if (shown?.code) QRCode.toDataURL(`nila:cash:${shown.code}`, { width: 400, margin: 0 }).then(setImg); }, [shown?.code]);
@@ -150,7 +151,7 @@ export default function CashOut({ onBack }) {
       invalidate: [['stellar', 'account'], ['stellar', 'cashouts']],
     });
   };
-  const done = (e) => { if (e.state === 'paid') { patch(e.hash, { done: true }); mine.refetch(); } setShow(undefined); };
+  const done = (e) => { if (e.state === 'paid') { patch(e.hash, { done: true }); setClosed((c) => [...c, e.hash]); } setShow(undefined); };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   if (!s?.stellarAccount || !cfg || mine.isLoading) return <Loading />;
   if (shown) return <Code e={shown} img={img} ready={tx.ready} reclaim={reclaim} onDone={() => done(shown)} onBack={() => done(shown)} />;
