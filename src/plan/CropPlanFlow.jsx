@@ -475,9 +475,16 @@ export default function CropPlanFlow() {
     );
   }
   return (
-    <Sheet map={map} landName={name} title="Waiting for your union leader">
-      <p style={muted}>Your leader checks your plan. You get a message when they are ready.</p>
-      <Primary onClick={() => setStep('plan')}>See my plan</Primary>
+    // CP12 #waiting (board CropPlanPending-590i): the amber clock in a raised circle, then a secondary "See my plan".
+    <Sheet map={map} landName={name}>
+      <div aria-hidden="true" style={{ width: 72, height: 72, borderRadius: 9999, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '8px auto 14px' }}>
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+      </div>
+      <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 6, textAlign: 'center' }}>
+        <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Waiting for your union leader</span>
+        <span style={muted}>Your leader checks your plan. You get a message when they are ready.</span>
+      </div>
+      <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 14, fontSize: 14, fontFamily: 'inherit' }}>See my plan</button>
     </Sheet>
   );
 }
