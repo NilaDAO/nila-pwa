@@ -15,19 +15,25 @@ import { C, R } from '../shell/tokens';
 import { capsFor, checkRows, useUnionChecks } from './unionChecks';
 import { ChevronIcon, ShareTile } from '../shell/icons';
 
-const FLAG_DRAWN = 8;
-const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
+export const FLAG_DRAWN = 8;
+export const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
+
+/** Her land as the crop plan finds it (CP1): a Polygon title, else her title on Stellar — the demo's titles and every
+ *  new member's are on Stellar only, so a Polygon-only lookup found no plan and A1 showed no crop shares (21 Oct). */
+export function useMyLand() {
+  const s = useNilaSigner();
+  const titles = useLandTitles(s?.evmAddress);
+  const stellarTitles = useStellarTitles(s);
+  const onPolygon = !!titles.data?.length;
+  const stellarTitle = onPolygon ? undefined : stellarTitles.data?.[0];
+  return { landId: onPolygon ? titles.data[0] : stellarTitle?.title_id, onPolygon, stellarTitle, evm: s?.evmAddress };
+}
 
 /** Her shares: her approved plan's mint list + each token's state on Stellar. */
 export function useMyShares() {
-  const s = useNilaSigner();
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
-  const titles = useLandTitles(s?.evmAddress);
-  // Her land as the crop plan finds it (CP1): a Polygon title, else her title on Stellar — the demo's titles and every
-  // new member's are on Stellar only, so a Polygon-only lookup found no plan and A1 showed no crop shares (21 Oct).
-  const stellarTitles = useStellarTitles(s);
-  const landId = titles.data?.length ? titles.data[0] : stellarTitles.data?.[0]?.title_id;
+  const { landId } = useMyLand();
   const plan = useCropPlan(landId);
   const p = plan.data;
   return useQuery({
@@ -124,16 +130,16 @@ export function TakeUp({ token, onBack }) {
   );
 }
 
-const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
+export const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
   .filter((r) => r.zone === x.zone && (r.crop === x.crop || r.name === x.crop))
   // The same crop can stand on one area in two seasons: the share's sowing date picks the season.
   .sort((a, b) => (b.sow === x.share.from_date) - (a.sow === x.share.from_date))[0];
-const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
-const amount = (kg) => (kg >= 1000 ? `~${Math.round(kg / 100) / 10} t` : `~${Math.round(kg)} kg`);
+export const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
+export const amount = (kg) => (kg >= 1000 ? `~${Math.round(kg / 100) / 10} t` : `~${Math.round(kg)} kg`);
 
 /** The A1 rows (board MemberAssets-ley3, "Crop shares"): her crop's coin, crop, "Area N · season", its state, the
- *  expected harvest and its value on the right, a chevron. A Ready share opens the take-up; in assisted mode it says
- *  to ask the leader. DESIGN GAP: the board's crop-share detail (MemberCropShare) is not built yet. */
+ *  expected harvest and its value on the right, a chevron. Every row opens its crop share: A4 once a loan is drawn on
+ *  it, A4a before (src/loan/CropShare.jsx). */
 export function ShareRows({ onOpen }) {
   const shares = useMyShares();
   if (!shares.data?.length) return null;
@@ -145,9 +151,9 @@ export function ShareRows({ onOpen }) {
         const fodder = !x.share.loan_amount && x.share.hours;
         const tag = x.ready && assisted() ? 'Ready · ask your leader' : shareTag(x);
         return (
-          <button key={x.token_id} type="button" onClick={() => x.ready && !assisted() && onOpen(x.token_id)} style={{
+          <button key={x.token_id} type="button" onClick={() => onOpen(x.token_id)} style={{
             display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: 12, padding: '12px 16px', minHeight: 48,
-            width: '100%', border: 0, color: C.text, textAlign: 'left', fontSize: 14, lineHeight: 1.5, cursor: x.ready ? 'pointer' : 'default' }}>
+            width: '100%', border: 0, color: C.text, textAlign: 'left', fontSize: 14, lineHeight: 1.5, cursor: 'pointer' }}>
             <ShareTile colour={r.colour} />
             <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontWeight: 700 }}>{r.name || x.crop.replace(/_/g, ' ')}</span>

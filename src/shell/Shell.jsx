@@ -20,6 +20,7 @@ import CashOut from '../loan/CashOut';
 import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
 import { TakeUp } from '../loan/MyShares';
+import CropShare from '../loan/CropShare';
 import IdCheck from '../anchor/IdCheck';
 import LpOffers from '../anchor/LpOffers';
 import { useLpStatus } from '../anchor/hooks';
@@ -175,7 +176,7 @@ export default function Shell({ leader }) {
   if (view === 'assets') {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} onLand={() => go('land')} moveNote={moveNote}
-      onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`share/${t}`)}
+      onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`cropshare/${t}`)}
       onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')}
       onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} />;
   } else if (view === 'settings') {
@@ -199,7 +200,9 @@ export default function Shell({ leader }) {
   else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
   else if (view === 'machine') body = <MyMachine onBack={() => go('assets')} />;
-  else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go('assets')} />;
+  else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go(`cropshare/${readArg()}`)} />;
+  // A4 / A4a: her crop share, from its A1 row.
+  else if (view === 'cropshare') body = <CropShare key={readArg()} token={readArg()} onBack={() => go('assets')} onTakeUp={(t) => go(`share/${t}`)} />;
   // A2 Tasks: for an LP the board's "Cash offers" section; the other task rows come in a later step.
   else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
