@@ -115,6 +115,7 @@ function PlanView({ plan, onAccept, onChange, readOnly, areaNo = (z) => z }) {
 function Pending({ map, name, error }) {
   return (
     <Sheet map={map} landName={name} title="Getting your field record">
+      <Bouncing top={40} bottom={40} label="Waiting for your record" />
       <p style={{ ...muted, textAlign: 'center' }}>This can take up to an hour.</p>
       {error && <p style={muted}>Your field record could not be loaded. It is tried again in a moment.</p>}
     </Sheet>
