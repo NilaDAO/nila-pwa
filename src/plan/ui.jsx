@@ -14,7 +14,9 @@ export function Sheet({ title, children, landName, onBack, map }) {
         )}
         <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: map ? 'absolute' : 'static', top: 18, zIndex: 2 }}>{landName}</span>
       </div>
-      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', minHeight: 400, ...drag.style }}>
+      <div ref={drag.ref} className="cp-sheet" style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', minHeight: 400, ...drag.style }}>
+        {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
+        <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}'}</style>
         <div style={{ marginBottom: 16 }}>{drag.handle}</div>
         {title && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
         {children}
