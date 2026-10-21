@@ -45,7 +45,7 @@ export function planClient(signer) {
     pendingApprovals: () => call('GET', '/plan/approvals/pending'),
     approvedPlans: () => call('GET', '/plan/approvals/approved'),
     discard: (planId) => call('POST', `/plan/${planId}/discard`, {}),
-    revise: (planId, note, changes = {}) => call('POST', `/plan/${planId}/revise`, { note, changes }),
+    revise: (planId, note, changes = {}, remove = []) => call('POST', `/plan/${planId}/revise`, { note, changes, remove }),
     approve: (planId, decision, reason, note) => call('POST', `/plan/${planId}/approve`, { decision, reason, note }),
     mintList: (planId) => call('GET', `/plan/${planId}/mint`),
     gas: (planId) => call('POST', `/plan/${planId}/gas`, {}),

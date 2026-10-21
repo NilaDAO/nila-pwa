@@ -80,7 +80,7 @@ export function SlideBar({ label, onPrev, onNext, prevLabel, nextLabel }) {
 const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear() - y0) * 12 + t.getMonth() - 9 + (t.getDate() - 1) / 31; };
 
 /** The area card (an area picked): her year as bars, sales, Back and Accept Area N. */
-export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, readOnly }) {
+export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly }) {
   const seasons = plan.plan.seasons || [];
   const rows = seasons.flatMap((s) => s.rows.filter((r) => r.zone === zone).map((r) => ({ ...r, slot: s.slot })));
   const y0 = new Date(seasons[0]?.start || Date.now()).getFullYear();
@@ -135,6 +135,12 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
         {!readOnly && !accepted && <button type="button" onClick={onAccept} style={{ ...btn, background: C.accent, color: C.ink }}>Accept {name}</button>}
         {!readOnly && accepted && nextName && <button type="button" onClick={onNext} style={{ ...btn, background: C.accent, color: C.ink }}>Next: {nextName}</button>}
         {!readOnly && accepted && !nextName && <button type="button" onClick={onAll} style={{ ...btn, background: C.accent, color: C.ink }}>Accept the plan</button>}
+        {/* Remove this area (21 Oct): left-over bits leave the plan; a confirm first (CropPlanFlow). */}
+        {!readOnly && onRemove && total > 1 && (
+          <button type="button" onClick={onRemove} aria-label={`Remove ${name} from your plan`} style={{ ...btn, flex: 'none', width: 44, padding: 0, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F1F5F9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+          </button>
+        )}
       </div>
     </>
   );

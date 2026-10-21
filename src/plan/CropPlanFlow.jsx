@@ -10,6 +10,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { C } from '../shell/tokens';
 import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, useDiscardPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
+import { BasisDrawer, Drawer, InfoButton } from './Drawer';
 import { useMintCropShares } from './mint';
 import MoneyChart from './MoneyChart';
 import { areasOf, summarize, useFieldRecord } from './record';
@@ -170,6 +171,9 @@ export default function CropPlanFlow() {
   const [cows, setCows] = useState();
   const [months, setMonths] = useState([]);
   const [farmCash, setFarmCash] = useState('');
+  const [basisOpen, setBasisOpen] = useState(false);
+  const [removing, setRemoving] = useState(null);   // the area asked to remove (CP10 confirm)
+  const [afterMake, setAfterMake] = useState('why');
   const [jobId, setJobId] = useState();
   const [madeId, setMadeId] = useState();   // the plan the last job made: CP9 waits until the latest plan is that one
   const [error, setError] = useState();
@@ -318,7 +322,7 @@ export default function CropPlanFlow() {
   if (at === 'making') {
     return (
       <Sheet map={map} landName={name} title="Making your crop plan">
-        <Making jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep('why'); }}
+        <Making jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
           onError={(e) => { setError(e); setStep('farmcash'); }} />
       </Sheet>
     );
@@ -328,8 +332,13 @@ export default function CropPlanFlow() {
     const fresh = !madeId || plan?.id === madeId;
     const text = fresh ? plan?.plan?.explain?.text || plan?.plan?.proposal_why : null;
     return (
-      <Sheet map={map} landName={name} title="Why this plan">
+      <Sheet map={map} landName={name}>
+        {/* The info button opens "What this plan is based on" (21 Oct): the node's plan.basis, by code. */}
+        <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          Why this plan{fresh && plan && <InfoButton label="What this plan is based on" onClick={() => setBasisOpen(true)} />}
+        </h1>
         {text ? <p style={{ lineHeight: 1.5 }}>{text}</p> : <p style={muted}>…</p>}
+        {basisOpen && <BasisDrawer basis={plan?.plan?.basis} onClose={() => setBasisOpen(false)} />}
         <Primary disabled={!fresh} onClick={() => setStep('plan')}>See my plan</Primary>
         {/* Renew plan (moved from CP10, executive decision 21 Oct): her draft is removed and she starts again on CP1. */}
         {plan?.status === 'draft' && (
@@ -359,10 +368,33 @@ export default function CropPlanFlow() {
             nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => pickArea(next)} onAll={() => setStep('terms')}
             onBack={() => pickArea(null)}
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
-            onCrop={(r) => { setChangeNote(`Area ${areaNo(area)}, ${SEASON[r.slot]}: instead of ${r.name}, `); setStep('change'); }} />
+            onCrop={(r) => { setChangeNote(`Area ${areaNo(area)}, ${SEASON[r.slot]}: instead of ${r.name}, `); setStep('change'); }}
+            onRemove={() => setRemoving(area)} />
         ) : (
           <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={readOnly} />
         )}
+        {removing && (() => {
+          // CP10 remove-area confirm (21 Oct): the node removes it by code (no Claude call); the same line goes into her
+          // Change my plan draft, so Claude hears of it with her next change.
+          const label = `Area ${areaNo(removing)}`;
+          const remove = async () => {
+            setError(undefined);
+            try {
+              const r = await revise.mutateAsync({ planId: plan.id, note: '', changes: {}, remove: [removing] });
+              const line = `Remove ${label} from my plan: it is a left-over bit.`;
+              setChangeNote((n) => (n.includes(line) ? n : `${n.trim() ? `${n.trim()}\n` : ''}${line}`));
+              setChecked((c) => { const n = new Set(c); n.delete(removing); return n; });
+              setRemoving(null); pickArea(null); setAfterMake('plan'); setJobId(r.job_id); setStep('making');
+            } catch (e) { setError(e.message); setRemoving(null); }
+          };
+          return (
+            <Drawer title={`Remove ${label} from your plan?`} onClose={() => setRemoving(null)}
+              actions={[{ label: revise.isPending ? 'Removing…' : 'Remove', primary: true, disabled: revise.isPending, onClick: remove },
+                { label: 'Cancel', onClick: () => setRemoving(null) }]}>
+              <p style={{ ...muted, margin: 0 }}>No crops, loans or vouchers are planned on it. You can add it back by renewing the plan.</p>
+            </Drawer>
+          );
+        })()}
       </Sheet>
     );
   }

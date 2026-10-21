@@ -123,7 +123,7 @@ export function useApprovePlan() {
 /** CP10 "Change my plan": her (or her leader's) explanation and crop changes → a new version (/revise). */
 export function useRevisePlan() {
   const api = usePlanClient();
-  return useMutation({ mutationFn: ({ planId, note, changes }) => api.revise(planId, note, changes) });
+  return useMutation({ mutationFn: ({ planId, note, changes, remove }) => api.revise(planId, note, changes, remove) });
 }
 
 /** CP10 "Renew plan": her draft plan is removed (/discard) and she starts again from CP1. */
