@@ -114,3 +114,18 @@ export function useInvestment(address) {
     },
   });
 }
+
+/** Her land titles on Stellar in today's union (land_title.title_count). In the demo a new title is written on Stellar
+ *  only (no Polygon mint, executive decision 21 Oct), so the app counts both chains (src/register/titles.js). */
+export function useStellarTitleCount(address) {
+  const { data: cfg } = useStellarConfig();
+  return useQuery({
+    queryKey: ['stellar', 'titles', cfg?.union, address],
+    enabled: !!cfg && !!address && !!cfg.contracts?.land_title,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { readContract, sv } = await import('./soroban');
+      return Number(await readContract(cfg, 'land_title', 'title_count', [sv.address(cfg.union), sv.address(address)]) || 0);
+    },
+  });
+}

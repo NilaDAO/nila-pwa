@@ -27,6 +27,7 @@ import LeaderTasks from '../leader/LeaderTasks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration from '../register/Registration';
 import { RegLoading } from '../register/Boot';
+import { TITLE_KEYS, useTitleCount } from '../register/titles';
 import { demoNew } from '../register/AfterCode';
 import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
@@ -110,6 +111,8 @@ export default function Shell({ leader }) {
   // Her nIN move was refused before anything was burned: she can ask again (moved from StellarHome).
   const { data: cfg } = useStellarConfig();
   const legacy = useLegacyBalances(s?.evmAddress);
+  // Her land title on Polygon or on Stellar (src/register/titles.js) decides registration.
+  const titleCount = useTitleCount(s?.evmAddress, s?.stellarAddress);
   const qc = useQueryClient();
   const [retry, setRetry] = useState();
   const again = async () => {
@@ -137,10 +140,10 @@ export default function Shell({ leader }) {
   // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
   // A leader is also a member (notes leader-missing): the same gate applies to her; with a title she never sees it.
   // Until her titles are known she sees the registration ground, not a flash of the tab bar.
-  if (!legacy.data && legacy.isLoading) return <RegLoading />;
+  if (titleCount.loading) return <RegLoading />;
   // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
-  if (legacy.data && legacy.data.titles === 0 && (s?.privyNew === true || demoNew(s?.evmAddress))) {
-    const onTitle = () => { qc.invalidateQueries({ queryKey: ['polygon', 'legacy'] }); go('crop'); };
+  if (titleCount.count === 0 && (s?.privyNew === true || demoNew(s?.evmAddress))) {
+    const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
   }
 

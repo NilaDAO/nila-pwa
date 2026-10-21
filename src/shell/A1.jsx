@@ -7,7 +7,7 @@
 // first (src/register/Registration.jsx, from the Shell), so A1 always shows her title row.
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
-import { useLegacyBalances } from '../move/hooks';
+import { useTitleCount } from '../register/titles';
 import { useInvestment } from '../stellar/hooks';
 import { ShareRows } from '../loan/MyShares';
 import { typeName, useMyMachine, useVouchers } from '../machine/hooks';
@@ -60,9 +60,8 @@ const NinIcon = () => (
 export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onTreasury, onSettle, onScanLp }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
-  const legacy = useLegacyBalances(s?.evmAddress);
   const nin = s?.stellarAccount?.nin?.balance ?? 0;
-  const titles = legacy.data?.titles;
+  const titles = useTitleCount(s?.evmAddress, s?.stellarAddress).count;   // Polygon or Stellar (src/register/titles.js)
   const inv = useInvestment(s?.stellarAddress);
   const invested = inv.data ? Number(inv.data.invested) / 1e7 : undefined;
   const vouchers = useVouchers(s?.stellarAddress);

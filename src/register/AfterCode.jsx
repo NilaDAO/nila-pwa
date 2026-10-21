@@ -7,7 +7,7 @@
 // While Privy has not answered, the registration ground stays (no S1 flash).
 import { useEffect, useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
-import { useLegacyBalances } from '../move/hooks';
+import { useTitleCount } from './titles';
 import RegFrame from './RegFrame';
 import { DEMO_COGNITO } from '../utils/demoMode';
 
@@ -18,12 +18,11 @@ import { RegLoading } from './Boot';
 export default function AfterCode({ onNew, onExisting }) {
   const s = useNilaSigner();
   const evm = s?.evmAddress;
-  const legacy = useLegacyBalances(evm);
+  const titleCount = useTitleCount(evm, s?.stellarAddress);   // Polygon or Stellar
   const [late, setLate] = useState(false);
   useEffect(() => { const t = setTimeout(() => setLate(true), 30_000); return () => clearTimeout(t); }, []);
 
-  // A failed Polygon read counts as no title (a new wallet has none; the mint refuses a second title anyway).
-  const titles = legacy.data ? legacy.data.titles : legacy.isError ? 0 : undefined;
+  const titles = titleCount.count;
   const known = s?.privyNew !== undefined && !!evm && titles !== undefined;
   useEffect(() => {
     if (!known) return;
