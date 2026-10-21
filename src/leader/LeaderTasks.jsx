@@ -12,48 +12,45 @@ import { useLpStatus } from '../anchor/hooks';
 import { useUnionOffers } from '../anchor/hooks';
 import { useBorderJobs } from '../border/hooks';
 import { memberName } from '../border/LeaderBorder';
-import { C, FONT, R } from '../shell/tokens';
+import { C, FONT } from '../shell/tokens';
+import ListRow, { ListSection, ScreenHeader } from '../shell/ListRow';
+import { BanknoteIcon, CalendarIcon, CropIcon, InvestIcon, PayOutIcon, PinIcon, RepayIcon, RupeeIcon, TractorIcon } from '../shell/icons';
 import { useKnownMembers, useLeaderTodo, useUnionCash } from './hooks';
 
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
-const card = { background: C.ink, borderRadius: R.card, padding: '18px 22px', marginBottom: 12, fontFamily: FONT, color: C.text };
-
-function TaskRow({ title, sub, value, urgent, onClick }) {
-  return (
-    <button type="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: C.raised, border: 0, borderRadius: 12, padding: '12px 16px', marginBottom: 8, color: C.text, fontFamily: FONT, fontSize: 14 }}>
-      {urgent && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: R.round, background: C.coral, flexShrink: 0 }} />}
-      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{title}</b>{sub && <span style={{ color: C.muted }}>{sub}</span>}</span>
-      {value && <b>{value}</b>}
-    </button>
-  );
-}
 
 /** L5: the members the app knows, or scan her wallet. */
 export function PickMember({ title, onPick, onBack, onScan }) {
   const api = usePlanClient();
   const members = useKnownMembers(api);
   return (
-    <div style={{ padding: 16, fontFamily: FONT, color: C.text }}>
-      <button type="button" onClick={onBack} style={{ background: 'none', border: 0, color: C.muted, padding: 0 }}>← Back</button>
-      <h1 style={{ fontSize: 16 }}>{title}</h1>
-      <h2 style={{ fontSize: 14, color: C.muted }}>Who is it for?</h2>
-      {members.isLoading && <p style={{ color: C.muted }}>…</p>}
-      {(members.data || []).map((m) => (
-        <TaskRow key={m.address} title={m.lands.length ? `Land ${m.lands.join(', ')}` : 'Member'} sub={short(m.address)} onClick={() => onPick(m.address)} />
-      ))}
-      {members.isSuccess && !members.data.length && <p style={{ color: C.muted }}>No members with a crop plan or a crop share yet.</p>}
-      {onScan && <TaskRow title="Scan her wallet QR" sub="A member not in the list" onClick={onScan} />}
+    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <ScreenHeader title={title} onBack={onBack} />
+      <ListSection title="Who is it for?">
+        {members.isLoading && <li style={{ color: C.muted, padding: '12px 0' }}>…</li>}
+        {(members.data || []).map((m, i) => (
+          <ListRow key={m.address} first={i === 0} icon={PinIcon} title={m.lands.length ? `Land ${m.lands.join(', ')}` : 'Member'} sub={short(m.address)} onClick={() => onPick(m.address)} />
+        ))}
+        {members.isSuccess && !members.data.length && <li style={{ color: C.muted, padding: '12px 0' }}>No members with a crop plan or a crop share yet.</li>}
+        {onScan && <ListRow first={!members.data?.length} icon={PayOutIcon} title="Scan her wallet QR" sub="A member not in the list" onClick={onScan} />}
+      </ListSection>
     </div>
   );
 }
 
+// The board's groups (LeaderBorders "Start a task"), only the rows whose flow exists; icons as on the board.
+// "Scan an LP code" has no board row (LP scan, P9): it keeps the cash icon.
 const START = [
-  ['Crop plan and crop share', [['Share request', 'For a crop plan the member accepted', 'cash/loan']]],
-  ['Cash', [['Invest', 'Cash in: she invests in the union', 'cash/invest'], ['Repay', 'Cash in: the member repays her crop share', 'cash/repay'],
-    ['Pay out a cash-out', 'Scan her code, pay cash, burn her nIN', 'cash/payout'], ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan']]],
-  ['Vouchers', [['Register a machine', 'Her own machine, photos and price', 'cash/machine']]],
+  ['Crop plan and crop share', [['Share request', 'For a crop plan the member accepted', 'cash/loan', RupeeIcon]]],
+  ['Cash', [['Invest', 'Cash in: she invests in the union', 'cash/invest', InvestIcon], ['Repay', 'Cash in: the member repays her crop share', 'cash/repay', RepayIcon],
+    ['Pay out a cash-out', 'Scan her code, pay cash, burn her nIN', 'cash/payout', PayOutIcon], ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
+  ['Vouchers', [['Register a machine', 'Her own machine, photos and price', 'cash/machine', TractorIcon]]],
 ];
+
+// To do icons by task kind (board LeaderBorders): accent for a new item to act on, coral for an overdue one.
+const KIND = { approve: [CropIcon, 'new'], share: [RupeeIcon, 'new'], collect: [RepayIcon], payback: [CalendarIcon],
+  settle: [BanknoteIcon], lp: [BanknoteIcon], border: [PinIcon] };
 
 export default function LeaderTasks({ go }) {
   const api = usePlanClient();
@@ -74,37 +71,40 @@ export default function LeaderTasks({ go }) {
     items.unshift({ key: `lp-${o.id}`, title: o.kind === 0 ? 'LP brings cash' : 'LP collects cash', amount: o.inr, who: `LP ${short(o.lp)} · Here`, to: 'cash/lpscan' });
   }
   for (const j of borders.filter((x) => x.status !== 'minted')) {
-    items.unshift({ key: `border-${j.id}`, title: 'Check field borders', who: `${memberName(j)} · ${j.fields} fields`, to: `tasks/border/${j.id}`, urgent: j.status === 'ready' });
+    items.unshift({ key: `border-${j.id}`, title: 'Check field borders', who: `${memberName(j)} · ${j.fields} fields`, to: `tasks/border/${j.id}`, ready: j.status === 'ready' });
   }
   const shown = items.filter((t) => !q || `${t.title} ${t.who}`.toLowerCase().includes(q.toLowerCase()));
+  const row = (t, i) => {
+    const [icon, tone] = KIND[t.key.split('-')[0]] || [];
+    return <ListRow key={t.key} first={i === 0} icon={icon} tone={t.urgent ? 'urgent' : t.ready ? 'new' : tone}
+      title={t.amount ? `${t.title} ${inr(t.amount)}` : t.title} sub={t.who} onClick={() => go(t.to)} />;
+  };
   return (
-    <div style={{ padding: '16px 8px 0', fontFamily: FONT, color: C.text }}>
-      <h1 style={{ fontSize: 16, textAlign: 'center' }}>Tasks</h1>
-      <section style={card} aria-label="To do">
-        <h2 style={{ fontSize: 16, margin: '0 0 10px' }}>To do</h2>
-        <input aria-label="Search tasks" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)}
-          style={{ width: '100%', height: 40, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box', marginBottom: 10 }} />
-        {todo.isLoading && <p style={{ color: C.muted }}>…</p>}
-        {shown.map((t) => <TaskRow key={t.key} title={t.title} sub={t.who} value={t.amount ? inr(t.amount) : undefined} urgent={t.urgent} onClick={() => go(t.to)} />)}
-        {todo.isSuccess && !shown.length && <p style={{ color: C.muted }}>{q ? 'No tasks match.' : 'Nothing to do now.'}</p>}
-      </section>
+    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <ScreenHeader title="Tasks" onBack={() => go('assets')} onSettings={() => go('settings')} />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, height: 44, borderRadius: 12, background: C.raised, padding: '0 14px', boxSizing: 'border-box', marginTop: -12 }}>
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        <input type="search" aria-label="Search a task" placeholder="Search a task" value={q} onChange={(e) => setQ(e.target.value)}
+          style={{ flex: 1, minWidth: 0, border: 0, background: 'transparent', color: C.text, fontFamily: 'inherit', fontSize: 16, outline: 'none' }} />
+      </label>
+      <ListSection title="To do">
+        {todo.isLoading && <li style={{ color: C.muted, padding: '12px 0' }}>…</li>}
+        {shown.map(row)}
+        {todo.isSuccess && !shown.length && <li style={{ color: C.muted, padding: '12px 0' }}>{q ? 'No tasks match.' : 'Nothing to do now.'}</li>}
+      </ListSection>
       {/* L1 'Your own' (notes leader-missing): her member tasks — a leader is also a member. Today the member app's own
           task is the LP's cash offers; her crop plan and shares are on the Crop plan and Assets tabs. */}
-      <section style={card} aria-label="Your own">
-        <h2 style={{ fontSize: 16, margin: '0 0 10px' }}>Your own</h2>
+      <ListSection title="Your own">
         {lp?.lp && lp?.trustline
-          ? <TaskRow title="Cash offers" sub="As an LP" onClick={() => go('offers')} />
-          : <p style={{ color: C.muted, margin: 0 }}>Nothing of your own to do.</p>}
-      </section>
-      <section style={card} aria-label="Start a task">
-        <h2 style={{ fontSize: 16, margin: '0 0 10px' }}>Start a task</h2>
-        {START.map(([group, rows]) => (
-          <div key={group}>
-            <h3 style={{ fontSize: 14, color: C.muted, margin: '10px 0 6px' }}>{group}</h3>
-            {rows.map(([title, sub, to]) => <TaskRow key={title} title={title} sub={sub} onClick={() => go(to)} />)}
-          </div>
-        ))}
-      </section>
+          ? <ListRow first icon={BanknoteIcon} title="Cash offers" sub="As an LP" onClick={() => go('offers')} />
+          : <li style={{ color: C.muted, padding: '12px 0' }}>Nothing of your own to do.</li>}
+      </ListSection>
+      <h2 style={{ margin: '8px 0 -8px 14px', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Start a task</h2>
+      {START.map(([group, rows]) => (
+        <ListSection key={group} title={group}>
+          {rows.map(([title, sub, to, icon], i) => <ListRow key={title} first={i === 0} icon={icon} title={title} sub={sub} onClick={() => go(to)} />)}
+        </ListSection>
+      ))}
     </div>
   );
 }

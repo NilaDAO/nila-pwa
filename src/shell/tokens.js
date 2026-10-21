@@ -9,6 +9,8 @@ export const S = { gutter: 8, inline: 10, stack: 14, sheet: 18 };
 export const FONT = "'Inter', system-ui, sans-serif";
 export const SHADOW = 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px';
 export const TAB_BAR_HEIGHT = 72;
+/** The background of every non-map screen (boards Tasks, MemberAssets, Settings …). */
+export const GRADIENT = 'linear-gradient(180deg, #121212 0%, #1E2738 100%)';
 
 /** Inter 400/700, loaded only when the new shell mounts (flag on). */
 export function loadInter() {

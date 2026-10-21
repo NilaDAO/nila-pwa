@@ -31,7 +31,9 @@ import { TITLE_KEYS, useTitleCount } from '../register/titles';
 import { demoNew } from '../register/AfterCode';
 import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
-import { C, FONT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
+import { C, FONT, GRADIENT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
+import ListRow, { ListSection, ScreenHeader } from './ListRow';
+import { BanknoteIcon, CropIcon } from './icons';
 
 const MOVE = {
   waiting: 'Your nIN from the old network arrives after your union confirms your land title.',
@@ -88,8 +90,22 @@ function TasksView({ leader, go }) {
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
   if (leader) return <LeaderTasks go={go} />;
-  if (!leader && lp.data?.lp && lp.data?.trustline) return <LpOffers onBack={() => { window.location.hash = '#/assets'; }} />;
-  return <Later title="Tasks" step={leader ? 'the leader steps' : 'a later step'} />;
+  // A2 (board Tasks): "Cash offers" for an LP, then "To do". DESIGN GAP: the board's to-do rows (use machine hours,
+  // plant, invest, register trees, repay) need her plan's task list, not built yet; her crop plan row stands in.
+  const isLp = lp.data?.lp && lp.data?.trustline;
+  return (
+    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <ScreenHeader title="Tasks" onBack={() => go('assets')} onSettings={() => go('settings')} />
+      {isLp && (
+        <ListSection title="Cash offers">
+          <ListRow first icon={BanknoteIcon} tone="new" title="Cash offers" sub="Bring or collect cash for USDC" onClick={() => go('offers')} />
+        </ListSection>
+      )}
+      <ListSection title="To do">
+        <ListRow first icon={CropIcon} title="Your crop plan" sub="Make, check or follow your plan" onClick={() => go('crop')} />
+      </ListSection>
+    </div>
+  );
 }
 
 export default function Shell({ leader }) {
@@ -183,7 +199,8 @@ export default function Shell({ leader }) {
   // No tab is active on task, settings, history and wallet screens.
   const active = tabs.some(([id]) => id === view) ? view : undefined;
   return (
-    <div style={{ minHeight: '100vh', background: C.ground, paddingBottom: TAB_BAR_HEIGHT + 16 }} data-testid="shell">
+    // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.
+    <div style={{ minHeight: '100vh', background: GRADIENT, paddingBottom: TAB_BAR_HEIGHT + 16 }} data-testid="shell">
       {body}
       <BottomTabBar tabs={tabs} active={active} onSelect={go} />
     </div>
