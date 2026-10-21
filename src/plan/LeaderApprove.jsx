@@ -3,11 +3,12 @@
 // Approve, or Deny with a reason and a note in the bottom dialog. Each waiting plan is its own task (L1 → #/approvals/<id>).
 // DESIGN GAPs: member names are not on the node, so the header shows the farm name of a Polygon title, else
 // "Land <id>"; "sign the mint on this phone" is gone: she mints on her phone (N1).
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { C, FONT } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
-import { useApprovePlan, usePendingApprovals, useTitleName } from './hooks';
+import { useApprovePlan, usePendingApprovals, usePlanClient, useTitleName } from './hooks';
+import { useQuery } from '@tanstack/react-query';
 import { useMintCropShares } from './mint';
 import { inr, muted } from './ui';
 import { Loading } from '../register/Boot';
@@ -74,7 +75,7 @@ function DenyDialog({ onClose, onDeny, busy }) {
     </>, document.body);
 }
 
-function L12({ plan, onDone }) {
+function L12({ plan, onDone, approvedAlready = false }) {
   const approve = useApprovePlan();
   const [deny, setDeny] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -85,7 +86,10 @@ function L12({ plan, onDone }) {
   const sum = (rows, f) => rows.reduce((a, r) => a + (f(r.finance) || 0), 0);
   const all = seasons.flatMap((s) => s.rows);
   const mint = useMintCropShares();
-  const [approved, setApproved] = useState(false);
+  const [approved, setApproved] = useState(approvedAlready);
+  // An approved plan reopened (from its task): which of her crop shares are made already.
+  const checkMade = mint.check;
+  useEffect(() => { if (approvedAlready) checkMade(plan.id); }, [approvedAlready, plan.id, checkMade]);
   const decide = async (decision, reason, note) => {
     setBusy(true); setError(undefined);
     try {
@@ -144,10 +148,14 @@ function L12({ plan, onDone }) {
                 {mint.status === 'busy' ? `Making her crop shares${mint.total ? ` · ${mint.done} of ${mint.total}` : '…'}`
                   : mint.status === 'done' ? 'Her crop shares are made and sent to her wallet'
                     : mint.status === 'partial' ? `${mint.done} of ${mint.total} crop shares made`
-                      : mint.status === 'failed' ? 'Her crop shares were not made' : 'Approved'}
+                      : mint.status === 'failed' ? 'Her crop shares were not made'
+                        : mint.status === 'waiting' ? `Approved · ${mint.done || 0} of ${mint.total || 0} crop shares made` : 'Approved'}
               </span>
               {mint.refused?.map((r) => <span key={r.share || r.token_id} style={{ ...muted, margin: 0 }}>{r.crop || 'Crop share'}: {r.error}</span>)}
               {mint.status === 'failed' && mint.error && !mint.refused?.length && <span style={{ ...muted, margin: 0 }}>{mint.error}</span>}
+              {(mint.status === 'idle' || mint.status === 'waiting') && (
+                <button type="button" onClick={() => mint.run(plan.id)} style={{ ...btn, background: C.accent, color: C.ink }}>Make her crop shares</button>
+              )}
               {(mint.status === 'failed' || mint.status === 'partial') && (
                 <button type="button" onClick={() => mint.run(plan.id)} style={{ ...btn, background: C.accent, color: C.ink }}>Try again</button>
               )}
@@ -175,8 +183,13 @@ export default function LeaderPlans({ planId, onBack }) {
   const kept = useRef(null);
   if (found) kept.current = found;
   const sel = found || (kept.current && (!planId || kept.current.id === planId) ? kept.current : null);
+  // An approved plan (no longer waiting): L12 in its approved state, to make her crop shares if they are not all made.
+  const api = usePlanClient();
+  const approvedQ = useQuery({ queryKey: ['plan', 'approvedList'], enabled: !!api && !sel && !!planId, queryFn: () => api.approvedPlans() });
   if (sel) return <L12 plan={sel} onDone={onBack} />;
-  if (list.isLoading) return <Loading />;
+  const done = (approvedQ.data?.plans || []).find((p) => p.id === planId);
+  if (done) return <L12 plan={done} onDone={onBack} approvedAlready />;
+  if (list.isLoading || approvedQ.isLoading) return <Loading />;
   return (
     <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
       <ScreenHeader title="Crop plan" onBack={onBack} onSettings={() => { window.location.hash = '#/settings'; }} />
