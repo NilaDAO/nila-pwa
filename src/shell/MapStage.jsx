@@ -22,11 +22,15 @@ const same = (a, b) => !!a && !!b && a.record === b.record && a.selected === b.s
 
 export default function MapStage({ children }) {
   const [props, setProps] = useState(null);
-  const api = useMemo(() => ({ set: (p) => setProps((was) => (same(was, p) ? was : p)) }), []);
+  // under: how far the open card reaches up from the screen's bottom. Google's logo and Terms (bottom of the map) are
+  // lifted by it, so they stay visible just above the card (they must never be hidden).
+  const [under, setUnder] = useState(0);
+  const api = useMemo(() => ({ set: (p) => setProps((was) => (same(was, p) ? was : p)), setUnder: (px) => setUnder(Math.max(0, Math.round(px))) }), []);
   return (
     <StageCtx.Provider value={api}>
       {props?.record && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 0 }} data-testid="map-stage">
+        <div className="nila-stage" style={{ position: 'fixed', inset: 0, zIndex: 0, '--nila-under': `${under}px` }} data-testid="map-stage">
+          <style>{'.nila-stage .gm-style>div>div[style*="bottom: 0px"]{transform:translateY(calc(-1 * var(--nila-under)));transition:transform 300ms cubic-bezier(0.2,0.8,0.2,1)}'}</style>
           <AreaMap {...props} height="100%" />
         </div>
       )}

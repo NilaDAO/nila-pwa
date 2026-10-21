@@ -54,12 +54,25 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       h.style.backgroundSize = `100% ${c.offsetHeight}px`;
       h.style.backgroundPosition = `0 ${-(h.getBoundingClientRect().top - c.getBoundingClientRect().top)}px`;
     };
-    paint();
+    // Where the card rests (its drag offset in, the page's or its own scroll out): the map's logo sits just above it.
+    const rest = () => {
+      const c = drag.ref.current;
+      if (!c) return;
+      const box = c.closest('[data-sheet-scroll]');
+      stage.setUnder(window.innerHeight - (c.getBoundingClientRect().top + (box ? box.scrollTop : window.scrollY)));
+    };
+    paint(); rest();
+    const card = drag.ref.current;
+    card?.addEventListener('transitionend', rest);
     window.addEventListener('scroll', paint, { capture: true, passive: true });
     window.addEventListener('resize', paint);
+    window.addEventListener('resize', rest);
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(paint) : null;
     if (ro && drag.ref.current) ro.observe(drag.ref.current);
-    return () => { window.removeEventListener('scroll', paint, { capture: true }); window.removeEventListener('resize', paint); ro?.disconnect(); };
+    return () => {
+      card?.removeEventListener('transitionend', rest);
+      window.removeEventListener('scroll', paint, { capture: true }); window.removeEventListener('resize', paint); window.removeEventListener('resize', rest); ro?.disconnect();
+    };
   }); // eslint-disable-line react-hooks/exhaustive-deps
   const headRow = staged && (
     <div ref={headRef} style={{ position: 'sticky', top: 0, zIndex: 3, background: GRADIENT, backgroundRepeat: 'no-repeat', margin: '0 -22px 8px', padding: '4px 22px 12px' }}>
