@@ -28,7 +28,8 @@ export default function LandTitle({ onBack }) {
   const field = useFieldRecord(landId, s?.evmAddress, stellarTitle ? stellarTitle.record_hash || '' : undefined);
   const record = field.data?.record;
   const farm = useTitleName(landId, onPolygon, stellarTitle);
-  if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched)) return <Loading />;
+  // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
+  if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched) || field.isLoading) return <Loading />;
   const map = record ? <AreaMap record={record} /> : null;
   return (
     <Sheet map={map} onBack={onBack}>
