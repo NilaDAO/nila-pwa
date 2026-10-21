@@ -7,6 +7,7 @@
 // the part above the cap at sowing, machine work in the month it is used; repayment = its repay in its due month.
 // Without the crop plan she pays the same inputs and machines herself and repays nothing.
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { C, FONT } from '../shell/tokens';
 
 const W = 330, H = 170, X0 = 34, X1 = 324, Y0 = 8, Y1 = 152;
@@ -58,7 +59,8 @@ export function series(plan) {
   return { months, sales, take, inputs, repay, withPlan, without };
 }
 
-const monthLabel = (m, opts) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-GB', opts);
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthLabel = (m, opts) => { const [y, mo] = m.split('-').map(Number); return opts.month === 'narrow' ? MON[mo - 1][0] : `${MON[mo - 1]} ${y}`; };
 
 export default function MoneyChart({ plan }) {
   const [legend, setLegend] = useState(false);
@@ -142,7 +144,8 @@ export default function MoneyChart({ plan }) {
         ))}
         {s.months.map((m, i) => <rect key={`h${m}`} x={cx(i) - 12} y={0} width={24} height={Y1} fill="transparent"><title>{tip(i)}</title></rect>)}
       </svg>
-      {legend && <Legend crops={crops} onClose={() => setLegend(false)} />}
+      {/* On the body: the card's drag transform would otherwise hold the drawer, and the tab bar would cover it. */}
+      {legend && createPortal(<Legend crops={crops} onClose={() => setLegend(false)} />, document.body)}
     </figure>
   );
 }
