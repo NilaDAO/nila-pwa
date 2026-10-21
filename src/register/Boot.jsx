@@ -180,3 +180,11 @@ export function NotMobile() {
 export function RegLoading() {
   return <RegFrame><Bouncing /></RegFrame>;   // the same bounce as R14
 }
+
+// Straight from registration (R3/R9 done in this page load) the waits stay on the R ground; on a reload or a normal
+// start they are S1 (executive decision 21 Oct). A module flag, so a reload clears it.
+let fromRegister = false;
+export function markFromRegister() { fromRegister = true; }
+export function BootLoading() {
+  return fromRegister ? <RegLoading /> : <Loading />;
+}
