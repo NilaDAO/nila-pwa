@@ -13,6 +13,7 @@ import { useCropPlan, useLandTitles, usePlanClient } from '../plan/hooks';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { capsFor, checkRows, useUnionChecks } from './unionChecks';
+import { ShareTile } from '../shell/icons';
 
 const FLAG_DRAWN = 8;
 const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
@@ -119,16 +120,21 @@ export function TakeUp({ token, onBack }) {
   );
 }
 
+const colourOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows)
+  .find((r) => r.zone === x.zone && (r.name === x.crop || r.crop === x.crop))?.colour;
+
 /** The A1 rows. In assisted mode a Ready share says to ask the leader. */
 export function ShareRows({ onOpen }) {
   const shares = useMyShares();
   if (!shares.data?.length) return null;
   return (
     <>
-      <span style={{ fontWeight: 700, color: C.muted }}>Crop shares</span>
+      <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5, color: C.muted, paddingTop: 6 }}>Crop shares</span>
       {shares.data.map((x) => (
         <button key={x.token_id} type="button" onClick={() => x.ready && !assisted() && onOpen(x.token_id)} style={{
           display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: 12, padding: '12px 16px', width: '100%', border: 0, color: C.text, textAlign: 'left', fontSize: 14, lineHeight: 1.5 }}>
+          {/* The board's tile: a coin in the crop's colour (from her plan's row for this area). */}
+          <ShareTile colour={colourOf(x)} />
           <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
             <b>{x.crop}</b>
             <span style={{ color: C.muted }}>Area {x.area}</span>

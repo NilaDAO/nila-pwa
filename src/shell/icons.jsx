@@ -70,3 +70,28 @@ export const CropIcon = task(<>
   <path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" />
 </>);
 export const BanknoteIcon = task(<><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01" /><path d="M18 12h.01" /></>);
+
+// A1 asset row tiles (board MemberAssets-ley3): a 32 px round tile in the board's colour with its glyph.
+const tile = (bg, glyph) => () => (
+  <span aria-hidden="true" style={{ width: 32, height: 32, flexShrink: 0, borderRadius: 9999, background: bg,
+    display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{glyph}</span>
+);
+const glyph = (d, { size = 18, color = '#121212', width = 2.2 } = {}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+);
+// The Nila mark (board asset 99d629a4…, = public/images/reg-logo.png), inverted to black on the tile.
+const mark = <img src="/images/reg-logo.png" alt="" style={{ width: 21, height: 21, filter: 'invert(1)' }} />;
+export const NinTile = tile('#D4CF5A', mark);                    // nIN
+export const InvestedTile = tile('#D4A634', mark);               // nIN invested (union investment)
+export const TreasuryTile = tile('#D4A634', glyph(<path d="M3 21h18M5 21V10M19 21V10M9 21v-7M15 21v-7M2 10l10-6 10 6z" />));
+export const CashTile = tile('#E69283', glyph(<><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></>, { size: 16, width: 2.4 }));
+export const UsdcTile = tile('#2775CA', glyph(<><circle cx="12" cy="12" r="8" /><path d="M12 7v10" /><path d="M9 9.5h6" /></>, { color: '#FFFFFF', width: 2.4 }));
+const tractor = <path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" />;
+export const MachineryTile = tile('#E69283', glyph(tractor));    // machinery voucher
+export const MyMachineTile = tile('#D4A634', glyph(tractor));    // your machine (owner)
+export const SeedTile = tile('#E69283', glyph(<path d="M12 3c3 3 4 7 0 11c-4-4-3-8 0-11zM12 14v7M8 21h8" />));
+// A crop share: a coin in the crop's colour.
+export const ShareTile = ({ colour = '#D4CF5A' }) => tile(colour, glyph(<path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M12 7v10M9 9.5h6" />))();
+// Slider message icons: repay (rupee on coral), invest and withdrawal (the mark on amber).
+export const RepayTile = tile('#E69283', glyph(<path d="M6 3h12M6 8h12M6 13l8.5 8M6 13h3a5 5 0 0 0 0-10" />, { size: 16, width: 2.4 }));
+export const MarkTile = tile('#D4A634', <img src="/images/reg-logo.png" alt="" style={{ width: 20, height: 20, filter: 'invert(1)' }} />);
