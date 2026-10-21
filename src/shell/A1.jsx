@@ -105,7 +105,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         <SettingsButton onClick={onSettings} />
       </div>
 
-      <section style={{ textAlign: 'center', padding: '24px 0 16px' }} aria-label="Total balance">
+      <section aria-label="Total balance" style={{ textAlign: 'center', margin: '12px 0 16px', padding: '18px 22px', background: C.ink, borderRadius: R.card, boxShadow: SHADOW }}>
         <div style={{ color: C.muted, fontSize: 14, display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center' }}>
           Total balance
           {/* The board: a 44 px hit area around the 16 px icon; it turns while the balances load. */}
