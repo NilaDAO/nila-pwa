@@ -117,8 +117,11 @@ export function PointsStep({ evm, onDone }) {
     save({ ...q, points: pts }); setName('');
   };
   // A second point for the same field: the field's point is the middle of the two (she cannot stand in the middle).
+  // Two steps (21 Oct): "Add a second point" starts it — she walks (or moves the map) to the opposite edge — then
+  // "Save the second point" takes it there and the field's point moves to the middle of the two.
+  const [second, setSecond] = useState(false);
   const secondPoint = () => {
-    setError(null);
+    setError(null); setSecond(false);
     const mid = (b) => {
       const pts = q.points.slice(); const a = pts[n - 1];
       const first = a.parts ? a.parts[0] : a;
@@ -134,9 +137,17 @@ export function PointsStep({ evm, onDone }) {
   const finish = () => { save({ ...q, finish: true }); onDone(); };
 
   const ready = pan ? !!centre : loc === 'on';           // she can save a point now
+  // The info note explains the second point while a field waits for its name (executive decision 21 Oct; the text
+  // is not on a board yet). Otherwise the R5 board's line.
+  const last = n > 0 ? q.points[n - 1] : null;
+  const info = unnamed && last?.two
+    ? 'This field\'s point is now halfway between your two points. Give the field a name.'
+    : unnamed
+      ? 'Could you not stand in the middle of this field (a crop, water or a fence in the way)? Save your point at one edge, press "Add a second point", go to the opposite edge and save the second point. Nila puts the field\'s point halfway between the two.'
+      : undefined;
   const wait = unnamed || busy;
   return (
-    <MapFrame map={q.points} me={pan ? null : me} start={me} pan={pan} onCenter={setCentre}
+    <MapFrame map={q.points} me={pan ? null : me} start={me} pan={pan} onCenter={setCentre} info={info}
       selected={selected} onSelect={setSelected}>
       <div style={cardTitle}>{n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field'}</div>
       {!online && (
@@ -182,14 +193,21 @@ export function PointsStep({ evm, onDone }) {
         </div>
       )}
       {error && <div role="alert" style={{ ...sheetText, color: C.coral, textAlign: 'center' }}>{error}</div>}
-      {unnamed && name.trim()
+      {second && (
+        <div role="status" style={{ ...sheetText, color: '#F1F5F9', textAlign: 'center' }}>{pan
+          ? 'Move the map until the pin is on the opposite edge of this field, then save the second point.'
+          : 'Walk straight across to the opposite edge of this field, then save the second point.'}</div>
+      )}
+      {second
+        ? <button type="button" style={busy || (pan && !centre) ? btnDisabled : btnPrimary} disabled={busy || (pan && !centre)} onClick={secondPoint}>Save the second point</button>
+        : unnamed && name.trim()
         ? <button type="button" style={btnPrimary} onClick={storeName}>Next point</button>
         : n < MAX && (ready
           ? <button type="button" style={wait ? btnDisabled : btnPrimary} disabled={wait} onClick={saveHere}>Save this location</button>
           : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>)}
-      {unnamed && !q.points[n - 1].two && (
-        <button type="button" style={busy ? btnDisabled : btnSecondary} disabled={busy} onClick={secondPoint}>Take a second point</button>
-      )}
+      {unnamed && !q.points[n - 1].two && (second
+        ? <button type="button" style={btnSecondary} onClick={() => setSecond(false)}>Cancel</button>
+        : <button type="button" style={busy ? btnDisabled : btnSecondary} disabled={busy} onClick={() => setSecond(true)}>Can't reach the middle? Add a second point</button>)}
       {n === 0 && (pan
         ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
         : <button type="button" style={btnSecondary} onClick={choose}>Choose on the map</button>)}

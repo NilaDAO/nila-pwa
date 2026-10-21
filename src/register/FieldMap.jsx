@@ -95,6 +95,16 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
           return mk;
         })
         : [];
+      // A field taken with two edge points: the two as small rings, joined by a dashed line through the middle point.
+      (m.__parts || []).forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; });
+      m.__parts = [];
+      points.forEach((p) => {
+        if (!p.parts || p.parts.length !== 2) return;
+        m.__parts.push(new g.Polyline({ map: m, path: p.parts.map((x) => ({ lat: x.lat, lng: x.lng })), strokeOpacity: 0, clickable: false,
+          icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#D4A634', scale: 2 }, offset: '0', repeat: '8px' }] }));
+        p.parts.forEach((x) => m.__parts.push(new g.Circle({ map: m, center: { lat: x.lat, lng: x.lng }, radius: 1.5, clickable: false,
+          strokeColor: '#D4A634', strokeWeight: 2, fillColor: '#121212', fillOpacity: 1 })));
+      });
       if (line.current) line.current.setPath(points);
       else if (points.length) {
         line.current = new g.Polyline({ path: points, geodesic: true, strokeColor: '#D4CF5A', strokeOpacity: 0.3, strokeWeight: 1 });
