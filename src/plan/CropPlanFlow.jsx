@@ -20,6 +20,7 @@ import AreaMap from './AreaMap';
 import CropsStep from './CropsStep';
 import { AreaCard, SEASON, SlideBar, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
+import { assisted, useMyShares } from '../loan/MyShares';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -199,6 +200,7 @@ export default function CropPlanFlow() {
   const planId = current.data?.id;
   useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
   const plan = current.data;
+  const myShares = useMyShares();   // CP13: a crop share she can collect now is a to-do
   // CP13 opens on the season she is in today (CP10 on the first).
   const approved = plan?.approval?.decision === 'approve';
   useEffect(() => { if (approved) setSeason(currentSeason(plan.plan.seasons || [])); }, [planId, approved]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -502,7 +504,7 @@ export default function CropPlanFlow() {
         onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
       return (
         <Sheet map={map} landName={name} bar={bar}>
-          <ActivePlan plan={plan} areaNo={areaNo} season={shown} onUpdate={() => setStep('change')} />
+          <ActivePlan plan={plan} areaNo={areaNo} season={shown} shares={myShares.data} assist={assisted()} onUpdate={() => setStep('change')} />
         </Sheet>
       );
     }
