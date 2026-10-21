@@ -6,6 +6,7 @@
 import { useCallback, useState } from 'react';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
+import useSheetDrag from '../shell/useSheetDrag';
 import { acres, shapeFor } from './api';
 import BorderMap, { ShapeThumb } from './BorderMap';
 import { useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
@@ -18,6 +19,7 @@ const btn = (primary) => ({ flex: 1, height: 44, borderRadius: R.button, border:
 const DONE = ['accepted', 'left_out'];
 
 function Frame({ name, onBack, backLabel, map, children }) {
+  const drag = useSheetDrag();   // the drag line as on R5 (all map screens, 21 Oct)
   return (
     <div style={{ fontFamily: FONT, color: C.text, position: 'relative' }}>
       <div style={{ position: 'relative' }}>
@@ -27,8 +29,8 @@ function Frame({ name, onBack, backLabel, map, children }) {
           <span style={{ ...pill, padding: '0 14px', height: 40, display: 'flex', alignItems: 'center', fontSize: 16, fontWeight: 700 }}>{name}</span>
         </h1>
       </div>
-      <div style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, position: 'relative', zIndex: 600, padding: '14px 22px 24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW }}>
-        <div style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(255,255,255,.35)', alignSelf: 'center' }} />
+      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, position: 'relative', zIndex: 600, padding: '14px 22px 24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW, ...drag.style }}>
+        {drag.handle}
         {children}
       </div>
     </div>
