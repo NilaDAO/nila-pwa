@@ -18,7 +18,7 @@ import { useTitleName } from './hooks';
 import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import CropsStep from './CropsStep';
-import { AreaCard, SEASON, SlideBar, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel } from './PlanResult';
+import { AreaCard, SEASON, SlideBar, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
 import { assisted, useMyShares } from '../loan/MyShares';
 
@@ -215,8 +215,10 @@ export default function CropPlanFlow() {
     if (!ss?.length) return {};
     const i = Math.min(season, ss.length - 1);
     const rows = rowsInSeason(ss, i);
-    const out = Object.fromEntries(Object.values(rows).map((r) => [r.zone, { text: r.name,
-      sub: r.off_catalogue ? 'not in the crop list' : fmtKg(r.kg), colour: r.colour, acc: checked.has(r.zone) }]));
+    // A merged row (same crop on several areas, 21 Oct): its harvest on the first area's chip, "with Area n" on the others.
+    const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, { text: r.name,
+      sub: r.off_catalogue ? 'not in the crop list' : z !== zonesOf(r)[0] ? `with Area ${areaNo(zonesOf(r)[0])}` : fmtKg(r.kg),
+      colour: r.colour, acc: checked.has(z) }]));
     // A soil cover in this season (no bare soil in the dry months, 21 Oct), where no crop is on the area then.
     const slot = ss[i].slot;
     for (const c of plan.plan.soil_cover || []) {
@@ -227,7 +229,7 @@ export default function CropPlanFlow() {
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
     return out;
-  }, [plan, season, checked]);
+  }, [plan, season, checked, areaNo]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).

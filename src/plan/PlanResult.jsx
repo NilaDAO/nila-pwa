@@ -26,11 +26,17 @@ export function yearLabel(seasons) {
   return `year plan, Oct ${y} to Sep ${y + 1}`;
 }
 
-/** The row on each area in season i; a whole-year crop from an earlier season carries on. */
+/** A row's areas: areas with the same crop in a season are one row (executive decision 21 Oct), `zones` lists them. */
+export const zonesOf = (r) => r.zones || [r.zone];
+/** "Area 1" or, merged, "Area 1 + 2". */
+export const areaLabel = (r, areaNo) => `Area ${zonesOf(r).map(areaNo).join(' + ')}`;
+
+/** The row on each area in season i (a merged row on each of its areas); a whole-year crop from an earlier season
+ *  carries on. */
 export function rowsInSeason(seasons, i) {
   const out = {};
   (seasons || []).slice(0, i + 1).forEach((s, k) => s.rows.forEach((r) => {
-    if (k === i || (r.continues && !out[r.zone])) out[r.zone] = r;
+    for (const z of zonesOf(r)) if (k === i || (r.continues && !out[z])) out[z] = r;
   }));
   return out;
 }
@@ -82,7 +88,13 @@ const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear
 /** The area card (an area picked): her year as bars, sales, Back and Accept Area N. */
 export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly }) {
   const seasons = plan.plan.seasons || [];
-  const rows = seasons.flatMap((s) => s.rows.filter((r) => r.zone === zone).map((r) => ({ ...r, slot: s.slot })));
+  // A row merged with other areas (same crop that season) counts here by this area's share of its acres.
+  const own = area?.area_m2 ? area.area_m2 / 4046.86 : null;
+  const rows = seasons.flatMap((s) => s.rows.filter((r) => zonesOf(r).includes(zone)).map((r) => {
+    if (zonesOf(r).length < 2 || !own || !r.acres) return { ...r, slot: s.slot };
+    const k = own / r.acres;
+    return { ...r, slot: s.slot, acres: own, kg: Math.round((r.kg || 0) * k), value: Math.round((r.value || 0) * k) };
+  }));
   const y0 = new Date(seasons[0]?.start || Date.now()).getFullYear();
   const at = monthsFrom(y0);
   const acres = rows[0]?.acres ?? (area?.area_m2 ? area.area_m2 / 4046.86 : 0);

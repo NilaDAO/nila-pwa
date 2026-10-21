@@ -47,7 +47,9 @@ export function useMyShares() {
         const share = (p.plan.shares || []).find((x) => x.key === m.share) || {};
         const drawn = !!ft && (Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
         const ready = !!ft && !drawn && Number(ft.from_date) * 1000 <= Date.now();
-        return { ...m, share, ft, drawn, ready, area: zones.indexOf(m.zone) + 1, plan: p };
+        // "1" or, for areas merged in a season (same crop, 21 Oct), "1 + 2": shown as "Area {area}".
+        const area = (m.zones || share.zones || [m.zone]).map((z) => zones.indexOf(z) + 1).join(' + ');
+        return { ...m, share, ft, drawn, ready, area, plan: p };
       }));
     },
   });
@@ -131,7 +133,7 @@ export function TakeUp({ token, onBack }) {
 }
 
 export const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
-  .filter((r) => r.zone === x.zone && (r.crop === x.crop || r.name === x.crop))
+  .filter((r) => (r.zones || [r.zone]).includes(x.zone) && (r.crop === x.crop || r.name === x.crop))
   // The same crop can stand on one area in two seasons: the share's sowing date picks the season.
   .sort((a, b) => (b.sow === x.share.from_date) - (a.sow === x.share.from_date))[0];
 export const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };

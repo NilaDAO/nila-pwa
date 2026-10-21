@@ -8,6 +8,7 @@
 // "Your plan · <approval date>" in the season she is in, "<months> season" in the others.
 import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
+import { areaLabel } from './PlanResult';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' }).replace('Sept', 'Sep');
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).replace('Sept', 'Sep');
@@ -40,8 +41,7 @@ export function tasksOf(plan, areaNo) {
   for (const [si, s] of (plan.seasons || []).entries()) {
     const at = out.length;
     for (const r of s.rows) {
-      const no = areaNo(r.zone);
-      const area = typeof no === 'number' ? `Area ${no}` : '';
+      const area = typeof areaNo(r.zone) === 'number' ? areaLabel(r, areaNo) : '';
       if (r.sow && !r.continues) out.push({ date: r.sow, text: `Plant ${r.name}`, area });
       for (const m of Object.values(r.finance?.machines || {})) {
         if (m.when && m.for && !/sowing|land preparation/.test(m.for)) out.push({ date: m.when, text: job(m, r.name), area });
@@ -57,9 +57,8 @@ export function tasksOf(plan, areaNo) {
   for (const sh of plan.shares || []) {
     if (!sh.from_date || (!sh.loan_amount && !sh.hours)) continue;
     const si = Math.max(0, ss.reduce((k, s, i) => (s.start <= sh.from_date ? i : k), 0));
-    const no = areaNo(sh.zone);
     out.push({ date: sh.from_date, text: sh.hours ? 'Receive cash + vouchers' : 'Receive cash', share: sh.key, season: si,
-      area: [typeof no === 'number' ? `Area ${no}` : '', sh.loan_amount ? inr(sh.loan_amount) : '', sh.hours ? `${sh.hours} h` : '', 'union office'].filter(Boolean).join(' · ') });
+      area: [typeof areaNo(sh.zone) === 'number' ? areaLabel(sh, areaNo) : '', sh.loan_amount ? inr(sh.loan_amount) : '', sh.hours ? `${sh.hours} h` : '', 'union office'].filter(Boolean).join(' · ') });
   }
   // Same month: she receives the cash before she plants.
   return out.sort((a, b) => a.date.slice(0, 7).localeCompare(b.date.slice(0, 7)) || (!!b.share - !!a.share) || a.date.localeCompare(b.date));

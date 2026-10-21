@@ -75,8 +75,10 @@ export default function CropShare({ token, onBack, onTakeUp }) {
   const name = r.name || x.crop.replace(/_/g, ' ');
   const fodder = !x.share.loan_amount && x.share.hours;
   const nAreas = areasOf(record).length;
-  // The share's area in the crop's colour with the crop as its label; the other areas keep "Area n".
-  const labels = { [x.zone]: { text: name, colour: r.colour } };
+  // The share's area in the crop's colour with the crop as its label; the other areas keep "Area n". A merged share
+  // (same crop on several areas, 21 Oct) colours each of its areas.
+  const own = x.zones || x.share.zones || [x.zone];
+  const labels = Object.fromEntries(own.map((z) => [z, { text: name, colour: r.colour }]));
   const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 ? x.zone : null} /> : null;
   const head = (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
