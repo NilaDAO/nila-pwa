@@ -45,7 +45,6 @@ const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, backgro
 
 function PlanView({ plan, checked, onAccept, onChange, readOnly }) {
   const p = plan.plan;
-  const [tab, setTab] = useState('Year');
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
   const total = seasons.reduce((a, s) => {
@@ -53,41 +52,34 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly }) {
     return { cash: a.cash + sum.cash, interest: a.interest + sum.interest };
   }, { cash: 0, interest: 0 });
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance.due)).sort().pop();
-  const shown = tab === 'Year' ? seasons : seasons.filter((s) => SEASON[s.slot] === tab);
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
   return (
     <>
       {!readOnly && <TapLine done={checked.size} total={zones.length} />}
       <h2 style={{ fontSize: 14, fontWeight: 700, color: C.muted, margin: '16px 0 8px' }}>Finance</h2>
-      <div style={{ display: 'flex', gap: 4, background: C.raised, borderRadius: 12, padding: 4 }}>
-        {['Year', 'Oct–Feb', 'Mar–May', 'Jun–Aug'].map((t) => (
-          <button key={t} type="button" onClick={() => setTab(t)} style={{ flex: 1, height: 36, borderRadius: 10, border: 0, fontWeight: 700, background: tab === t ? C.ink : 'transparent', color: tab === t ? C.text : C.muted }}>{t}</button>
-        ))}
-      </div>
       <table style={{ width: '100%', fontSize: 14, marginTop: 8, borderCollapse: 'collapse' }}>
-        <thead><tr style={{ color: C.muted }}><td>Type</td><td>Available from</td><td style={{ textAlign: 'right' }}>Total</td><td style={{ textAlign: 'right' }}>{rate}%</td></tr></thead>
+        {/* Simplified (executive decision 21 Oct): season (its months), available from, total — no rate column, no repay line, no tabs. */}
+        <thead><tr style={{ color: C.muted }}><td>Season</td><td>Available from</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
         <tbody>
-          {shown.map((s) => {
+          {seasons.map((s) => {
             const cash = s.rows.reduce((a, r) => a + r.finance.cash + r.finance.voucher_value, 0);
-            const interest = s.rows.reduce((a, r) => a + r.finance.interest, 0);
-            const due = s.rows.map((r) => r.finance.due).sort().pop();
             const from = s.rows.map((r) => r.sow).sort()[0];
             return (
               <tr key={s.slot} style={{ borderTop: `1px solid ${C.raised}` }}>
-                <td style={{ padding: '8px 0' }}><b>{SEASON[s.slot]}</b><br /><span style={muted}>Repay by end of {monthYear(due)}</span></td>
+                <td style={{ padding: '8px 0' }}><b>{SEASON[s.slot]}</b></td>
                 <td>{from ? new Date(from).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{inr(cash)}</td><td style={{ textAlign: 'right' }}>{inr(interest)}</td>
+                <td style={{ textAlign: 'right' }}>{inr(cash)}</td>
               </tr>
             );
           })}
           {p.trees?.discount > 0 && (
             <tr style={{ borderTop: `1px solid ${C.raised}` }}>
-              <td style={{ padding: '8px 0' }} colSpan={4}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount} points off the rate ({rate}%) · trees registered</span></td>
+              <td style={{ padding: '8px 0' }} colSpan={3}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount} points off the rate ({rate}%) · trees registered</span></td>
             </tr>
           )}
           <tr style={{ borderTop: `1px solid ${C.raised}`, fontWeight: 700 }}>
             <td style={{ padding: '8px 0' }} colSpan={2}>Total, due in {seasons.length} parts</td>
-            <td style={{ textAlign: 'right' }}>{inr(total.cash)}</td><td style={{ textAlign: 'right' }}>{inr(total.interest)}</td>
+            <td style={{ textAlign: 'right' }}>{inr(total.cash)}</td>
           </tr>
         </tbody>
       </table>
