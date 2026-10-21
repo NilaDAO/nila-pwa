@@ -172,9 +172,13 @@ export default function CropPlanFlow() {
   const approvedId = current.data?.approval?.decision === 'approve' ? current.data.id : undefined;
   const checkMinted = mint.check;
   const checkedFor = useRef();
-  useEffect(() => {   // once per approved plan (each check signs a request)
-    if (approvedId && checkedFor.current !== approvedId) { checkedFor.current = approvedId; checkMinted(approvedId); }
-  }, [approvedId, checkMinted]);
+  useEffect(() => {   // per approved plan: check now, then every 15 s until her crop shares are made (the union mints them)
+    if (!approvedId) return undefined;
+    if (checkedFor.current !== approvedId) { checkedFor.current = approvedId; checkMinted(approvedId); }
+    if (mint.status === 'done' || mint.status === 'partial') return undefined;
+    const t = setInterval(() => checkMinted(approvedId), 15_000);
+    return () => clearInterval(t);
+  }, [approvedId, checkMinted, mint.status]);
   const [step, setStep] = useState(null);
   const [crops, setCrops] = useState(new Set());
   const [role, setRole] = useState();
@@ -486,24 +490,7 @@ export default function CropPlanFlow() {
     );
   }
   if (ap?.decision === 'approve') {
-    // CP12 busy / failed; done → her crop shares (CP13 comes in P4c).
-    if (mint.status === 'busy') {
-      return (
-        <Sheet map={map} landName={name} title="Creating your crop shares">
-          <p style={{ ...muted, textAlign: 'center' }}>{mint.total ? `${mint.done} of ${mint.total}` : '…'}</p>
-        </Sheet>
-      );
-    }
-    if (mint.status === 'failed') {
-      return (
-        <Sheet map={map} landName={name} title="Your crop shares were not made">
-          <p style={muted}>Nothing is lost: your accepted plan is saved. Check your internet and try again.</p>
-          {mint.error && <p style={{ ...muted, color: C.coral }}>{mint.error}</p>}
-          <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>
-          <p style={muted}>Still not working? Ask your union leader.</p>
-        </Sheet>
-      );
-    }
+    // The union mints her crop shares at the approval (executive decision 21 Oct): her app only waits for them.
     if (mint.status === 'done') {
       return (
         <Sheet map={map} landName={name}>
@@ -511,20 +498,21 @@ export default function CropPlanFlow() {
         </Sheet>
       );
     }
-    if (mint.status === 'done' || mint.status === 'partial') {
+    if (mint.status === 'partial') {
       return (
         <Sheet map={map} landName={name} title="Your crop shares are made">
           <p style={muted}>{mint.done} of {mint.total} crop shares made.</p>
           {mint.refused?.map((r) => <p key={r.share || r.token_id} style={muted}>{r.crop || 'Crop share'}: {r.error}</p>)}
-          {mint.status === 'partial' && <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>}
-          <Primary onClick={() => setStep('plan')}>See my plan</Primary>
+          <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 14 }}>See my plan</button>
         </Sheet>
       );
     }
+    // DESIGN GAP: no board for "your union is making your crop shares"; CP12's waiting layout is used.
     return (
       <Sheet map={map} landName={name} title="Your plan is approved">
-        <p style={muted}>Make your crop shares now. Nila pays the network fee.</p>
-        <Primary onClick={() => mint.run(plan.id)}>Make my crop shares</Primary>
+        <Bouncing top={24} bottom={24} label="Your union is making your crop shares" />
+        <p style={{ ...muted, textAlign: 'center' }}>Your crop shares are being made by your union.{mint.total ? ` ${mint.done || 0} of ${mint.total} made.` : ''}</p>
+        <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 14 }}>See my plan</button>
       </Sheet>
     );
   }

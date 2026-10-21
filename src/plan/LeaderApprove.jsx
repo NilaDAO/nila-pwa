@@ -3,11 +3,12 @@
 // Approve, or Deny with a reason and a note in the bottom dialog. Each waiting plan is its own task (L1 → #/approvals/<id>).
 // DESIGN GAPs: member names are not on the node, so the header shows the farm name of a Polygon title, else
 // "Land <id>"; "sign the mint on this phone" is gone: she mints on her phone (N1).
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { C, FONT } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
 import { useApprovePlan, usePendingApprovals, useTitleName } from './hooks';
+import { useMintCropShares } from './mint';
 import { inr, muted } from './ui';
 import { Loading } from '../register/Boot';
 
@@ -83,11 +84,16 @@ function L12({ plan, onDone }) {
   const seasons = p.seasons || [];
   const sum = (rows, f) => rows.reduce((a, r) => a + (f(r.finance) || 0), 0);
   const all = seasons.flatMap((s) => s.rows);
+  const mint = useMintCropShares();
+  const [approved, setApproved] = useState(false);
   const decide = async (decision, reason, note) => {
     setBusy(true); setError(undefined);
     try {
       await approve.mutateAsync({ planId: plan.id, decision, reason, note: note || undefined });
-      onDone();
+      if (decision !== 'approve') { onDone(); return; }
+      // The union mints her crop shares now (executive decision 21 Oct): this leader's key, her wallet.
+      setApproved(true);
+      await mint.run(plan.id);
     } catch (e) { setError(e.message); setBusy(false); }
   };
   const acceptedAt = Math.max(0, ...Object.values(plan.accepted || {}).map((a) => a.ts || 0));
@@ -131,10 +137,28 @@ function L12({ plan, onDone }) {
           </Rows>
           <div style={{ height: 1, background: C.raised }} />
           {error && <p style={{ ...muted, color: C.coral, margin: 0 }}>{error}</p>}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <button type="button" disabled={busy} onClick={() => decide('approve')} style={{ ...btn, background: C.accent, color: C.ink, opacity: busy ? 0.5 : 1 }}>Approve</button>
-            <button type="button" disabled={busy} onClick={() => setDeny(true)} style={{ ...btn, background: C.raised, color: C.text }}>Deny</button>
-          </div>
+          {approved ? (
+            // DESIGN GAP: no board for the union making her crop shares after Approve; a status line and the result.
+            <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>
+                {mint.status === 'busy' ? `Making her crop shares${mint.total ? ` · ${mint.done} of ${mint.total}` : '…'}`
+                  : mint.status === 'done' ? 'Her crop shares are made and sent to her wallet'
+                    : mint.status === 'partial' ? `${mint.done} of ${mint.total} crop shares made`
+                      : mint.status === 'failed' ? 'Her crop shares were not made' : 'Approved'}
+              </span>
+              {mint.refused?.map((r) => <span key={r.share || r.token_id} style={{ ...muted, margin: 0 }}>{r.crop || 'Crop share'}: {r.error}</span>)}
+              {mint.status === 'failed' && mint.error && !mint.refused?.length && <span style={{ ...muted, margin: 0 }}>{mint.error}</span>}
+              {(mint.status === 'failed' || mint.status === 'partial') && (
+                <button type="button" onClick={() => mint.run(plan.id)} style={{ ...btn, background: C.accent, color: C.ink }}>Try again</button>
+              )}
+              {mint.status !== 'busy' && <button type="button" onClick={onDone} style={{ ...btn, background: C.raised, color: C.text }}>Back to tasks</button>}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <button type="button" disabled={busy} onClick={() => decide('approve')} style={{ ...btn, background: C.accent, color: C.ink, opacity: busy ? 0.5 : 1 }}>Approve</button>
+              <button type="button" disabled={busy} onClick={() => setDeny(true)} style={{ ...btn, background: C.raised, color: C.text }}>Deny</button>
+            </div>
+          )}
         </section>
       </div>
       {deny && <DenyDialog busy={busy} onClose={() => setDeny(false)} onDeny={(why, note) => { setDeny(false); decide('deny', why, note); }} />}
@@ -146,7 +170,11 @@ function L12({ plan, onDone }) {
 export default function LeaderPlans({ planId, onBack }) {
   const list = usePendingApprovals();
   const plans = list.data?.plans || [];
-  const sel = plans.find((p) => p.id === planId) || (!planId && plans.length === 1 ? plans[0] : null);
+  const found = plans.find((p) => p.id === planId) || (!planId && plans.length === 1 ? plans[0] : null);
+  // Once approved the plan leaves the waiting list: L12 stays open on it while her crop shares are made.
+  const kept = useRef(null);
+  if (found) kept.current = found;
+  const sel = found || (kept.current && (!planId || kept.current.id === planId) ? kept.current : null);
   if (sel) return <L12 plan={sel} onDone={onBack} />;
   if (list.isLoading) return <Loading />;
   return (
