@@ -15,7 +15,7 @@ const OPTIONS = {
   clickableIcons: false, disableDefaultUI: true, mapId: MAP_ID,
 };
 // Choose on the map (R5, executive decision 20 Oct): today's off-site options — she moves the map; her point is its centre.
-const PAN_OPTIONS = { ...OPTIONS, draggable: true, gestureHandling: 'greedy', scrollwheel: true, zoomControl: true };
+const PAN_OPTIONS = { ...OPTIONS, draggable: true, gestureHandling: 'greedy', scrollwheel: true, zoomControl: false };
 const STYLE = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
 
 // Her point (board R6 SendLocation-af51-95is: black inside, amber border) with its field name as a chip (A4's map

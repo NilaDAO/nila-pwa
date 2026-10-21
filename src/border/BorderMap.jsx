@@ -25,7 +25,8 @@ export default function BorderMap(props) {
   return ok ? <GoogleBorderMap {...props} /> : <LeafletBorderMap {...props} />;
 }
 
-const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy', tilt: 0,
+// maxZoom 20: satellite imagery stops there in rural Tamil Nadu (zoom 22 tiles answer 404); no + / − buttons.
+const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, zoomControl: false, maxZoom: 20, gestureHandling: 'greedy', tilt: 0,
   clickableIcons: false, mapId: '8fa18e8fd7e4c318' };
 
 /** Google: the same drawing rules as below, on the satellite map. */
