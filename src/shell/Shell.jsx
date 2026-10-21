@@ -25,7 +25,7 @@ import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
 import LeaderTasks from '../leader/LeaderTasks';
 import LeaderBorder from '../border/LeaderBorder';
-import Registration from '../register/Registration';
+import Registration, { pointsSent } from '../register/Registration';
 import { RegLoading } from '../register/Boot';
 import { TITLE_KEYS, useTitleCount } from '../register/titles';
 import { demoNew } from '../register/AfterCode';
@@ -142,7 +142,8 @@ export default function Shell({ leader }) {
   // Until her titles are known she sees the registration ground, not a flash of the tab bar.
   if (titleCount.loading) return <RegLoading />;
   // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
-  if (demoNew(s?.evmAddress) || (titleCount.count === 0 && s?.privyNew === true)) {
+  // A leader who has sent her field points works in the leader app while her title waits (no R14 loop).
+  if (!(leader && pointsSent(s?.evmAddress)) && (demoNew(s?.evmAddress) || (titleCount.count === 0 && s?.privyNew === true))) {
     const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
   }
