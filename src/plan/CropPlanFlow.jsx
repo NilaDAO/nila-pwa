@@ -3,6 +3,7 @@
 // boards; DESIGN GAPs: no map yet (P4c), no suggested crops on CP4 (no source), CP9 shows the
 // engine's one explanation text (16 Oct), CP6/CP5 answers mapped to numbers/keys in hooks.js.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Bouncing } from '../register/RegFrame';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C } from '../shell/tokens';
@@ -29,10 +30,14 @@ function Making({ jobId, onDone, onError }) {
     if (job.data?.status === 'done') onDone(job.data.plan_id);
     if (job.data?.status === 'error') onError(job.data.error);
   }, [job.data, onDone, onError]);
+  // Board CropPlanMaking (CP8): the bouncing Nila logo (the same bounce as R14), then the counter and "Time passed".
   return (
     <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 32, fontWeight: 700 }}>{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}</div>
-      <div style={muted}>Time passed</div>
+      <Bouncing top={42} bottom={8} label="Making your crop plan" />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <span aria-label="Time passed" style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}</span>
+        <span style={muted}>Time passed</span>
+      </div>
     </div>
   );
 }

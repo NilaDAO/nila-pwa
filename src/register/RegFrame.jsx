@@ -240,10 +240,12 @@ const KEYFRAMES = `@keyframes nila-bounce{0%,100%{transform:translateY(0)}50%{tr
 @keyframes nila-shadow{0%,100%{transform:scaleX(1);opacity:1}50%{transform:scaleX(0.6);opacity:0.5}}
 @media (prefers-reduced-motion: reduce){.nila-bounce,.nila-shadow{animation:none!important}}`;
 
-export function Bouncing({ pad = 64, size = 48 }) {
+export function Bouncing({ pad = 64, size = 48, top, bottom, label = 'Loading' }) {
   return (
-    // Room above the logo for its 18 px bounce (it rose into the card's title before).
-    <div role="status" aria-label="Loading" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingTop: pad + 80, paddingBottom: pad + 24 }}>
+    // Room above the logo for its 18 px bounce (it rose into the card's title before). top / bottom: exact padding
+    // for a screen that sets its own (CP8).
+    <div role="status" aria-label={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+      paddingTop: top ?? pad + 80, paddingBottom: bottom ?? pad + 24 }}>
       <style>{KEYFRAMES}</style>
       <img className="nila-bounce" src={LOGO} alt="" style={{ width: size, height: size, animation: 'nila-bounce 1s ease-in-out infinite' }} />
       <div className="nila-shadow" style={{ width: size === 56 ? 36 : 32, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', animation: 'nila-shadow 1s ease-in-out infinite' }} />
