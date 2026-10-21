@@ -6,10 +6,12 @@ import useSheetDrag from '../shell/useSheetDrag';
 export function Sheet({ title, children, landName, onBack, map }) {
   const drag = useSheetDrag();   // the drag line as on R5 (all map screens, 21 Oct)
   return (
-    <div style={{ fontFamily: FONT, color: C.text, position: 'relative', minHeight: '100dvh', background: '#25361f' }}>
+    <div style={{ fontFamily: FONT, color: C.text, position: 'relative', minHeight: '100dvh', background: '#25361f', display: 'flex', flexDirection: 'column' }}>
       {/* The map fills the whole screen behind the card (21 Oct), so dragging the card down shows more map. */}
       {map && <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>{isValidElement(map) ? cloneElement(map, { height: '100%' }) : map}</div>}
-      <div style={{ height: map ? 'auto' : 180, position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: map ? 0 : 24, pointerEvents: map ? 'none' : 'auto' }}>
+      {/* The band above the card takes the free height, so the card sits glued to the bottom (executive decision 21 Oct):
+          a short card never floats mid-screen, and scrolling never lifts it further than its own height. */}
+      <div style={{ height: map ? 'auto' : 180, flex: map ? '1 0 auto' : '0 0 auto', position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: map ? 0 : 24, pointerEvents: map ? 'none' : 'auto' }}>
         {map && <div style={{ height: 220 }} />}
         {onBack && (
           <button type="button" aria-label="Back" onClick={onBack} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, left: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0, color: C.text, fontSize: 20 }}>←</button>
@@ -25,9 +27,9 @@ export function Sheet({ title, children, landName, onBack, map }) {
           </svg>
         </button>
       </div>
-      <div ref={drag.ref} className="cp-sheet" style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, minHeight: 400, ...drag.style }}>
+      <div ref={drag.ref} className="cp-sheet" style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, ...drag.style }}>
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
-        <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}'}</style>
+        <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}html,body{overscroll-behavior-y:none}'}</style>
         <div style={{ marginBottom: 16 }}>{drag.handle}</div>
         {title && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
         {children}
