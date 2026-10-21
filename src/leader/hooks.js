@@ -124,7 +124,7 @@ export function useLeaderTodo(api, cash) {
       const now = Date.now() / 1000;
       const out = [];
       const pending = (await api.pendingApprovals().catch(() => ({ plans: [] }))).plans || [];
-      for (const p of pending) out.push({ key: `approve-${p.id}`, title: 'Approve crop plan', who: `Land ${p.land_id}`, to: 'approvals' });
+      for (const p of pending) out.push({ key: `approve-${p.id}`, title: 'Approve crop plan', who: `Land ${p.land_id}`, to: `approvals/${p.id}` });
       // A crop share request: an approved plan with a share that is ready (from its SOS) and not drawn.
       const approved = (await api.approvedPlans().catch(() => ({ plans: [] }))).plans || [];
       for (const p of approved) {

@@ -182,7 +182,7 @@ export default function Shell({ leader }) {
   // The leader app is the member app, extended (notes leader-missing): her Crop plan tab is her own plan (CP13 with
   // the leader tab bar); the union's plans to approve (L12) open from L1's To do.
   else if (view === 'crop') body = <CropPlanFlow />;
-  else if (view === 'approvals' && leader) body = <LeaderPlans />;
+  else if (view === 'approvals' && leader) body = <LeaderPlans key={readArg() || 'one'} planId={readArg()} onBack={() => go('tasks')} />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
   else if (view === 'loan') body = <LeaderLoan />;
   else if (view === 'cash' && leader) body = <CashDesk key={readArg() || 'menu'} initial={readArg()} />;
