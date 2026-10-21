@@ -26,7 +26,7 @@ function useCompact() {
     const onScroll = (e) => {
       const el = e.target === document || e.target === window ? document.scrollingElement : e.target;
       if (!el || typeof el.scrollTop !== 'number') return;
-      const st = el.scrollTop; const was = last.get(el) ?? st;
+      const st = el.scrollTop; const was = last.get(el) ?? 0;
       last.set(el, st);
       if (st === was) return;   // a sideways scroller (the message slides) says nothing about up or down
       if (st - was > 6 && st > 24) setCompact(true);
