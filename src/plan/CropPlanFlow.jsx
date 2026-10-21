@@ -10,6 +10,7 @@ import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, 
 import { Choice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { useMintCropShares } from './mint';
 import { areasOf, summarize, useFieldRecord } from './record';
+import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import ActivePlan from './ActivePlan';
 
@@ -107,10 +108,14 @@ export default function CropPlanFlow() {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const titles = useLandTitles(s?.evmAddress);
-  const landId = titles.data?.[0];
+  // A title on Stellar only (the demo writes new titles there, 21 Oct): used when she has none on Polygon.
+  const stellarTitles = useStellarTitles(s);
+  const onPolygon = (titles.data || []).length > 0;
+  const stellarTitle = !onPolygon ? stellarTitles.data?.[0] : undefined;
+  const landId = onPolygon ? titles.data[0] : stellarTitle?.title_id;
   const current = useCropPlan(landId);
   const catalogue = useCropCatalogue();
-  const field = useFieldRecord(landId, s?.evmAddress);
+  const field = useFieldRecord(landId, s?.evmAddress, stellarTitle ? stellarTitle.record_hash || '' : undefined);
   const record = field.data?.record;
   const submit = useSubmitIntake(landId);
   const accept = useAcceptPlan(landId);
@@ -145,8 +150,8 @@ export default function CropPlanFlow() {
   const map = record ? <AreaMap record={record} labels={labels} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
 
-  if (titles.isLoading || current.isLoading) return <Sheet map={map} landName={name}><p style={muted}>…</p></Sheet>;
-  if (titles.data && !titles.data.length) {
+  if (titles.isLoading || (!onPolygon && stellarTitles.isLoading) || current.isLoading) return <Sheet map={map} landName={name}><p style={muted}>…</p></Sheet>;
+  if (titles.data && !titles.data.length && !stellarTitle) {
     return <Sheet map={map} landName={name} title="No land title yet"><p style={muted}>Your crop plan starts when your land title is ready.</p></Sheet>;
   }
   const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');

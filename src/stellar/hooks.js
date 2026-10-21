@@ -129,3 +129,20 @@ export function useStellarTitleCount(address) {
     },
   });
 }
+
+/** Her land titles on Stellar with their record hashes (node GET /stellar/titles, signed like /plan): land_title has
+ *  no "titles of a holder" view, so the node lists what its attester wrote and checks each on-chain. A title whose
+ *  record is still being made has record_hash null; asked again every minute until it is there. */
+export function useStellarTitles(signer) {
+  return useQuery({
+    queryKey: ['stellar', 'titleList', signer?.stellarAddress],
+    enabled: !!signer?.stellarAddress && !!signer?.signHash,
+    staleTime: 60_000,
+    refetchInterval: (q) => ((q.state.data || []).some((t) => !t.record_hash) ? 60_000 : false),
+    queryFn: async () => {
+      const { signedCall } = await import('../plan/api');
+      const out = await signedCall(signer)('GET', '/stellar/titles');
+      return out?.titles || [];
+    },
+  });
+}
