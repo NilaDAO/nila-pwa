@@ -28,6 +28,7 @@ function useCompact() {
       if (!el || typeof el.scrollTop !== 'number') return;
       const st = el.scrollTop; const was = last.get(el) ?? st;
       last.set(el, st);
+      if (st === was) return;   // a sideways scroller (the message slides) says nothing about up or down
       if (st - was > 6 && st > 24) setCompact(true);
       else if (was - st > 6 || st <= 0) setCompact(false);
     };

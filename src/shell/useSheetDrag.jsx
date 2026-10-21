@@ -64,7 +64,10 @@ export default function useSheetDrag(onLowered, resetKey) {
     if (!d.moved) { setLow(off < 24); return; }                // a tap toggles
     setLow(off > d.max / 2);
   };
-  const style = { transform: `translateY(${off}px)`, transition: moving ? 'none' : `transform 300ms ${EASE}` };
+  // Lowered and at rest, only the card's top strip is drawn: under the compact (floating) tab bar the map shows, not
+  // the rest of the card (map-central trial, 21 Oct).
+  const style = { transform: `translateY(${off}px)`, transition: moving ? 'none' : `transform 300ms ${EASE}`,
+    clipPath: off > 24 && !moving ? `inset(0 0 calc(100% - ${KEEP + 12}px) 0 round 24px 24px 0 0)` : undefined };
   const handle = (
     <div role="button" tabIndex={0} aria-label="Drag to move the card up or down"
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
