@@ -7,7 +7,7 @@ import { Bouncing } from '../register/RegFrame';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C } from '../shell/tokens';
-import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
+import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, useDiscardPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { Choice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { useMintCropShares } from './mint';
 import { areasOf, summarize, useFieldRecord } from './record';
@@ -42,7 +42,9 @@ function Making({ jobId, onDone, onError }) {
   );
 }
 
-function PlanView({ plan, onAccept, onChange, readOnly, areaNo = (z) => z }) {
+const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, cursor: 'pointer' };
+
+function PlanView({ plan, onAccept, onChange, onRenew, renewing, readOnly, areaNo = (z) => z }) {
   const p = plan.plan;
   const [tab, setTab] = useState('Year');
   const [checked, setChecked] = useState(() => new Set(Object.keys(plan.accepted || {})));
@@ -104,8 +106,12 @@ function PlanView({ plan, onAccept, onChange, readOnly, areaNo = (z) => z }) {
       {p.left_out?.length > 0 && <p style={muted}>Areas too small to plan: {p.left_out.length}.</p>}
       {p.member_request?.not_followed?.length > 0 && <p style={muted}>Not followed: {p.member_request.not_followed.map((n) => n.why || n.reason || JSON.stringify(n)).join('; ')}</p>}
       {!readOnly && <Primary disabled={checked.size < zones.length} onClick={onAccept}>Accept the plan</Primary>}
-      {!readOnly && onChange && (
-        <button type="button" onClick={onChange} style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 }}>Change my plan</button>
+      {/* CP10: change it (a new version that follows her), or renew it — the draft is removed and she starts again on CP1. */}
+      {!readOnly && (onChange || onRenew) && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          {onChange && <button type="button" onClick={onChange} style={secondaryBtn}>Change my plan</button>}
+          {onRenew && <button type="button" onClick={onRenew} disabled={renewing} style={{ ...secondaryBtn, opacity: renewing ? 0.5 : 1 }}>{renewing ? 'Removing…' : 'Renew plan'}</button>}
+        </div>
       )}
     </>
   );
@@ -139,6 +145,7 @@ export default function CropPlanFlow() {
   const accept = useAcceptPlan(landId);
   const mint = useMintCropShares();
   const revise = useRevisePlan();
+  const discard = useDiscardPlan(landId);
   const [changeNote, setChangeNote] = useState('');
   // An approved plan whose crop shares are already on her wallet opens on "made", not on "Make".
   const approvedId = current.data?.approval?.decision === 'approve' ? current.data.id : undefined;
@@ -279,7 +286,12 @@ export default function CropPlanFlow() {
       <Sheet map={map} landName={name}>
         {season && <p style={{ textAlign: 'center', fontWeight: 700, margin: '0 0 8px' }}>Season 1 · {monthYear(season.start)}</p>}
         <p style={{ textAlign: 'center', fontWeight: 700 }}>Check each area and accept it.</p>
-        <PlanView plan={plan} areaNo={areaNo} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={plan.status !== 'draft'} />
+        <PlanView plan={plan} areaNo={areaNo} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={plan.status !== 'draft'}
+          renewing={discard.isPending} onRenew={async () => {
+            setError();
+            try { await discard.mutateAsync(plan.id); setCrops(new Set()); setRole(); setCows(); setMonths([]); setJobId(); setStep(null); } catch (e) { setError(e.message); }
+          }} />
+        {error && <p style={{ ...muted, color: C.coral }}>{error}</p>}
       </Sheet>
     );
   }

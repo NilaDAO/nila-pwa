@@ -44,6 +44,7 @@ export function planClient(signer) {
     accept: (planId, zone) => call('POST', `/plan/${planId}/accept`, { zone }),
     pendingApprovals: () => call('GET', '/plan/approvals/pending'),
     approvedPlans: () => call('GET', '/plan/approvals/approved'),
+    discard: (planId) => call('POST', `/plan/${planId}/discard`, {}),
     revise: (planId, note, changes = {}) => call('POST', `/plan/${planId}/revise`, { note, changes }),
     approve: (planId, decision, reason, note) => call('POST', `/plan/${planId}/approve`, { decision, reason, note }),
     mintList: (planId) => call('GET', `/plan/${planId}/mint`),

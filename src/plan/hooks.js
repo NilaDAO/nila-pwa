@@ -125,3 +125,13 @@ export function useRevisePlan() {
   const api = usePlanClient();
   return useMutation({ mutationFn: ({ planId, note, changes }) => api.revise(planId, note, changes) });
 }
+
+/** CP10 "Renew plan": her draft plan is removed (/discard) and she starts again from CP1. */
+export function useDiscardPlan(landId) {
+  const api = usePlanClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (planId) => api.discard(planId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }),
+  });
+}
