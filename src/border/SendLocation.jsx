@@ -9,7 +9,7 @@ import { DEMO_COGNITO } from '../utils/demoMode';
 import RegFrame, { Bouncing, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
 const MAX = 6;
-const DEMO_START = { lat: 11.878671, lng: 78.964561, acc: 0 };   // Viriyur, TN (components/Forms/memberUnion.js)
+const DEMO_START = { lat: 11.88720, lng: 78.96594, acc: 0 };   // Viriyur, TN: among the real fields of the node's records
 const EMPTY = { points: [], farm: '', finish: false };
 // Per account: on a shared phone (assisted mode) one member's points never go out under the next member's login.
 const keyOf = (evm) => `nila.border.points.${(evm || 'none').toLowerCase()}`;
