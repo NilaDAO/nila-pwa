@@ -7,7 +7,6 @@ import { useNilaSigner } from '../wallet/signer';
 import { getMoveStatus, requestMoveNin } from '../move/api';
 import { useLegacyBalances } from '../move/hooks';
 import { useStellarConfig } from '../stellar/hooks';
-import { deleteAllItems } from '../utils/db';
 import A1 from './A1';
 import CropPlanFlow from '../plan/CropPlanFlow';
 import LeaderPlans from '../plan/LeaderApprove';
@@ -25,6 +24,7 @@ import IdCheck from '../anchor/IdCheck';
 import LpOffers from '../anchor/LpOffers';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
+import Settings from './Settings';
 import LeaderTasks from '../leader/LeaderTasks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { pointsSent } from '../register/Registration';
@@ -33,7 +33,7 @@ import { TITLE_KEYS, useTitleCount } from '../register/titles';
 import { demoNew } from '../register/AfterCode';
 import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
-import { C, FONT, GRADIENT, R, TAB_BAR_HEIGHT, loadInter } from './tokens';
+import { C, FONT, GRADIENT, TAB_BAR_HEIGHT, loadInter } from './tokens';
 import ListRow, { ListSection, ScreenHeader } from './ListRow';
 import { BanknoteIcon, CropIcon } from './icons';
 
@@ -54,31 +54,6 @@ function Later({ title, step }) {
     <div style={{ padding: '40px 16px', textAlign: 'center', color: C.muted, fontFamily: FONT }}>
       <div style={{ color: C.text, fontWeight: 700, fontSize: 16, marginBottom: 8 }}>{title}</div>
       Coming in {step}.
-    </div>
-  );
-}
-
-function Settings({ onBack, onIdCheck, onOffers }) {
-  const logout = async () => { await deleteAllItems(); window.location.reload(); };
-  const lp = useLpStatus();
-  const { data: cfg } = useStellarConfig();
-  return (
-    <div style={{ padding: 16, fontFamily: FONT, color: C.text }}>
-      <ScreenHeader title="Settings" onBack={onBack} settings={false} />
-      {/* A11 (board Settings): only for a member with a land title in the union, and only with an anchor. */}
-      {cfg?.anchor_url && lp.data?.member && (
-        <section aria-label="Become an LP" style={{ background: C.raised, borderRadius: 12, padding: 16, marginBottom: 16 }}>
-          <h2 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px' }}>{lp.data.lp ? 'You are an LP' : 'Become an LP'}</h2>
-          <p style={{ color: C.muted, fontSize: 14, margin: '0 0 12px' }}>Bring or collect cash at the union office for USDC. You earn 1% on each swap.</p>
-          <button type="button" onClick={lp.data.lp && lp.data.trustline ? onOffers : onIdCheck} style={{
-            width: '100%', height: 44, borderRadius: R.button, background: C.accent, color: C.ink, border: 0, fontWeight: 700, fontFamily: FONT,
-          }}>{lp.data.lp && lp.data.trustline ? 'Cash offers' : 'Check my identity'}</button>
-        </section>
-      )}
-      <button type="button" onClick={logout} style={{
-        width: '100%', height: 44, borderRadius: R.button, background: C.raised, color: C.text, border: 0,
-        fontWeight: 700, fontFamily: FONT,
-      }}>Log out</button>
     </div>
   );
 }
@@ -196,7 +171,7 @@ export default function Shell({ leader }) {
   else if (view === 'cash' && leader) body = <CashDesk key={readArg() || 'menu'} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
   else if (view === 'land') body = <LandTitle onBack={() => go('assets')} />;
-  else if (view === 'invested') body = <Investment onBack={() => go('assets')} />;
+  else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go('cash/invest')} />;
   else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
   else if (view === 'machine') body = <MyMachine onBack={() => go('assets')} />;
@@ -209,7 +184,8 @@ export default function Shell({ leader }) {
 
   // No tab is active on task, settings, history and wallet screens; a crop share (A4/A4a, and taking it up) belongs to
   // the Crop plan tab (21 Oct).
-  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view;
+  // nIN and nIN invested (A7, A3) are Assets screens (boards MemberAssetNin, StNinWithdraw).
+  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' ? 'assets' : view;
   const active = tabs.some(([id]) => id === tabOf) ? tabOf : undefined;
   return (
     // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.
