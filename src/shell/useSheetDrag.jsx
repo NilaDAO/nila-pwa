@@ -24,7 +24,16 @@ export default function useSheetDrag(onLowered, resetKey) {
     const floor = nav ? nav.getBoundingClientRect().top : window.innerHeight;
     return Math.max(0, Math.round(floor - KEEP - top));
   };
-  const setLow = (v) => { setOff(v ? maxOff() : 0); onLowered?.(v); };
+  // The tab bar goes compact while the card is down (map-central trial, 'nila-sheet-low').
+  const tell = (v) => window.dispatchEvent(new CustomEvent('nila-sheet-low', { detail: v }));
+  const setLow = (v) => { setOff(v ? maxOff() : 0); onLowered?.(v); tell(v); };
+  // The bar's height changes (compact or not): a lowered card is glued to its new top once the bar has moved.
+  useEffect(() => {
+    let t;
+    const on = () => { clearTimeout(t); t = setTimeout(() => { if (!drag.current && offRef.current > 0) setOff(maxOff()); }, 220); };
+    window.addEventListener('nila-tabbar', on);
+    return () => { clearTimeout(t); window.removeEventListener('nila-tabbar', on); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // The card's height changes with its content (CP10: overview ↔ area card): a lowered card is clamped again, so its
   // top strip and drag line always stay above the tab bar (21 Oct).
   useEffect(() => {
@@ -39,6 +48,7 @@ export default function useSheetDrag(onLowered, resetKey) {
     return () => ro.disconnect();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setOff(0); onLowered?.(false); }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => tell(false), []); // eslint-disable-line react-hooks/exhaustive-deps
   const down = (e) => { drag.current = { y: e.clientY, off, max: maxOff(), moved: false }; setMoving(true); e.currentTarget.setPointerCapture?.(e.pointerId); };
   const move = (e) => {
     const d = drag.current; if (!d) return;
