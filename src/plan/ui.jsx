@@ -38,6 +38,21 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
     if (staged) { shell.style.background = 'transparent'; shell.style.pointerEvents = 'none'; }
     return () => { [shell.style.paddingBottom, shell.style.background, shell.style.pointerEvents] = was; };
   }, [hasMap, staged]);
+  // Map-central (staged): the header is a row inside the card under the drag line, sticky while the card scrolls
+  // (executive decision 21 Oct): Back, the land's name or the title, Settings; `head` replaces the row's content.
+  const btnIn = { width: 40, height: 40, borderRadius: R.round, background: C.raised, border: 0, color: C.text, fontSize: 20, flexShrink: 0 };
+  const inTitle = staged && !ownHead && (landName || title);
+  const headRow = staged && (
+    <div style={{ position: 'sticky', top: 0, zIndex: 3, background: C.ink, margin: '0 -22px 8px', padding: '4px 22px 12px' }}>
+      {ownHead || (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          {onBack ? <button type="button" aria-label="Back" onClick={onBack} style={btnIn}>←</button> : <span style={{ width: 40 }} />}
+          <span style={{ flexGrow: 1, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{inTitle || ''}</span>
+          <SettingsButton />
+        </div>
+      )}
+    </div>
+  );
   const head = ownHead || (
     <>
       {onBack && (
@@ -54,13 +69,14 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
     return (
       <div style={{ fontFamily: FONT, color: C.text, position: 'fixed', inset: 0, zIndex: 0, background: staged ? 'transparent' : '#25361f', pointerEvents: staged ? 'none' : undefined }}>
         {shown && <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>{isValidElement(shown) ? cloneElement(shown, { height: '100%' }) : shown}</div>}
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>
+        {!staged && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
         <div data-sheet-scroll style={{ position: 'absolute', left: 0, right: 0, top: 76, bottom: 0, overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none', zIndex: 4, pointerEvents: 'none' }}>
           <div aria-hidden="true" style={{ height: Math.max(120, Math.round(window.innerHeight / 3) - 76) }} />
           <section ref={drag.ref} className="cp-sheet" {...swipe} style={{ pointerEvents: 'auto', background: C.ink, borderRadius: '24px 24px 0 0', padding: '10px 22px 104px', boxSizing: 'border-box', minHeight: '100%', boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', ...drag.style }}>
             <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}[data-sheet-scroll]::-webkit-scrollbar{display:none}'}</style>
-            <div style={{ marginBottom: 16 }}>{drag.handle}</div>
-            {title && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
+            <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
+            {headRow}
+            {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
             {children}
           </section>
         </div>
@@ -78,14 +94,15 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         {map && <div style={{ height: bar ? Math.round(window.innerHeight / 2) + 24 : top ?? 220 }} />}
       </div>
       {/* The header buttons stay fixed at the top, above map and card; they never scroll away (21 Oct) — with or without a map. */}
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>
+      {!staged && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
       <div ref={drag.ref} className="cp-sheet" {...swipe} style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, pointerEvents: 'auto', ...drag.style }}>
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
         <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}html,body{overscroll-behavior-y:none}'}</style>
         {/* CP10's season / area bar sits on top of the card and moves with it (board CropPlanQ3-xdlz). */}
         {bar && <div style={{ position: 'absolute', left: 8, right: 8, bottom: 'calc(100% + 12px)' }}>{bar}</div>}
-        <div style={{ marginBottom: 16 }}>{drag.handle}</div>
-        {title && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
+        <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
+        {headRow}
+        {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
         {children}
       </div>
     </div>

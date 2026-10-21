@@ -102,15 +102,16 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const slides = memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans });
 
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell A1 is a card over the map of her
-  // land (drag line, rounded top), opening high with a strip of map; History, All tasks and Settings float on the map.
+  // land (drag line, rounded top), opening high with a strip of map; History, All tasks and Settings are the card's
+  // sticky header under the drag line.
   const stage = useStage();
   const top = Math.round(window.innerHeight * 0.34);
   const home = useHomeMap(onShare, window.innerHeight - top + 32);
   const buttons = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <RoundButton label="History" onClick={onHistory} background={stage ? C.ink : undefined} style={stage ? { pointerEvents: 'auto' } : undefined}><HistoryIcon color={C.text} /></RoundButton>
-      <span style={{ pointerEvents: 'auto' }}>{leader ? <LeaderTasksButton onClick={onTasks} /> : <TasksButton n={MEMBER_TODO_ROWS} onClick={onTasks} />}</span>
-      <SettingsButton onClick={onSettings} background={stage ? C.ink : undefined} style={stage ? { pointerEvents: 'auto' } : undefined} />
+      <RoundButton label="History" onClick={onHistory}><HistoryIcon color={C.text} /></RoundButton>
+      {leader ? <LeaderTasksButton onClick={onTasks} /> : <TasksButton n={MEMBER_TODO_ROWS} onClick={onTasks} />}
+      <SettingsButton onClick={onSettings} />
     </div>
   );
   // In the card the sections lose their own card look (they sit on the card).
@@ -166,9 +167,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     </>
   );
   if (stage) {
-    const head = <div style={{ position: 'absolute', left: 8, right: 8, top: 18, zIndex: 2 }}>{buttons}</div>;
     // Her map comes with the card; before her record is read the card stands on the map stage alone.
-    return <Sheet map={home.map || <span />} head={head} top={top}>{content}</Sheet>;
+    return <Sheet map={home.map || <span />} head={buttons} top={top}>{content}</Sheet>;
   }
   return (
     <div style={{ fontFamily: FONT, color: C.text, padding: '8px 8px 0' }}>
