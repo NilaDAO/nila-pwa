@@ -52,7 +52,7 @@ export default function AreaMap(props) {
 }
 
 const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, gestureHandling: 'none', keyboardShortcuts: false, clickableIcons: false,
-  maxZoom: 20, tilt: 0, mapId: '8fa18e8fd7e4c318' };
+  maxZoom: 20, tilt: 0, mapId: '8fa18e8fd7e4c318', isFractionalZoomEnabled: true };
 
 // CP10's map label (board CropPlanQ3-xdlz): one chip, the crop bold and the yield under it; the picked area's chip
 // gets the accent border, the others fade; an accepted area shows a check. Text from the node, never as HTML.
@@ -125,7 +125,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       fitted.current = fitKey;
       // Her areas sit in the part above the card (the card covers the lower part of the screen).
       const full = height === '100%';
-      m.fitBounds(bounds, full ? { top: 90, left: 40, right: 40, bottom: fitBottom ?? Math.round(window.innerHeight * 0.6) } : 16);
+      m.fitBounds(bounds, full ? { top: 80, left: 40, right: 40, bottom: fitBottom ?? Math.round(window.innerHeight * 0.6) } : 16);
     }
   };
   useEffect(draw, [record, labels, selected, onSelect, height, fitBottom]); // eslint-disable-line react-hooks/exhaustive-deps
