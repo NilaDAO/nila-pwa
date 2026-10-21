@@ -12,6 +12,7 @@ import RegFrame from './RegFrame';
 import { DEMO_COGNITO } from '../utils/demoMode';
 
 // Demo only: the stand-in's "new" mark for a pooled wallet (src/register/Start.jsx), never in a real build.
+export const clearDemoNew = (evm) => { try { if (evm) sessionStorage.removeItem(`nila.demoNew.${evm.toLowerCase()}`); } catch { /* not kept */ } };
 export const demoNew = (evm) => { if (!DEMO_COGNITO || !evm) return false; try { return sessionStorage.getItem(`nila.demoNew.${evm.toLowerCase()}`) === '1'; } catch { return false; } };
 import { RegLoading } from './Boot';
 
@@ -26,7 +27,9 @@ export default function AfterCode({ onNew, onExisting }) {
   const known = s?.privyNew !== undefined && !!evm && titles !== undefined;
   useEffect(() => {
     if (!known) return;
-    if ((s.privyNew || demoNew(evm)) && titles === 0) onNew(evm);
+    // Demo only: the dummy member registers again every time, even though her earlier demo title on Stellar
+    // cannot be taken back (the mark is cleared when R14 ends, see Registration).
+    if (demoNew(evm) || (s.privyNew && titles === 0)) onNew(evm);
     else onExisting(evm);
   }, [known]); // eslint-disable-line react-hooks/exhaustive-deps
 

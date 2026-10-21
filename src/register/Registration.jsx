@@ -17,6 +17,7 @@ import { subscribeUser } from '../features/apis/pushManager';
 import { useMyBorderJob, useSendFieldPoints } from '../border/hooks';
 import { Page, PointsStep, Waiting, clearPoints, readPoints, useOnline } from '../border/SendLocation';
 import { Loading } from './Boot';
+import { clearDemoNew } from './AfterCode';
 import { MapFrame, MapStage, anim, btnDisabled, btnPrimary, btnSecondary, cardTitle, sheetText } from './RegFrame';
 
 // Today's one union (the Polygon registry's entry, src/components/Forms/memberUnion.js). DESIGN GAP: from the node.
@@ -200,7 +201,7 @@ function DoneStep({ evm, reg, onTitle, onRestart }) {
       send.mutate({ points: q.points, farm: (q.farm || '').trim(), union: reg.union?.address }, { onSuccess: () => clearPoints(evm) });
     }
   }, [online, pending, send, mine.isLoading, mine.data, q, reg, evm]);
-  useEffect(() => { if (mine.data?.status === 'minted') onTitle(); }, [mine.data, onTitle]);
+  useEffect(() => { if (mine.data?.status === 'minted') { clearDemoNew(evm); onTitle(); } }, [mine.data, onTitle, evm]);
   // A union leader does not wait on R14: once her points are with the node the app opens as the leader app.
   useEffect(() => { if (reg.union?.leader && !pending && mine.data) window.location.reload(); }, [reg.union, pending, mine.data]);
   const failed = mine.data?.status === 'failed' && !pending;

@@ -142,7 +142,7 @@ export default function Shell({ leader }) {
   // Until her titles are known she sees the registration ground, not a flash of the tab bar.
   if (titleCount.loading) return <RegLoading />;
   // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
-  if (titleCount.count === 0 && (s?.privyNew === true || demoNew(s?.evmAddress))) {
+  if (demoNew(s?.evmAddress) || (titleCount.count === 0 && s?.privyNew === true)) {
     const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
   }
