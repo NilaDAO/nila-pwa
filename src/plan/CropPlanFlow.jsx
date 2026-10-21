@@ -15,12 +15,11 @@ import { useTitleName } from './hooks';
 import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import CropsStep from './CropsStep';
+import { AreaCard, SEASON, SlideBar, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel } from './PlanResult';
 import ActivePlan from './ActivePlan';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-const fmtKg = (kg) => (kg >= 1000 ? `${(kg / 1000).toFixed(1).replace(/\.0$/, '')} t` : `${Math.round(kg).toLocaleString('en-IN')} kg`);
 
 function Making({ jobId, onDone, onError }) {
   const job = usePlanJob(jobId);
@@ -44,10 +43,9 @@ function Making({ jobId, onDone, onError }) {
 
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, cursor: 'pointer' };
 
-function PlanView({ plan, onAccept, onChange, onRenew, renewing, readOnly, areaNo = (z) => z }) {
+function PlanView({ plan, checked, onAccept, onChange, readOnly }) {
   const p = plan.plan;
   const [tab, setTab] = useState('Year');
-  const [checked, setChecked] = useState(() => new Set(Object.keys(plan.accepted || {})));
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
   const total = seasons.reduce((a, s) => {
@@ -59,13 +57,7 @@ function PlanView({ plan, onAccept, onChange, onRenew, renewing, readOnly, areaN
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
   return (
     <>
-      {zones.map((z) => (
-        <Choice key={z} check on={checked.has(z)} onClick={() => setChecked((c) => { const n = new Set(c); n.has(z) ? n.delete(z) : n.add(z); return n; })}
-          sub={seasons.map((s) => s.rows.filter((r) => r.zone === z).map((r) => `${SEASON[s.slot]}: ${r.name} ${fmtKg(r.kg)}${r.risks?.length ? ` · ${r.risks.join(', ')}` : ''}`).join('')).filter(Boolean).join(' · ')}>
-          Area {areaNo(z)}
-        </Choice>
-      ))}
-      <p style={{ ...muted, textAlign: 'center' }}>{checked.size} of {zones.length} accepted</p>
+      {!readOnly && <TapLine done={checked.size} total={zones.length} />}
       <h2 style={{ fontSize: 14, fontWeight: 700, color: C.muted, margin: '16px 0 8px' }}>Finance</h2>
       <div style={{ display: 'flex', gap: 4, background: C.raised, borderRadius: 12, padding: 4 }}>
         {['Year', 'Oct–Feb', 'Mar–May', 'Jun–Aug'].map((t) => (
@@ -106,13 +98,8 @@ function PlanView({ plan, onAccept, onChange, onRenew, renewing, readOnly, areaN
       {p.left_out?.length > 0 && <p style={muted}>Areas too small to plan: {p.left_out.length}.</p>}
       {p.member_request?.not_followed?.length > 0 && <p style={muted}>Not followed: {p.member_request.not_followed.map((n) => n.why || n.reason || JSON.stringify(n)).join('; ')}</p>}
       {!readOnly && <Primary disabled={checked.size < zones.length} onClick={onAccept}>Accept the plan</Primary>}
-      {/* CP10: change it (a new version that follows her), or renew it — the draft is removed and she starts again on CP1. */}
-      {!readOnly && (onChange || onRenew) && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          {onChange && <button type="button" onClick={onChange} style={secondaryBtn}>Change my plan</button>}
-          {onRenew && <button type="button" onClick={onRenew} disabled={renewing} style={{ ...secondaryBtn, opacity: renewing ? 0.5 : 1 }}>{renewing ? 'Removing…' : 'Renew plan'}</button>}
-        </div>
-      )}
+      {/* CP10: change it — a new version that follows her (Renew plan is on CP9). */}
+      {!readOnly && onChange && <button type="button" onClick={onChange} style={{ ...secondaryBtn, width: '100%', marginTop: 8 }}>Change my plan</button>}
     </>
   );
 }
@@ -146,6 +133,10 @@ export default function CropPlanFlow() {
   const mint = useMintCropShares();
   const revise = useRevisePlan();
   const discard = useDiscardPlan(landId);
+  const renew = async () => {
+    setError();
+    try { await discard.mutateAsync(current.data.id); setCrops(new Set()); setRole(); setCows(); setMonths([]); setJobId(); setStep(null); } catch (e) { setError(e.message); }
+  };
   const [changeNote, setChangeNote] = useState('');
   // An approved plan whose crop shares are already on her wallet opens on "made", not on "Make".
   const approvedId = current.data?.approval?.decision === 'approve' ? current.data.id : undefined;
@@ -162,19 +153,27 @@ export default function CropPlanFlow() {
   const [jobId, setJobId] = useState();
   const [error, setError] = useState();
   const [read, setRead] = useState(false);
+  // CP10: the season shown (overview), the area picked, and her area accepts until CP11 accepts them on the node.
+  const [season, setSeason] = useState(0);
+  const [area, setArea] = useState(null);
+  const [checked, setChecked] = useState(() => new Set());
+  const planId = current.data?.id;
+  useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
   const plan = current.data;
   // Her land's name comes from the land title's metadata (not the record), "Land <id>" only when it has none.
   const titleName = useTitleName(landId, onPolygon, stellarTitle);
   const name = titleName || (landId != null ? `Land ${landId}` : 'Nila');
   const zoneOrder = useMemo(() => areasOf(record).map((z) => z.zone_id), [record]);
   const areaNo = useCallback((zone) => (zoneOrder.indexOf(zone) + 1) || zone, [zoneOrder]);
-  // The map shows what grows on each area in the first season of the plan, or just "Area n".
+  // The map is the list (CP10): each area's chip shows what grows there in the season shown, or just "Area n".
   const labels = useMemo(() => {
-    const s0 = plan?.plan?.seasons?.[0];
-    if (!s0) return {};
-    return Object.fromEntries(s0.rows.map((r) => [r.zone, { text: r.name, sub: fmtKg(r.kg), colour: r.colour }]));
-  }, [plan]);
-  const map = record ? <AreaMap record={record} labels={labels} /> : null;
+    const ss = plan?.plan?.seasons;
+    if (!ss?.length) return {};
+    const rows = rowsInSeason(ss, Math.min(season, ss.length - 1));
+    return Object.fromEntries(Object.values(rows).map((r) => [r.zone, { text: r.name, sub: fmtKg(r.kg), colour: r.colour, acc: checked.has(r.zone) }]));
+  }, [plan, season, checked]);
+  const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
+  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? setArea : undefined} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
 
   // While her titles load (the Stellar list also waits for her signer), CP1's pending sheet — never "No land title"
@@ -277,21 +276,38 @@ export default function CropPlanFlow() {
       <Sheet map={map} landName={name} title="Why this plan">
         {text ? <p style={{ lineHeight: 1.5 }}>{text}</p> : <p style={muted}>…</p>}
         <Primary onClick={() => setStep('plan')}>See my plan</Primary>
+        {/* Renew plan (moved from CP10, executive decision 21 Oct): her draft is removed and she starts again on CP1. */}
+        {plan?.status === 'draft' && (
+          <button type="button" onClick={renew} disabled={discard.isPending} style={{ ...secondaryBtn, width: '100%', marginTop: 8, opacity: discard.isPending ? 0.5 : 1 }}>
+            {discard.isPending ? 'Removing…' : 'Renew plan'}
+          </button>
+        )}
+        {error && <p style={{ ...muted, color: C.coral }}>{error}</p>}
       </Sheet>
     );
   }
   if (at === 'plan' && plan) {
-    const season = plan.plan.seasons?.[0];
+    const ss = plan.plan.seasons || [];
+    const zones = zoneOrder.filter((z) => plan.plan.proposal[z]).concat(Object.keys(plan.plan.proposal).filter((z) => !zoneOrder.includes(z)));
+    const readOnly = plan.status !== 'draft';
+    const step1 = (d) => { const k = zones.indexOf(area); setArea(zones[(k + d + zones.length) % zones.length]); };
+    const bar = area
+      ? <SlideBar label={<><b>Area {areaNo(area)}</b> · {yearLabel(ss)}</>} prevLabel="Previous area" nextLabel="Next area" onPrev={() => step1(-1)} onNext={() => step1(1)} />
+      : ss.length > 0 && <SlideBar label={seasonLabel(ss[Math.min(season, ss.length - 1)], Math.min(season, ss.length - 1))} prevLabel="Previous season" nextLabel="Next season"
+        onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
+    const next = zones.find((z) => z !== area && !checked.has(z));
     return (
-      <Sheet map={map} landName={name}>
-        {season && <p style={{ textAlign: 'center', fontWeight: 700, margin: '0 0 8px' }}>Season 1 · {monthYear(season.start)}</p>}
-        <p style={{ textAlign: 'center', fontWeight: 700 }}>Check each area and accept it.</p>
-        <PlanView plan={plan} areaNo={areaNo} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={plan.status !== 'draft'}
-          renewing={discard.isPending} onRenew={async () => {
-            setError();
-            try { await discard.mutateAsync(plan.id); setCrops(new Set()); setRole(); setCows(); setMonths([]); setJobId(); setStep(null); } catch (e) { setError(e.message); }
-          }} />
-        {error && <p style={{ ...muted, color: C.coral }}>{error}</p>}
+      <Sheet map={map} landName={name} bar={bar} onBack={back('why')}>
+        {area ? (
+          <AreaCard plan={plan} zone={area} name={`Area ${areaNo(area)}`} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
+            accepted={checked.has(area)} total={zones.length} done={checked.size} readOnly={readOnly}
+            nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => setArea(next)} onAll={() => setStep('terms')}
+            onBack={() => setArea(null)}
+            onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); setArea(zones.find((z) => !n.has(z)) || null); }}
+            onCrop={(r) => { setChangeNote(`Area ${areaNo(area)}, ${SEASON[r.slot]}: instead of ${r.name}, `); setStep('change'); }} />
+        ) : (
+          <PlanView plan={plan} checked={checked} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={readOnly} />
+        )}
       </Sheet>
     );
   }

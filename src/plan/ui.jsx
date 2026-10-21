@@ -4,7 +4,7 @@ import { C, FONT, R } from '../shell/tokens';
 import useSheetDrag from '../shell/useSheetDrag';
 import { SettingsButton } from '../shell/RoundButton';
 
-export function Sheet({ title, children, landName, onBack, map }) {
+export function Sheet({ title, children, landName, onBack, map, bar }) {
   const drag = useSheetDrag();   // the drag line as on R5 (all map screens, 21 Oct)
   // The card's own bottom padding clears the tab bar, so the shell's padding under it would only show map below the
   // card when scrolled to the end: off while a map sheet is open, so the card stays glued to the bottom.
@@ -33,6 +33,8 @@ export function Sheet({ title, children, landName, onBack, map }) {
       <div ref={drag.ref} className="cp-sheet" style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, ...drag.style }}>
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
         <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}html,body{overscroll-behavior-y:none}'}</style>
+        {/* CP10's season / area bar sits on top of the card and moves with it (board CropPlanQ3-xdlz). */}
+        {bar && <div style={{ position: 'absolute', left: 8, right: 8, bottom: 'calc(100% + 12px)' }}>{bar}</div>}
         <div style={{ marginBottom: 16 }}>{drag.handle}</div>
         {title && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
         {children}
