@@ -83,6 +83,20 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly }) {
           </tr>
         </tbody>
       </table>
+      {(() => {
+        // What the totals hold (executive decision 21 Oct): hand or hired work (no union machine) is paid in cash; machine
+        // hours are vouchers. Both are in the totals above.
+        const rows = seasons.flatMap((s) => s.rows.map((r) => r.finance));
+        const hand = rows.reduce((a, f) => a + (f.hand_work_cash || 0), 0);
+        const vouchers = rows.reduce((a, f) => a + (f.voucher_value || 0), 0);
+        if (!hand && !vouchers) return null;
+        return (
+          <p style={muted}>
+            {hand > 0 && <>The totals include {inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates). </>}
+            {vouchers > 0 && <>They include {inr(vouchers)} in machine vouchers.</>}
+          </p>
+        );
+      })()}
       {lastDue && <p style={muted}>You repay {inr(total.cash + total.interest)} in {seasons.length} parts, the last by end of {monthYear(lastDue)}.</p>}
       {seasons.some((s) => s.rows.some((r) => r.finance.cash_above_cap > 0)) && (
         <p style={{ ...muted, color: C.coral }}>Part of the input cost is above the ₹10,000 cash cap and is not financed: {inr(seasons.reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.cash_above_cap || 0), 0), 0))}.</p>
