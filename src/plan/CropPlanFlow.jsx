@@ -162,6 +162,7 @@ export default function CropPlanFlow() {
   const [cows, setCows] = useState();
   const [months, setMonths] = useState([]);
   const [jobId, setJobId] = useState();
+  const [madeId, setMadeId] = useState();   // the plan the last job made: CP9 waits until the latest plan is that one
   const [error, setError] = useState();
   const [read, setRead] = useState(false);
   // CP10: the season shown (overview), the area picked, and her area accepts until CP11 accepts them on the node.
@@ -279,17 +280,19 @@ export default function CropPlanFlow() {
   if (at === 'making') {
     return (
       <Sheet map={map} landName={name} title="Making your crop plan">
-        <Making jobId={jobId} onDone={() => { qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep('why'); }}
+        <Making jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep('why'); }}
           onError={(e) => { setError(e); setStep('months'); }} />
       </Sheet>
     );
   }
   if (at === 'why') {
-    const text = plan?.plan?.explain?.text || plan?.plan?.proposal_why;
+    // After a new plan or a change, the cached plan is the old one until the refetch lands: show the new one only.
+    const fresh = !madeId || plan?.id === madeId;
+    const text = fresh ? plan?.plan?.explain?.text || plan?.plan?.proposal_why : null;
     return (
       <Sheet map={map} landName={name} title="Why this plan">
         {text ? <p style={{ lineHeight: 1.5 }}>{text}</p> : <p style={muted}>…</p>}
-        <Primary onClick={() => setStep('plan')}>See my plan</Primary>
+        <Primary disabled={!fresh} onClick={() => setStep('plan')}>See my plan</Primary>
         {/* Renew plan (moved from CP10, executive decision 21 Oct): her draft is removed and she starts again on CP1. */}
         {plan?.status === 'draft' && (
           <button type="button" onClick={renew} disabled={discard.isPending} style={{ ...secondaryBtn, width: '100%', marginTop: 8, opacity: discard.isPending ? 0.5 : 1 }}>
