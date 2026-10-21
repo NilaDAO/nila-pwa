@@ -14,19 +14,11 @@ import { typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { LeaderSlides, UnionRows } from '../leader/UnionCards';
 import { C, FONT, R } from './tokens';
-import { ChevronIcon, HistoryIcon, LandIcon, QrIcon, RefreshIcon, SettingsIcon } from './icons';
+import { ChevronIcon, HistoryIcon, LandIcon, QrIcon, RefreshIcon } from './icons';
+import RoundButton, { SettingsButton } from './RoundButton';
 
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
-
-function RoundButton({ label, onClick, children }) {
-  return (
-    <button type="button" aria-label={label} onClick={onClick} style={{
-      width: 40, height: 40, borderRadius: R.round, background: C.raised, border: 0, display: 'flex',
-      alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: C.text,
-    }}>{children}</button>
-  );
-}
 
 function Row({ icon, title, sub, value, valueSub, onClick, label }) {
   return (
@@ -79,7 +71,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           height: 40, padding: '0 24px', borderRadius: R.round, background: C.raised, border: 0,
           color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer',
         }}>All tasks</button>
-        <RoundButton label="Settings" onClick={onSettings}><SettingsIcon /></RoundButton>
+        <SettingsButton onClick={onSettings} />
       </div>
 
       <section style={{ textAlign: 'center', padding: '24px 0 16px' }} aria-label="Total balance">

@@ -1,10 +1,20 @@
 // Shared crop-plan layout: the header band (map in P4c) and the bottom sheet of the CP boards.
-import { cloneElement, isValidElement } from 'react';
+import { cloneElement, isValidElement, useEffect } from 'react';
 import { C, FONT, R } from '../shell/tokens';
 import useSheetDrag from '../shell/useSheetDrag';
+import { SettingsButton } from '../shell/RoundButton';
 
 export function Sheet({ title, children, landName, onBack, map }) {
   const drag = useSheetDrag();   // the drag line as on R5 (all map screens, 21 Oct)
+  // The card's own bottom padding clears the tab bar, so the shell's padding under it would only show map below the
+  // card when scrolled to the end: off while a map sheet is open, so the card stays glued to the bottom.
+  useEffect(() => {
+    const shell = map && document.querySelector('[data-testid="shell"]');
+    if (!shell) return undefined;
+    const was = shell.style.paddingBottom;
+    shell.style.paddingBottom = '0px';
+    return () => { shell.style.paddingBottom = was; };
+  }, [map]);
   return (
     <div style={{ fontFamily: FONT, color: C.text, position: 'relative', minHeight: '100dvh', background: '#25361f', display: 'flex', flexDirection: 'column' }}>
       {/* The map fills the whole screen behind the card (21 Oct), so dragging the card down shows more map. */}
@@ -18,14 +28,7 @@ export function Sheet({ title, children, landName, onBack, map }) {
         )}
         <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: map ? 'absolute' : 'static', top: 18, zIndex: 2 }}>{landName}</span>
         {/* Settings on every CP screen (executive decision 21 Oct; board CropPlanPending-n9mn-kewp): the round gear top right. */}
-        <button type="button" aria-label="Settings" onClick={() => { window.location.hash = '#/settings'; }} style={{ pointerEvents: 'auto',
-          position: 'absolute', zIndex: 2, right: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F1F5F9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        </button>
+        <SettingsButton background={C.ink} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, right: 8, top: 18 }} />
       </div>
       <div ref={drag.ref} className="cp-sheet" style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, ...drag.style }}>
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
