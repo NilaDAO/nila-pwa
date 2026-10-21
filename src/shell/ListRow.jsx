@@ -45,7 +45,10 @@ export default function ListRow({ icon: Icon, tone, title, sub, sub2, onClick, f
 /** The non-map screen header (boards Tasks, Settings): the round back button left, the title centred, Settings right. */
 export function ScreenHeader({ title, onBack, onSettings }) {
   return (
-    <div style={{ position: 'relative', height: 40, margin: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT, color: C.text }}>
+    // Stays at the top while the screen scrolls (executive decision 21 Oct), with its own 12 px room above and below and
+    // the gradient's top colour behind it, stretched to the screen's edges whatever the parent's padding.
+    <div style={{ position: 'sticky', top: 0, zIndex: 3, padding: '12px 0', background: '#121212', boxShadow: '0 0 0 100vmax #121212', clipPath: 'inset(0 -100vmax)' }}>
+    <div style={{ position: 'relative', height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT, color: C.text }}>
       {onBack && (
         <span style={{ position: 'absolute', left: 0, top: 0 }}>
           <RoundButton label="Back" onClick={onBack}>
@@ -55,6 +58,7 @@ export function ScreenHeader({ title, onBack, onSettings }) {
       )}
       <h1 style={{ margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{title}</h1>
       <span style={{ position: 'absolute', right: 0, top: 0 }}><SettingsButton onClick={onSettings} /></span>
+    </div>
     </div>
   );
 }

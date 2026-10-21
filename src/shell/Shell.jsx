@@ -111,6 +111,13 @@ function TasksView({ leader, go }) {
 export default function Shell({ leader }) {
   const s = useNilaSigner();
   useEffect(loadInter, []);
+  // The page behind the app is the gradient's top colour, so a scroll past either end never shows a white bar.
+  useEffect(() => {
+    const els = [document.documentElement, document.body];
+    const was = els.map((e) => e.style.background);
+    els.forEach((e) => { e.style.background = '#121212'; });
+    return () => els.forEach((e, i) => { e.style.background = was[i]; });
+  }, []);
   const tabs = leader ? LEADER_TABS : assisted() ? ASSISTED_TABS : MEMBER_TABS;
   const [view, setView] = useState(() => readTab() || 'assets');
   const [, setHash] = useState(window.location.hash);
