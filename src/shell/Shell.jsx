@@ -14,6 +14,7 @@ import LeaderPlans from '../plan/LeaderApprove';
 import { LeaderLoan, MemberScan } from '../loan/LoanScreens';
 import CashDesk from '../loan/CashDesk';
 import WalletQr from './WalletQr';
+import LandTitle from './LandTitle';
 import Investment from '../loan/Investment';
 import CashOut from '../loan/CashOut';
 import Machinery from '../machine/Machinery';
@@ -173,7 +174,7 @@ export default function Shell({ leader }) {
   let body;
   if (view === 'assets') {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
-      onHistory={() => go('history')} onWalletQr={() => go('wallet')} moveNote={moveNote}
+      onHistory={() => go('history')} onWalletQr={() => go('wallet')} onLand={() => go('land')} moveNote={moveNote}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`share/${t}`)}
       onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')}
       onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} />;
@@ -193,6 +194,7 @@ export default function Shell({ leader }) {
   else if (view === 'loan') body = <LeaderLoan />;
   else if (view === 'cash' && leader) body = <CashDesk key={readArg() || 'menu'} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
+  else if (view === 'land') body = <LandTitle onBack={() => go('assets')} />;
   else if (view === 'invested') body = <Investment onBack={() => go('assets')} />;
   else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;

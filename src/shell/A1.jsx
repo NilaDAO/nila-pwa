@@ -74,7 +74,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onTreasury, onSettle, onScanLp }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onTreasury, onSettle, onScanLp }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const nin = s?.stellarAccount?.nin?.balance ?? 0;
@@ -134,7 +134,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         {leader && <UnionRows Row={Row} Icon={NinIcon} onTreasury={onTreasury} onSettle={onSettle} />}
         {leader && <span style={label}>Yours</span>}
         <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
-          value={titles ?? '…'} valueSub="—" />
+          value={titles ?? '…'} valueSub="—" onClick={onLand} />
         <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />
         {invested !== undefined && (
           <Row label="Open nIN invested" icon={<InvestedTile />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}

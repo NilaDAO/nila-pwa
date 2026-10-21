@@ -20,7 +20,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       {onBack && (
         <button type="button" aria-label="Back" onClick={onBack} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, left: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0, color: C.text, fontSize: 20 }}>←</button>
       )}
-      <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: 'absolute', top: 18, zIndex: 2, pointerEvents: 'auto' }}>{landName}</span>
+      {landName && <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: 'absolute', top: 18, zIndex: 2, pointerEvents: 'auto' }}>{landName}</span>}
       {/* Settings on every CP screen (executive decision 21 Oct; board CropPlanPending-n9mn-kewp): the round gear top right. */}
       <SettingsButton background={C.ink} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, right: 8, top: 18 }} />
     </>
