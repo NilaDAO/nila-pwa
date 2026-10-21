@@ -3,7 +3,9 @@
 // the machine jobs (when, for), harvest, repay (due, amount). DESIGN GAPs: no "Done" chips and no
 // "Done · n" group (no activity-done store yet, design Q26), no mismatch card (no crop-seen check yet,
 // open-cp/3-4), no farm improvements (not in the record or plan), no "Sell" steps (not in the plan).
-// As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month.
+// As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month; the
+// season bar on top of the card steps through the seasons (the map's chips follow, CropPlanFlow); the card title is
+// "Your plan · <approval date>" in the season she is in, "<months> season" in the others.
 import { C } from '../shell/tokens';
 import { Primary, inr, muted } from './ui';
 
@@ -23,12 +25,19 @@ const IC = {
 const iconOf = (text) => (/^Plant/.test(text) ? 'plant' : /^Weed/.test(text) ? 'weed' : /^Cut/.test(text) ? 'cut'
   : /^Harvest/.test(text) ? 'harvest' : /^Repay/.test(text) ? 'repay' : 'tractor');
 const SLOT = { S1: 'Oct to Feb', S2: 'Mar to May', S3: 'Jun to Aug' };
+
+/** The season she is in today: the last one that has started (the first before any has). */
+export function currentSeason(seasons, today = new Date()) {
+  const now = today.toISOString().slice(0, 10);
+  return Math.max(0, seasons.findIndex((s, i) => !seasons[i + 1] || seasons[i + 1].start > now));
+}
 const job = (m, name) => { const v = VERB.find(([re]) => re.test(m.for)); return v ? `${v[1]} ${name}` : `${m.for.charAt(0).toUpperCase()}${m.for.slice(1)} · ${name}`; };
 const kg = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')} t` : `${Math.round(n).toLocaleString('en-IN')} kg`);
 
 export function tasksOf(plan, areaNo) {
   const out = [];
-  for (const s of plan.seasons || []) {
+  for (const [si, s] of (plan.seasons || []).entries()) {
+    const at = out.length;
     for (const r of s.rows) {
       const no = areaNo(r.zone);
       const area = typeof no === 'number' ? `Area ${no}` : '';
@@ -40,6 +49,7 @@ export function tasksOf(plan, areaNo) {
     }
     const due = s.rows.map((r) => r.finance?.due).filter(Boolean).sort().pop();
     if (due && s.repay) out.push({ date: due, text: `Repay ${inr(s.repay)}`, area: `${SLOT[s.slot] || ''} finance`.trim() });
+    for (const t of out.slice(at)) t.season = si;
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -76,21 +86,22 @@ function Group({ name, items, now }) {
   );
 }
 
-export default function ActivePlan({ plan, areaNo, today = new Date(), onUpdate }) {
+export default function ActivePlan({ plan, areaNo, season, today = new Date(), onUpdate }) {
   const seasons = plan.plan.seasons || [];
   const now = today.toISOString().slice(0, 10);
-  const idx = Math.max(0, seasons.findIndex((s, i) => !seasons[i + 1] || seasons[i + 1].start > now));
-  const season = seasons[idx];
+  const idx = currentSeason(seasons, today);
+  const shown = Math.min(season ?? idx, Math.max(0, seasons.length - 1));
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance?.due)).filter(Boolean).sort().pop();
-  const end = season?.rows.map((r) => r.harvest).filter(Boolean).sort().pop();
-  const tasks = tasksOf(plan.plan, areaNo).filter((t) => t.date >= now.slice(0, 7));
+  const tasks = tasksOf(plan.plan, areaNo).filter((t) => t.season === shown && t.date >= now.slice(0, 7));
   const thisMonth = tasks.filter((t) => t.date.slice(0, 7) === now.slice(0, 7));
-  const later = tasks.filter((t) => t.date.slice(0, 7) > now.slice(0, 7)).slice(0, 8);
+  const later = tasks.filter((t) => t.date.slice(0, 7) > now.slice(0, 7));
   const approvedAt = plan.approval?.ts ? new Date(plan.approval.ts * 1000) : null;
+  const title = shown === idx && approvedAt
+    ? `Your plan · ${approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+    : `${SLOT[seasons[shown]?.slot] || 'This'} season`;
   return (
     <>
-      {season && <p style={{ textAlign: 'center', fontWeight: 700, margin: '0 0 4px' }}>Season {idx + 1} · {monthYear(season.start)}{end ? ` to ${monthYear(end)}` : ''}</p>}
-      {approvedAt && <p style={{ ...muted, textAlign: 'center' }}>Your plan · {approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
+      <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, textAlign: 'center', padding: '8px 0' }}>{title}</div>
       <Group name="To do now" items={thisMonth} now />
       <Group name="Coming up" items={later} />
       <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginTop: 16 }}>

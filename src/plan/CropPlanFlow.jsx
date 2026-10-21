@@ -19,7 +19,7 @@ import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import CropsStep from './CropsStep';
 import { AreaCard, SEASON, SlideBar, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel } from './PlanResult';
-import ActivePlan from './ActivePlan';
+import ActivePlan, { currentSeason } from './ActivePlan';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -199,6 +199,9 @@ export default function CropPlanFlow() {
   const planId = current.data?.id;
   useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
   const plan = current.data;
+  // CP13 opens on the season she is in today (CP10 on the first).
+  const approved = plan?.approval?.decision === 'approve';
+  useEffect(() => { if (approved) setSeason(currentSeason(plan.plan.seasons || [])); }, [planId, approved]); // eslint-disable-line react-hooks/exhaustive-deps
   // Her land's name comes from the land title's metadata (not the record), "Land <id>" only when it has none.
   const titleName = useTitleName(landId, onPolygon, stellarTitle);
   const name = titleName || (landId != null ? `Land ${landId}` : 'Nila');
@@ -492,9 +495,14 @@ export default function CropPlanFlow() {
   if (ap?.decision === 'approve') {
     // The union mints her crop shares at the approval (executive decision 21 Oct): her app only waits for them.
     if (mint.status === 'done') {
+      // CP13's season bar (board CropPlanActive): it opens on the season she is in; the map's chips follow it.
+      const ss = plan.plan.seasons || [];
+      const shown = Math.min(season, Math.max(0, ss.length - 1));
+      const bar = ss.length > 0 && <SlideBar label={seasonLabel(ss[shown], shown)} prevLabel="Previous season" nextLabel="Next season"
+        onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
       return (
-        <Sheet map={map} landName={name}>
-          <ActivePlan plan={plan} areaNo={areaNo} onUpdate={() => setStep('change')} />
+        <Sheet map={map} landName={name} bar={bar}>
+          <ActivePlan plan={plan} areaNo={areaNo} season={shown} onUpdate={() => setStep('change')} />
         </Sheet>
       );
     }
