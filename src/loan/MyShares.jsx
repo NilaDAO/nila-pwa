@@ -125,7 +125,9 @@ export function TakeUp({ token, onBack }) {
 }
 
 const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
-  .find((r) => r.zone === x.zone && (r.crop === x.crop || r.name === x.crop));
+  .filter((r) => r.zone === x.zone && (r.crop === x.crop || r.name === x.crop))
+  // The same crop can stand on one area in two seasons: the share's sowing date picks the season.
+  .sort((a, b) => (b.sow === x.share.from_date) - (a.sow === x.share.from_date))[0];
 const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
 const amount = (kg) => (kg >= 1000 ? `~${Math.round(kg / 100) / 10} t` : `~${Math.round(kg)} kg`);
 
