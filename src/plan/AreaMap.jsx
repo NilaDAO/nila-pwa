@@ -81,7 +81,7 @@ const ringsOf = (g) => (g?.type === 'Polygon' ? [g.coordinates[0]] : g?.type ===
 
 /** outline: the parcel (record meta.geometry.out), drawn as a dashed white line; areas get their crop colour as fill
  *  and border (board CP10). selected / onSelect: tapping an area or its chip picks it; the others fade. */
-function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onSelect }) {
+function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, fitBottom }) {
   const map = useRef(null);
   const drawn = useRef([]);
   const fitted = useRef(null);
@@ -120,14 +120,15 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 3,
         icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#F1F5F9', strokeWeight: 1.5, scale: 3 }, offset: '0', repeat: '10px' }] }));
     });
-    if (!bounds.isEmpty() && fitted.current !== record) {
-      fitted.current = record;
+    const fitKey = `${record?.report_hash_bytes32 || ''}:${fitBottom || ''}`;
+    if (!bounds.isEmpty() && fitted.current !== fitKey) {
+      fitted.current = fitKey;
       // Her areas sit in the part above the card (the card covers the lower part of the screen).
       const full = height === '100%';
-      m.fitBounds(bounds, full ? { top: 90, left: 40, right: 40, bottom: Math.round(window.innerHeight * 0.6) } : 16);
+      m.fitBounds(bounds, full ? { top: 90, left: 40, right: 40, bottom: fitBottom ?? Math.round(window.innerHeight * 0.6) } : 16);
     }
   };
-  useEffect(draw, [record, labels, selected, onSelect, height]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(draw, [record, labels, selected, onSelect, height, fitBottom]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; }); }, []);
   return (
     <div style={{ height, width: '100%', background: '#25361f' }} aria-label="Map of your areas">

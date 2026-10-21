@@ -173,7 +173,9 @@ export default function CropPlanFlow() {
     return Object.fromEntries(Object.values(rows).map((r) => [r.zone, { text: r.name, sub: fmtKg(r.kg), colour: r.colour, acc: checked.has(r.zone) }]));
   }, [plan, season, checked]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
-  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? setArea : undefined} /> : null;
+  // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
+  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? setArea : undefined}
+    fitBottom={pickable ? window.innerHeight - 240 : undefined} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
 
   // While her titles load (the Stellar list also waits for her signer), CP1's pending sheet — never "No land title"

@@ -22,7 +22,7 @@ export function Sheet({ title, children, landName, onBack, map, bar }) {
       {/* The band above the card takes the free height, so the card sits glued to the bottom (executive decision 21 Oct):
           a short card never floats mid-screen, and scrolling never lifts it further than its own height. */}
       <div style={{ height: map ? 'auto' : 180, flex: map ? '1 0 auto' : '0 0 auto', position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: map ? 0 : 24, pointerEvents: map ? 'none' : 'auto' }}>
-        {map && <div style={{ height: 220 }} />}
+        {map && <div style={{ height: bar ? 330 : 220 }} />}
         {onBack && (
           <button type="button" aria-label="Back" onClick={onBack} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, left: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0, color: C.text, fontSize: 20 }}>←</button>
         )}
