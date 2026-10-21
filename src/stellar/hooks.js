@@ -138,7 +138,8 @@ export function useStellarTitles(signer) {
     queryKey: ['stellar', 'titleList', signer?.stellarAddress],
     enabled: !!signer?.stellarAddress && !!signer?.signHash,
     staleTime: 60_000,
-    refetchInterval: (q) => ((q.state.data || []).some((t) => !t.record_hash) ? 60_000 : false),
+    // Promptly while a new title is on its way: no title listed yet, or one still without its record hash.
+    refetchInterval: (q) => (!(q.state.data || []).length ? 10_000 : (q.state.data || []).some((t) => !t.record_hash) ? 5_000 : false),
     queryFn: async () => {
       const { signedCall } = await import('../plan/api');
       const out = await signedCall(signer)('GET', '/stellar/titles');

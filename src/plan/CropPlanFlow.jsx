@@ -10,6 +10,7 @@ import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, 
 import { Choice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { useMintCropShares } from './mint';
 import { areasOf, summarize, useFieldRecord } from './record';
+import { useTitleName } from './hooks';
 import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import CropsStep from './CropsStep';
@@ -105,6 +106,16 @@ function PlanView({ plan, onAccept, onChange, readOnly, areaNo = (z) => z }) {
   );
 }
 
+/** CP1 (board CropPlanPending): her field record is on its way. Shown while titles and the record load. */
+function Pending({ map, name, error }) {
+  return (
+    <Sheet map={map} landName={name} title="Getting your field record">
+      <p style={{ ...muted, textAlign: 'center' }}>This can take up to an hour.</p>
+      {error && <p style={muted}>Your field record could not be loaded. It is tried again in a moment.</p>}
+    </Sheet>
+  );
+}
+
 export default function CropPlanFlow() {
   const s = useNilaSigner();
   const qc = useQueryClient();
@@ -139,7 +150,9 @@ export default function CropPlanFlow() {
   const [error, setError] = useState();
   const [read, setRead] = useState(false);
   const plan = current.data;
-  const name = record?.meta?.farm_name || (landId != null ? `Land ${landId}` : 'Nila');
+  // Her land's name comes from the land title's metadata (not the record), "Land <id>" only when it has none.
+  const titleName = useTitleName(landId, onPolygon, stellarTitle);
+  const name = titleName || (landId != null ? `Land ${landId}` : 'Nila');
   const zoneOrder = useMemo(() => areasOf(record).map((z) => z.zone_id), [record]);
   const areaNo = useCallback((zone) => (zoneOrder.indexOf(zone) + 1) || zone, [zoneOrder]);
   // The map shows what grows on each area in the first season of the plan, or just "Area n".
@@ -151,7 +164,10 @@ export default function CropPlanFlow() {
   const map = record ? <AreaMap record={record} labels={labels} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
 
-  if (titles.isLoading || (!onPolygon && stellarTitles.isLoading) || current.isLoading) return <Sheet map={map} landName={name}><p style={muted}>…</p></Sheet>;
+  // While her titles load (the Stellar list also waits for her signer), CP1's pending sheet — never "No land title"
+  // before both chains have answered.
+  const titlesKnown = !titles.isLoading && (onPolygon || stellarTitles.isFetched);
+  if (!titlesKnown || current.isLoading) return <Pending map={map} name={name} />;
   if (titles.data && !titles.data.length && !stellarTitle) {
     return <Sheet map={map} landName={name} title="No land title yet"><p style={muted}>Your crop plan starts when your land title is ready.</p></Sheet>;
   }
@@ -161,15 +177,7 @@ export default function CropPlanFlow() {
   if (at === 'record') {
     // CP1 / CP2 (boards CropPlanPending, CropPlanPending-n9mn-kewp). DESIGN GAPs: no "Main issues" (the
     // oracle detects none yet, design Q20), no "Add your trees and water sources" row (A5 not built).
-    if (field.isLoading) return <Sheet map={map} landName={name}><p style={muted}>…</p></Sheet>;
-    if (!record) {
-      return (
-        <Sheet map={map} landName={name} title="Getting your field record">
-          <p style={{ ...muted, textAlign: 'center' }}>This can take up to an hour.</p>
-          {field.error && <p style={muted}>Your field record could not be loaded. It is tried again every minute.</p>}
-        </Sheet>
-      );
-    }
+    if (field.isLoading || !record) return <Pending map={map} name={name} error={field.error} />;
     const sum = summarize(record);
     return (
       <Sheet map={map} landName={name} title="Your field record">

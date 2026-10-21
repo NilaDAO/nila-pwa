@@ -15,4 +15,4 @@ export function useTitleCount(evm, stellarAddress) {
 }
 
 /** Query keys to refresh once a title may have arrived (R14). */
-export const TITLE_KEYS = [['polygon', 'legacy'], ['stellar', 'titles']];
+export const TITLE_KEYS = [['polygon', 'legacy'], ['stellar', 'titles'], ['stellar', 'titleList'], ['polygon', 'titles']];

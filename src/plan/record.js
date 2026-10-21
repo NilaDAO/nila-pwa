@@ -34,7 +34,8 @@ export function useFieldRecord(landId, owner, stellarHash) {
     enabled: landId != null && (onStellar || (!!provider && !!owner)),
     staleTime: 10 * 60_000,
     // While it is being made, or after a failed fetch: look again every minute.
-    refetchInterval: (q) => ((q.state.data && !q.state.data.hash) || q.state.error ? 60_000 : false),
+    // Asked again soon while the record is on its way (a new title gets its record hash seconds after the title).
+    refetchInterval: (q) => ((q.state.data && !q.state.data.hash) || q.state.error ? 5_000 : false),
     queryFn: async () => {
       if (onStellar) {
         if (!stellarHash) return { hash: null };
