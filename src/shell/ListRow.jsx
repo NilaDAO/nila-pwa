@@ -42,12 +42,21 @@ export default function ListRow({ icon: Icon, tone, title, sub, sub2, onClick, f
   );
 }
 
-/** The non-map screen header (boards Tasks, Settings): the round back button left, the title centred, Settings right. */
-export function ScreenHeader({ title, onBack, onSettings }) {
+/** The top of every non-map screen stays put while it scrolls (executive decision 21 Oct: no header scrolls away), with
+ *  12 px room above and below and the gradient's top colour behind it, stretched to the screen's edges whatever the
+ *  parent's padding. ScreenHeader and A1's top row use it. */
+export function StickyTop({ children }) {
   return (
-    // Stays at the top while the screen scrolls (executive decision 21 Oct), with its own 12 px room above and below and
-    // the gradient's top colour behind it, stretched to the screen's edges whatever the parent's padding.
     <div style={{ position: 'sticky', top: 0, zIndex: 3, padding: '12px 0', background: '#121212', boxShadow: '0 0 0 100vmax #121212', clipPath: 'inset(0 -100vmax)' }}>
+      {children}
+    </div>
+  );
+}
+
+/** The non-map screen header (boards Tasks, Settings): the round back button left, the title centred, Settings right. */
+export function ScreenHeader({ title, onBack, onSettings, settings = true }) {
+  return (
+    <StickyTop>
     <div style={{ position: 'relative', height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT, color: C.text }}>
       {onBack && (
         <span style={{ position: 'absolute', left: 0, top: 0 }}>
@@ -57,8 +66,8 @@ export function ScreenHeader({ title, onBack, onSettings }) {
         </span>
       )}
       <h1 style={{ margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{title}</h1>
-      <span style={{ position: 'absolute', right: 0, top: 0 }}><SettingsButton onClick={onSettings} /></span>
+      {settings && <span style={{ position: 'absolute', right: 0, top: 0 }}><SettingsButton onClick={onSettings} /></span>}
     </div>
-    </div>
+    </StickyTop>
   );
 }

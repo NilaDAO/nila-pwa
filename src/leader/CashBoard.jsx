@@ -16,6 +16,7 @@ import { usePost } from '../anchor/LeaderLp';
 import { COLLECT } from '../anchor/sep';
 import { C, FONT, R } from '../shell/tokens';
 import { Loading } from '../register/Boot';
+import { ScreenHeader } from '../shell/ListRow';
 import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
 
 const U = 10_000_000n;
@@ -221,7 +222,8 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
   if (cashQ.isError) return <div style={{ ...card, margin: 16 }}>Could not read the union. Try again.</div>;
   if (!cash) return <Loading />;   // S1 while the union loads (executive decision 21 Oct: every wait is S1)
   return (
-    <div style={{ padding: '16px 8px 0', fontFamily: FONT, color: C.text }}>
+    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+      <ScreenHeader title="Cash" onSettings={() => { window.location.hash = '#/settings'; }} />
       <section style={{ ...card, textAlign: 'center' }} aria-label="Union treasury">
         <div style={{ color: C.muted }}>Union treasury</div>
         <div style={{ fontSize: 32, fontWeight: 700 }}>{inr(cash.treasury)}</div>

@@ -20,7 +20,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       {onBack && (
         <button type="button" aria-label="Back" onClick={onBack} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, left: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0, color: C.text, fontSize: 20 }}>←</button>
       )}
-      <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: map ? 'absolute' : 'static', top: 18, zIndex: 2, pointerEvents: 'auto' }}>{landName}</span>
+      <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: 'absolute', top: 18, zIndex: 2, pointerEvents: 'auto' }}>{landName}</span>
       {/* Settings on every CP screen (executive decision 21 Oct; board CropPlanPending-n9mn-kewp): the round gear top right. */}
       <SettingsButton background={C.ink} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, right: 8, top: 18 }} />
     </>
@@ -53,10 +53,9 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       <div style={{ height: map ? 'auto' : 180, flex: map ? '1 0 auto' : '0 0 auto', position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: map ? 0 : 24, pointerEvents: map ? 'none' : 'auto' }}>
         {/* CP10 (a bar on the card): the card's top starts at the middle of the screen (board CropPlanQ3-xdlz). */}
         {map && <div style={{ height: bar ? Math.round(window.innerHeight / 2) + 24 : 220 }} />}
-        {!map && head}
       </div>
-      {/* With a map the header buttons stay fixed at the top, above map and card; they never scroll away (21 Oct). */}
-      {map && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
+      {/* The header buttons stay fixed at the top, above map and card; they never scroll away (21 Oct) — with or without a map. */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>
       <div ref={drag.ref} className="cp-sheet" style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, ...drag.style }}>
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
         <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}html,body{overscroll-behavior-y:none}'}</style>

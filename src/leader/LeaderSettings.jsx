@@ -11,6 +11,7 @@ import { useLpStatus } from '../anchor/hooks';
 import { useRates } from '../machine/hooks';
 import { deleteAllItems } from '../utils/db';
 import { C, FONT, R } from '../shell/tokens';
+import { ScreenHeader } from '../shell/ListRow';
 
 /** Reset account, as the current app does (features/wallet/Settings.js handleLogout): clear the field-registration
  *  leftovers and the offsite cookie, fire the IndexedDB wipe and reload at once — the delete stays blocked while the
@@ -49,8 +50,7 @@ export default function LeaderSettings({ onBack, onIdCheck, onOffers }) {
   const copy = async (what, v) => { try { await navigator.clipboard.writeText(v); setCopied(what); setTimeout(() => setCopied(undefined), 1500); } catch { /* no clipboard */ } };
   return (
     <div style={{ padding: 16, fontFamily: FONT, color: C.text }}>
-      <button type="button" onClick={onBack} style={{ background: 'none', border: 0, color: C.muted, padding: 0 }}>← Back</button>
-      <h1 style={{ fontSize: 16, fontWeight: 700 }}>Settings</h1>
+      <ScreenHeader title="Settings" onBack={onBack} settings={false} />
 
       <section style={card} aria-label="Your credit union">
         <h2 style={h2}>Your credit union</h2>

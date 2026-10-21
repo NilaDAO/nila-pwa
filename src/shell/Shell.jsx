@@ -62,8 +62,7 @@ function Settings({ onBack, onIdCheck, onOffers }) {
   const { data: cfg } = useStellarConfig();
   return (
     <div style={{ padding: 16, fontFamily: FONT, color: C.text }}>
-      <button type="button" onClick={onBack} style={{ background: 'none', border: 0, color: C.muted, padding: 0 }}>← Back</button>
-      <h1 style={{ fontSize: 16, fontWeight: 700 }}>Settings</h1>
+      <ScreenHeader title="Settings" onBack={onBack} settings={false} />
       {/* A11 (board Settings): only for a member with a land title in the union, and only with an anchor. */}
       {cfg?.anchor_url && lp.data?.member && (
         <section aria-label="Become an LP" style={{ background: C.raised, borderRadius: 12, padding: 16, marginBottom: 16 }}>

@@ -16,6 +16,7 @@ import { LeaderSlides, UnionRows } from '../leader/UnionCards';
 import { C, FONT, R, SHADOW } from './tokens';
 import { CashTile, ChevronIcon, HistoryIcon, InvestedTile, LandIcon, MachineryTile, MyMachineTile, NinTile, QrIcon, RefreshIcon, TreasuryTile, UsdcTile } from './icons';
 import RoundButton, { SettingsButton } from './RoundButton';
+import { StickyTop } from './ListRow';
 import MessageSlider, { memberSlides } from './MessageSlider';
 import { MEMBER_TODO_ROWS, useLeaderTaskCount } from './taskCount';
 
@@ -98,12 +99,14 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const slides = memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans });
 
   return (
-    <div style={{ fontFamily: FONT, color: C.text, padding: '20px 8px 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <RoundButton label="History" onClick={onHistory}><HistoryIcon color={C.text} /></RoundButton>
-        {leader ? <LeaderTasksButton onClick={onTasks} /> : <TasksButton n={MEMBER_TODO_ROWS} onClick={onTasks} />}
-        <SettingsButton onClick={onSettings} />
-      </div>
+    <div style={{ fontFamily: FONT, color: C.text, padding: '8px 8px 0' }}>
+      <StickyTop>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <RoundButton label="History" onClick={onHistory}><HistoryIcon color={C.text} /></RoundButton>
+          {leader ? <LeaderTasksButton onClick={onTasks} /> : <TasksButton n={MEMBER_TODO_ROWS} onClick={onTasks} />}
+          <SettingsButton onClick={onSettings} />
+        </div>
+      </StickyTop>
 
       <section aria-label="Total balance" style={{ textAlign: 'center', margin: '12px 0 16px', padding: '18px 22px', background: C.ink, borderRadius: R.card, boxShadow: SHADOW }}>
         <div style={{ color: C.muted, fontSize: 14, display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center' }}>
