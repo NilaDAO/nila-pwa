@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C } from '../shell/tokens';
 import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, useDiscardPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
-import { Choice, Primary, Sheet, Steps, inr, muted } from './ui';
+import { Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { useMintCropShares } from './mint';
 import { areasOf, summarize, useFieldRecord } from './record';
 import { useTitleName } from './hooks';
@@ -47,10 +47,14 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
+  // The table shows each season's cost as it is (executive decision 21 Oct): cash, including any part above the
+  // ₹10,000 loan cap, plus machine vouchers. The cap is a note under the table, not a cut in the numbers.
+  const cost = (f) => f.cash + (f.cash_above_cap || 0) + f.voucher_value;
   const total = seasons.reduce((a, s) => {
-    const sum = s.rows.reduce((b, r) => ({ cash: b.cash + r.finance.cash + r.finance.voucher_value, interest: b.interest + r.finance.interest }), { cash: 0, interest: 0 });
-    return { cash: a.cash + sum.cash, interest: a.interest + sum.interest };
-  }, { cash: 0, interest: 0 });
+    const sum = s.rows.reduce((b, r) => ({ cash: b.cash + cost(r.finance), financed: b.financed + r.finance.cash + r.finance.voucher_value, interest: b.interest + r.finance.interest }), { cash: 0, financed: 0, interest: 0 });
+    return { cash: a.cash + sum.cash, financed: a.financed + sum.financed, interest: a.interest + sum.interest };
+  }, { cash: 0, financed: 0, interest: 0 });
+  const above = seasons.reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.cash_above_cap || 0), 0), 0);
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance.due)).sort().pop();
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
   return (
@@ -62,7 +66,7 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
         <thead><tr style={{ color: C.muted }}><td>Season</td><td>Available from</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
         <tbody>
           {seasons.map((s) => {
-            const cash = s.rows.reduce((a, r) => a + r.finance.cash + r.finance.voucher_value, 0);
+            const cash = s.rows.reduce((a, r) => a + cost(r.finance), 0);
             const from = s.rows.map((r) => r.sow).sort()[0];
             return (
               <tr key={s.slot} style={{ borderTop: `1px solid ${C.raised}` }}>
@@ -78,7 +82,7 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
             </tr>
           )}
           <tr style={{ borderTop: `1px solid ${C.raised}`, fontWeight: 700 }}>
-            <td style={{ padding: '8px 0' }} colSpan={2}>Total, due in {seasons.length} parts</td>
+            <td style={{ padding: '8px 0' }} colSpan={2}>Total cost</td>
             <td style={{ textAlign: 'right' }}>{inr(total.cash)}</td>
           </tr>
         </tbody>
@@ -91,22 +95,24 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
         const vouchers = rows.reduce((a, f) => a + (f.voucher_value || 0), 0);
         if (!hand && !vouchers) return null;
         return (
-          <p style={muted}>
-            {hand > 0 && <>The totals include {inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates). </>}
-            {vouchers > 0 && <>They include {inr(vouchers)} in machine vouchers.</>}
-          </p>
+          <Notice kind="info" title="What the totals include">
+            {hand > 0 && <>{inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates). </>}
+            {vouchers > 0 && <>{inr(vouchers)} in machine vouchers.</>}
+          </Notice>
         );
       })()}
-      {lastDue && <p style={muted}>You repay {inr(total.cash + total.interest)} in {seasons.length} parts, the last by end of {monthYear(lastDue)}.</p>}
-      {seasons.some((s) => s.rows.some((r) => r.finance.cash_above_cap > 0)) && (
-        <p style={{ ...muted, color: C.coral }}>Part of the input cost is above the ₹10,000 cash cap and is not financed: {inr(seasons.reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.cash_above_cap || 0), 0), 0))}.</p>
+      {above > 0 && (
+        <Notice title="Loans are capped at ₹10,000">
+          Each loan (one area in one season) gives at most ₹10,000 in cash. {inr(above)} of these costs is above the cap and is paid from your own money.
+        </Notice>
       )}
+      {lastDue && <p style={muted}>The loans are {inr(total.financed)}; you repay {inr(total.financed + total.interest)} in {seasons.length} parts, the last by end of {monthYear(lastDue)}.</p>}
       {p.left_out?.length > 0 && <p style={muted}>Areas too small to plan: {p.left_out.length}.</p>}
       {/* Her changes are hard rules (21 Oct); only a hard fact refuses one, and anything the node could not read is named. */}
       {p.member_request?.not_followed?.length > 0 && (
-        <p style={{ ...muted, color: C.coral }}>Not followed: {p.member_request.not_followed.map((n) => (n.zone
+        <Notice title="Not followed">{p.member_request.not_followed.map((n) => (n.zone
           ? `Area ${areaNo(n.zone)}${n.slot ? `, ${SEASON[n.slot] || n.slot}` : ''}${n.crop ? ` (${n.crop.replace(/_/g, ' ')})` : ''}: ${n.why}`
-          : n.why || n.reason || JSON.stringify(n))).join('; ')}</p>
+          : n.why || n.reason || JSON.stringify(n))).join('; ')}</Notice>
       )}
       {!readOnly && <Primary disabled={checked.size < zones.length} onClick={onAccept}>Accept the plan</Primary>}
       {/* CP10: change it — a new version that follows her (Renew plan is on CP9). */}
