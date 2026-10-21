@@ -1,7 +1,7 @@
 // Shared crop-plan layout: the header band (map in P4c) and the bottom sheet of the CP boards.
-import { cloneElement, isValidElement, useEffect, useRef } from 'react';
+import { cloneElement, isValidElement, useEffect, useLayoutEffect, useRef } from 'react';
 import { useStage } from '../shell/stageCtx';
-import { C, FONT, R } from '../shell/tokens';
+import { C, FONT, GRADIENT, R } from '../shell/tokens';
 import useSheetDrag from '../shell/useSheetDrag';
 import { SettingsButton } from '../shell/RoundButton';
 
@@ -42,8 +42,27 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
   // (executive decision 21 Oct): Back, the land's name or the title, Settings; `head` replaces the row's content.
   const btnIn = { width: 40, height: 40, borderRadius: R.round, background: C.raised, border: 0, color: C.text, fontSize: 20, flexShrink: 0 };
   const inTitle = staged && !ownHead && (landName || title);
+  // The card is drawn on the non-map screens' gradient (executive decision 21 Oct); the sticky header paints the same
+  // gradient, sized to the card and shifted by where the header sits in it, so it never shows as a flat band.
+  const cardBg = staged ? GRADIENT : C.ink;
+  const headRef = useRef(null);
+  useLayoutEffect(() => {
+    if (!staged) return undefined;
+    const paint = () => {
+      const c = drag.ref.current; const h = headRef.current;
+      if (!c || !h) return;
+      h.style.backgroundSize = `100% ${c.offsetHeight}px`;
+      h.style.backgroundPosition = `0 ${-(h.getBoundingClientRect().top - c.getBoundingClientRect().top)}px`;
+    };
+    paint();
+    window.addEventListener('scroll', paint, { capture: true, passive: true });
+    window.addEventListener('resize', paint);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(paint) : null;
+    if (ro && drag.ref.current) ro.observe(drag.ref.current);
+    return () => { window.removeEventListener('scroll', paint, { capture: true }); window.removeEventListener('resize', paint); ro?.disconnect(); };
+  }); // eslint-disable-line react-hooks/exhaustive-deps
   const headRow = staged && (
-    <div style={{ position: 'sticky', top: 0, zIndex: 3, background: C.ink, margin: '0 -22px 8px', padding: '4px 22px 12px' }}>
+    <div ref={headRef} style={{ position: 'sticky', top: 0, zIndex: 3, background: GRADIENT, backgroundRepeat: 'no-repeat', margin: '0 -22px 8px', padding: '4px 22px 12px' }}>
       {ownHead || (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           {onBack ? <button type="button" aria-label="Back" onClick={onBack} style={btnIn}>←</button> : <span style={{ width: 40 }} />}
@@ -72,7 +91,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         {!staged && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
         <div data-sheet-scroll style={{ position: 'absolute', left: 0, right: 0, top: 76, bottom: 0, overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none', zIndex: 4, pointerEvents: 'none' }}>
           <div aria-hidden="true" style={{ height: Math.max(120, Math.round(window.innerHeight / 3) - 76) }} />
-          <section ref={drag.ref} className="cp-sheet" {...swipe} style={{ pointerEvents: 'auto', background: C.ink, borderRadius: '24px 24px 0 0', padding: '10px 22px 104px', boxSizing: 'border-box', minHeight: '100%', boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', ...drag.style }}>
+          <section ref={drag.ref} className="cp-sheet" {...swipe} style={{ pointerEvents: 'auto', background: cardBg, borderRadius: '24px 24px 0 0', padding: '10px 22px 104px', boxSizing: 'border-box', minHeight: '100%', boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', ...drag.style }}>
             <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}[data-sheet-scroll]::-webkit-scrollbar{display:none}'}</style>
             <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
             {headRow}
@@ -95,7 +114,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       </div>
       {/* The header buttons stay fixed at the top, above map and card; they never scroll away (21 Oct) — with or without a map. */}
       {!staged && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
-      <div ref={drag.ref} className="cp-sheet" {...swipe} style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, pointerEvents: 'auto', ...drag.style }}>
+      <div ref={drag.ref} className="cp-sheet" {...swipe} style={{ background: cardBg, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, pointerEvents: 'auto', ...drag.style }}>
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
         <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}html,body{overscroll-behavior-y:none}'}</style>
         {/* CP10's season / area bar sits on top of the card and moves with it (board CropPlanQ3-xdlz). */}
