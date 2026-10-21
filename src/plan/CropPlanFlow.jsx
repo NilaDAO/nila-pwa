@@ -1,6 +1,6 @@
 // The crop plan (P4a): CP3 intro → CP4–CP7 intake → CP8 making → CP9 why → CP10 plan → CP11 terms →
 // CP12 waiting for the leader (nila-design boards CropPlanIntro … CropPlanPending-590i). Copy from the
-// boards; DESIGN GAPs: no map yet (P4c), no record crops or suggestions on CP4 (no hook), CP9 shows the
+// boards; DESIGN GAPs: no map yet (P4c), no suggested crops on CP4 (no source), CP9 shows the
 // engine's one explanation text (16 Oct), CP6/CP5 answers mapped to numbers/keys in hooks.js.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import { useMintCropShares } from './mint';
 import { areasOf, summarize, useFieldRecord } from './record';
 import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
+import CropsStep from './CropsStep';
 import ActivePlan from './ActivePlan';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -192,17 +193,8 @@ export default function CropPlanFlow() {
     );
   }
   if (at === 'crops') {
-    const list = (catalogue.data?.crops || []).filter((c) => !c.whole_year || crops.has(c.key));
-    return (
-      <Sheet map={map} landName={name} onBack={back('intro')}>
-        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>1 / 4</p>
-        <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Which crops can you grow?</h1>
-        {list.map((c) => (
-          <Choice key={c.key} check dot={c.colour} on={crops.has(c.key)} onClick={() => setCrops((x) => { const n = new Set(x); n.has(c.key) ? n.delete(c.key) : n.add(c.key); return n; })}>{c.name}</Choice>
-        ))}
-        <Primary disabled={!crops.size} onClick={() => setStep('role')}>Continue</Primary>
-      </Sheet>
-    );
+    return <CropsStep map={map} name={name} onBack={back('intro')} record={record} catalogue={catalogue.data?.crops || []}
+      crops={crops} setCrops={setCrops} onContinue={() => setStep('role')} />;
   }
   if (at === 'role') {
     return (
