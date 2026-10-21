@@ -120,12 +120,20 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 3,
         icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#F1F5F9', strokeWeight: 1.5, scale: 3 }, offset: '0', repeat: '10px' }] }));
     });
-    const fitKey = `${record?.report_hash_bytes32 || ''}:${fitBottom || ''}`;
-    if (!bounds.isEmpty() && fitted.current !== fitKey) {
+    // A picked area: the map centres on it (CP10, 21 Oct); none picked: all her areas.
+    const pickedArea = selected && areasOf(record).find((z) => z.zone_id === selected);
+    let target = bounds;
+    if (pickedArea) {
+      const b = new g.LatLngBounds();
+      ringsOf(pickedArea.geometry).forEach((ring) => ring.forEach(([lng, lat]) => b.extend({ lat, lng })));
+      if (!b.isEmpty()) target = b;
+    }
+    const fitKey = `${record?.report_hash_bytes32 || ''}:${fitBottom || ''}:${selected || ''}`;
+    if (!target.isEmpty() && fitted.current !== fitKey) {
       fitted.current = fitKey;
       // Her areas sit in the part above the card (the card covers the lower part of the screen).
       const full = height === '100%';
-      m.fitBounds(bounds, full ? { top: 80, left: 40, right: 40, bottom: fitBottom ?? Math.round(window.innerHeight * 0.6) } : 16);
+      m.fitBounds(target, full ? { top: 80, left: 40, right: 40, bottom: fitBottom ?? Math.round(window.innerHeight * 0.6) } : 16);
     }
   };
   useEffect(draw, [record, labels, selected, onSelect, height, fitBottom]); // eslint-disable-line react-hooks/exhaustive-deps

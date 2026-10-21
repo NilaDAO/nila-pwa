@@ -173,9 +173,10 @@ export default function CropPlanFlow() {
     return Object.fromEntries(Object.values(rows).map((r) => [r.zone, { text: r.name, sub: fmtKg(r.kg), colour: r.colour, acc: checked.has(r.zone) }]));
   }, [plan, season, checked]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
+  const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
-  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? setArea : undefined}
-    fitBottom={pickable ? window.innerHeight - 240 : undefined} /> : null;
+  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? pickArea : undefined}
+    fitBottom={pickable ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
 
   // While her titles load (the Stellar list also waits for her signer), CP1's pending sheet — never "No land title"
@@ -292,20 +293,20 @@ export default function CropPlanFlow() {
     const ss = plan.plan.seasons || [];
     const zones = zoneOrder.filter((z) => plan.plan.proposal[z]).concat(Object.keys(plan.plan.proposal).filter((z) => !zoneOrder.includes(z)));
     const readOnly = plan.status !== 'draft';
-    const step1 = (d) => { const k = zones.indexOf(area); setArea(zones[(k + d + zones.length) % zones.length]); };
+    const step1 = (d) => { const k = zones.indexOf(area); pickArea(zones[(k + d + zones.length) % zones.length]); };
     const bar = area
       ? <SlideBar label={<><b>Area {areaNo(area)}</b> · {yearLabel(ss)}</>} prevLabel="Previous area" nextLabel="Next area" onPrev={() => step1(-1)} onNext={() => step1(1)} />
       : ss.length > 0 && <SlideBar label={seasonLabel(ss[Math.min(season, ss.length - 1)], Math.min(season, ss.length - 1))} prevLabel="Previous season" nextLabel="Next season"
         onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
     const next = zones.find((z) => z !== area && !checked.has(z));
     return (
-      <Sheet map={map} landName={name} bar={bar} onBack={back('why')}>
+      <Sheet map={map} landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}>
         {area ? (
           <AreaCard plan={plan} zone={area} name={`Area ${areaNo(area)}`} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
             accepted={checked.has(area)} total={zones.length} done={checked.size} readOnly={readOnly}
-            nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => setArea(next)} onAll={() => setStep('terms')}
-            onBack={() => setArea(null)}
-            onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); setArea(zones.find((z) => !n.has(z)) || null); }}
+            nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => pickArea(next)} onAll={() => setStep('terms')}
+            onBack={() => pickArea(null)}
+            onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
             onCrop={(r) => { setChangeNote(`Area ${areaNo(area)}, ${SEASON[r.slot]}: instead of ${r.name}, `); setStep('change'); }} />
         ) : (
           <PlanView plan={plan} checked={checked} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={readOnly} />
