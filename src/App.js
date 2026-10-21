@@ -343,8 +343,8 @@ function App({installAvailable}) {
   return (
       <Routes>
         {bootStage === 'register' && <Route path="/*" element={NewStart
-          ? <Suspense fallback={<NewBoot.RegLoading />}>{recovered
-            ? <RecoverSteps evm={recovered} onDone={() => { setFromRegister(true); NewBoot.markFromRegister(); setBootStage('loading'); }} />
+          ? <Suspense fallback={<NewBoot.Loading />}>{recovered
+            ? <RecoverSteps evm={recovered} onDone={() => { NewBoot.markFromRegister(false); setBootStage('loading'); }} />
             : codeDone
               // Privy decides new (R5) or existing (R9), not R1's button (LOAN_RULES §5, 20 Oct).
               ? <AfterCode onNew={() => { setFromRegister(true); NewBoot.markFromRegister(); setBootStage('loading'); }} onExisting={(evm) => setRecovered(evm)} />
