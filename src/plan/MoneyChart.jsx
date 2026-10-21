@@ -48,7 +48,9 @@ export function series(plan) {
       if (d !== undefined) repay[d] += f.repay || 0;
     }
   }
-  let a = 0, b = 0;
+  // Her farm's money now (optional, intake farm_cash_now) opens both lines; skipped, they start at ₹0.
+  const opening = Number(p.intake?.farm_cash_now) || 0;
+  let a = opening, b = opening;
   const withPlan = [], without = [];
   months.forEach((_, i) => {
     const sold = sales[i].reduce((t, c) => t + c.v, 0);

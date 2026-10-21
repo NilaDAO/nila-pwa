@@ -1,4 +1,4 @@
-// CP4 (board CropPlanCrops, crop plan intake 1 / 4): the crops she can grow. Crops from her field record are
+// CP4 (board CropPlanCrops, crop plan intake 1 / 5): the crops she can grow. Crops from her field record are
 // ticked ("In your record · Area n"); "Add a crop" searches the catalogue for the others (up to 3 hits) and adds
 // the one she taps, ticked ("Added by you"). DESIGN GAP: no suggested crops for next year yet (useCropSuggestions
 // has no source), so the "Suggested · …" rows are not shown. Record crops not in the catalogue are left out:
@@ -79,7 +79,7 @@ export default function CropsStep({ map, name, onBack, record, catalogue = [], c
 
   return (
     <Sheet map={map} landName={name} onBack={onBack}>
-      <p style={{ ...muted, fontWeight: 700, textAlign: 'center', margin: 0 }}>1 / 4</p>
+      <p style={{ ...muted, fontWeight: 700, textAlign: 'center', margin: 0 }}>1 / 5</p>
       <h1 id="cropplan-q-crops" style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Which crops can you grow?</h1>
       <div role="group" aria-labelledby="cropplan-q-crops" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {fromRecord.map((r) => byKey[r.key] && (

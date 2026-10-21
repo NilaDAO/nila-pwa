@@ -154,7 +154,7 @@ export default function CropPlanFlow() {
   const discard = useDiscardPlan(landId);
   const renew = async () => {
     setError();
-    try { await discard.mutateAsync(current.data.id); setCrops(new Set()); setRole(); setCows(); setMonths([]); setJobId(); setStep(null); } catch (e) { setError(e.message); }
+    try { await discard.mutateAsync(current.data.id); setCrops(new Set()); setRole(); setCows(); setMonths([]); setFarmCash(''); setJobId(); setStep(null); } catch (e) { setError(e.message); }
   };
   const [changeNote, setChangeNote] = useState('');
   // An approved plan whose crop shares are already on her wallet opens on "made", not on "Make".
@@ -169,6 +169,7 @@ export default function CropPlanFlow() {
   const [role, setRole] = useState();
   const [cows, setCows] = useState();
   const [months, setMonths] = useState([]);
+  const [farmCash, setFarmCash] = useState('');
   const [jobId, setJobId] = useState();
   const [madeId, setMadeId] = useState();   // the plan the last job made: CP9 waits until the latest plan is that one
   const [error, setError] = useState();
@@ -245,7 +246,7 @@ export default function CropPlanFlow() {
   if (at === 'role') {
     return (
       <Sheet map={map} landName={name} onBack={back('crops')}>
-        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>2 / 4</p>
+        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>2 / 5</p>
         <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>What is this land for your family?</h1>
         {Object.keys(LAND_ROLE).map((k) => <Choice key={k} on={role === k} onClick={() => { setRole(k); setStep('cows'); }}>{k}</Choice>)}
       </Sheet>
@@ -254,23 +255,17 @@ export default function CropPlanFlow() {
   if (at === 'cows') {
     return (
       <Sheet map={map} landName={name} onBack={back('role')}>
-        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>3 / 4</p>
+        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>3 / 5</p>
         <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>How many cows does this land feed?</h1>
         {Object.keys(COWS).map((k) => <Choice key={k} on={cows === k} onClick={() => { setCows(k); setStep('months'); }}>{k}</Choice>)}
       </Sheet>
     );
   }
   if (at === 'months') {
-    const go = async () => {
-      setError(undefined);
-      try {
-        const r = await submit.mutateAsync({ intake: { crops: [...crops], cows: COWS[cows], hard_months: months, land_role: LAND_ROLE[role] } });
-        setJobId(r.job_id); setStep('making');
-      } catch (e) { setError(e.message); }
-    };
+    const go = () => { setError(undefined); setStep('farmcash'); };
     return (
       <Sheet map={map} landName={name} onBack={back('cows')}>
-        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>4 / 4</p>
+        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>4 / 5</p>
         <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>In which months does your family need money most?</h1>
         <p style={{ ...muted, textAlign: 'center' }}>Choose up to 3 months.</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
@@ -288,11 +283,43 @@ export default function CropPlanFlow() {
       </Sheet>
     );
   }
+  if (at === 'farmcash') {
+    // CP7b, her farm business's money now (executive decision 21 Oct). DESIGN GAP: no board. Optional and skippable:
+    // skipped = no farm_cash_now at all (the cash flow starts at ₹0; nothing assumes or mentions her farm's money).
+    const make = async (amount) => {
+      setError(undefined);
+      try {
+        const intake = { crops: [...crops], cows: COWS[cows], hard_months: months, land_role: LAND_ROLE[role] };
+        if (amount != null) intake.farm_cash_now = amount;
+        const r = await submit.mutateAsync({ intake });
+        setJobId(r.job_id); setStep('making');
+      } catch (e) { setError(e.message); }
+    };
+    const n = Number(farmCash.replace(/[^0-9]/g, ''));
+    const given = farmCash.trim() !== '' && Number.isFinite(n);
+    return (
+      <Sheet map={map} landName={name} onBack={back('months')}>
+        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>5 / 5</p>
+        <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Does your farm business have money now?</h1>
+        <p style={{ ...muted, textAlign: 'center' }}>For example from a harvest you just sold. Optional, only used for your plan.</p>
+        <label htmlFor="farm-cash" style={{ display: 'block', fontSize: 14, fontWeight: 700, margin: '8px 0' }}>Farm money now (₹)</label>
+        <input id="farm-cash" inputMode="numeric" value={farmCash} placeholder="0"
+          onChange={(e) => setFarmCash(e.target.value.replace(/[^0-9]/g, '').slice(0, 8))}
+          style={{ width: '100%', height: 44, boxSizing: 'border-box', borderRadius: 12, border: 0, padding: '0 16px', fontSize: 16,
+            fontFamily: 'inherit', background: C.raised, color: C.text }} />
+        {error && <p style={{ color: C.coral }}>{error}</p>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button type="button" disabled={submit.isPending} onClick={() => make(null)} style={{ ...secondaryBtn, opacity: submit.isPending ? 0.5 : 1 }}>Skip</button>
+          <button type="button" disabled={submit.isPending || !given} onClick={() => make(n)} style={{ ...secondaryBtn, background: C.accent, color: C.ink, opacity: submit.isPending || !given ? 0.5 : 1 }}>Continue</button>
+        </div>
+      </Sheet>
+    );
+  }
   if (at === 'making') {
     return (
       <Sheet map={map} landName={name} title="Making your crop plan">
         <Making jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep('why'); }}
-          onError={(e) => { setError(e); setStep('months'); }} />
+          onError={(e) => { setError(e); setStep('farmcash'); }} />
       </Sheet>
     );
   }
@@ -365,6 +392,16 @@ export default function CropPlanFlow() {
     return (
       <Sheet map={map} landName={name} title="Before you accept your crop plan" onBack={back('plan')} scroll>
         <MoneyChart plan={plan} />
+        {/* What the plan means for her (21 Oct): the node's consequences, code-computed; Claude's retelling above them. */}
+        {plan.plan.consequences?.length > 0 && (
+          <>
+            <h2 style={{ fontSize: 14, fontWeight: 700, margin: '16px 0 0' }}>What this plan means for you</h2>
+            {plan.plan.explain?.means && <p style={{ ...muted, margin: '4px 0 0' }}>{plan.plan.explain.means}</p>}
+            {plan.plan.consequences.map((c) => (
+              <Notice key={c.kind + c.text} kind={c.severity === 'warn' ? 'warn' : 'info'} title={c.title}>{c.text}</Notice>
+            ))}
+          </>
+        )}
         <Notice title="Estimates, not guarantees">Yield, sales and cash flow are estimated from your field record and can contain errors. Vouchers and cash depend on available funds: Nila and your union cannot guarantee them.</Notice>
         <Notice kind="info" title="Amounts can be changed">You can change your cash and voucher amounts together with your union leaders.</Notice>
         <button type="button" role="checkbox" aria-checked={read} aria-label="I have read these conditions" onClick={() => setRead((r) => !r)} style={{
