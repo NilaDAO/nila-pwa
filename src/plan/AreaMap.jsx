@@ -127,7 +127,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       m.fitBounds(bounds, full ? { top: 90, left: 40, right: 40, bottom: Math.round(window.innerHeight * 0.6) } : 16);
     }
   };
-  useEffect(draw); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(draw, [record, labels, selected, onSelect, height]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; }); }, []);
   return (
     <div style={{ height, width: '100%', background: '#25361f' }} aria-label="Map of your areas">
