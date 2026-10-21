@@ -1,7 +1,10 @@
 // The border map of L2a–L4 (boards LeaderBorder*): her points and the shapes per field on the satellite basemap,
 // pan and zoom. Dashed white = to check, accent = being checked, solid white = accepted; numbered pins.
-// Same Leaflet loader and Esri tiles as the crop-plan AreaMap (no new dependency).
+// The Google satellite map, with the same key and loader as the member's R5–R8 map (src/register/FieldMap.jsx,
+// executive decision 21 Oct); the Leaflet/Esri map only when Google Maps cannot load (offline, a refused key).
 import { useEffect, useRef } from 'react';
+import { GoogleMap } from '@react-google-maps/api';
+import { useFieldMapLoaded } from '../register/FieldMap';
 import { useLeaflet } from '../plan/AreaMap';
 import { C } from '../shell/tokens';
 import { shapeFor } from './api';
@@ -17,7 +20,76 @@ const pinHtml = (n, on) => {
  * fields: the job's fields; plan: field n → shape id (the job's, or a preview); active: the field being
  * checked (or drawn); drawing: show the points only, in accent; onField(n): a pin or shape was tapped.
  */
-export default function BorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360 }) {
+export default function BorderMap(props) {
+  const { ok } = useFieldMapLoaded();
+  return ok ? <GoogleBorderMap {...props} /> : <LeafletBorderMap {...props} />;
+}
+
+const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy', tilt: 0,
+  clickableIcons: false, mapId: '8fa18e8fd7e4c318' };
+
+/** Google: the same drawing rules as below, on the satellite map. */
+function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360 }) {
+  const map = useRef(null);
+  const drawn = useRef([]);
+  const fitKey = useRef();
+  const draw = () => {
+    const m = map.current; const g = window.google?.maps;
+    if (!m || !g) return;
+    drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; });
+    drawn.current = [];
+    const bounds = new g.LatLngBounds(); const focus = new g.LatLngBounds(); let hasFocus = false;
+    fields.forEach((f) => {
+      const on = f.n === active;
+      const shape = drawing && f.state === 'drawing' ? null
+        : on && shapeOverride ? f.shapes?.find((s) => s.id === shapeOverride) : shapeFor(f, plan);
+      const ring = shape?.geometry?.coordinates?.[0];
+      if (ring?.length) {
+        const path = ring.map(([lng, lat]) => ({ lat, lng }));
+        const accepted = !!f.accepted && !on;
+        const dashed = !on && !accepted;
+        const poly = new g.Polygon({ map: m, paths: path, clickable: !!onField,
+          strokeColor: on ? C.accent : '#ffffff', strokeOpacity: dashed ? 0 : 1, strokeWeight: on ? 3 : 2,
+          fillColor: on ? C.accent : '#ffffff', fillOpacity: on ? 0.28 : accepted ? 0.08 : 0 });
+        if (onField) poly.addListener('click', () => onField(f.n));
+        drawn.current.push(poly);
+        if (dashed) {   // dashed white = to check (a dashed polyline over the outline)
+          drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false,
+            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#ffffff', scale: 2 }, offset: '0', repeat: '10px' }] }));
+        }
+        path.forEach((q) => { bounds.extend(q); if (on) { focus.extend(q); hasFocus = true; } });
+      }
+      const p = f.moved || f.point;
+      if (p) {
+        const pinOn = on || (drawing && f.state === 'drawing');
+        if (g.marker?.AdvancedMarkerElement) {
+          const mk = new g.marker.AdvancedMarkerElement({ map: m, position: { lat: p.lat, lng: p.lng }, content: pinHtml(f.n, pinOn), gmpClickable: !!onField });
+          if (onField) mk.addListener('click', () => onField(f.n));
+          drawn.current.push(mk);
+        }
+        bounds.extend(p);
+        if (on && !shape) { focus.extend(p); hasFocus = true; }
+      }
+    });
+    const key = `${active || 'all'}:${fields.length}`;
+    if (fitKey.current !== key && !bounds.isEmpty()) {
+      fitKey.current = key;
+      m.fitBounds(hasFocus ? focus : bounds, 32);
+    }
+  };
+  useEffect(draw); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; }); }, []);
+  return (
+    <div style={{ height, width: '100%' }} aria-label="Satellite map with field shapes">
+      <GoogleMap mapContainerStyle={{ height: '100%', width: '100%' }} options={G_OPTIONS}
+        onLoad={(m) => { map.current = m; m.setZoom(18); m.setCenter(fields[0]?.point ? { lat: fields[0].point.lat, lng: fields[0].point.lng } : { lat: 11.8872, lng: 78.9659 }); draw(); }}
+        onUnmount={() => { map.current = null; }} />
+    </div>
+  );
+}
+
+/** Leaflet + Esri: only when Google Maps cannot load. */
+function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360 }) {
   const ready = useLeaflet();
   const box = useRef();
   const map = useRef();
