@@ -58,7 +58,7 @@ function DenyDialog({ onClose, onDeny, busy }) {
           style={{ height: 44, width: '100%', border: 0, borderRadius: 12, background: C.raised, padding: '0 14px', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 16, color: C.text, outline: 'none' }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <button type="button" disabled={!why || busy} onClick={() => onDeny(why, note)}
-            style={{ ...btn, background: C.raised, color: why ? C.coral : C.muted, cursor: why ? 'pointer' : 'default' }}>Deny</button>
+            style={{ ...btn, background: C.raised, color: why ? C.text : C.muted, cursor: why ? 'pointer' : 'default' }}>Deny</button>
           <button type="button" onClick={onClose} style={{ ...btn, background: C.raised, color: C.text }}>Cancel</button>
         </div>
       </div>
@@ -126,7 +126,7 @@ function L12({ plan, onDone }) {
           {error && <p style={{ ...muted, color: C.coral, margin: 0 }}>{error}</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <button type="button" disabled={busy} onClick={() => decide('approve')} style={{ ...btn, background: C.accent, color: C.ink, opacity: busy ? 0.5 : 1 }}>Approve</button>
-            <button type="button" disabled={busy} onClick={() => setDeny(true)} style={{ ...btn, background: C.raised, color: C.coral }}>Deny</button>
+            <button type="button" disabled={busy} onClick={() => setDeny(true)} style={{ ...btn, background: C.raised, color: C.text }}>Deny</button>
           </div>
         </section>
       </div>
