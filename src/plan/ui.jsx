@@ -54,25 +54,13 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       h.style.backgroundSize = `100% ${c.offsetHeight}px`;
       h.style.backgroundPosition = `0 ${-(h.getBoundingClientRect().top - c.getBoundingClientRect().top)}px`;
     };
-    // Where the card rests (its drag offset in, the page's or its own scroll out): the map's logo sits just above it.
-    const rest = () => {
-      const c = drag.ref.current;
-      if (!c) return;
-      const box = c.closest('[data-sheet-scroll]');
-      // A bar on top of the card (44 high, 12 above it) counts too.
-      stage.setUnder(window.innerHeight - (c.getBoundingClientRect().top + (box ? box.scrollTop : window.scrollY)) + (bar ? 56 : 0));
-    };
-    paint(); rest();
-    const card = drag.ref.current;
-    card?.addEventListener('transitionend', rest);
+    paint();
     window.addEventListener('scroll', paint, { capture: true, passive: true });
     window.addEventListener('resize', paint);
-    window.addEventListener('resize', rest);
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(paint) : null;
     if (ro && drag.ref.current) ro.observe(drag.ref.current);
     return () => {
-      card?.removeEventListener('transitionend', rest);
-      window.removeEventListener('scroll', paint, { capture: true }); window.removeEventListener('resize', paint); window.removeEventListener('resize', rest); ro?.disconnect();
+      window.removeEventListener('scroll', paint, { capture: true }); window.removeEventListener('resize', paint); ro?.disconnect();
     };
   }); // eslint-disable-line react-hooks/exhaustive-deps
   const headRow = staged && (
@@ -109,7 +97,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
             <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}[data-sheet-scroll]::-webkit-scrollbar{display:none}'}</style>
             <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
             {headRow}
-            <div style={staged ? { opacity: drag.low ? 0 : 1, transition: 'opacity 200ms', pointerEvents: drag.low ? 'none' : undefined } : undefined}>
+            <div style={staged ? { opacity: drag.low ? 0 : 1, visibility: drag.low ? 'hidden' : 'visible', transition: drag.low ? 'none' : 'opacity 200ms' } : undefined}>
               {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
               {children}
             </div>
@@ -138,7 +126,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
         {headRow}
         {/* Lowered (map-central): the body fades out, so under the tab bar only the card's gradient shows. */}
-        <div style={staged ? { opacity: drag.low ? 0 : 1, transition: 'opacity 200ms', pointerEvents: drag.low ? 'none' : undefined } : undefined}>
+        <div style={staged ? { opacity: drag.low ? 0 : 1, visibility: drag.low ? 'hidden' : 'visible', transition: drag.low ? 'none' : 'opacity 200ms' } : undefined}>
           {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
           {children}
         </div>
