@@ -61,7 +61,8 @@ export function tasksOf(plan, areaNo) {
     out.push({ date: sh.from_date, text: sh.hours ? 'Receive cash + vouchers' : 'Receive cash', share: sh.key, season: si,
       area: [typeof no === 'number' ? `Area ${no}` : '', sh.loan_amount ? inr(sh.loan_amount) : '', sh.hours ? `${sh.hours} h` : '', 'union office'].filter(Boolean).join(' · ') });
   }
-  return out.sort((a, b) => a.date.localeCompare(b.date));
+  // Same month: she receives the cash before she plants.
+  return out.sort((a, b) => a.date.slice(0, 7).localeCompare(b.date.slice(0, 7)) || (!!b.share - !!a.share) || a.date.localeCompare(b.date));
 }
 
 // To do now: a raised row with the task's area under it; coming up: one plain line (board CropPlanActive).
