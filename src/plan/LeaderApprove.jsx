@@ -12,6 +12,14 @@ import { inr, muted } from './ui';
 import { Loading } from '../register/Boot';
 
 const SEASON = { S1: 'Season 1', S2: 'Season 2', S3: 'Season 3' };
+// The machine hours of a season by kind ("Tractor 6 h · Weeder 2 h"), or "None".
+function voucherKinds(rows) {
+  const h = {};
+  rows.forEach((r) => Object.entries(r.finance.machines || {}).forEach(([m, v]) => { h[m] = (h[m] || 0) + (v.hours || 0); }));
+  const parts = Object.entries(h).filter(([, n]) => n > 0).map(([m, n]) => `${m[0].toUpperCase()}${m.slice(1).replace(/_/g, ' ')} ${Math.round(n * 10) / 10} h`);
+  return parts.length ? parts.join(' · ') : 'None';
+}
+
 const REASONS = ['Crops do not fit her land', 'Amounts too high', 'Wrong areas', 'Other'];
 const STELLAR_ONLY = 900000;   // demo Stellar-only titles (900043, 900050 …) have no Polygon tokenURI
 const card = { flexShrink: 0, background: C.ink, borderRadius: 24, boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px',
@@ -101,11 +109,10 @@ function L12({ plan, onDone }) {
           const due = s.rows.map((r) => r.finance.due).filter(Boolean).sort().pop();
           return (
             <section key={s.slot} aria-label={SEASON[s.slot]} style={card}>
-              <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>{SEASON[s.slot]}</span>
+              {/* Simplified (executive decision 21 Oct): "Season N · crops" as the title, the kinds of vouchers (or none), repay. */}
+              <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>{SEASON[s.slot]} · {[...new Set(s.rows.map((r) => r.name))].join(', ') || '—'}</span>
               <Rows>
-                <Row top k="Crops" v={[...new Set(s.rows.map((r) => r.name))].join(', ') || '—'} />
-                <Row k="Cash" v={inr(sum(s.rows, (f) => f.cash))} />
-                <Row k="Vouchers" v={inr(sum(s.rows, (f) => f.voucher_value))} />
+                <Row top k="Vouchers" v={voucherKinds(s.rows)} />
                 <Row k="Repay" v={`${inr(sum(s.rows, (f) => f.repay))}${due ? ` · end of ${month(due)}` : ''}`} />
               </Rows>
             </section>
