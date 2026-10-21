@@ -207,8 +207,10 @@ export default function Shell({ leader }) {
   else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
 
-  // No tab is active on task, settings, history and wallet screens.
-  const active = tabs.some(([id]) => id === view) ? view : undefined;
+  // No tab is active on task, settings, history and wallet screens; a crop share (A4/A4a, and taking it up) belongs to
+  // the Crop plan tab (21 Oct).
+  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view;
+  const active = tabs.some(([id]) => id === tabOf) ? tabOf : undefined;
   return (
     // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.
     <div style={{ minHeight: '100vh', background: GRADIENT, paddingBottom: TAB_BAR_HEIGHT + 16 }} data-testid="shell">
