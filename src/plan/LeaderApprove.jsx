@@ -87,7 +87,10 @@ function L12({ plan, onDone }) {
   const acres = seasons[0] ? seasons[0].rows.reduce((a, r) => a + r.acres, 0) : 0;
   return (
     <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
-      <ScreenHeader title={farm || `Land ${plan.land_id}`} onBack={onDone} onSettings={() => { window.location.hash = '#/settings'; }} />
+      {/* The header stays at the top while the cards scroll (board: header fixed, column scrolls under it). */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 3, background: C.ink, margin: '0 -8px', padding: '0 8px' }}>
+        <ScreenHeader title={farm || `Land ${plan.land_id}`} onBack={onDone} onSettings={() => { window.location.hash = '#/settings'; }} />
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 24 }}>
         <section aria-label="Her plan" style={card}>
           <Rows>
