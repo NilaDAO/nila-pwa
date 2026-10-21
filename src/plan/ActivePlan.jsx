@@ -3,6 +3,7 @@
 // the machine jobs (when, for), harvest, repay (due, amount). DESIGN GAPs: no "Done" chips and no
 // "Done · n" group (no activity-done store yet, design Q26), no mismatch card (no crop-seen check yet,
 // open-cp/3-4), no farm improvements (not in the record or plan), no "Sell" steps (not in the plan).
+// As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month.
 import { C } from '../shell/tokens';
 import { Primary, inr, muted } from './ui';
 
@@ -10,6 +11,17 @@ const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' })
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 // Machine jobs as the board words them ("Weed maize"); the catalogue's `for` text otherwise.
 const VERB = [[/weeding/i, 'Weed'], [/spraying|spray/i, 'Spray'], [/harvest/i, 'Harvest'], [/cutting|cut/i, 'Cut']];
+// The board's row icons (lucide paths, gold #D4A634).
+const IC = {
+  plant: 'M7 20h10M10 20c5.5-2.5.8-6.4 3-10M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8zM14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z',
+  weed: 'M2 22v-5l5-5 5 5-5 5zM9.5 14.5 16 8M17 2l5 5-.5.5a3.54 3.54 0 0 1-5 0 3.54 3.54 0 0 1 0-5z',
+  tractor: 'M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4',
+  cut: 'M3 6a3 3 0 1 0 6 0a3 3 0 1 0-6 0M3 18a3 3 0 1 0 6 0a3 3 0 1 0-6 0M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12',
+  harvest: 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.27 6.96 12 12.01l8.73-5.05M12 22.08V12',
+  repay: 'M7 17 17 7M7 7h10v10',
+};
+const iconOf = (text) => (/^Plant/.test(text) ? 'plant' : /^Weed/.test(text) ? 'weed' : /^Cut/.test(text) ? 'cut'
+  : /^Harvest/.test(text) ? 'harvest' : /^Repay/.test(text) ? 'repay' : 'tractor');
 const SLOT = { S1: 'Oct to Feb', S2: 'Mar to May', S3: 'Jun to Aug' };
 const job = (m, name) => { const v = VERB.find(([re]) => re.test(m.for)); return v ? `${v[1]} ${name}` : `${m.for.charAt(0).toUpperCase()}${m.for.slice(1)} · ${name}`; };
 const kg = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')} t` : `${Math.round(n).toLocaleString('en-IN')} kg`);
@@ -32,10 +44,34 @@ export function tasksOf(plan, areaNo) {
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function Row({ t }) {
+// To do now: a raised row with the task's area under it; coming up: one plain line (board CropPlanActive).
+function Row({ t, now }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 8 }}>
-      <span><b>{t.text}</b><br /><span style={muted}>{[month(t.date), t.area].filter(Boolean).join(' · ')}</span></span>
+    <div role="listitem" aria-label={`${t.text}, ${month(t.date)}, ${now ? 'to do' : 'coming up'}`}
+      style={{ display: 'flex', alignItems: now ? 'center' : 'flex-start', gap: 10, borderRadius: 12, fontSize: 14, lineHeight: 1.5,
+        ...(now ? { background: C.raised, padding: '12px 16px' } : { padding: '8px 0' }) }}>
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+        <path d={IC[iconOf(t.text)]} />
+      </svg>
+      <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <span style={{ display: 'flex', gap: 10 }}>
+          <span style={{ flexGrow: 1, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.text}</span>
+          <span style={{ whiteSpace: 'nowrap', color: C.muted }}>{month(t.date)}</span>
+        </span>
+        {now && t.area && <span style={{ color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.area}</span>}
+      </span>
+    </div>
+  );
+}
+
+function Group({ name, items, now }) {
+  if (!items.length) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>{name}</span>
+      <div role="list" aria-label={name} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map((t) => <Row key={t.date + t.text + t.area} t={t} now={now} />)}
+      </div>
     </div>
   );
 }
@@ -55,11 +91,9 @@ export default function ActivePlan({ plan, areaNo, today = new Date(), onUpdate 
     <>
       {season && <p style={{ textAlign: 'center', fontWeight: 700, margin: '0 0 4px' }}>Season {idx + 1} · {monthYear(season.start)}{end ? ` to ${monthYear(end)}` : ''}</p>}
       {approvedAt && <p style={{ ...muted, textAlign: 'center' }}>Your plan · {approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
-      <h2 style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>To do now</h2>
-      {thisMonth.length ? thisMonth.map((t) => <Row key={t.date + t.text + t.area} t={t} />) : <p style={muted}>Nothing this month.</p>}
-      <h2 style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>Coming up</h2>
-      {later.map((t) => <Row key={t.date + t.text + t.area} t={t} />)}
-      <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginTop: 8 }}>
+      <Group name="To do now" items={thisMonth} now />
+      <Group name="Coming up" items={later} />
+      <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginTop: 16 }}>
         <b>Your plan</b>
         {seasons[0] && lastDue && <div style={muted}>Plan year {monthYear(seasons[0].start)} to {monthYear(lastDue)}</div>}
         <div style={muted}>Now Season {idx + 1} of {seasons.length}{idx === seasons.length - 1 ? ' · last season' : ''}</div>
