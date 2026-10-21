@@ -43,7 +43,7 @@ function Making({ jobId, onDone, onError }) {
 
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, cursor: 'pointer' };
 
-function PlanView({ plan, checked, onAccept, onChange, readOnly }) {
+function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) => z }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
@@ -102,7 +102,12 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly }) {
         <p style={{ ...muted, color: C.coral }}>Part of the input cost is above the ₹10,000 cash cap and is not financed: {inr(seasons.reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.cash_above_cap || 0), 0), 0))}.</p>
       )}
       {p.left_out?.length > 0 && <p style={muted}>Areas too small to plan: {p.left_out.length}.</p>}
-      {p.member_request?.not_followed?.length > 0 && <p style={muted}>Not followed: {p.member_request.not_followed.map((n) => n.why || n.reason || JSON.stringify(n)).join('; ')}</p>}
+      {/* Her changes are hard rules (21 Oct); only a hard fact refuses one, and anything the node could not read is named. */}
+      {p.member_request?.not_followed?.length > 0 && (
+        <p style={{ ...muted, color: C.coral }}>Not followed: {p.member_request.not_followed.map((n) => (n.zone
+          ? `Area ${areaNo(n.zone)}${n.slot ? `, ${SEASON[n.slot] || n.slot}` : ''}${n.crop ? ` (${n.crop.replace(/_/g, ' ')})` : ''}: ${n.why}`
+          : n.why || n.reason || JSON.stringify(n))).join('; ')}</p>
+      )}
       {!readOnly && <Primary disabled={checked.size < zones.length} onClick={onAccept}>Accept the plan</Primary>}
       {/* CP10: change it — a new version that follows her (Renew plan is on CP9). */}
       {!readOnly && onChange && <button type="button" onClick={onChange} style={{ ...secondaryBtn, width: '100%', marginTop: 8 }}>Change my plan</button>}
@@ -315,7 +320,7 @@ export default function CropPlanFlow() {
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
             onCrop={(r) => { setChangeNote(`Area ${areaNo(area)}, ${SEASON[r.slot]}: instead of ${r.name}, `); setStep('change'); }} />
         ) : (
-          <PlanView plan={plan} checked={checked} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={readOnly} />
+          <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={readOnly} />
         )}
       </Sheet>
     );
