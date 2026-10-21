@@ -49,7 +49,8 @@ const centre = (g) => { const pts = ringsOf(g).flat(); return pts.length ? [pts.
 /** How many of her fields (record meta.geometry.field_features) lie in an area; 0 when the record has none. */
 export function fieldsIn(record, zone) {
   const rings = ringsOf(zone?.geometry);
-  const feats = record?.meta?.geometry?.field_features;
+  const fc = record?.meta?.geometry?.field_features;   // a GeoJSON FeatureCollection
+  const feats = Array.isArray(fc) ? fc : fc?.features;
   if (!rings.length || !Array.isArray(feats)) return 0;
   return feats.filter((f) => { const c = centre(f.geometry || f); return c && rings.some((r) => inRing(c, r)); }).length;
 }
