@@ -212,7 +212,9 @@ export default function CropPlanFlow() {
     const slot = ss[i].slot;
     for (const c of plan.plan.soil_cover || []) {
       if (out[c.zone] || !(c.slots || []).includes(slot)) continue;
-      out[c.zone] = { text: c.kind === 'bare' ? 'Bare soil' : c.name.replace(/^Mulch, then /, ''), sub: c.kind === 'bare' ? 'erosion risk' : 'soil cover',
+      const short = c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/ \(.*\)$/, '');
+      out[c.zone] = { text: c.kind === 'bare' ? 'Bare soil' : short.charAt(0).toUpperCase() + short.slice(1),
+        sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
     return out;

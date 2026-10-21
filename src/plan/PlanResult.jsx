@@ -119,7 +119,8 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
           {soil.map((c) => {
             const from = c.mulch_first || !c.sow ? c.from : c.sow;
             const s0 = Math.max(0, Math.min(12, at(from))); const s1 = Math.max(s0 + 0.3, Math.min(12, at(c.turn_in || c.until)));
-            const label = c.kind === 'bare' ? 'Bare soil' : c.kind === 'mulch' ? 'Mulch' : c.name.replace(/^(Mulch, then )?green manure: /i, 'Green manure: ');
+            const short = c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/ \(.*\)$/, '');
+            const label = c.kind === 'bare' ? 'Bare soil' : c.kind === 'mulch' ? 'Mulch' : short.charAt(0).toUpperCase() + short.slice(1);
             const fill = c.kind === 'bare' ? `repeating-linear-gradient(45deg, ${C.coral} 0 3px, transparent 3px 6px)`
               : `repeating-linear-gradient(45deg, ${c.colour || '#7FB069'} 0 3px, rgba(127,176,105,0.25) 3px 6px)`;
             return (
