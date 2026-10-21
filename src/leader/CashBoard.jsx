@@ -15,6 +15,7 @@ import { useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
 import { COLLECT } from '../anchor/sep';
 import { C, FONT, R } from '../shell/tokens';
+import { Loading } from '../register/Boot';
 import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
 
 const U = 10_000_000n;
@@ -52,7 +53,7 @@ function Chip({ book, api, onFound }) {
   const [note, setNote] = useState();
   const [added, setAdded] = useState(0);
   const [gapInStore, setGapInStore] = useState(false);
-  if (!book) return <p style={{ color: C.muted, textAlign: 'center' }}>…</p>;
+  if (!book) return <Loading />;
   if (book.gap <= 0) {
     return <p style={{ textAlign: 'center', margin: '8px 0 0' }}><b>✓ Every rupee is accounted for</b><br /><span style={{ color: C.muted, fontSize: 14 }}>{added ? `${added} share${added > 1 ? 's' : ''} added to the list` : 'Treasury and share list agree'}</span></p>;
   }
@@ -218,7 +219,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
   const cash = cashQ.data;
   const book = bookQ.data;
   if (cashQ.isError) return <div style={{ ...card, margin: 16 }}>Could not read the union. Try again.</div>;
-  if (!cash) return <div style={{ ...card, margin: 16, color: C.muted }}>…</div>;
+  if (!cash) return <Loading />;   // S1 while the union loads (executive decision 21 Oct: every wait is S1)
   return (
     <div style={{ padding: '16px 8px 0', fontFamily: FONT, color: C.text }}>
       <section style={{ ...card, textAlign: 'center' }} aria-label="Union treasury">

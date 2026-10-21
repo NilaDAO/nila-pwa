@@ -184,7 +184,11 @@ export function RegLoading() {
 // Straight from registration (R3/R9 done in this page load) the waits stay on the R ground; on a reload or a normal
 // start they are S1 (executive decision 21 Oct). A module flag, so a reload clears it.
 let fromRegister = false;
-export function markFromRegister() { fromRegister = true; }
+export function markFromRegister() {
+  fromRegister = true;
+  // A sign-in starts on the app's first tab: a hash left from an earlier session (e.g. #/cash) is not a deep link.
+  try { if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch { /* ignore */ }
+}
 export function BootLoading() {
   return fromRegister ? <RegLoading /> : <Loading />;
 }
