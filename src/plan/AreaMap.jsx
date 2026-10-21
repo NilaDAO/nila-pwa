@@ -55,17 +55,17 @@ const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, gestureHandl
   maxZoom: 20, tilt: 0, mapId: '8fa18e8fd7e4c318', isFractionalZoomEnabled: true };
 
 // CP10's map label (board CropPlanQ3-xdlz): one chip, the crop bold and the yield under it; the picked area's chip
-// gets the accent border, the others fade; an accepted area shows a check. Text from the node, never as HTML.
+// is filled in the accent with on-accent (ink) text (21 Oct), the others fade; an accepted area shows a check. Text from the node, never as HTML.
 function chip({ text, sub, acc, soil }, on, faded, clickable) {
   const el = document.createElement('div');
   // A soil cover's chip (21 Oct) has a dashed green border, so it never reads as a crop for sale.
   Object.assign(el.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 10px', borderRadius: '12px',
-    background: 'rgba(18,18,18,0.85)', color: '#F1F5F9', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap',
-    border: on ? '2px solid #D4CF5A' : soil ? '1.5px dashed #7FB069' : '0', opacity: faded ? '0.3' : '1', cursor: clickable ? 'pointer' : 'default', transform: 'translateY(50%)' });
+    background: on ? '#D4CF5A' : 'rgba(18,18,18,0.85)', color: on ? '#121212' : '#F1F5F9', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap',
+    border: on ? '0' : soil ? '1.5px dashed #7FB069' : '0', opacity: faded ? '0.3' : '1', cursor: clickable ? 'pointer' : 'default', transform: 'translateY(50%)' });
   const a = document.createElement('span');
   Object.assign(a.style, { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', lineHeight: '1.5', fontWeight: '700' });
   if (acc) {
-    a.insertAdjacentHTML('beforeend', '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D4CF5A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>');
+    a.insertAdjacentHTML('beforeend', `<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${on ? '#121212' : '#D4CF5A'}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>`);
   }
   a.appendChild(document.createTextNode(text));
   el.appendChild(a);

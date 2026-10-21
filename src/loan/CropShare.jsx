@@ -9,6 +9,7 @@
 // is empty and the Add a note buttons are shown disabled.
 import { Primary, Sheet, inr, muted } from '../plan/ui';
 import AreaMap from '../plan/AreaMap';
+import { Loading } from '../register/Boot';
 import { areasOf, useFieldRecord } from '../plan/record';
 import { C } from '../shell/tokens';
 import { BanknoteIcon, TractorIcon } from '../shell/icons';
@@ -61,10 +62,12 @@ export default function CropShare({ token, onBack, onTakeUp }) {
   const field = useFieldRecord(land.landId, land.evm, land.stellarTitle ? land.stellarTitle.record_hash || '' : undefined);
   const record = field.data?.record;
   const x = shares.data?.find((y) => y.token_id === token);
+  // S1 until her shares and her field record are both in (21 Oct): the card never shows before its map.
+  if ((!x && (shares.isLoading || !shares.data)) || (x && !record && !field.error)) return <Loading />;
   if (!x) {
     return (
       <Sheet title="Your crop share" onBack={onBack}>
-        <p style={{ ...muted, textAlign: 'center' }}>{shares.isLoading ? 'Loading your crop share…' : 'This crop share is not in your plan.'}</p>
+        <p style={{ ...muted, textAlign: 'center' }}>This crop share is not in your plan.</p>
       </Sheet>
     );
   }
