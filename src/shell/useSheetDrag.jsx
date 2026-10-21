@@ -73,5 +73,6 @@ export default function useSheetDrag(onLowered, resetKey) {
       <div style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.35)' }} />
     </div>
   );
-  return { ref, style, handle };
+  // low: the card is (being) lowered; a sheet fades its body then, so only the top strip shows (map-central trial).
+  return { ref, style, handle, low: off > 24 };
 }

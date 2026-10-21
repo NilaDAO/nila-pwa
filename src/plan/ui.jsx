@@ -109,8 +109,10 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
             <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}[data-sheet-scroll]::-webkit-scrollbar{display:none}'}</style>
             <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
             {headRow}
-            {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
-            {children}
+            <div style={staged ? { opacity: drag.low ? 0 : 1, transition: 'opacity 200ms', pointerEvents: drag.low ? 'none' : undefined } : undefined}>
+              {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
+              {children}
+            </div>
           </section>
         </div>
       </div>
@@ -135,8 +137,11 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         {bar && <div style={{ position: 'absolute', left: 8, right: 8, bottom: 'calc(100% + 12px)' }}>{bar}</div>}
         <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
         {headRow}
-        {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
-        {children}
+        {/* Lowered (map-central): the body fades out, so under the tab bar only the card's gradient shows. */}
+        <div style={staged ? { opacity: drag.low ? 0 : 1, transition: 'opacity 200ms', pointerEvents: drag.low ? 'none' : undefined } : undefined}>
+          {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
+          {children}
+        </div>
       </div>
     </div>
   );
