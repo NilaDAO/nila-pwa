@@ -4,7 +4,7 @@ import { C, FONT, R } from '../shell/tokens';
 import useSheetDrag from '../shell/useSheetDrag';
 import { SettingsButton } from '../shell/RoundButton';
 
-export function Sheet({ title, children, landName, onBack, map, bar, resetKey }) {
+export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll }) {
   const drag = useSheetDrag(undefined, resetKey);   // the drag line as on R5 (all map screens, 21 Oct)
   // The card's own bottom padding clears the tab bar, so the shell's padding under it would only show map below the
   // card when scrolled to the end: off while a map sheet is open, so the card stays glued to the bottom.
@@ -25,6 +25,25 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey })
       <SettingsButton background={C.ink} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, right: 8, top: 18 }} />
     </>
   );
+  if (scroll && map) {
+    // The card scrolls inside its own area below the fixed header (board CropPlanTerms, data-sheet-scroll): the map
+    // and the header buttons stay put, the card's content moves; the card always reaches the bottom of the screen.
+    return (
+      <div style={{ fontFamily: FONT, color: C.text, position: 'fixed', inset: 0, zIndex: 0, background: '#25361f' }}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>{isValidElement(map) ? cloneElement(map, { height: '100%' }) : map}</div>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>
+        <div data-sheet-scroll style={{ position: 'absolute', left: 0, right: 0, top: 76, bottom: 0, overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none', zIndex: 4, pointerEvents: 'none' }}>
+          <div aria-hidden="true" style={{ height: Math.max(120, Math.round(window.innerHeight / 3) - 76) }} />
+          <section ref={drag.ref} className="cp-sheet" style={{ pointerEvents: 'auto', background: C.ink, borderRadius: '24px 24px 0 0', padding: '10px 22px 104px', boxSizing: 'border-box', minHeight: '100%', boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', ...drag.style }}>
+            <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}[data-sheet-scroll]::-webkit-scrollbar{display:none}'}</style>
+            <div style={{ marginBottom: 16 }}>{drag.handle}</div>
+            {title && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
+            {children}
+          </section>
+        </div>
+      </div>
+    );
+  }
   return (
     <div style={{ fontFamily: FONT, color: C.text, position: 'relative', minHeight: '100dvh', background: '#25361f', display: 'flex', flexDirection: 'column' }}>
       {/* The map fills the whole screen behind the card (21 Oct), so dragging the card down shows more map. */}
