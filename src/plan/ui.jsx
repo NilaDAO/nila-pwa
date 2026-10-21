@@ -59,7 +59,8 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       const c = drag.ref.current;
       if (!c) return;
       const box = c.closest('[data-sheet-scroll]');
-      stage.setUnder(window.innerHeight - (c.getBoundingClientRect().top + (box ? box.scrollTop : window.scrollY)));
+      // A bar on top of the card (44 high, 12 above it) counts too.
+      stage.setUnder(window.innerHeight - (c.getBoundingClientRect().top + (box ? box.scrollTop : window.scrollY)) + (bar ? 56 : 0));
     };
     paint(); rest();
     const card = drag.ref.current;
