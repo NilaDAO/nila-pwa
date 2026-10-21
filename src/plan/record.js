@@ -23,16 +23,24 @@ async function fromNode(hash) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-/** { hash, record } once published; { hash: null } while the oracle is still making it (CP1). */
-export function useFieldRecord(landId, owner) {
+/** { hash, record } once published; { hash: null } while the oracle is still making it (CP1).
+ *  stellarHash: for a title that exists on Stellar only (the demo, 21 Oct) the record hash comes from the Stellar title
+ *  (node GET /stellar/titles) instead of Polygon; '' / null while it is being made. */
+export function useFieldRecord(landId, owner, stellarHash) {
   const { provider } = useProvider();
+  const onStellar = stellarHash !== undefined;
   return useQuery({
-    queryKey: ['ipfs', 'record', landId, owner],
-    enabled: !!provider && landId != null && !!owner,
+    queryKey: ['ipfs', 'record', landId, owner, onStellar ? stellarHash || '' : null],
+    enabled: landId != null && (onStellar || (!!provider && !!owner)),
     staleTime: 10 * 60_000,
     // While it is being made, or after a failed fetch: look again every minute.
-    refetchInterval: (q) => ((q.state.data && !q.state.data.hash) || q.state.error ? 60_000 : false),
+    // Asked again soon while the record is on its way (a new title gets its record hash seconds after the title).
+    refetchInterval: (q) => ((q.state.data && !q.state.data.hash) || q.state.error ? 5_000 : false),
     queryFn: async () => {
+      if (onStellar) {
+        if (!stellarHash) return { hash: null };
+        return { hash: stellarHash.toLowerCase(), record: await fromNode(stellarHash.toLowerCase()) };
+      }
       const c = new ethers.Contract(process.env.REACT_APP_LAND_TITLE_MAIN, TITLE_ABI, provider);
       if ((await c.getCommitment(landId)) === ZERO) return { hash: null };
       const hash = (await c.getRecordHash.staticCall(landId, { from: owner })).toLowerCase();

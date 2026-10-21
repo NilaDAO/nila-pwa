@@ -35,6 +35,24 @@ export function useLandTitles(address) {
   });
 }
 
+/** The land's name from its land TITLE metadata (executive decision 21 Oct), as today's app reads it: Polygon —
+ *  tokenURI → metadata `farm`; Stellar — the node's checked title metadata (`farm` in GET /stellar/titles).
+ *  null when the title carries none (the caller shows "Land <id>"). */
+export function useTitleName(landId, onPolygon, stellarTitle) {
+  const { provider } = useProvider();
+  const poly = useQuery({
+    queryKey: ['polygon', 'titleName', landId], enabled: !!onPolygon && landId != null && !!provider, staleTime: Infinity,
+    queryFn: async () => {
+      const { decodeMetadataUri } = await import('../utils/decodeMetadataUri.ts');
+      const c = new ethers.Contract(process.env.REACT_APP_LAND_TITLE_MAIN, ['function tokenURI(uint256) view returns (string)'], provider);
+      const meta = await decodeMetadataUri(await c.tokenURI(landId));
+      return (meta?.farm || '').trim() || null;
+    },
+  });
+  if (onPolygon) return poly.data || null;
+  return (stellarTitle?.farm || '').trim() || null;
+}
+
 export function useCropCatalogue() {
   return useQuery({ queryKey: qkPlan.catalogue(), queryFn: getCatalogue, staleTime: 7 * 86_400_000 });
 }
@@ -105,5 +123,15 @@ export function useApprovePlan() {
 /** CP10 "Change my plan": her (or her leader's) explanation and crop changes → a new version (/revise). */
 export function useRevisePlan() {
   const api = usePlanClient();
-  return useMutation({ mutationFn: ({ planId, note, changes }) => api.revise(planId, note, changes) });
+  return useMutation({ mutationFn: ({ planId, note, changes, remove }) => api.revise(planId, note, changes, remove) });
+}
+
+/** CP10 "Renew plan": her draft plan is removed (/discard) and she starts again from CP1. */
+export function useDiscardPlan(landId) {
+  const api = usePlanClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (planId) => api.discard(planId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }),
+  });
 }

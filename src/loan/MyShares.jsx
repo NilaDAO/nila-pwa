@@ -6,24 +6,35 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
-import { useStellarConfig } from '../stellar/hooks';
+import { useStellarConfig, useStellarTitles } from '../stellar/hooks';
 import { readContract, sv, tokenHex } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { useCropPlan, useLandTitles, usePlanClient } from '../plan/hooks';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { capsFor, checkRows, useUnionChecks } from './unionChecks';
+import { ChevronIcon, ShareTile } from '../shell/icons';
 
-const FLAG_DRAWN = 8;
-const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
+export const FLAG_DRAWN = 8;
+export const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
+
+/** Her land as the crop plan finds it (CP1): a Polygon title, else her title on Stellar — the demo's titles and every
+ *  new member's are on Stellar only, so a Polygon-only lookup found no plan and A1 showed no crop shares (21 Oct). */
+export function useMyLand() {
+  const s = useNilaSigner();
+  const titles = useLandTitles(s?.evmAddress);
+  const stellarTitles = useStellarTitles(s);
+  const onPolygon = !!titles.data?.length;
+  const stellarTitle = onPolygon ? undefined : stellarTitles.data?.[0];
+  return { landId: onPolygon ? titles.data[0] : stellarTitle?.title_id, onPolygon, stellarTitle, evm: s?.evmAddress };
+}
 
 /** Her shares: her approved plan's mint list + each token's state on Stellar. */
 export function useMyShares() {
-  const s = useNilaSigner();
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
-  const titles = useLandTitles(s?.evmAddress);
-  const plan = useCropPlan(titles.data?.[0]);
+  const { landId } = useMyLand();
+  const plan = useCropPlan(landId);
   const p = plan.data;
   return useQuery({
     queryKey: ['oracle', 'myShares', p?.id], enabled: !!api && !!cfg && p?.approval?.decision === 'approve',
@@ -36,14 +47,16 @@ export function useMyShares() {
         const share = (p.plan.shares || []).find((x) => x.key === m.share) || {};
         const drawn = !!ft && (Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
         const ready = !!ft && !drawn && Number(ft.from_date) * 1000 <= Date.now();
-        return { ...m, share, ft, drawn, ready, area: zones.indexOf(m.zone) + 1, plan: p };
+        // "1" or, for areas merged in a season (same crop, 21 Oct), "1 + 2": shown as "Area {area}".
+        const area = (m.zones || share.zones || [m.zone]).map((z) => zones.indexOf(z) + 1).join(' + ');
+        return { ...m, share, ft, drawn, ready, area, plan: p };
       }));
     },
   });
 }
 
 export function shareTag(x) {
-  if (!x.ft) return 'Planned';
+  if (!x.ft) return 'Not attested yet';
   if (x.drawn) return 'Financed';
   if (x.ready) return 'Ready';
   return `From ${new Date(Number(x.ft.from_date) * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
@@ -119,24 +132,44 @@ export function TakeUp({ token, onBack }) {
   );
 }
 
-/** The A1 rows. In assisted mode a Ready share says to ask the leader. */
+export const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
+  .filter((r) => (r.zones || [r.zone]).includes(x.zone) && (r.crop === x.crop || r.name === x.crop))
+  // The same crop can stand on one area in two seasons: the share's sowing date picks the season.
+  .sort((a, b) => (b.sow === x.share.from_date) - (a.sow === x.share.from_date))[0];
+export const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
+export const amount = (kg) => (kg >= 1000 ? `~${Math.round(kg / 100) / 10} t` : `~${Math.round(kg)} kg`);
+
+/** The A1 rows (board MemberAssets-ley3, "Crop shares"): her crop's coin, crop, "Area N · season", its state, the
+ *  expected harvest and its value on the right, a chevron. Every row opens its crop share: A4 once a loan is drawn on
+ *  it, A4a before (src/loan/CropShare.jsx). */
 export function ShareRows({ onOpen }) {
   const shares = useMyShares();
   if (!shares.data?.length) return null;
   return (
     <>
-      <span style={{ fontWeight: 700, color: C.muted }}>Crop shares</span>
-      {shares.data.map((x) => (
-        <button key={x.token_id} type="button" onClick={() => x.ready && !assisted() && onOpen(x.token_id)} style={{
-          display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: 12, padding: '12px 16px', width: '100%', border: 0, color: C.text, textAlign: 'left', fontSize: 14, lineHeight: 1.5 }}>
-          <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-            <b>{x.crop}</b>
-            <span style={{ color: C.muted }}>Area {x.area}</span>
-            <span style={{ color: x.ready ? C.accent : C.muted, fontWeight: 700 }}>{x.ready && assisted() ? 'Ready · ask your leader' : shareTag(x)}</span>
-          </span>
-          <span style={{ fontWeight: 700 }}>{x.share.loan_amount ? inr(x.share.loan_amount) : `${x.share.hours} h`}</span>
-        </button>
-      ))}
+      <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5, color: C.muted, paddingTop: 6 }}>Crop shares</span>
+      {shares.data.map((x) => {
+        const r = rowOf(x) || {};
+        const fodder = !x.share.loan_amount && x.share.hours;
+        const tag = x.ready && assisted() ? 'Ready · ask your leader' : shareTag(x);
+        return (
+          <button key={x.token_id} type="button" onClick={() => onOpen(x.token_id)} style={{
+            display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: 12, padding: '12px 16px', minHeight: 48,
+            width: '100%', border: 0, color: C.text, textAlign: 'left', fontSize: 14, lineHeight: 1.5, cursor: 'pointer' }}>
+            <ShareTile colour={r.colour} />
+            <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontWeight: 700 }}>{r.name || x.crop.replace(/_/g, ' ')}</span>
+              <span style={{ color: C.muted }}>Area {x.area}{r.slot ? ` · ${SEASON[r.slot]}` : ''}{fodder ? ' · fodder' : ''}</span>
+              <span style={{ color: x.ready ? C.accent : C.muted, fontWeight: 700 }}>{tag}</span>
+            </span>
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              {r.kg ? <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{amount(r.kg)}</span> : null}
+              <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{fodder ? 'Fodder' : r.value ? `~${inr(r.value)}` : ''}</span>
+            </span>
+            <ChevronIcon />
+          </button>
+        );
+      })}
     </>
   );
 }

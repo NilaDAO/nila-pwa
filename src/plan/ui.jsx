@@ -1,19 +1,67 @@
 // Shared crop-plan layout: the header band (map in P4c) and the bottom sheet of the CP boards.
+import { cloneElement, isValidElement, useEffect } from 'react';
 import { C, FONT, R } from '../shell/tokens';
+import useSheetDrag from '../shell/useSheetDrag';
+import { SettingsButton } from '../shell/RoundButton';
 
-export function Sheet({ title, children, landName, onBack, map }) {
-  return (
-    <div style={{ fontFamily: FONT, color: C.text }}>
-      <div style={{ background: '#25361f', height: map ? 'auto' : 180, position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: map ? 0 : 24 }}>
-        {map && <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>{map}</div>}
-        {map && <div style={{ height: 220 }} />}
-        {onBack && (
-          <button type="button" aria-label="Back" onClick={onBack} style={{ position: 'absolute', zIndex: 2, left: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0, color: C.text, fontSize: 20 }}>←</button>
-        )}
-        <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: map ? 'absolute' : 'static', top: 18, zIndex: 2 }}>{landName}</span>
+export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll }) {
+  const drag = useSheetDrag(undefined, resetKey);   // the drag line as on R5 (all map screens, 21 Oct)
+  // The card's own bottom padding clears the tab bar, so the shell's padding under it would only show map below the
+  // card when scrolled to the end: off while a map sheet is open, so the card stays glued to the bottom.
+  useEffect(() => {
+    const shell = map && document.querySelector('[data-testid="shell"]');
+    if (!shell) return undefined;
+    const was = shell.style.paddingBottom;
+    shell.style.paddingBottom = '0px';
+    return () => { shell.style.paddingBottom = was; };
+  }, [map]);
+  const head = (
+    <>
+      {onBack && (
+        <button type="button" aria-label="Back" onClick={onBack} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, left: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0, color: C.text, fontSize: 20 }}>←</button>
+      )}
+      {landName && <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: 'absolute', top: 18, zIndex: 2, pointerEvents: 'auto' }}>{landName}</span>}
+      {/* Settings on every CP screen (executive decision 21 Oct; board CropPlanPending-n9mn-kewp): the round gear top right. */}
+      <SettingsButton background={C.ink} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, right: 8, top: 18 }} />
+    </>
+  );
+  if (scroll && map) {
+    // The card scrolls inside its own area below the fixed header (board CropPlanTerms, data-sheet-scroll): the map
+    // and the header buttons stay put, the card's content moves; the card always reaches the bottom of the screen.
+    return (
+      <div style={{ fontFamily: FONT, color: C.text, position: 'fixed', inset: 0, zIndex: 0, background: '#25361f' }}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>{isValidElement(map) ? cloneElement(map, { height: '100%' }) : map}</div>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>
+        <div data-sheet-scroll style={{ position: 'absolute', left: 0, right: 0, top: 76, bottom: 0, overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none', zIndex: 4, pointerEvents: 'none' }}>
+          <div aria-hidden="true" style={{ height: Math.max(120, Math.round(window.innerHeight / 3) - 76) }} />
+          <section ref={drag.ref} className="cp-sheet" style={{ pointerEvents: 'auto', background: C.ink, borderRadius: '24px 24px 0 0', padding: '10px 22px 104px', boxSizing: 'border-box', minHeight: '100%', boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', ...drag.style }}>
+            <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}[data-sheet-scroll]::-webkit-scrollbar{display:none}'}</style>
+            <div style={{ marginBottom: 16 }}>{drag.handle}</div>
+            {title && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
+            {children}
+          </section>
+        </div>
       </div>
-      <div style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', minHeight: 400 }}>
-        <div style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(255,255,255,.35)', margin: '0 auto 16px' }} />
+    );
+  }
+  return (
+    <div style={{ fontFamily: FONT, color: C.text, position: 'relative', minHeight: '100dvh', background: '#25361f', display: 'flex', flexDirection: 'column' }}>
+      {/* The map fills the whole screen behind the card (21 Oct), so dragging the card down shows more map. */}
+      {map && <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>{isValidElement(map) ? cloneElement(map, { height: '100%' }) : map}</div>}
+      {/* The band above the card takes the free height, so the card sits glued to the bottom (executive decision 21 Oct):
+          a short card never floats mid-screen, and scrolling never lifts it further than its own height. */}
+      <div style={{ height: map ? 'auto' : 180, flex: map ? '1 0 auto' : '0 0 auto', position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: map ? 0 : 24, pointerEvents: map ? 'none' : 'auto' }}>
+        {/* CP10 (a bar on the card): the card's top starts at the middle of the screen (board CropPlanQ3-xdlz). */}
+        {map && <div style={{ height: bar ? Math.round(window.innerHeight / 2) + 24 : 220 }} />}
+      </div>
+      {/* The header buttons stay fixed at the top, above map and card; they never scroll away (21 Oct) — with or without a map. */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>
+      <div ref={drag.ref} className="cp-sheet" style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, ...drag.style }}>
+        {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
+        <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}html,body{overscroll-behavior-y:none}'}</style>
+        {/* CP10's season / area bar sits on top of the card and moves with it (board CropPlanQ3-xdlz). */}
+        {bar && <div style={{ position: 'absolute', left: 8, right: 8, bottom: 'calc(100% + 12px)' }}>{bar}</div>}
+        <div style={{ marginBottom: 16 }}>{drag.handle}</div>
         {title && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
         {children}
       </div>
@@ -60,3 +108,20 @@ export function Steps({ items }) {
 
 export const inr = (n) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 export const muted = { color: C.muted, fontSize: 14 };
+
+/** CP11's notice row (board CropPlanTerms): an amber icon — warning triangle or info circle — a bold line and muted text. */
+export function Notice({ kind = 'warn', title, children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+        {kind === 'warn'
+          ? <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></>
+          : <><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></>}
+      </svg>
+      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+        {title && <span style={{ fontWeight: 700 }}>{title}</span>}
+        <span style={{ color: C.muted }}>{children}</span>
+      </span>
+    </div>
+  );
+}

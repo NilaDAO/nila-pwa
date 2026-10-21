@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
 import { useIsLeader } from '../hooks/useLoadFunds.ts';
 import { ModeStep, NotifyStep, UnionStep, readUnion, saveUnionRecord, unionByPolygon } from './Registration';
-import { RegLoading } from './Boot';
+import { Loading } from './Boot';
 
 const hasMode = () => { try { return !!localStorage.getItem('nila.mode'); } catch { return false; } };
 const notifyAllowed = () => {
@@ -44,7 +44,7 @@ export default function RecoverSteps({ evm, onDone }) {
     return () => { live = false; };
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (step === 'restore') return <RegLoading />;
+  if (step === 'restore') return <Loading />;
   if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={(u) => { setRep(u.rep); after('union'); }} />;
   if (step === 'mode') return <ModeStep rep={rep} onDone={() => after('mode')} />;
   return <NotifyStep evm={evm} onDone={() => after('notify')} />;

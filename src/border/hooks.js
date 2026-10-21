@@ -71,8 +71,9 @@ export function useBorderDecision(id) {
   const api = useBorderClient();
   const accept = useJobWrite(id, (a, { field, shape }) => a.accept(id, field, shape));
   const noneFit = useJobWrite(id, (a, { field }) => a.noneFit(id, field));
+  const retry = useJobWrite(id, (a, { field }) => a.retry(id, field));
   const preview = useMutation({ mutationFn: ({ field, shape }) => api.preview(id, field, shape) });
-  return { accept, noneFit, preview };
+  return { accept, noneFit, preview, retry };
 }
 
 /** L4: the leader asks the node to mint her land title (signed by the node's title key). */

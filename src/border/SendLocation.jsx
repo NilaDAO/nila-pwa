@@ -5,9 +5,11 @@
 // The boards ask a field name per point (R6, R7), no farm name: the title's name is given by the leader at L4.
 import { useEffect, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
+import { DEMO_COGNITO } from '../utils/demoMode';
 import RegFrame, { Bouncing, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
 const MAX = 6;
+const DEMO_START = { lat: 11.88720, lng: 78.96594, acc: 0 };   // Viriyur, TN: among the real fields of the node's records
 const EMPTY = { points: [], farm: '', finish: false };
 // Per account: on a shared phone (assisted mode) one member's points never go out under the next member's login.
 const keyOf = (evm) => `nila.border.points.${(evm || 'none').toLowerCase()}`;
@@ -91,7 +93,9 @@ export function PointsStep({ evm, onDone }) {
     if (pan) save({ ...q, pan: false });
     fix((m) => { setMe(m); setBlocked(false); setLoc('on'); }, (e) => { setBlocked(e.code === 1); setLoc('off'); });
   };
-  const choose = () => { save({ ...q, pan: true }); if (!me) fix(setMe); };
+  // Demo only (localhost + chain 31337 + flag): "Choose on the map" starts in Viriyur, Tamil Nadu (the union's
+  // place), not at the laptop's location; a real build starts where she is.
+  const choose = () => { save({ ...q, pan: true }); if (DEMO_COGNITO) setMe(DEMO_START); else if (!me) fix(setMe); };
   useEffect(() => {
     let live = true;
     navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (live && r.state === 'granted') share(); }).catch(() => {});
@@ -113,8 +117,11 @@ export function PointsStep({ evm, onDone }) {
     save({ ...q, points: pts }); setName('');
   };
   // A second point for the same field: the field's point is the middle of the two (she cannot stand in the middle).
+  // Two steps (21 Oct): "Add a second point" starts it — she walks (or moves the map) to the opposite edge — then
+  // "Save the second point" takes it there and the field's point moves to the middle of the two.
+  const [second, setSecond] = useState(false);
   const secondPoint = () => {
-    setError(null);
+    setError(null); setSecond(false);
     const mid = (b) => {
       const pts = q.points.slice(); const a = pts[n - 1];
       const first = a.parts ? a.parts[0] : a;
@@ -130,9 +137,17 @@ export function PointsStep({ evm, onDone }) {
   const finish = () => { save({ ...q, finish: true }); onDone(); };
 
   const ready = pan ? !!centre : loc === 'on';           // she can save a point now
+  // The info note explains the second point while a field waits for its name (executive decision 21 Oct; the text
+  // is not on a board yet). Otherwise the R5 board's line.
+  const last = n > 0 ? q.points[n - 1] : null;
+  const info = unnamed && last?.two
+    ? 'This field\'s point is now the middle of your two points. Give the field a name.'
+    : unnamed
+      ? 'Can\'t stand in the center? Take a second point at the opposite edge. Nila uses the middle of the two.'
+      : undefined;
   const wait = unnamed || busy;
   return (
-    <MapFrame map={q.points} me={pan ? null : me} start={me} pan={pan} onCenter={setCentre}
+    <MapFrame map={q.points} me={pan ? null : me} start={me} pan={pan} onCenter={setCentre} info={info}
       selected={selected} onSelect={setSelected}>
       <div style={cardTitle}>{n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field'}</div>
       {!online && (
@@ -178,14 +193,21 @@ export function PointsStep({ evm, onDone }) {
         </div>
       )}
       {error && <div role="alert" style={{ ...sheetText, color: C.coral, textAlign: 'center' }}>{error}</div>}
-      {unnamed && name.trim()
+      {second && (
+        <div role="status" style={{ ...sheetText, color: '#F1F5F9', textAlign: 'center' }}>{pan
+          ? 'Move the map to the opposite edge of this field.'
+          : 'Walk across to the opposite edge of this field.'}</div>
+      )}
+      {second
+        ? <button type="button" style={busy || (pan && !centre) ? btnDisabled : btnPrimary} disabled={busy || (pan && !centre)} onClick={secondPoint}>Save the opposite point</button>
+        : unnamed && name.trim()
         ? <button type="button" style={btnPrimary} onClick={storeName}>Next point</button>
         : n < MAX && (ready
           ? <button type="button" style={wait ? btnDisabled : btnPrimary} disabled={wait} onClick={saveHere}>Save this location</button>
           : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>)}
-      {unnamed && !q.points[n - 1].two && (
-        <button type="button" style={busy ? btnDisabled : btnSecondary} disabled={busy} onClick={secondPoint}>Take a second point</button>
-      )}
+      {unnamed && !q.points[n - 1].two && (second
+        ? <button type="button" style={btnSecondary} onClick={() => setSecond(false)}>Cancel</button>
+        : <button type="button" style={busy ? btnDisabled : btnSecondary} disabled={busy} onClick={() => setSecond(true)}>Can't reach the center? Take the opposite point</button>)}
       {n === 0 && (pan
         ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
         : <button type="button" style={btnSecondary} onClick={choose}>Choose on the map</button>)}

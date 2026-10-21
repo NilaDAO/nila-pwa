@@ -4,6 +4,7 @@
 // part needs the Etherscan key the live build has.
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT, R } from '../shell/tokens';
+import { ScreenHeader } from '../shell/ListRow';
 import { useHistory } from './hooks';
 
 const day = (ts) => {
@@ -26,8 +27,7 @@ export default function History({ onBack }) {
   }
   return (
     <div style={{ padding: 16, fontFamily: FONT, color: C.text }}>
-      <button type="button" onClick={onBack} style={{ background: 'none', border: 0, color: C.muted, padding: 0 }}>← Back</button>
-      <h1 style={{ fontSize: 16, textAlign: 'center' }}>History</h1>
+      <ScreenHeader title="History" onBack={onBack} />
       {h.isLoading && <p style={{ color: C.muted }}>…</p>}
       {h.isError && <p style={{ color: C.coral }}>Your history could not be read. Try again.</p>}
       {h.isSuccess && !groups.length && <p style={{ color: C.muted }}>Nothing yet. Your payments and crop shares appear here.</p>}

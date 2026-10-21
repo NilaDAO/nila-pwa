@@ -15,7 +15,7 @@ const OPTIONS = {
   clickableIcons: false, disableDefaultUI: true, mapId: MAP_ID,
 };
 // Choose on the map (R5, executive decision 20 Oct): today's off-site options — she moves the map; her point is its centre.
-const PAN_OPTIONS = { ...OPTIONS, draggable: true, gestureHandling: 'greedy', scrollwheel: true, zoomControl: true };
+const PAN_OPTIONS = { ...OPTIONS, draggable: true, gestureHandling: 'greedy', scrollwheel: true, zoomControl: false };
 const STYLE = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
 
 // Her point (board R6 SendLocation-af51-95is: black inside, amber border) with its field name as a chip (A4's map
@@ -95,6 +95,16 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
           return mk;
         })
         : [];
+      // A field taken with two edge points: the two as small rings, joined by a dashed line through the middle point.
+      (m.__parts || []).forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; });
+      m.__parts = [];
+      points.forEach((p) => {
+        if (!p.parts || p.parts.length !== 2) return;
+        m.__parts.push(new g.Polyline({ map: m, path: p.parts.map((x) => ({ lat: x.lat, lng: x.lng })), strokeOpacity: 0, clickable: false,
+          icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#D4A634', scale: 2 }, offset: '0', repeat: '8px' }] }));
+        p.parts.forEach((x) => m.__parts.push(new g.Circle({ map: m, center: { lat: x.lat, lng: x.lng }, radius: 1.5, clickable: false,
+          strokeColor: '#D4A634', strokeWeight: 2, fillColor: '#121212', fillOpacity: 1 })));
+      });
       if (line.current) line.current.setPath(points);
       else if (points.length) {
         line.current = new g.Polyline({ path: points, geodesic: true, strokeColor: '#D4CF5A', strokeOpacity: 0.3, strokeWeight: 1 });

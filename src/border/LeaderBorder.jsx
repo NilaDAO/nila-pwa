@@ -5,6 +5,8 @@
 // app (the farm name or a short address stands in).
 import { useCallback, useState } from 'react';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
+import ErrorFull from '../shell/ErrorFull';
+import useSheetDrag from '../shell/useSheetDrag';
 import { acres, shapeFor } from './api';
 import BorderMap, { ShapeThumb } from './BorderMap';
 import { useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
@@ -17,6 +19,7 @@ const btn = (primary) => ({ flex: 1, height: 44, borderRadius: R.button, border:
 const DONE = ['accepted', 'left_out'];
 
 function Frame({ name, onBack, backLabel, map, children }) {
+  const drag = useSheetDrag();   // the drag line as on R5 (all map screens, 21 Oct)
   return (
     <div style={{ fontFamily: FONT, color: C.text, position: 'relative' }}>
       <div style={{ position: 'relative' }}>
@@ -26,8 +29,8 @@ function Frame({ name, onBack, backLabel, map, children }) {
           <span style={{ ...pill, padding: '0 14px', height: 40, display: 'flex', alignItems: 'center', fontSize: 16, fontWeight: 700 }}>{name}</span>
         </h1>
       </div>
-      <div style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, position: 'relative', zIndex: 600, padding: '14px 22px 24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW }}>
-        <div style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(255,255,255,.35)', alignSelf: 'center' }} />
+      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, position: 'relative', zIndex: 600, padding: '14px 22px 24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW, ...drag.style }}>
+        {drag.handle}
         {children}
       </div>
     </div>
@@ -89,8 +92,8 @@ function Check({ job, n, onDone, onBack }) {
   const start = f?.accepted || job.plan?.[String(n)] || shapes[0]?.id;
   const [sel, setSel] = useState(start);
   const [plan, setPlan] = useState(job.plan);
-  const { accept, noneFit, preview } = useBorderDecision(job.id);
-  const busy = accept.isPending || noneFit.isPending;
+  const { accept, noneFit, preview, retry } = useBorderDecision(job.id);
+  const busy = accept.isPending || noneFit.isPending || retry.isPending;
   const err = accept.error || noneFit.error || preview.error;
   const pick = async (id) => {
     setSel(id);
@@ -98,6 +101,16 @@ function Check({ job, n, onDone, onBack }) {
     try { const r = await preview.mutateAsync({ field: n, shape: id }); setPlan(r.plan || r); } catch { /* shown below */ }
   };
   if (!f) return null;
+  // The fencing itself failed (Earth Engine, the satellite tiles): an error screen as N6/N8 (executive decision 21 Oct;
+  // no board for this case), her point stays, the leader tries again.
+  if (shapes.length === 0 && f.error) {
+    return (
+      <ErrorFull title={`Field ${n}: the shapes could not be drawn`} text="Her point stays where she put it. Try again in a moment."
+        rows={[['Reason', /satellite|ndvi|earth engine|gee|tile/i.test(f.error) ? 'Satellite data did not load' : 'The drawing did not finish']]}
+        primary={retry.isPending ? 'Trying again…' : 'Try again'} busy={retry.isPending} onPrimary={() => retry.mutate({ field: n }, { onSuccess: onDone })}
+        secondary="Back to all fields" onSecondary={onBack} />
+    );
+  }
   const chosen = shapes.find((s) => s.id === sel);
   const holds = chosen?.holds?.length || 0;
   const moved = Object.keys(plan || {}).filter((k) => Number(k) !== n && plan[k] !== job.plan?.[k]);

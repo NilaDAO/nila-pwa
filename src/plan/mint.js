@@ -1,7 +1,9 @@
-// CP12 "Creating your crop shares" (P4b): after the leader approved her plan, her app mints every
-// season's FoodToken with her own Polygon key (N1, executive decision 16 Oct). Steps, each safe to
-// repeat: the node tops up her POL (once per plan) → joinBatch where she is not a member yet →
-// mintForBatchMember with exactly the node's arguments (GET /plan/{id}/mint), skipping tokens she holds.
+// L12 → crop shares (executive decision 21 Oct, replaces N1's "she mints"): when a leader approves her plan, the
+// union mints every season's FoodToken on Polygon with the LEADER's key (FoodToken P2 mintForBatchMemberByLeader);
+// the tokens go to her wallet (the land title's holder) and the attester copies them to Stellar (F2). Steps, each
+// safe to repeat: the node tops up the leader's POL (once per plan) → mintForBatchMemberByLeader with exactly the
+// node's arguments (GET /plan/{id}/mint, which names the minting union), skipping tokens she already holds.
+// `check` (her CP12 too) reads which of her crop shares are made.
 import { useCallback, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import { useProvider } from '../hooks/useWallet.ts';
@@ -35,7 +37,15 @@ const NODE = [
   [/no Polygon crop code/, 'This crop is not registered yet. Ask your union leader.'],
   [/no open batch/, 'This crop\'s batch is not open yet. Ask your union leader.'],
 ];
-const ftIface = new ethers.Interface(foodTokenAbi);
+// FoodToken P2 (nila-evm t1/contracts/P2-leader-mint) on top of the P1 ABI.
+const P2 = [
+  'function mintForBatchMemberByLeader(address union, uint256 batchId, uint32 landTitleId, uint32 harvestDate, uint256 quantity, uint128 fieldsBitmask, uint32 areaM2, uint16 farmerVarietyCode, uint32 sosDate)',
+  'error NotLeaderOfBatch()',
+];
+const ABI = [...foodTokenAbi, ...P2];
+REASON.NotLeaderOfBatch = 'Your union may not make crop shares in this crop\'s batch yet. Ask Nila.';
+REASON.NotAuthorized = 'Your wallet is not a leader of this union on Polygon. Ask Nila.';
+const ftIface = new ethers.Interface(ABI);
 export function reasonOf(e) {
   const data = [e?.data, e?.info?.error?.data, e?.error?.data].find((d) => typeof d === 'string' && d.startsWith('0x'));
   try { const p = data && ftIface.parseError(data); if (p && REASON[p.name]) return REASON[p.name]; } catch { /* not ours */ }
@@ -52,7 +62,7 @@ export function useMintCropShares() {
   const [state, setState] = useState({ status: 'idle' });
   const nonceRef = useRef(null); // our own counter: ethers caches getTransactionCount for 250 ms
 
-  const send = useCallback(async (ft, fn, args) => {
+  const send = useCallback(async (ft, fn, args) => {   // signed by this app's own Polygon key (the leader's)
     const me = s.evmAddress;
     const data = ft.interface.encodeFunctionData(fn, args);
     const [chainNonce, fees, gas] = await Promise.all([
@@ -69,33 +79,36 @@ export function useMintCropShares() {
     return r.hash;
   }, [s, provider]);
 
+  // Her wallet: the land title's holder, as FoodToken reads it (the tokens go there).
+  const holderOf = useCallback(async (ft, landId) => {
+    const lt = new ethers.Contract(await ft.landTitleContract(), ['function ownerOf(uint256) view returns (address)'], provider);
+    return lt.ownerOf(landId);
+  }, [provider]);
+
+  /** The leader's app, right after Approve on L12. */
   const run = useCallback(async (planId) => {
     nonceRef.current = null;
     setState({ status: 'busy', done: 0 });
     try {
-      const me = s.evmAddress;
-      const ft = new ethers.Contract(FOODTOKEN, foodTokenAbi, provider);
-      const { mints } = await api.mintList(planId);
+      const ft = new ethers.Contract(FOODTOKEN, ABI, provider);
+      const { mints, union, land_id: landId } = await api.mintList(planId);
       const ready = mints.filter((m) => m.args);
       const refused = mints.filter((m) => m.error);
-      // POL for the mints (node, once per plan); wait until it is there when something was sent.
+      const holder = await holderOf(ft, landId);
+      // POL for the mints (node, once per plan, to this leader's wallet); wait until it is there when something was sent.
       const g = await api.gas(planId).catch((e) => ({ error: e.message }));
       const gh = hex0x(g.tx_hash);
       if (gh) {
         try { for (let i = 0; i < 30 && !(await provider.getTransactionReceipt(gh)); i++) await sleep(2000); } catch { /* minting tells */ }
-      }
-      for (const batch of [...new Set(ready.map((m) => m.args.batchId))]) {
-        const [status] = await ft.batchMembers(batch, me);
-        if (Number(status) === 0) await send(ft, 'joinBatch', [batch]);
       }
       // One share that reverts (a field still held, a closed batch) does not stop the others.
       let done = 0;
       const failed = [];
       for (const m of ready) {
         try {
-          if ((await ft.balanceOf(me, m.token_id)) === 0n) {
+          if ((await ft.balanceOf(holder, m.token_id)) === 0n) {
             const a = m.args;
-            await send(ft, 'mintForBatchMember', [a.batchId, a.landTitleId, a.harvestDate, a.quantity,
+            await send(ft, 'mintForBatchMemberByLeader', [union, a.batchId, a.landTitleId, a.harvestDate, a.quantity,
               a.fieldsBitmask, a.areaM2, a.farmerVarietyCode, a.sosDate]);
           }
           done += 1;
@@ -111,19 +124,23 @@ export function useMintCropShares() {
       console.error('[mint]', e);
       setState({ status: 'failed', error: reasonOf(e) });
     }
-  }, [s, api, provider, send]);
+  }, [api, provider, send, holderOf]);
 
-  /** On opening an approved plan: are all its crop shares made already (on-chain balances)? */
+  /** Her CP12 (and the leader's L12 on reopening): which of her crop shares are made (on-chain balances). */
   const check = useCallback(async (planId) => {
     try {
-      const ft = new ethers.Contract(FOODTOKEN, foodTokenAbi, provider);
-      const { mints } = await api.mintList(planId);
+      const ft = new ethers.Contract(FOODTOKEN, ABI, provider);
+      const { mints, land_id: landId } = await api.mintList(planId);
       const ready = mints.filter((m) => m.args);
-      const held = await Promise.all(ready.map((m) => ft.balanceOf(s.evmAddress, m.token_id)));
+      const holder = await holderOf(ft, landId);
+      const held = await Promise.all(ready.map((m) => ft.balanceOf(holder, m.token_id)));
       const n = held.filter((b) => b > 0n).length;
-      if (n && n === ready.length) setState({ status: mints.length > n ? 'partial' : 'done', done: n, total: mints.length, refused: mints.filter((m) => m.error).map((r) => ({ ...r, error: reasonOf(r.error) })) });
-    } catch { /* stay on "Make my crop shares" */ }
-  }, [api, provider, s?.evmAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+      const seen = n && n === ready.length
+        ? { status: mints.length > n ? 'partial' : 'done', done: n, total: mints.length, refused: mints.filter((m) => m.error).map((r) => ({ ...r, error: reasonOf(r.error) })) }
+        : { status: 'waiting', done: n, total: mints.length };
+      setState((prev) => (prev.status === 'busy' ? prev : seen));   // never over a mint in progress
+    } catch { setState((prev) => (prev.status === 'busy' ? prev : { status: 'waiting' })); }
+  }, [api, provider, holderOf]);
 
   return { ...state, run, check };
 }

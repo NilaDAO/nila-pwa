@@ -114,3 +114,36 @@ export function useInvestment(address) {
     },
   });
 }
+
+/** Her land titles on Stellar in today's union (land_title.title_count). In the demo a new title is written on Stellar
+ *  only (no Polygon mint, executive decision 21 Oct), so the app counts both chains (src/register/titles.js). */
+export function useStellarTitleCount(address) {
+  const { data: cfg } = useStellarConfig();
+  return useQuery({
+    queryKey: ['stellar', 'titles', cfg?.union, address],
+    enabled: !!cfg && !!address && !!cfg.contracts?.land_title,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { readContract, sv } = await import('./soroban');
+      return Number(await readContract(cfg, 'land_title', 'title_count', [sv.address(cfg.union), sv.address(address)]) || 0);
+    },
+  });
+}
+
+/** Her land titles on Stellar with their record hashes (node GET /stellar/titles, signed like /plan): land_title has
+ *  no "titles of a holder" view, so the node lists what its attester wrote and checks each on-chain. A title whose
+ *  record is still being made has record_hash null; asked again every minute until it is there. */
+export function useStellarTitles(signer) {
+  return useQuery({
+    queryKey: ['stellar', 'titleList', signer?.stellarAddress],
+    enabled: !!signer?.stellarAddress && !!signer?.signHash,
+    staleTime: 60_000,
+    // Promptly while a new title is on its way: no title listed yet, or one still without its record hash.
+    refetchInterval: (q) => (!(q.state.data || []).length ? 10_000 : (q.state.data || []).some((t) => !t.record_hash) ? 5_000 : false),
+    queryFn: async () => {
+      const { signedCall } = await import('../plan/api');
+      const out = await signedCall(signer)('GET', '/stellar/titles');
+      return out?.titles || [];
+    },
+  });
+}
