@@ -16,6 +16,7 @@ export function borderClient(signer) {
     preview: (id, field, shape) => call('POST', `/border/job/${id}/preview`, { field, shape }),
     accept: (id, field, shape) => call('POST', `/border/job/${id}/decide`, { field, action: 'accept', shape }).then(jobOf),
     noneFit: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit' }).then(jobOf),
+    retry: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'retry' }).then(jobOf),
     mint: (id, farm) => call('POST', `/border/job/${id}/mint`, farm ? { farm } : {}).then(jobOf),
   };
 }
