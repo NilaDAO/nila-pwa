@@ -20,6 +20,7 @@ import AreaMap from './AreaMap';
 import CropsStep from './CropsStep';
 import { AreaCard, SEASON, SlideBar, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
+import { shareOn } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -233,7 +234,14 @@ export default function CropPlanFlow() {
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
-  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? pickArea : undefined}
+  // CP13 (map-central trial, 21 Oct): a tap on an area opens its crop share in the season shown (A4/A4a).
+  const active = approved && mint.status === 'done';
+  const openShare = useCallback((z) => {
+    const ss = plan?.plan?.seasons || [];
+    const x = z && shareOn(myShares.data, ss, Math.min(season, ss.length - 1), z);
+    if (x) window.location.hash = `#/cropshare/${x.token_id}`;
+  }, [plan, season, myShares.data]);
+  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
     fitBottom={pickable ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
 

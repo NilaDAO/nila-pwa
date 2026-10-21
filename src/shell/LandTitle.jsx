@@ -2,6 +2,7 @@
 // and burning the title. DESIGN GAPs (no hook yet, so not shown or not active): marking a well or bore (A5a,
 // useWaterSources / useSaveWaterSources), farm improvements (useImprovements, useImprovementInterest), the trees row
 // (useTreeCheck, TreeMap) and burning the title (useBurnLandTitle).
+import { useMemo } from 'react';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarTitles } from '../stellar/hooks';
 import { useLandTitles, useTitleName } from '../plan/hooks';
@@ -17,7 +18,18 @@ const muted = { color: C.muted, fontSize: 14, lineHeight: 1.5, margin: 0 };
 const btn = { width: '100%', height: 44, border: 0, borderRadius: R.button, fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
 
-export default function LandTitle({ onBack }) {
+/** Every field her title lists, as areas, when it lists more fields than the record has areas (executive decision 21 Oct,
+ *  map-central trial): the land title shows the whole land; otherwise her areas. */
+function fieldsOrAreas(record) {
+  const fields = record?.meta?.geometry?.field_features?.features || [];
+  if (!record || fields.length <= (record.zones || []).length) return { record, labels: undefined };
+  const zones = fields.map((f, i) => ({ zone_id: `f${i}`, geometry: f.geometry }));
+  const labels = Object.fromEntries(fields.map((f, i) => [`f${i}`, { text: f.properties?.name || `Field ${i + 1}` }]));
+  return { record: { ...record, zones }, labels };
+}
+
+/** bar / onSwipe (map-central trial): the ‹ asset › bar on top of the card, and a swipe on the card that steps it. */
+export default function LandTitle({ onBack, bar, onSwipe }) {
   const s = useNilaSigner();
   const titles = useLandTitles(s?.evmAddress);
   const stellarTitles = useStellarTitles(s);
@@ -28,11 +40,13 @@ export default function LandTitle({ onBack }) {
   const field = useFieldRecord(landId, s?.evmAddress, stellarTitle ? stellarTitle.record_hash || '' : undefined);
   const record = field.data?.record;
   const farm = useTitleName(landId, onPolygon, stellarTitle);
+  const shape = useMemo(() => fieldsOrAreas(record), [record]);
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
   if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched) || field.isLoading) return <Loading />;
-  const map = record ? <AreaMap record={record} /> : null;
+  const map = shape.record ? <AreaMap record={shape.record} labels={shape.labels}
+    fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
   return (
-    <Sheet map={map} onBack={onBack}>
+    <Sheet map={map} onBack={onBack} bar={bar} onSwipe={onSwipe}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
         <span style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>Land title</span>

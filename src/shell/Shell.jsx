@@ -1,7 +1,7 @@
 // The new app shell (P1): the bottom tab bar instead of the cards. Shown in Stellar mode (a moved wallet)
 // and to leaders who chose "New Nila". Today's cards stay for Polygon wallets (StellarGate).
 // Tabs are kept in the URL hash (#/assets …) so the phone's back button works.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { getMoveStatus, requestMoveNin } from '../move/api';
@@ -18,7 +18,9 @@ import Investment from '../loan/Investment';
 import CashOut from '../loan/CashOut';
 import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
-import { TakeUp } from '../loan/MyShares';
+import { TakeUp, rowOf, useMyShares } from '../loan/MyShares';
+import MapStage from './MapStage';
+import { SlideBar } from '../plan/PlanResult';
 import CropShare from '../loan/CropShare';
 import IdCheck from '../anchor/IdCheck';
 import LpOffers from '../anchor/LpOffers';
@@ -82,6 +84,24 @@ function TasksView({ leader, go }) {
       </ListSection>
     </div>
   );
+}
+
+// DEVIATION (executive decision 21 Oct, map-central trial): the land title and her crop shares open in the Assets card
+// over the map, with a ‹ asset › bar on top that steps land title → crop shares by season and area (a swipe on the card
+// does the same). The hash still says which (#/land, #/cropshare/<id>): the phone's back button and links work, and a
+// step replaces the entry, so back returns to the list rather than through every step.
+function AssetStep({ view, children }) {
+  const shares = useMyShares().data;
+  const items = useMemo(() => [{ key: 'land', label: 'Land title' },
+    ...[...(shares || [])].sort((a, b) => String(a.share?.from_date || '').localeCompare(String(b.share?.from_date || '')) || a.area - b.area)
+      .map((x) => ({ key: `cropshare/${x.token_id}`, label: `${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area}` }))], [shares]);
+  const cur = view === 'land' ? 'land' : `cropshare/${readArg()}`;
+  const i = items.findIndex((it) => it.key === cur);
+  const step = (d) => { if (i < 0) return; window.location.replace(`#/${items[(i + d + items.length) % items.length].key}`); };
+  const bar = items.length > 1 && i >= 0
+    ? <SlideBar label={items[i].label} prevLabel="Previous asset" nextLabel="Next asset" onPrev={() => step(-1)} onNext={() => step(1)} />
+    : undefined;
+  return children({ bar, onSwipe: bar ? step : undefined });
 }
 
 export default function Shell({ leader }) {
@@ -170,14 +190,16 @@ export default function Shell({ leader }) {
   else if (view === 'loan') body = <LeaderLoan />;
   else if (view === 'cash' && leader) body = <CashDesk key={readArg() || 'menu'} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
-  else if (view === 'land') body = <LandTitle onBack={() => go('assets')} />;
+  else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
   else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go('cash/invest')} />;
   else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
   else if (view === 'machine') body = <MyMachine onBack={() => go('assets')} />;
   else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go(`cropshare/${readArg()}`)} />;
   // A4 / A4a: her crop share, from its A1 row.
-  else if (view === 'cropshare') body = <CropShare key={readArg()} token={readArg()} onBack={() => go('assets')} onTakeUp={(t) => go(`share/${t}`)} />;
+  else if (view === 'cropshare') {
+    body = <AssetStep view={view}>{(p) => <CropShare key={readArg()} token={readArg()} onBack={() => go('assets')} onTakeUp={(t) => go(`share/${t}`)} {...p} />}</AssetStep>;
+  }
   // A2 Tasks: for an LP the board's "Cash offers" section; the other task rows come in a later step.
   else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
@@ -189,9 +211,12 @@ export default function Shell({ leader }) {
   const active = tabs.some(([id]) => id === tabOf) ? tabOf : undefined;
   return (
     // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.
-    <div style={{ minHeight: '100vh', background: GRADIENT, paddingBottom: TAB_BAR_HEIGHT + 16 }} data-testid="shell">
-      {body}
-      <BottomTabBar tabs={tabs} active={active} onSelect={go} />
-    </div>
+    // The map stage lies under the shell (map-central trial): a map sheet makes the shell see-through while it is open.
+    <MapStage>
+      <div style={{ minHeight: '100vh', background: GRADIENT, paddingBottom: TAB_BAR_HEIGHT + 16, position: 'relative', zIndex: 1 }} data-testid="shell">
+        {body}
+        <BottomTabBar tabs={tabs} active={active} onSelect={go} />
+      </div>
+    </MapStage>
   );
 }

@@ -15,7 +15,7 @@ export default function BottomTabBar({ tabs, active, onSelect }) {
     <nav aria-label="Main" style={{
       position: 'fixed', left: 0, right: 0, bottom: 0, height: TAB_BAR_HEIGHT, zIndex: 10,
       background: C.ink, borderRadius: '24px 24px 0 0', padding: 8, gap: 4, display: 'flex',
-      boxSizing: 'border-box', boxShadow: SHADOW, fontFamily: FONT,
+      boxSizing: 'border-box', boxShadow: SHADOW, fontFamily: FONT, pointerEvents: 'auto',   // also over the map stage
     }}>
       {tabs.map(([id, label, Icon]) => {
         const on = id === active;

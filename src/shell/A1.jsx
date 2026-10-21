@@ -18,6 +18,9 @@ import { CashTile, ChevronIcon, HistoryIcon, InvestedTile, LandIcon, MachineryTi
 import RoundButton, { SettingsButton } from './RoundButton';
 import { StickyTop } from './ListRow';
 import MessageSlider, { memberSlides } from './MessageSlider';
+import { Sheet } from '../plan/ui';
+import { useStage } from './stageCtx';
+import { useHomeMap } from './MapStage';
 import { MEMBER_TODO_ROWS, useLeaderTaskCount } from './taskCount';
 
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
@@ -98,17 +101,23 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   });
   const slides = memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans });
 
-  return (
-    <div style={{ fontFamily: FONT, color: C.text, padding: '8px 8px 0' }}>
-      <StickyTop>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <RoundButton label="History" onClick={onHistory}><HistoryIcon color={C.text} /></RoundButton>
-          {leader ? <LeaderTasksButton onClick={onTasks} /> : <TasksButton n={MEMBER_TODO_ROWS} onClick={onTasks} />}
-          <SettingsButton onClick={onSettings} />
-        </div>
-      </StickyTop>
-
-      <section aria-label="Total balance" style={{ textAlign: 'center', margin: '12px 0 16px', padding: '18px 22px', background: C.ink, borderRadius: R.card, boxShadow: SHADOW }}>
+  // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell A1 is a card over the map of her
+  // land (drag line, rounded top), opening high with a strip of map; History, All tasks and Settings float on the map.
+  const stage = useStage();
+  const top = Math.round(window.innerHeight * 0.34);
+  const home = useHomeMap(onShare, window.innerHeight - top + 32);
+  const buttons = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <RoundButton label="History" onClick={onHistory} background={stage ? C.ink : undefined} style={stage ? { pointerEvents: 'auto' } : undefined}><HistoryIcon color={C.text} /></RoundButton>
+      <span style={{ pointerEvents: 'auto' }}>{leader ? <LeaderTasksButton onClick={onTasks} /> : <TasksButton n={MEMBER_TODO_ROWS} onClick={onTasks} />}</span>
+      <SettingsButton onClick={onSettings} background={stage ? C.ink : undefined} style={stage ? { pointerEvents: 'auto' } : undefined} />
+    </div>
+  );
+  // In the card the sections lose their own card look (they sit on the card).
+  const card = stage ? { background: 'transparent', boxShadow: 'none', padding: 0, borderRadius: 0 } : {};
+  const content = (
+    <>
+      <section aria-label="Total balance" style={{ textAlign: 'center', margin: '12px 0 16px', padding: '18px 22px', background: C.ink, borderRadius: R.card, boxShadow: SHADOW, ...card, ...(stage ? { margin: '0 0 16px' } : {}) }}>
         <div style={{ color: C.muted, fontSize: 14, display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center' }}>
           Total balance
           {/* The board: a 44 px hit area around the 16 px icon; it turns while the balances load. */}
@@ -129,7 +138,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
       {leader && <LeaderSlides onSettle={onSettle} onScanLp={onScanLp} />}
       <MessageSlider slides={slides} />
 
-      <section aria-label="Assets" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, display: 'flex', flexDirection: 'column', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
+      <section aria-label="Assets" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, display: 'flex', flexDirection: 'column', gap: 12, fontSize: 14, lineHeight: 1.5, ...card, ...(stage ? { marginTop: 16 } : {}) }}>
         <h2 style={{ textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3, margin: 0, padding: '8px 0' }}>Assets</h2>
         {leader && <UnionRows Row={Row} Icon={NinIcon} onTreasury={onTreasury} onSettle={onSettle} />}
         {leader && <span style={label}>Yours</span>}
@@ -154,6 +163,17 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         )}
         {moveNote && <p style={{ color: C.muted, fontSize: 14, margin: '4px 0 0' }} role="note">{moveNote}</p>}
       </section>
+    </>
+  );
+  if (stage) {
+    const head = <div style={{ position: 'absolute', left: 8, right: 8, top: 18, zIndex: 2 }}>{buttons}</div>;
+    // Her map comes with the card; before her record is read the card stands on the map stage alone.
+    return <Sheet map={home.map || <span />} head={head} top={top}>{content}</Sheet>;
+  }
+  return (
+    <div style={{ fontFamily: FONT, color: C.text, padding: '8px 8px 0' }}>
+      <StickyTop>{buttons}</StickyTop>
+      {content}
     </div>
   );
 }
