@@ -4,6 +4,7 @@
 // engine's one explanation text (16 Oct), CP6/CP5 answers mapped to numbers/keys in hooks.js.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bouncing } from '../register/RegFrame';
+import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C } from '../shell/tokens';
@@ -201,7 +202,9 @@ export default function CropPlanFlow() {
   // While her titles load (the Stellar list also waits for her signer), CP1's pending sheet — never "No land title"
   // before both chains have answered.
   const titlesKnown = !titles.isLoading && (onPolygon || stellarTitles.isFetched);
-  if (!titlesKnown || current.isLoading) return <Pending map={map} name={name} />;
+  // Plain loading (titles, plan, record not fetched yet) is S1 (executive decision 21 Oct); CP1's pending card is only
+  // for a record that is really not there yet.
+  if (!titlesKnown || current.isLoading) return <Loading />;
   if (titles.data && !titles.data.length && !stellarTitle) {
     return <Sheet map={map} landName={name} title="No land title yet"><p style={muted}>Your crop plan starts when your land title is ready.</p></Sheet>;
   }
@@ -211,7 +214,8 @@ export default function CropPlanFlow() {
   if (at === 'record') {
     // CP1 / CP2 (boards CropPlanPending, CropPlanPending-n9mn-kewp). DESIGN GAPs: no "Main issues" (the
     // oracle detects none yet, design Q20), no "Add your trees and water sources" row (A5 not built).
-    if (field.isLoading || !record) return <Pending map={map} name={name} error={field.error} />;
+    if (field.isLoading) return <Loading />;
+    if (!record) return <Pending map={map} name={name} error={field.error} />;
     const sum = summarize(record);
     return (
       <Sheet map={map} landName={name} title="Your field record">
