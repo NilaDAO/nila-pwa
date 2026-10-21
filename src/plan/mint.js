@@ -135,10 +135,11 @@ export function useMintCropShares() {
       const holder = await holderOf(ft, landId);
       const held = await Promise.all(ready.map((m) => ft.balanceOf(holder, m.token_id)));
       const n = held.filter((b) => b > 0n).length;
-      setState(n && n === ready.length
+      const seen = n && n === ready.length
         ? { status: mints.length > n ? 'partial' : 'done', done: n, total: mints.length, refused: mints.filter((m) => m.error).map((r) => ({ ...r, error: reasonOf(r.error) })) }
-        : { status: 'waiting', done: n, total: mints.length });
-    } catch { setState({ status: 'waiting' }); }
+        : { status: 'waiting', done: n, total: mints.length };
+      setState((prev) => (prev.status === 'busy' ? prev : seen));   // never over a mint in progress
+    } catch { setState((prev) => (prev.status === 'busy' ? prev : { status: 'waiting' })); }
   }, [api, provider, holderOf]);
 
   return { ...state, run, check };
