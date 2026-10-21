@@ -1,5 +1,5 @@
 // The drag line on every map card (executive decision 21 Oct: all map screens behave as R5): drag down lowers the
-// card — never off the screen, its top strip stays — drag up or a tap on the line brings it back; releasing snaps
+// card — never off the screen, and never below the bottom tab bar where there is one; its top strip stays — drag up or a tap on the line brings it back; releasing snaps
 // to the nearer end. `onLowered(bool)` lets a screen slide other parts (R5's info footer) with it.
 import { useRef, useState } from 'react';
 
@@ -15,7 +15,11 @@ export default function useSheetDrag(onLowered) {
     const el = ref.current;
     if (!el) return 0;
     const top = el.getBoundingClientRect().top - off;      // the card's top when not lowered
-    return Math.max(0, Math.round(window.innerHeight - KEEP - top));
+    // With a bottom tab bar (the app's map screens) the card stops above it; without one (R5–R8), above the screen's
+    // bottom edge (executive decision 21 Oct).
+    const nav = document.querySelector('nav[aria-label="Main"]');
+    const floor = nav ? nav.getBoundingClientRect().top : window.innerHeight;
+    return Math.max(0, Math.round(floor - KEEP - top));
   };
   const setLow = (v) => { setOff(v ? maxOff() : 0); onLowered?.(v); };
   const down = (e) => { drag.current = { y: e.clientY, off, max: maxOff(), moved: false }; setMoving(true); e.currentTarget.setPointerCapture?.(e.pointerId); };

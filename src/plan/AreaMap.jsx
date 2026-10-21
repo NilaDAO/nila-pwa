@@ -4,6 +4,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { C } from '../shell/tokens';
 import { areasOf } from './record';
+import { GoogleMap } from '@react-google-maps/api';
+import { useFieldMapLoaded } from '../register/FieldMap';
 
 // Pinned 1.9.4 with Subresource Integrity (Leaflet's published hashes): unpkg cannot change the code.
 const CSS = { href: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', integrity: 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=' };
@@ -42,8 +44,66 @@ export function useLeaflet() {
   return ready;
 }
 
-/** labels: zone_id → { text, sub, colour } (default "Area n"). */
-export default function AreaMap({ record, labels = {}, height = 220 }) {
+/** labels: zone_id → { text, sub, colour } (default "Area n"). The Google satellite map (the same key and loader as
+ *  R5–R8 and L2–L4, executive decision 21 Oct); Leaflet/Esri only when Google cannot load. height '100%' fills. */
+export default function AreaMap(props) {
+  const { ok } = useFieldMapLoaded();
+  return ok ? <GoogleAreaMap {...props} /> : <LeafletAreaMap {...props} />;
+}
+
+const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, gestureHandling: 'none', keyboardShortcuts: false, clickableIcons: false,
+  maxZoom: 20, tilt: 0, mapId: '8fa18e8fd7e4c318' };
+
+function chip(text, sub) {
+  const el = labelEl(text, sub);
+  Object.assign(el.style, { background: 'rgba(18,18,18,0.8)', color: '#F1F5F9', borderRadius: '9999px', padding: '0 8px', font: '700 14px/1.5 Inter, system-ui, sans-serif',
+    whiteSpace: 'nowrap', textAlign: 'center', transform: 'translateY(50%)' });
+  return el;
+}
+
+function GoogleAreaMap({ record, labels = {}, height = 220 }) {
+  const map = useRef(null);
+  const drawn = useRef([]);
+  const draw = () => {
+    const m = map.current; const g = window.google?.maps;
+    if (!m || !g || !record) return;
+    drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; });
+    drawn.current = [];
+    const bounds = new g.LatLngBounds();
+    areasOf(record).forEach((z, i) => {
+      const rings = z.geometry?.type === 'Polygon' ? [z.geometry.coordinates[0]] : z.geometry?.type === 'MultiPolygon' ? z.geometry.coordinates.map((p) => p[0]) : [];
+      if (!rings.length) return;
+      const lab = labels[z.zone_id] || { text: `Area ${i + 1}` };
+      let sx = 0; let sy = 0; let k = 0;
+      rings.forEach((ring) => {
+        const path = ring.map(([lng, lat]) => ({ lat, lng }));
+        path.forEach((q) => { bounds.extend(q); sx += q.lng; sy += q.lat; k += 1; });
+        drawn.current.push(new g.Polygon({ map: m, paths: path, clickable: false, strokeOpacity: 0,
+          fillColor: lab.colour || '#ffffff', fillOpacity: lab.colour ? 0.55 : 0.15 }));
+        drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false,
+          icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#ffffff', scale: 2 }, offset: '0', repeat: '8px' }] }));
+      });
+      if (k && g.marker?.AdvancedMarkerElement) {
+        drawn.current.push(new g.marker.AdvancedMarkerElement({ map: m, position: { lat: sy / k, lng: sx / k }, content: chip(lab.text, lab.sub) }));
+      }
+    });
+    if (!bounds.isEmpty()) {
+      // Her areas sit in the part above the card (the card covers the lower part of the screen).
+      const full = height === '100%';
+      m.fitBounds(bounds, full ? { top: 90, left: 40, right: 40, bottom: Math.round(window.innerHeight * 0.6) } : 16);
+    }
+  };
+  useEffect(draw); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; }); }, []);
+  return (
+    <div style={{ height, width: '100%', background: '#25361f' }} aria-label="Map of your areas">
+      <GoogleMap mapContainerStyle={{ height: '100%', width: '100%' }} options={G_OPTIONS}
+        onLoad={(m) => { map.current = m; m.setZoom(17); m.setCenter({ lat: 11.8872, lng: 78.9659 }); draw(); }} onUnmount={() => { map.current = null; }} />
+    </div>
+  );
+}
+
+function LeafletAreaMap({ record, labels = {}, height = 220 }) {
   const box = useRef();
   const ready = useLeaflet();
   useEffect(() => {
