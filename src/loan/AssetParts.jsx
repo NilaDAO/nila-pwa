@@ -74,7 +74,7 @@ export function Stepper({ value, set, step = 100, min = 0, max, unit, label }) {
 
 export function Secondary({ children, disabled, onClick, icon }) {
   return (
-    <button type="button" disabled={disabled} onClick={onClick} style={{ flex: 1, width: '100%', height: 44, borderRadius: R.button, border: 0, background: C.raised,
+    <button type="button" disabled={disabled} onClick={onClick} style={{ width: '100%', height: 44, flexShrink: 0, borderRadius: R.button, border: 0, background: C.raised,
       color: disabled ? C.muted : C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: disabled ? 'default' : 'pointer',
       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>{icon}{children}</button>
   );

@@ -122,7 +122,7 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
             <Line />
             <KV k="After" v={`${fmt(invested + bring)} nIN`} />
             {leader ? (
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <Secondary icon={<CameraIcon />} onClick={onPhotoCount}>Photo count</Secondary>
                 <Secondary icon={<TellerIcon />} disabled>Cash teller · soon</Secondary>
               </div>

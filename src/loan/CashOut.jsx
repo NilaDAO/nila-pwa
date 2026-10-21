@@ -155,7 +155,7 @@ export default function CashOut({ onBack }) {
   if (!s?.stellarAccount || !cfg || mine.isLoading) return <Loading />;
   if (shown) return <Code e={shown} img={img} ready={tx.ready} reclaim={reclaim} onDone={() => done(shown)} onBack={() => done(shown)} />;
 
-  const a = Math.max(1, Math.min(amount, max || 1));
+  const a = max < 1 ? 0 : Math.max(1, Math.min(amount, max));   // nothing to cash out: 0, and the button is off
   const open = list.filter((e) => e.state !== 'paid');
   return (
     <AssetScreen onBack={onBack} note={online ? 'You send the nIN to the union now. Your leader pays you the same in cash at the office.'
@@ -169,7 +169,7 @@ export default function CashOut({ onBack }) {
       </Card>
       <Card label="Cash out">
         <CardTitle>Cash out</CardTitle>
-        <Stepper value={a} set={setAmount} min={1} max={max || 1} unit="nIN" label="nIN to cash out" />
+        <Stepper value={a} set={setAmount} min={max < 1 ? 0 : 1} max={max} unit="nIN" label="nIN to cash out" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <KV k="You get" v={`₹${fmt(a)} in cash`} color={C.accent} />
           <KV k="Where" v="Union office" />
