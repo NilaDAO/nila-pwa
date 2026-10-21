@@ -4,7 +4,7 @@
 // areas (no node call yet), changing a crop on the bars (a tap opens Change my plan with the crop named instead).
 import { useRef } from 'react';
 import { C, FONT, R } from '../shell/tokens';
-import { inr, muted } from './ui';
+import { Notice, inr, muted } from './ui';
 
 export const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
 const SPAN = { S1: 4, S2: 2, S3: 2 };   // months after the season's first month
@@ -88,7 +88,9 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
   const acres = rows[0]?.acres ?? (area?.area_m2 ? area.area_m2 / 4046.86 : 0);
   const fields = fieldsIn(record, area);
   const sales = rows.reduce((a, r) => a + (r.value || 0), 0);
-  const fodder = rows.some((r) => !r.value);
+  const fodder = rows.some((r) => !r.value && !r.off_catalogue);
+  const soil = (plan.plan.soil_cover || []).filter((c) => c.zone === zone);
+  const off = rows.filter((r) => r.off_catalogue && !r.continues);
   const salesLine = `${sales ? `Estimated sales this year: ${inr(sales)}` : 'No sales planned here'}${fodder ? (sales ? ', plus fodder.' : ', fodder for your animals.') : '.'}`;
   const CL = 116;
   return (
@@ -113,6 +115,22 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
               </button>
             );
           })}
+          {/* Soil covers (no bare soil in the dry months, 21 Oct): hatched bars, never a crop for sale. */}
+          {soil.map((c) => {
+            const from = c.mulch_first || !c.sow ? c.from : c.sow;
+            const s0 = Math.max(0, Math.min(12, at(from))); const s1 = Math.max(s0 + 0.3, Math.min(12, at(c.turn_in || c.until)));
+            const label = c.kind === 'bare' ? 'Bare soil' : c.kind === 'mulch' ? 'Mulch' : c.name.replace(/^(Mulch, then )?green manure: /i, 'Green manure: ');
+            const fill = c.kind === 'bare' ? `repeating-linear-gradient(45deg, ${C.coral} 0 3px, transparent 3px 6px)`
+              : `repeating-linear-gradient(45deg, ${c.colour || '#7FB069'} 0 3px, rgba(127,176,105,0.25) 3px 6px)`;
+            return (
+              <div key={`soil-${c.from}`} title={c.name} style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30 }}>
+                <span style={{ width: CL - 8, marginRight: 8, fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: C.text }}>{label}</span>
+                <span style={{ position: 'relative', flexGrow: 1, height: 14 }}>
+                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: fill }} />
+                </span>
+              </div>
+            );
+          })}
           <div aria-hidden="true" style={{ display: 'flex', marginLeft: CL, marginTop: 4, fontSize: 12, lineHeight: '16px', color: C.muted }}>
             {AXIS.map((m, i) => <span key={i} style={{ flex: 1, textAlign: 'center' }}>{m}</span>)}
           </div>
@@ -122,6 +140,22 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
         <span>{salesLine}</span>
         {!readOnly && <span>Tap a crop to change it.</span>}
       </div>
+      {soil.filter((c) => c.kind !== 'bare').map((c) => (
+        <Notice key={`sn-${c.from}`} kind="info" title={c.name}>
+          {c.kind === 'mulch' ? 'The last crop\'s residue stays on the soil through the dry months, so it does not erode.'
+            : `Sown so it stands through the driest weeks and is ploughed in before the next crop, to rebuild the soil.${c.financed_with ? ` Its seed (${inr(c.seed_cost)}) is in this area's loan.` : c.unfinanced_reason ? ` Its seed is not in the loan: ${c.unfinanced_reason}.` : ''}`}
+          {c.risks?.includes('water source not confirmed') ? ' Needs some water: your water source is not confirmed.' : ''}
+        </Notice>
+      ))}
+      {soil.filter((c) => c.kind === 'bare').map((c) => (
+        <Notice key={`sb-${c.from}`} title="Bare soil in the dry months">You keep this area bare in the dry months: bare soil erodes.</Notice>
+      ))}
+      {off.map((r) => (
+        <Notice key={`off-${r.slot}-${r.crop}`} title={`${r.name}: not in Nila's crop list`}>
+          Its yield, costs and sowing months are not checked by Nila, so it gets no loan or voucher.
+          {r.estimate?.kg ? ` Estimate (not checked): about ${fmtKg(r.estimate.kg)}.` : ''}
+        </Notice>
+      ))}
       {!readOnly && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, marginTop: 12 }}>
           {/* NOT BUILT: split and merge need a node call (an area is a group of fields with one plan). */}

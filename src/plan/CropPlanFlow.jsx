@@ -84,6 +84,16 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
               <td style={{ padding: '8px 0' }} colSpan={3}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount} points off the rate ({rate}%) · trees registered</span></td>
             </tr>
           )}
+          {(() => {
+            // Soil cover (seed): green manure seed rides on the area's crop loan (21 Oct); it is in the seasons above.
+            const seed = seasons.reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.soil_cover_seed || 0), 0), 0);
+            return seed > 0 ? (
+              <tr style={{ borderTop: `1px solid ${C.raised}` }}>
+                <td style={{ padding: '8px 0' }} colSpan={2}>Soil cover (seed)<br /><span style={muted}>in the seasons above</span></td>
+                <td style={{ textAlign: 'right', color: C.muted }}>{inr(seed)}</td>
+              </tr>
+            ) : null;
+          })()}
           <tr style={{ borderTop: `1px solid ${C.raised}`, fontWeight: 700 }}>
             <td style={{ padding: '8px 0' }} colSpan={2}>Total cost</td>
             <td style={{ textAlign: 'right' }}>{inr(total.cash)}</td>
@@ -194,8 +204,18 @@ export default function CropPlanFlow() {
   const labels = useMemo(() => {
     const ss = plan?.plan?.seasons;
     if (!ss?.length) return {};
-    const rows = rowsInSeason(ss, Math.min(season, ss.length - 1));
-    return Object.fromEntries(Object.values(rows).map((r) => [r.zone, { text: r.name, sub: fmtKg(r.kg), colour: r.colour, acc: checked.has(r.zone) }]));
+    const i = Math.min(season, ss.length - 1);
+    const rows = rowsInSeason(ss, i);
+    const out = Object.fromEntries(Object.values(rows).map((r) => [r.zone, { text: r.name,
+      sub: r.off_catalogue ? 'not in the crop list' : fmtKg(r.kg), colour: r.colour, acc: checked.has(r.zone) }]));
+    // A soil cover in this season (no bare soil in the dry months, 21 Oct), where no crop is on the area then.
+    const slot = ss[i].slot;
+    for (const c of plan.plan.soil_cover || []) {
+      if (out[c.zone] || !(c.slots || []).includes(slot)) continue;
+      out[c.zone] = { text: c.kind === 'bare' ? 'Bare soil' : c.name.replace(/^Mulch, then /, ''), sub: c.kind === 'bare' ? 'erosion risk' : 'soil cover',
+        colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
+    }
+    return out;
   }, [plan, season, checked]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);

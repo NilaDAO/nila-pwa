@@ -56,11 +56,12 @@ const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, gestureHandl
 
 // CP10's map label (board CropPlanQ3-xdlz): one chip, the crop bold and the yield under it; the picked area's chip
 // gets the accent border, the others fade; an accepted area shows a check. Text from the node, never as HTML.
-function chip({ text, sub, acc }, on, faded, clickable) {
+function chip({ text, sub, acc, soil }, on, faded, clickable) {
   const el = document.createElement('div');
+  // A soil cover's chip (21 Oct) has a dashed green border, so it never reads as a crop for sale.
   Object.assign(el.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 10px', borderRadius: '12px',
     background: 'rgba(18,18,18,0.85)', color: '#F1F5F9', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap',
-    border: on ? '2px solid #D4CF5A' : '0', opacity: faded ? '0.3' : '1', cursor: clickable ? 'pointer' : 'default', transform: 'translateY(50%)' });
+    border: on ? '2px solid #D4CF5A' : soil ? '1.5px dashed #7FB069' : '0', opacity: faded ? '0.3' : '1', cursor: clickable ? 'pointer' : 'default', transform: 'translateY(50%)' });
   const a = document.createElement('span');
   Object.assign(a.style, { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', lineHeight: '1.5', fontWeight: '700' });
   if (acc) {
@@ -102,7 +103,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       rings.forEach((ring) => {
         const path = ring.map(([lng, lat]) => ({ lat, lng }));
         path.forEach((q) => { bounds.extend(q); sx += q.lng; sy += q.lat; k += 1; });
-        const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: colour, fillOpacity: (lab.colour ? 0.55 : 0.15) * (faded ? 0.3 : 1),
+        const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1),
           strokeColor: colour, strokeOpacity: faded ? 0.3 : 1, strokeWeight: 1.5 });
         if (pick) poly.addListener('click', pick(z.zone_id));
         drawn.current.push(poly);
@@ -162,7 +163,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
       const lab = labels[z.zone_id] || { text: `Area ${i + 1}` };
       const faded = !!selected && selected !== z.zone_id;
       const colour = lab.colour || '#ffffff';
-      const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, opacity: faded ? 0.3 : 1, fillColor: colour, fillOpacity: (lab.colour ? 0.55 : 0.15) * (faded ? 0.3 : 1) } });
+      const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, opacity: faded ? 0.3 : 1, fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
       layer.addTo(group);
       if (onSelect) layer.on('click', () => onSelect(selected === z.zone_id ? null : z.zone_id));
       layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
