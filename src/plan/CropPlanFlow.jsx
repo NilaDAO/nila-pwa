@@ -105,7 +105,7 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
       })()}
       {above > 0 && (
         <Notice title="Loans are capped at ₹10,000">
-          Each loan (one area in one season) gives at most ₹10,000 in cash. {inr(above)} of these costs is above the cap and is paid from your own money.
+          Each loan (one area in one season) gives at most ₹10,000 in cash. The {inr(above)} above the cap is financed by the member contributions in Nila.
         </Notice>
       )}
       {lastDue && <p style={muted}>The loans are {inr(total.financed)}; you repay {inr(total.financed + total.interest)} in {seasons.length} parts, the last by end of {monthYear(lastDue)}.</p>}
