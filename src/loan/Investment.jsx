@@ -4,7 +4,7 @@
 // L5 → C6). Withdraw = fund_core.request_unbond_junior (an amount of her free part, as shares), claimable 14 days later
 // (the contract; the spec's "3 weeks" is replaced, 16 Oct). A member collects it in cash at the office (22 Oct, desk only:
 // fund_core.claim_junior_cash, the leader's "Pay out investment" task, she confirms by scanning the leader's code); a
-// leader claims her own to her wallet with claim_junior. Assisted mode: both cards are messages. An Invest | Withdraw switch at the top of
+// leader claims her own to her wallet with claim_junior. Assisted mode: both cards are messages. An Invest | Withdraw segmented control (component book) at the top of
 // the card shows one of the two at a time (22 Oct).
 // DESIGN GAPs: no union name, no rate arrow and so no "In a year" line (Q5); no "Your loan · Fully backed" row (the tree
 // discount is not in Nov 7, LOAN_RULES); no leader name ("Rosalie"); Cash teller is shown as soon.
@@ -19,6 +19,7 @@ import { Primary, inr } from '../plan/ui';
 import { C } from '../shell/tokens';
 import { Loading } from '../register/Boot';
 import { assisted } from './MyShares';
+import Segmented from '../shell/Segmented';
 import { AssetScreen, Card, KV, Line, MarkCircle, QrCircle, Secondary, Stepper } from './AssetParts';
 
 const RAY = 10n ** 27n;
@@ -26,6 +27,7 @@ const n = (v) => Number(BigInt(v ?? 0)) / 1e7;
 const DAYS_14 = 14 * 86400;
 const ONE_NIN = 10_000_000n;
 const fmt = (x) => Math.floor(x).toLocaleString('en-IN');
+const SWITCH = [['invest', 'Invest'], ['withdraw', 'Withdraw']];
 const NOTE = 'What you owe stays locked in your investment. It frees up as you repay.';
 const muted = { color: C.muted, fontSize: 14, lineHeight: 1.5, margin: 0 };
 const dateOf = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -35,20 +37,6 @@ const ico = (d) => (
 );
 const CameraIcon = () => ico(<><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" /><circle cx="12" cy="13" r="3" /></>);
 const TellerIcon = () => ico(<><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4M7 10h10" /></>);
-
-/** Invest | Withdraw (22 Oct): one card at a time, picked with a two-option switch. */
-function Switch({ value, onChange }) {
-  const opt = (v, label) => (
-    <button key={v} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)}
-      style={{ flex: 1, height: 40, border: 0, borderRadius: 10, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-        background: value === v ? C.accent : 'transparent', color: value === v ? C.ink : C.muted }}>{label}</button>
-  );
-  return (
-    <div role="radiogroup" aria-label="Invest or withdraw" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 14, background: C.raised }}>
-      {opt('invest', 'Invest')}{opt('withdraw', 'Withdraw')}
-    </div>
-  );
-}
 
 /** A7b #invest: her wallet QR for the leader, the amount she brings and her investment after it. */
 function BringCash({ amount, after, address, onBack }) {
@@ -134,7 +122,7 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
       </Card>
 
       {mode === 'invest' && <Card label="Invest">
-        <Switch value={mode} onChange={setPick} />
+        <Segmented label="Invest or withdraw" options={SWITCH} value={mode} onChange={setPick} />
         {helped ? (
           <p style={{ ...muted, textAlign: 'center', padding: '12px 0' }}>Bring cash to your leader at the union office. She adds it to your union investment.</p>
         ) : (
@@ -156,7 +144,7 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
       </Card>}
 
       {mode === 'withdraw' && <Card label="Withdraw">
-        <Switch value={mode} onChange={setPick} />
+        <Segmented label="Invest or withdraw" options={SWITCH} value={mode} onChange={setPick} />
         {helped ? (
           <p style={{ ...muted, textAlign: 'center', padding: '24px 0' }}>Ask your leader at the union office: you get your investment in cash.</p>
         ) : canClaim && leader ? (
