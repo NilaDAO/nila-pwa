@@ -5,6 +5,7 @@
 // vouchers, A8) and Your machine (owner, A13). P9 adds USDC for an LP (lp-open/2: her USDC row). P10 (A1L): for a
 // leader, the cash and LP slides and the Union rows (treasury, cash). P11: a member with no land title registers
 // first (src/register/Registration.jsx, from the Shell), so A1 always shows her title row.
+import { useEffect } from 'react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useTitleCount } from '../register/titles';
@@ -22,6 +23,10 @@ import { Sheet } from '../plan/ui';
 import { useStage } from './stageCtx';
 import { homeTop, useHomeMap } from './MapStage';
 import { MEMBER_TODO_ROWS, useLeaderTaskCount } from './taskCount';
+
+// Where A1's card was left (map-central trial, 22 Oct): back from any asset screen it returns at the same scroll position
+// and raised or lowered as it was. Kept for the session in memory only.
+const memory = { y: 0, low: false };
 
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
@@ -106,6 +111,16 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   // sticky header under the drag line.
   const stage = useStage();
   const top = homeTop();
+  useEffect(() => {
+    if (!stage) return undefined;
+    const back = memory.y;
+    // Her rows come in as their data loads: the position is set again once the page is long enough.
+    const put = () => { if (!memory.low && back > 0) window.scrollTo(0, back); };
+    put(); const t1 = setTimeout(put, 300); const t2 = setTimeout(put, 900);
+    const on = () => { memory.y = window.scrollY; };
+    const arm = setTimeout(() => window.addEventListener('scroll', on, { passive: true }), 950);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(arm); window.removeEventListener('scroll', on); };
+  }, [stage]);
   const home = useHomeMap(onShare, window.innerHeight - top + 32);
   const buttons = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -168,7 +183,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   );
   if (stage) {
     // Her map comes with the card; before her record is read the card stands on the map stage alone.
-    return <Sheet map={home.map || <span />} head={buttons} top={top}>{content}</Sheet>;
+    return <Sheet map={home.map || <span />} head={buttons} top={top} startLow={memory.low} onLowered={(v) => { memory.low = v; }}>{content}</Sheet>;
   }
   return (
     <div style={{ fontFamily: FONT, color: C.text, padding: '8px 8px 0' }}>

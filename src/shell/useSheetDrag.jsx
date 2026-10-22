@@ -6,8 +6,9 @@ import { useEffect, useRef, useState } from 'react';
 const EASE = 'cubic-bezier(0.2,0.8,0.2,1)';
 const KEEP = 72;   // px of the card that stay on screen when lowered
 
-/** resetKey: when it changes the card comes back up (CP10: a picked area). */
-export default function useSheetDrag(onLowered, resetKey) {
+/** resetKey: when it changes the card comes back up (CP10: a picked area). startLow: the card opens lowered (A1 coming
+ *  back to the state it was left in, map-central trial). */
+export default function useSheetDrag(onLowered, resetKey, startLow) {
   const ref = useRef(null);
   const drag = useRef(null);
   const [off, setOff] = useState(0);
@@ -68,6 +69,11 @@ export default function useSheetDrag(onLowered, resetKey) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setOff(0); onLowered?.(false); }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => tell(false), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!startLow) return undefined;
+    const t = setTimeout(() => setLow(true), 80);   // once the card is laid out, so its floor is measured right
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const down = (e) => { drag.current = { y: e.clientY, off, max: maxOff(), moved: false }; setMoving(true); e.currentTarget.setPointerCapture?.(e.pointerId); };
   const move = (e) => {
     const d = drag.current; if (!d) return;

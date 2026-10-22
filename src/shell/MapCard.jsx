@@ -2,6 +2,7 @@
 // are map cards on the shared map stage. Opened, the card takes the full screen height (rising from where A1's card
 // stands) and covers the map; dragged down it shows the map like the other cards; back returns to A1. Outside the
 // map-central shell the screen is drawn as before (ScreenHeader on the gradient).
+import { useEffect } from 'react';
 import { Sheet } from '../plan/ui';
 import { useStage } from './stageCtx';
 import { homeTop, useHomeMap } from './MapStage';
@@ -13,6 +14,7 @@ const openShare = (t) => { window.location.hash = `#/cropshare/${t}`; };
 export default function MapCard({ header, style, children }) {
   const stage = useStage();
   const home = useHomeMap(openShare, window.innerHeight - homeTop() + 32);
+  useEffect(() => { if (stage) window.scrollTo(0, 0); }, [stage]);   // a card opens at its top, not where A1 was scrolled
   if (!stage) return <div style={style}><ScreenHeader {...header} />{children}</div>;
   // The screen's own cards keep their 8 px gutter: the sheet's 22 px padding is taken back.
   const { padding, ...rest } = style || {};

@@ -8,8 +8,8 @@ import { SettingsButton } from '../shell/RoundButton';
 /** head: header buttons in place of Back / name / Settings. top: the card's top (px) when it opens. onSwipe(±1): a
  *  sideways swipe on the card (A4/A5's ‹ asset › bar). */
 /** full (map-central): the card takes the whole screen height, rising from where A1's card stands. */
-export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full }) {
-  const drag = useSheetDrag(undefined, resetKey);   // the drag line as on R5 (all map screens, 21 Oct)
+export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered }) {
+  const drag = useSheetDrag(onLowered, resetKey, startLow);   // the drag line as on R5 (all map screens, 21 Oct)
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell the one map behind the tabs
   // (shell/MapStage) draws this sheet's map, so it is never mounted again between screens.
   const stage = useStage();
