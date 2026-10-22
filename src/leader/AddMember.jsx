@@ -1,7 +1,7 @@
 // L14 — Add a member (board LeaderAddMember, #sent): the leader at her farm enters her name and number and her phone
 // type, and Nila texts her the app link (oracle O17). A keypad phone gets a one-time link to Nila lite (/l/<code>,
 // 30 minutes, one use, bound to her number; F9); a smartphone the app's address (she registers herself, R1–R14).
-// #sent follows her progress: link sent, opened and agreed, PIN made, then her fields (F14, not built yet: "Match
+// #sent follows her progress: link sent, opened and agreed, phone set up (no PIN, executive decision 22 Oct), then her fields (F14, not built yet: "Match
 // field shapes" stays disabled until her fields come in). DESIGN GAPs: the leader's own name is not on Stellar, so the
 // link names the union's representative (R9's union list); the hooks' names are the design's proposal (Q53).
 import { useState } from 'react';
@@ -11,6 +11,7 @@ import { Card, CardButton, Row, Text } from '../shell/SettingsParts';
 import { useUnionInfo } from '../shell/SettingsParts';
 import { Notice, Primary } from '../plan/ui';
 import { useInviteLink, useKeypadMember } from '../keypad/hooks';
+import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 
 const field = { height: 48, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 16px', boxSizing: 'border-box',
   width: '100%', fontFamily: FONT, fontSize: 14, fontWeight: 700, outline: 'none' };
@@ -67,7 +68,7 @@ function Sent({ id, go }) {
           <>
             <Step done title="Link sent" sub={`${time(l.sent)} · works once, for 30 minutes`} />
             <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for her' : 'The link no longer works: send it again')} />
-            <Step done={!!m.pin} title="PIN made" sub={time(m.pin)} />
+            <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
             <Step title="Field 1" sub="Walk with her to her first field" />
             <Notice kind="info">Pin Nila to her apps menu: on her phone, in the browser, Options → Pin to Apps Menu.</Notice>
           </>
@@ -94,11 +95,10 @@ export default function AddMember({ id, go }) {
   const union = useUnionInfo();
   const send = useInviteLink();
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState('+91');
   const [type, setType] = useState('keypad');
-  const digits = phone.replace(/\D/g, '');
-  const ok = name.trim() && (digits.length === 10 || (digits.length === 12 && digits.startsWith('91')));
-  const submit = () => send.mutate({ name: name.trim(), phone, phoneType: type, unionName: union.name, leaderName: union.rep },
+  const ok = name.trim() && phoneOk(phone);
+  const submit = () => send.mutate({ name: name.trim(), phone: phoneValue(phone), phoneType: type, unionName: union.name, leaderName: union.rep },
     { onSuccess: (m) => go(`tasks/member/${m.id}`) });
   return (
     <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
@@ -109,7 +109,7 @@ export default function AddMember({ id, go }) {
             <label style={label} htmlFor="l14-name">Name</label>
             <input id="l14-name" style={field} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
             <label style={label} htmlFor="l14-phone">Phone number</label>
-            <input id="l14-phone" style={field} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="+91" autoComplete="off" />
+            <PhoneField id="l14-phone" value={phone} onChange={setPhone} />
             <Row k={<b style={{ color: C.text }}>Union</b>} v={union.name || '—'} />
           </Card>
           <Card title="Her phone">

@@ -24,7 +24,7 @@ export function useInviteLink() {
   });
 }
 
-/** L14 #sent: her progress (link, consent, PIN, device key, fields), polled while the leader waits with her. */
+/** L14 #sent: her progress (link, consent, device key, fields; no PIN), polled while the leader waits with her. */
 export function useKeypadMember(id) {
   const api = useKeypadClient();
   return useQuery({ queryKey: qkKeypad.member(id), enabled: !!api && !!id, queryFn: () => api.member(id), refetchInterval: 5_000 });
