@@ -186,14 +186,14 @@ function eventRows(events, me, shareLabel) {
       // The first time her title is set (a later set of the same title, e.g. a new record, is not a new title).
       case 'title_set': if (has(e.v.holder) && !shown.has(String(e.topics[1]))) { shown.add(String(e.topics[1])); row('Land title on Stellar', `id ${e.topics[1]}`, '+1'); } break;
       case 'title_burned': if (has(e.v.holder) || titles.has(String(e.topics[1]))) row('Land title burned', `id ${e.topics[1]}`, '−1'); break;
-      case 'food_token_attested': if (has(e.v.member) || share) row('Crop share ready', share || 'From your union', `₹${nin(e.v.amount)}`); break;
-      case 'loan_drawn': if (has(e.v.borrower) || share) row('Crop share taken', share || 'From your union', `+₹${nin(e.v.cash)}`); break;
-      case 'loan_repaid': if (share) row('Loan repaid', share, `−₹${nin(BigInt(e.v.principal_paid || 0) + BigInt(e.v.interest_paid || 0))}`); break;
-      case 'loan_overdue': if (share) row('Repayment overdue', share, ''); break;
+      case 'food_token_attested': if (has(e.v.member) || share) row(share ? `Crop share ready · ${share}` : 'Crop share ready', 'From your union', `₹${nin(e.v.amount)}`); break;
+      case 'loan_drawn': if (has(e.v.borrower) || share) row(share ? `Crop share taken · ${share}` : 'Crop share taken', 'Cash at union office', `+₹${nin(e.v.cash)}`); break;
+      case 'loan_repaid': if (share) row(`Loan repaid · ${share}`, 'Cash at union office', `−₹${nin(BigInt(e.v.principal_paid || 0) + BigInt(e.v.interest_paid || 0))}`); break;
+      case 'loan_overdue': if (share) row(`Repayment overdue · ${share}`, 'Your crop share', ''); break;
       case 'voucher_granted': if (has(e.v.member) || share) row('Machinery voucher', 'From your union', `+${e.v.hours} h`); break;
       case 'voucher_claimed':
         if (has(e.v.owner)) row('Machine job done', 'Your machine', `+${e.v.hours} h`);
-        else if (share) row('Machine job', share, `−${e.v.hours} h`);
+        else if (share) row(`Machine job · ${share}`, 'Machinery voucher', `−${e.v.hours} h`);
         break;
       case 'dues_collected': if (has(e.topics[2])) row('Machine dues collected', 'From your union', `+₹${nin(e.v.amount)}`); break;
       case 'machine_registered': if (has(e.v.owner)) row('Machine registered', 'By your leader', '+1'); break;
@@ -260,8 +260,8 @@ async function polygonLogRows(evm, shareLabel) {
     pairs.forEach(([id, value], i) => {
       const label = shareLabel(tokenHex(id.toString()));
       // A FoodToken's units are the expected harvest in kg.
-      rows.push({ id: `pl-${l.transactionHash}-${l.index}-${i}`, at: times[l.blockNumber], title: inn ? 'Crop share made' : 'Crop share moved',
-        sub: label || 'Crop share', amount: `${inn ? '+' : '−'}${Number(value).toLocaleString('en-IN')} kg`, chain: 'polygon', hash: l.transactionHash });
+      rows.push({ id: `pl-${l.transactionHash}-${l.index}-${i}`, at: times[l.blockNumber], title: `${inn ? 'Crop share made' : 'Crop share moved'}${label ? ` · ${label}` : ''}`,
+        sub: inn ? 'Minted by your union' : 'Polygon', amount: `${inn ? '+' : '−'}${Number(value).toLocaleString('en-IN')} kg`, chain: 'polygon', hash: l.transactionHash });
     });
   }
   return rows;
@@ -271,9 +271,9 @@ async function polygonLogRows(evm, shareLabel) {
 export function useHistory(stellarAddress, evmAddress) {
   const { data: cfg } = useStellarConfig();
   const shares = useMyShares();
-  // Her crop shares by token id (64 hex): "Sesame · Area 1".
+  // Her crop shares by token id (64 hex): "Sesame Area 1", put in the row's title (Today rows show only the time).
   const labels = {};
-  for (const x of shares.data || []) labels[tokenHex(x.token_id)] = `${(x.crop || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())} · Area ${x.area}`;
+  for (const x of shares.data || []) labels[tokenHex(x.token_id)] = `${(x.crop || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())} Area ${x.area}`;
   const shareLabel = (hex) => labels[String(hex).replace(/^0x/, '').toLowerCase().padStart(64, '0')] || '';
   const ready = !shares.isLoading;
   return useQuery({
