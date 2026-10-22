@@ -218,8 +218,9 @@ export default function Shell({ leader }) {
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
   else if (view === 'usdc' && leader) body = <UsdcAsset onBack={() => go('assets')} onReceive={() => go('wallet')} />;
   else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
-  else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go('cash/invest')} />;
-  else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
+  else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go('cash/invest')} onScan={() => go('scan')} />;
+  // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.
+  else if (view === 'cashout' && leader) body = <CashOut onBack={() => go('assets')} />;
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
   else if (view === 'machine') body = <MyMachine onBack={() => go('assets')} />;
   else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go(`cropshare/${readArg()}`)} />;

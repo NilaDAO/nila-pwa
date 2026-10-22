@@ -93,7 +93,8 @@ const NinIcon = () => (
 export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
-  const nin = s?.stellarAccount?.nin?.balance ?? 0;
+  // A member never holds nIN (LOAN_RULES §5, desk only, 22 Oct): no nIN row and none in her total; leaders keep theirs.
+  const nin = leader ? (s?.stellarAccount?.nin?.balance ?? 0) : 0;
   const titles = useTitleCount(s?.evmAddress, s?.stellarAddress).count;   // Polygon or Stellar (src/register/titles.js)
   const inv = useInvestment(s?.stellarAddress);
   const invested = inv.data ? Number(inv.data.invested) / 1e7 : undefined;
@@ -168,7 +169,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         {leader && <span style={label}>Yours</span>}
         <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
           value={titles ?? '…'} valueSub="—" onClick={onLand} />
-        <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />
+        {leader && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />}
         {invested !== undefined && (
           <Row label="Open nIN invested" icon={<InvestedTile />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}
             value={Math.floor(invested)} valueSub={inr(invested)} onClick={onInvested} />

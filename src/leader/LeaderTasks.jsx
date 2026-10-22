@@ -46,7 +46,8 @@ const START = [
   ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon]]],
   ['Crop plan and crop share', [['Share request', 'For a crop plan the member accepted', 'cash/loan', RupeeIcon]]],
   ['Cash', [['Invest', 'Cash in: she invests in the union', 'cash/invest', InvestIcon], ['Repay', 'Cash in: the member repays her crop share', 'cash/repay', RepayIcon],
-    ['Pay out a cash-out', 'Scan her code, pay cash, burn her nIN', 'cash/payout', PayOutIcon], ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
+    ['Pay out investment', 'Her withdrawal, in cash at the desk', 'cash/withdraw', PayOutIcon],
+    ['Pay out a cash-out', 'A leader\'s code: pay cash, burn the nIN', 'cash/payout', PayOutIcon], ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
   ['Vouchers', [['Register a machine', 'Her own machine, photos and price', 'cash/machine', TractorIcon]]],
 ];
 

@@ -63,9 +63,9 @@ export default function MoveFlow({ onMoved, onRepay }) {
   if (progress.done) {
     // M3. DESIGN GAP: no reset (16 Oct), so no "Recover wallet" and no new code.
     return (
-      <Frame note="Your nIN reaches the new network after your union confirms your land title.">
+      <Frame note={l?.nin >= 1 ? 'Your nIN from the old app is paid out in cash at the union office.' : 'Your land title reaches the new network after your union confirms it.'}>
         <div className="text-center font-bold text-lg mb-2">Your wallet has moved</div>
-        <p className="text-center text-sm mb-2" style={{ color: T.muted }}>Your land title and nIN are waiting.</p>
+        <p className="text-center text-sm mb-2" style={{ color: T.muted }}>Your land title is waiting.</p>
         <Primary onClick={onMoved}>Continue</Primary>
       </Frame>
     );

@@ -20,6 +20,7 @@ import RegisterMachine from '../machine/RegisterMachine';
 import { ScanLp } from '../anchor/LeaderLp';
 import CashBoard from '../leader/CashBoard';
 import { PickMember } from '../leader/LeaderTasks';
+import DeskWithdraw from './DeskWithdraw';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
@@ -133,13 +134,15 @@ function Scan({ purpose, onBack, initialMember = '' }) {
 }
 
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
-const OPEN = { lpscan: 'lpscan', loan: 'loan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine' };
-const TITLES = { invest: 'Invest', repay: 'Repay', machine: 'Register a machine' };
+const OPEN = { lpscan: 'lpscan', loan: 'loan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw' };
+const TITLES = { invest: 'Invest', repay: 'Repay', machine: 'Register a machine', withdraw: 'Pay out investment' };
 
 export default function CashDesk({ initial }) {
   const [view, setView] = useState(OPEN[initial]);
   const [member, setMember] = useState();      // L5's pick (or '' to type / scan her wallet)
   const back = useMemo(() => () => { setView(undefined); setMember(undefined); }, []);
+  // Her investment over the desk (22 Oct): a member picked on L5 (scanning her wallet is not offered here).
+  if (view === 'withdraw') return member ? <DeskWithdraw member={member} onBack={back} /> : <PickMember title={TITLES.withdraw} onBack={back} onPick={setMember} />;
   // L5 first for a task about a member: the members the app knows, or scan her wallet.
   if (TITLES[view] && member === undefined) {
     return <PickMember title={TITLES[view]} onBack={back} onPick={setMember} onScan={() => setMember('')} />;

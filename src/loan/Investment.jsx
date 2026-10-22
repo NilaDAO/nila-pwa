@@ -2,7 +2,9 @@
 // locked (what she owes); Invest = bring cash to the office (A7b #invest: her wallet QR for the leader, who counts the
 // cash on C6 and records it with fx_pool.cash_scan_mint); a leader invests her own cash with Photo count (Cash → Invest,
 // L5 → C6). Withdraw = fund_core.request_unbond_junior (an amount of her free part, as shares), claimable 14 days later
-// (the contract; the spec's "3 weeks" is replaced, 16 Oct) with claim_junior. Assisted mode: both cards are messages.
+// (the contract; the spec's "3 weeks" is replaced, 16 Oct). A member collects it in cash at the office (22 Oct, desk only:
+// fund_core.claim_junior_cash, the leader's "Pay out investment" task, she confirms by scanning the leader's code); a
+// leader claims her own to her wallet with claim_junior. Assisted mode: both cards are messages.
 // DESIGN GAPs: no union name, no rate arrow and so no "In a year" line (Q5); no "Your loan · Fully backed" row (the tree
 // discount is not in Nov 7, LOAN_RULES); no leader name ("Rosalie"); Cash teller is shown as soon.
 import { useEffect, useState } from 'react';
@@ -51,7 +53,7 @@ function BringCash({ amount, after, address, onBack }) {
   );
 }
 
-export default function Investment({ onBack, leader, onPhotoCount }) {
+export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const inv = useInvestment(s?.stellarAddress);
@@ -92,6 +94,8 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
   const pending = BigInt(p?.pending_shares ?? 0) > 0n;
   const canClaim = BigInt(p?.claimable_shares ?? 0) > 0n || (pending && claimAt <= now);
   const helped = assisted() && !leader;
+  const index = BigInt(market.data?.index ?? 0);
+  const toCollect = n(((BigInt(p?.claimable_shares ?? 0) + (claimAt && claimAt <= now ? BigInt(p?.pending_shares ?? 0) : 0n)) * index) / RAY);
   if (showQr) return <BringCash amount={bring} after={invested + bring} address={s?.stellarAddress} onBack={() => setShowQr(false)} />;
   return (
     <AssetScreen title="Union investment" onBack={onBack} note={NOTE}>
@@ -134,19 +138,26 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
       </Card>
 
       <Card label="Withdraw">
-        <CardTitle>{helped ? 'Withdraw to nIN' : 'Withdraw'}</CardTitle>
+        <CardTitle>Withdraw</CardTitle>
         {helped ? (
-          <p style={{ ...muted, textAlign: 'center', padding: '24px 0' }}>Ask your leader to withdraw your investment and scan the code she generates.</p>
-        ) : canClaim ? (
+          <p style={{ ...muted, textAlign: 'center', padding: '24px 0' }}>Ask your leader at the union office: you get your investment in cash.</p>
+        ) : canClaim && leader ? (
           <div style={{ marginTop: -16 }}><Primary disabled={!tx.ready} onClick={claim}>Get your withdrawal</Primary></div>
+        ) : canClaim ? (
+          <>
+            <KV k="Ready to collect" v={`${inr(Math.floor(toCollect))} in cash`} color={C.accent} />
+            <p style={muted}>Collect it at the union office: your leader shows a code, you scan it and confirm.</p>
+            {onScan && <Secondary onClick={onScan}>Scan your leader's code</Secondary>}
+          </>
         ) : pending ? (
-          <p style={muted}>Your withdrawal is on its way: it arrives in your wallet by about {dateOf(claimAt)}.</p>
+          <p style={muted}>{leader ? `Your withdrawal is on its way: it arrives in your wallet by about ${dateOf(claimAt)}.`
+            : `Your withdrawal is on its way: collect it in cash at the union office from about ${dateOf(claimAt)}.`}</p>
         ) : (
           <>
             <p style={muted}>You can withdraw {fmt(free)} nIN</p>
             <Stepper value={o} set={setOut} step={25} min={0} max={free} unit="nIN" label="nIN to withdraw" />
-            <KV k="You get about" v={`${fmt(o)} nIN`} />
-            <p style={muted}>Arrives in your wallet by about {dateOf(now + DAYS_14)}</p>
+            <KV k="You get about" v={leader ? `${fmt(o)} nIN` : `₹${fmt(o)} in cash`} />
+            <p style={muted}>{leader ? `Arrives in your wallet by about ${dateOf(now + DAYS_14)}` : `Collect it in cash at the union office from about ${dateOf(now + DAYS_14)}`}</p>
             <Secondary disabled={!tx.ready || o < 1 || !market.data} onClick={() => withdraw(o)}>Withdraw</Secondary>
           </>
         )}

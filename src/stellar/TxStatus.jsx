@@ -14,11 +14,11 @@ export function useSorobanTx() {
   const [tx, setTx] = useState({ status: 'idle' });
   const last = useRef(null);
   const run = useCallback(async (params) => {
-    const { label, rows = [], contractName, fn, args, invalidate = [] } = params;
+    const { label, rows = [], contractName, fn, args, auth, invalidate = [] } = params;
     last.current = { params, hash: null, sentAt: 0 };
     setTx({ status: 'pending', label, rows });
     try {
-      const out = await invokeContract({ cfg, source: s.stellarAddress, signHash: s.signHash, contractName, fn, args,
+      const out = await invokeContract({ cfg, source: s.stellarAddress, signHash: s.signHash, contractName, fn, args, auth,
         onSent: (hash) => { last.current = { params, hash, sentAt: Date.now() }; setTx((t) => ({ ...t, hash })); } });
       invalidate.forEach((k) => qc.invalidateQueries({ queryKey: k }));
       setTx({ status: 'success', label, rows, hash: out.hash, when: new Date(), result: out.result });

@@ -10,7 +10,6 @@ import { readAllItems, setDBitem } from '../utils/db';
 import { updateUserChain } from '../utils/cognito_helpers';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { getMoveStatus, requestMoveNin } from './api';
 
 export const STELLAR_CHAIN = 'stellar';
 const ERC20 = ['function balanceOf(address) view returns (uint256)'];
@@ -73,13 +72,8 @@ export function useMoveWallet(loans) {
       if (step < 2) {
         // Her loans, checked again right before anything moves (an M4 retry skips the start screen).
         if (!loans?.known || loans.open.length > 0) throw new Error('her Polygon loans are not checked, or one is open');
-        const wei = (await legacy.refetch()).data?.ninWei ?? 0n;
-        // One move per wallet: a request that already reached the node is not sent again.
-        const prior = wei > 0n ? await getMoveStatus(signer.evmAddress).catch(() => ({ state: 'none' })) : null;
-        if (wei > 0n && (prior.state === 'none' || prior.state === 'failed')) {
-          await requestMoveNin({ network: cfg.network, stellar: signer.stellarAddress,
-            evmAddress: signer.evmAddress, amountWei: wei, signEvmMessage: signer.signEvmMessage });
-        }
+        // Her Polygon nIN is not moved by the app (22 Oct, LOAN_RULES "The move's nIN"): an operator pays the few
+        // wallets that hold it in cash at the office, so no move request is sent.
         step = 2; save({ step });
       }
       if (step < 3) {

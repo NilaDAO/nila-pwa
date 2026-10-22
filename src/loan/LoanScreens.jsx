@@ -14,6 +14,7 @@ import { usePlanClient } from '../plan/hooks';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { NIN, checkRequest, makeRequest } from './request';
+import { checkDeskRequest, isDeskRequest } from './desk';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import PostBring from '../anchor/PostBring';
 
@@ -182,7 +183,10 @@ export function MemberScan({ onDone }) {
   const [typing, setTyping] = useState(false);
   const read = useMemo(() => async (text) => {
     setError(undefined);
-    try { setReq(await checkRequest(text.trim(), { cfg, me: s?.stellarAddress })); } catch (e) { setError(e.message); }
+    try {
+      const t = text.trim();
+      setReq(isDeskRequest(t) ? { desk: await checkDeskRequest(t, { cfg, me: s?.stellarAddress }) } : await checkRequest(t, { cfg, me: s?.stellarAddress }));
+    } catch (e) { setError(e.message); }
   }, [cfg, s]);
 
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); setReq(undefined); onDone?.(); }} onRetry={() => tx.retry()} />;
@@ -193,6 +197,24 @@ export function MemberScan({ onDone }) {
       args: [sv.address(req.union), sv.address(req.member), sv.bytes32(req.token), sv.i128(req.cash), sv.u32(req.hours)],
       invalidate: [['stellar', 'account'], ['stellar', 'investment'], ['oracle', 'shares']],
     });
+  }
+  // Her investment paid over the desk (22 Oct): the leader's signed entry comes in the QR; she submits the claim.
+  if (req?.desk) {
+    const d = req.desk;
+    const collect = () => tx.run({
+      label: `Collect ${inr(Math.floor(d.inr))}`, rows: [['You collect', `${inr(Math.floor(d.inr))} in cash`], ['Where', 'Union office']],
+      contractName: 'fund_core', fn: 'claim_junior_cash', args: [sv.address(d.union), sv.address(d.member), sv.address(d.leader), sv.i128(0n)],
+      auth: d.auth, invalidate: [['stellar', 'investment'], ['stellar', 'fund']],
+    });
+    return (
+      <Sheet landName="Nila" title="Your union leader asks you to confirm">
+        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>You collect {inr(Math.floor(d.inr))}</p>
+        <p style={{ ...muted, textAlign: 'center' }}>Your union investment, in cash at the office</p>
+        <p style={{ color: C.gold, textAlign: 'center' }}>Only confirm when your leader is with you and hands you the cash.</p>
+        <Primary disabled={!tx.ready} onClick={collect}>Confirm</Primary>
+        <button type="button" onClick={() => setReq(undefined)} style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 }}>Cancel</button>
+      </Sheet>
+    );
   }
   if (req) {
     const cash = Number(BigInt(req.cash) / NIN);

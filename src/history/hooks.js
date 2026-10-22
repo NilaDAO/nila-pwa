@@ -28,6 +28,7 @@ const CALLS = {
   reclaim_cash_out: ['Cash-out taken back', 'Your nIN back'],
   request_unbond_junior: ['Withdrawal started', 'Union investment'],
   claim_junior: ['Withdrawal paid', 'Union investment'],
+  claim_junior_cash: ['Collected at the office', 'Union investment, in cash'],
   open_code: ['Machine code made', 'Machinery voucher'],
   cancel_code: ['Machine code cancelled', 'Machinery voucher'],
   claim: ['Machine job', 'Machinery voucher'],
@@ -199,7 +200,11 @@ function eventRows(events, me, shareLabel) {
       case 'machine_registered': if (has(e.v.owner)) row('Machine registered', 'By your leader', '+1'); break;
       case 'deposit': if (has(e.topics[1])) row('Invested in your union', 'Union investment', `+${nin(e.v.amount)} nIN`); break;
       case 'unbond_requested': if (has(e.topics[1])) row('Withdrawal started', 'Union investment', `−${nin(e.v.principal_snap)} nIN`); break;
-      case 'claimed': if (has(e.topics[1])) row('Withdrawal paid', 'Union investment', `+${nin(e.v.amount)} nIN`); break;
+      // 22 Oct, desk only: a member's claim is paid in cash at the office (cash flag; cash_settled = rupees handed out).
+      case 'claimed': if (has(e.topics[1])) {
+        if (e.v.cash) row(`Collected ₹${nin(e.v.cash_settled ?? e.v.amount)} at the office`, 'Union investment, in cash', '');
+        else row('Withdrawal paid', 'Union investment', `+${nin(e.v.amount)} nIN`);
+      } break;
       case 'cash_scanned': if (has(e.topics[2])) row(PURPOSE[Number(e.v.purpose)] || 'Cash counted', 'Cash at union office', `₹${nin(e.v.amount)}`); break;
       case 'cash_out_requested': if (has(e.topics[2])) row('Cash out', 'At the union office', `−${nin(e.v.amount)} nIN`); break;
       case 'cash_out_paid': if (has(e.topics[2])) row('Cashed out at the union office', '', `₹${nin(e.v.amount)}`); break;
