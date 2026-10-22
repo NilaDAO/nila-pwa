@@ -9,7 +9,6 @@ import { useMemberLoans } from '../hooks/useMemberLoans';
 import { readAllItems, setDBitem } from '../utils/db';
 import { updateUserChain } from '../utils/cognito_helpers';
 import { useNilaSigner } from '../wallet/signer';
-import { useStellarConfig } from '../stellar/hooks';
 
 export const STELLAR_CHAIN = 'stellar';
 const ERC20 = ['function balanceOf(address) view returns (uint256)'];
@@ -54,7 +53,6 @@ export function useMoveProgress(evm) {
  */
 export function useMoveWallet(loans) {
   const signer = useNilaSigner();
-  const { data: cfg } = useStellarConfig();
   const qc = useQueryClient();
   const [progress, save] = useMoveProgress(signer?.evmAddress);
   const [busy, setBusy] = useState(false);
@@ -91,7 +89,7 @@ export function useMoveWallet(loans) {
     } finally {
       setBusy(false);
     }
-  }, [busy, progress.step, signer, cfg, legacy, save, qc, loans]);
+  }, [busy, progress.step, signer, save, qc, loans]);
 
   return { run, busy, progress, legacy };
 }
