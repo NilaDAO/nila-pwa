@@ -1,8 +1,9 @@
 // L14 — Add a member (board LeaderAddMember, #sent): the leader at her farm enters her name and number and her phone
 // type, and Nila texts her the app link (oracle O17). A keypad phone gets a one-time link to Nila lite (/l/<code>,
 // 30 minutes, one use, bound to her number; F9); a smartphone the app's address (she registers herself, R1–R14).
-// #sent follows her progress: link sent, opened and agreed, phone set up (no PIN, executive decision 22 Oct), then her fields (F14, not built yet: "Match
-// field shapes" stays disabled until her fields come in). DESIGN GAPs: the leader's own name is not on Stellar, so the
+// #sent follows her progress: link sent, opened and agreed, phone set up (no PIN, executive decision 22 Oct), then each
+// field she sends from her keypad phone (F14, into her border job); "Match field shapes" opens that job (L2) once a field
+// is in. DESIGN GAPs: the leader's own name is not on Stellar, so the
 // link names the union's representative (R9's union list); the hooks' names are the design's proposal (Q53).
 import { useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
@@ -69,7 +70,10 @@ function Sent({ id, go }) {
             <Step done title="Link sent" sub={`${time(l.sent)} · works once, for 30 minutes`} />
             <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for her' : 'The link no longer works: send it again')} />
             <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
-            <Step title="Field 1" sub="Walk with her to her first field" />
+            {(m.fields || []).map((f) => (
+              <Step key={f.n} done title={`Field ${f.n} sent`} sub={`${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}${f.acc != null ? ` · ± ${Math.round(f.acc)} m` : ''}`} />
+            ))}
+            <Step title={`Field ${(m.fields || []).length + 1}`} sub={(m.fields || []).length ? 'Walk with her to the next field' : 'Walk with her to her first field'} />
             <Notice kind="info">Pin Nila to her apps menu: on her phone, in the browser, Options → Pin to Apps Menu.</Notice>
           </>
         ) : (
@@ -84,7 +88,7 @@ function Sent({ id, go }) {
       {keypad && (
         <Card title="Fields">
           <Notice kind="info">When she has sent every field, match the shapes. The land title cannot change later.</Notice>
-          <Primary disabled onClick={() => go('tasks')}>Match field shapes</Primary>
+          <Primary disabled={!m.job} onClick={() => go(`tasks/border/${m.job}`)}>Match field shapes</Primary>
         </Card>
       )}
     </>
