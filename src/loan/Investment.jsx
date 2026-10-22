@@ -4,7 +4,8 @@
 // L5 → C6). Withdraw = fund_core.request_unbond_junior (an amount of her free part, as shares), claimable 14 days later
 // (the contract; the spec's "3 weeks" is replaced, 16 Oct). A member collects it in cash at the office (22 Oct, desk only:
 // fund_core.claim_junior_cash, the leader's "Pay out investment" task, she confirms by scanning the leader's code); a
-// leader claims her own to her wallet with claim_junior. Assisted mode: both cards are messages.
+// leader claims her own to her wallet with claim_junior. Assisted mode: both cards are messages. An Invest | Withdraw switch shows one
+// card at a time (22 Oct).
 // DESIGN GAPs: no union name, no rate arrow and so no "In a year" line (Q5); no "Your loan · Fully backed" row (the tree
 // discount is not in Nov 7, LOAN_RULES); no leader name ("Rosalie"); Cash teller is shown as soon.
 import { useEffect, useState } from 'react';
@@ -35,6 +36,20 @@ const ico = (d) => (
 const CameraIcon = () => ico(<><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" /><circle cx="12" cy="13" r="3" /></>);
 const TellerIcon = () => ico(<><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4M7 10h10" /></>);
 
+/** Invest | Withdraw (22 Oct): one card at a time, picked with a two-option switch. */
+function Switch({ value, onChange }) {
+  const opt = (v, label) => (
+    <button key={v} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)}
+      style={{ flex: 1, height: 40, border: 0, borderRadius: 10, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+        background: value === v ? C.accent : 'transparent', color: value === v ? C.ink : C.muted }}>{label}</button>
+  );
+  return (
+    <div role="radiogroup" aria-label="Invest or withdraw" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 14, background: C.raised }}>
+      {opt('invest', 'Invest')}{opt('withdraw', 'Withdraw')}
+    </div>
+  );
+}
+
 /** A7b #invest: her wallet QR for the leader, the amount she brings and her investment after it. */
 function BringCash({ amount, after, address, onBack }) {
   const [img, setImg] = useState();
@@ -63,6 +78,7 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
   const [bring, setBring] = useState(1000);
   const [out, setOut] = useState(100);
   const [showQr, setShowQr] = useState(false);
+  const [pick, setPick] = useState();
   const p = inv.data;
   const now = Date.now() / 1000;
   const claimAt = p?.request_ts ? Number(p.request_ts) + DAYS_14 : 0;
@@ -96,6 +112,8 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
   const helped = assisted() && !leader;
   const index = BigInt(market.data?.index ?? 0);
   const toCollect = n(((BigInt(p?.claimable_shares ?? 0) + (claimAt && claimAt <= now ? BigInt(p?.pending_shares ?? 0) : 0n)) * index) / RAY);
+  // A withdrawal on its way or ready opens on Withdraw; otherwise Invest.
+  const mode = pick ?? (pending || canClaim ? 'withdraw' : 'invest');
   if (showQr) return <BringCash amount={bring} after={invested + bring} address={s?.stellarAddress} onBack={() => setShowQr(false)} />;
   return (
     <AssetScreen title="Union investment" onBack={onBack} note={NOTE}>
@@ -115,7 +133,9 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
         <KV k="Locked · what you owe" v={`${fmt(n(p.locked))} nIN`} />
       </Card>
 
-      <Card label="Invest">
+      <Switch value={mode} onChange={setPick} />
+
+      {mode === 'invest' && <Card label="Invest">
         <CardTitle>Invest</CardTitle>
         {helped ? (
           <p style={{ ...muted, textAlign: 'center', padding: '12px 0' }}>Bring cash to your leader at the union office. She adds it to your union investment.</p>
@@ -135,9 +155,9 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
             )}
           </>
         )}
-      </Card>
+      </Card>}
 
-      <Card label="Withdraw">
+      {mode === 'withdraw' && <Card label="Withdraw">
         <CardTitle>Withdraw</CardTitle>
         {helped ? (
           <p style={{ ...muted, textAlign: 'center', padding: '24px 0' }}>Ask your leader at the union office: you get your investment in cash.</p>
@@ -161,7 +181,7 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
             <Secondary disabled={!tx.ready || o < 1 || !market.data} onClick={() => withdraw(o)}>Withdraw</Secondary>
           </>
         )}
-      </Card>
+      </Card>}
     </AssetScreen>
   );
 }
