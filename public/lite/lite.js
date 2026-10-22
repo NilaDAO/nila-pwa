@@ -1,6 +1,6 @@
 /* Nila lite (P8): the keypad (KaiOS 2.5, Gecko 48) app. Plain ES5 + Promises: no async/await, no arrow functions,
  * no spread, no build step. Screens are #hash routes (nila-design "Keypad phones"):
- *   #/l/<code>        F9 #welcome: her name, union, leader, phone; OK = consent to SMS and calls, then the phone
+ *   #/l/<code>        F9 #welcome: her name, union, leader; OK = consent to SMS, then the phone
  *                     makes its device key and registers it (no PIN, executive decision 22 Oct: the device key's
  *                     signature is her consent)
  *   #/expired         F9 #expired: the link was used, voided or is older than 30 minutes
@@ -33,10 +33,6 @@
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
-  }
-  function phoneText(p) {   // +91 90000 00000
-    var d = String(p || '').replace(/\D/g, '').slice(-10);
-    return d.length === 10 ? '+91 ' + d.slice(0, 5) + ' ' + d.slice(5) : String(p || '');
   }
   // A softkey: a label and an action, also a link (href) for a screen without keys.
   function soft(el, label, fn) {
@@ -129,12 +125,12 @@
 
   function welcome(code) {
     var i = invite;
-    var rows = [['Union', i.union_name], ['Leader', i.leader_name], ['Phone', phoneText(i.phone)]];
+    var rows = [['Union', i.union_name], ['Leader', i.leader_name]];
     var html = '<h1>Welcome, ' + esc(i.name) + '</h1><div class="line"></div>';
     for (var k = 0; k < rows.length; k++) {
       if (rows[k][1]) html += '<div class="row"><span class="muted">' + rows[k][0] + '</span><b>' + esc(rows[k][1]) + '</b></div>';
     }
-    html += '<p class="muted" style="margin-top:8px">Nila sends you SMS and calls about your money. OK means you agree.</p><p id="msg" class="err"></p>';
+    html += '<p class="muted" style="margin-top:8px">Nila sends you SMS about your vouchers and farm plan. OK means you agree.</p><p id="msg" class="err"></p>';
     screen(html, null, ['OK', function () {
       busy = true;
       call('POST', '/keypad/l/' + code + '/consent').then(function () { finish(code); }, fail);
