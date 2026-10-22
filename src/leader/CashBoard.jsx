@@ -54,7 +54,8 @@ function Chip({ book, api, onFound }) {
   const [note, setNote] = useState();
   const [added, setAdded] = useState(0);
   const [gapInStore, setGapInStore] = useState(false);
-  if (!book) return <Loading />;
+  // The share list is a part of C1 that loads after the screen: an inline line, never S1 inside the card (22 Oct).
+  if (!book) return <p role="status" style={{ textAlign: 'center', margin: '8px 0 0', color: C.muted, fontSize: 14 }}>Checking the share list…</p>;
   if (book.gap <= 0) {
     return <p style={{ textAlign: 'center', margin: '8px 0 0' }}><b>✓ Every rupee is accounted for</b><br /><span style={{ color: C.muted, fontSize: 14 }}>{added ? `${added} share${added > 1 ? 's' : ''} added to the list` : 'Treasury and share list agree'}</span></p>;
   }

@@ -42,8 +42,10 @@ export function Loading({ offline, old }) {
   const msg = offline ? 'You are offline. Showing your last saved balances.'
     : old ? 'Your crop shares or land title did not load. Showing the last saved version.'
       : slow ? 'Loading is slow. One moment please.' : 'Loading your wallet';
+  // S1 is always the whole screen (22 Oct): fixed over everything, so a screen that returns it from inside a card or
+  // sheet still shows it full screen, never inside the card.
   return (
-    <div style={ground}>
+    <div style={{ ...ground, position: 'fixed', inset: 0, zIndex: 40 }}>
       <div style={centre()}>
         <Bouncing pad={0} size={56} />
         <span role="status" style={{ ...sub, maxWidth: 280, marginTop: 12 }}>{msg}</span>
