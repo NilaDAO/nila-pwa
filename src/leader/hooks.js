@@ -8,10 +8,10 @@ const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
 export const PURPOSES = ['Invest', 'Repay', 'Recovery', 'Treasury', 'LP brings cash'];
 
-export function useUnionCash({ poll = 30_000 } = {}) {
+export function useUnionCash({ poll = 30_000, on = true } = {}) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['stellar', 'unionCash', cfg?.union], enabled: !!cfg?.contracts?.fund_core && !!cfg?.contracts?.fx_pool,
+    queryKey: ['stellar', 'unionCash', cfg?.union], enabled: on && !!cfg?.contracts?.fund_core && !!cfg?.contracts?.fx_pool,
     refetchInterval: poll, staleTime: 15_000,
     queryFn: async () => {
       const u = [sv.address(cfg.union)];

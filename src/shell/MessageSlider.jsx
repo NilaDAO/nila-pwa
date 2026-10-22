@@ -5,18 +5,18 @@ import { useRef, useState } from 'react';
 import { C, FONT, R, SHADOW } from './tokens';
 import { MarkTile, RepayTile } from './icons';
 
-const card = { flex: '0 0 calc(100% - 16px)', scrollSnapAlign: 'center', scrollSnapStop: 'always', background: C.ink, borderRadius: R.card,
+export const card = { flex: '0 0 calc(100% - 16px)', scrollSnapAlign: 'center', scrollSnapStop: 'always', background: C.ink, borderRadius: R.card,
   boxShadow: SHADOW, padding: 22, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20, fontFamily: FONT, color: C.text };
-const head = { fontSize: 16, fontWeight: 700, lineHeight: 1.3 };
-const big = { fontSize: 32, fontWeight: 700, lineHeight: 1.2 };
-const small = { fontSize: 14, lineHeight: 1.5 };
+export const head = { fontSize: 16, fontWeight: 700, lineHeight: 1.3 };
+export const big = { fontSize: 32, fontWeight: 700, lineHeight: 1.2 };
+export const small = { fontSize: 14, lineHeight: 1.5 };
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
 const MINIMUM = 600;   // notes page-member "Invest rule": at least 600 before crop share cash is paid out
 
-function Bar({ pct, label }) {
+export function Bar({ pct, label, color = C.accent }) {
   return (
     <div role="img" aria-label={label} style={{ height: 8, borderRadius: 4, background: C.raised, overflow: 'hidden' }}>
-      <div style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: '100%', background: C.accent }} />
+      <div style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: '100%', background: color }} />
     </div>
   );
 }
@@ -36,7 +36,7 @@ function Steps({ items }) {
   );
 }
 
-const Title = ({ Icon, children }) => (
+export const Title = ({ Icon, children }) => (
   <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}><Icon /><span style={head}>{children}</span></div>
 );
 

@@ -23,6 +23,7 @@ import { HistoryIcon } from '../shell/icons';
 import { LeaderTasksButton } from '../shell/A1';
 import Segmented from '../shell/Segmented';
 import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
+import { timeLeft } from '../shell/timeLeft';
 
 const U = 10_000_000n;
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
@@ -177,12 +178,7 @@ function useCountdown(ts) {
   const [now, setNow] = useState(() => Date.now() / 1000);
   useEffect(() => { const t = setInterval(() => setNow(Date.now() / 1000), 1000); return () => clearInterval(t); }, []);
   if (!ts) return null;
-  // "6 days 23 h", under a day "23 h 50 min", under an hour "50 min" (22 Oct).
-  const s = Math.max(0, Math.floor(ts - now));
-  const d = Math.floor(s / 86400); const h = Math.floor((s % 86400) / 3600); const m = Math.floor((s % 3600) / 60);
-  if (d > 0) return `${d} day${d > 1 ? 's' : ''} ${h} h`;
-  if (h > 0) return `${h} h ${m} min`;
-  return `${m} min`;
+  return timeLeft(ts - now);
 }
 
 /** C4: the Cash card (time left, let an LP collect it) and the LP cards. */

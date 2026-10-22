@@ -14,7 +14,7 @@ import { ShareRows, useMyShares } from '../loan/MyShares';
 import { typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
-import { LeaderSlides, UnionRows } from '../leader/UnionCards';
+import { UnionRows, useLeaderSlides } from '../leader/UnionCards';
 import { C, FONT, R, SHADOW } from './tokens';
 import { CashTile, ChevronIcon, HistoryIcon, InvestedTile, LandIcon, MachineryTile, MyMachineTile, NinTile, QrIcon, RefreshIcon, TreasuryTile, UsdcTile } from './icons';
 import RoundButton, { SettingsButton } from './RoundButton';
@@ -117,7 +117,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     return { id: x.token_id, label: x.crop, principal: n(l.principal), interest: n(l.interest_accrued) + n(l.interest_paid),
       paid: n(l.principal_paid) + n(l.interest_paid), due: Number(l.maturity_ts || 0) ? Number(l.maturity_ts) + 21 * 86400 : null };
   });
-  const slides = memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans });
+  // One slider for member and leader (22 Oct): the leader's cash and LP cards first, then her own.
+  const leaderSlides = useLeaderSlides({ on: !!leader, onSettle, onScanLp });
+  const slides = [...leaderSlides, ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans })];
 
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell A1 is a card over the map of her
   // land (drag line, rounded top), opening high with a strip of map; History, All tasks and Settings are the card's
@@ -164,7 +166,6 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         }}><QrIcon color={C.text} />{short(s?.stellarAddress)}</button>
       </section>
 
-      {leader && <LeaderSlides onSettle={onSettle} onScanLp={onScanLp} />}
       <MessageSlider slides={slides} />
 
       <section aria-label="Assets" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, display: 'flex', flexDirection: 'column', gap: 12, fontSize: 14, lineHeight: 1.5, ...card, ...(stage ? { marginTop: 16 } : {}) }}>

@@ -1,8 +1,10 @@
-// A1L (board MemberAssetsLeader = A1 with leader on): the cash slides above the Assets card and the "Union"
-// rows. Values from the contracts (useUnionCash, useUnionOffers). P10a.
+// A1L (board MemberAssetsLeader = A1 with leader on): the cash and LP cards in A1's one message slider and the
+// "Union" rows. Values from the contracts (useUnionCash, useUnionOffers). P10a.
 // DESIGN GAPs: LP names (the node has none) are short wallet addresses; the member slides (repay, invest,
 // withdrawal) and the Tasks badge come with their own steps.
 import { useEffect, useState } from 'react';
+import { Bar, Title, big, card, small } from '../shell/MessageSlider';
+import { timeLeft } from '../shell/timeLeft';
 import { useUnionOffers } from '../anchor/hooks';
 import { C, FONT, R } from '../shell/tokens';
 import { useUnionCash } from './hooks';
@@ -10,11 +12,7 @@ import { useUnionCash } from './hooks';
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 const WEEK = 7 * 86400;
-const leftText = (ts, now) => {
-  const s = ts - now;
-  if (s <= 0) return 'covered by the treasury';
-  return s < 86400 ? `${Math.ceil(s / 3600)} h left` : `${Math.ceil(s / 86400)} days left`;
-};
+const leftText = (ts, now) => (ts - now <= 0 ? 'covered by the treasury' : `${timeLeft(ts - now)} left`);
 const expiresIn = (ts, now) => { const s = ts - now; return s < 86400 ? `${Math.max(1, Math.ceil(s / 3600))} h` : `${Math.ceil(s / 86400)} d`; };
 
 function useNow() {
@@ -23,30 +21,41 @@ function useNow() {
   return now;
 }
 
-const card = { flex: '0 0 calc(100% - 16px)', scrollSnapAlign: 'center', background: C.ink, borderRadius: 24, padding: 22, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 };
-const btn = { height: 44, borderRadius: R.button, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: FONT, fontSize: 14 };
+const secondary = { height: 44, borderRadius: R.button, border: 0, padding: '0 24px', background: C.raised, color: C.text, fontWeight: 700, fontFamily: FONT, fontSize: 14, cursor: 'pointer' };
+const primary = { ...secondary, background: C.accent, color: C.ink };
+// The board's round icon badges: coral for the cash card, raised for LP requests.
+const badge = (bg, stroke, d) => () => (
+  <span aria-hidden="true" style={{ width: 32, height: 32, flexShrink: 0, borderRadius: R.round, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+  </span>
+);
+const CashBadge = badge(C.coral, C.ink, <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></>);
+const LpBadge = badge(C.raised, C.text, <><path d="m16 3 4 4-4 4" /><path d="M20 7H4" /><path d="m8 21-4-4 4-4" /><path d="M4 17h16" /></>);
 
-/** The cash and LP slides; nothing when there is no cash at hand and no LP offer. */
-export function LeaderSlides({ onSettle, onScanLp }) {
-  const cash = useUnionCash().data;
-  const offers = useUnionOffers().data || [];
+/** The leader's cards for A1's one message slider (board MemberAssets-ley3, leader on): the cash to lend out or settle
+ *  and the LP requests, first in the slider; nothing when there is no cash at hand and no LP offer (22 Oct: one slider
+ *  for member and leader). */
+export function useLeaderSlides({ on = true, onSettle, onScanLp }) {
+  const cash = useUnionCash({ on }).data;
+  const offers = useUnionOffers({ on }).data || [];
   const now = useNow();
-  const [at, setAt] = useState(0);
   const slides = [];
+  if (!on) return slides;
   if (cash && cash.atHand > 0) {
     const first = cash.escrows.find((e) => e.remaining > 0);
     const left = first ? first.expires - now : 0;
+    const day = first ? Math.min(7, Math.max(1, Math.ceil((WEEK - left) / 86400))) : 0;
     slides.push(
       <section key="cash" aria-label="Lend out or settle your cash" style={card}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Lend out or settle your cash</h2>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontSize: 28, fontWeight: 700 }}>{inr(cash.atHand)}</span>
-          {first && <span style={{ color: left < 86400 ? C.coral : C.muted, fontWeight: 700 }}>{leftText(first.expires, now)}</span>}
+        <Title Icon={CashBadge}>Lend out or settle your cash</Title>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+          <span style={big}>{inr(cash.atHand)}</span>
+          {first && <span style={{ ...small, color: C.coral, fontWeight: 700, textAlign: 'right' }}>{leftText(first.expires, now)}</span>}
         </div>
         {/* The 7-day window filling up (the board: "Day N of 7"). */}
-        {first && <div style={{ height: 8, background: C.raised, borderRadius: R.round }}><div style={{ width: `${Math.max(0, Math.min(100, (100 * (WEEK - left)) / WEEK))}%`, height: 8, background: left < 86400 ? C.coral : C.accent, borderRadius: R.round }} /></div>}
-        <span style={{ color: C.muted, fontSize: 14 }}>After 7 days the treasury covers it.</span>
-        <button type="button" style={btn} onClick={onSettle}>Lend out or settle</button>
+        {first && <Bar pct={(100 * (WEEK - left)) / WEEK} label={`Day ${day} of 7`} color={C.coral} />}
+        <span style={{ ...small, color: C.muted }}>After 7 days the treasury covers it.</span>
+        <button type="button" style={secondary} onClick={onSettle}>Lend out or settle</button>
       </section>,
     );
   }
@@ -55,34 +64,25 @@ export function LeaderSlides({ onSettle, onScanLp }) {
     const here = live.find((o) => o.state === 1);
     slides.push(
       <section key="lp" aria-label="LP requests" style={card}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>LP requests · {live.length}</h2>
-        {live.slice(0, 3).map((o) => {
-          const bring = o.kind === 0;
-          const title = o.state === 1 ? 'LP arrived' : bring ? 'LP brings cash' : 'Give cash';
-          const sub = o.state === 1 ? `${short(o.lp)} · fee ${inr(o.inr / 100)} (1%)` : `${bring ? 'Tops up the cash' : 'The LP deposits USDC'} · expires in ${expiresIn(o.expires, now)}`;
-          return (
-            <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 14 }}>
-              <span style={{ display: 'flex', flexDirection: 'column' }}><b>{title} · {inr(o.inr)}</b><span style={{ color: C.muted }}>{sub}</span></span>
-              <span style={{ color: o.state === 1 ? C.accent : C.muted, fontWeight: 700 }}>{o.state === 1 ? 'Here' : 'Waiting'}</span>
-            </div>
-          );
-        })}
-        {here && <button type="button" style={btn} onClick={onScanLp}>Accept {inr(here.inr)} from {short(here.lp)}</button>}
+        <Title Icon={LpBadge}>LP requests · {live.length}</Title>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {live.slice(0, 3).map((o, i) => {
+            const bring = o.kind === 0;
+            const title = o.state === 1 ? 'LP arrived' : bring ? 'LP brings cash' : 'Give cash';
+            const sub = o.state === 1 ? `${short(o.lp)} · fee ${inr(o.inr / 100)} (1%)` : `${bring ? 'Tops up the cash' : 'The LP deposits USDC'} · expires in ${expiresIn(o.expires, now)}`;
+            return (
+              <div key={o.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderTop: i ? `1px solid ${C.raised}` : 0, ...small }}>
+                <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{title} · {inr(o.inr)}</b><span style={{ color: C.muted }}>{sub}</span></span>
+                <span style={{ color: o.state === 1 ? C.accent : C.muted, fontWeight: 700, whiteSpace: 'nowrap' }}>{o.state === 1 ? 'Here' : 'Waiting'}</span>
+              </div>
+            );
+          })}
+        </div>
+        {here && <button type="button" style={primary} onClick={onScanLp}>Accept {inr(here.inr)} from {short(here.lp)}</button>}
       </section>,
     );
   }
-  if (!slides.length) return null;
-  return (
-    <div style={{ margin: '0 0 16px' }}>
-      <div onScroll={(e) => setAt(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}
-        style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollSnapType: 'x mandatory', padding: '0 8px' }}>{slides}</div>
-      {slides.length > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 8 }} aria-hidden="true">
-          {slides.map((sl, i) => <span key={sl.key} style={{ width: 8, height: 8, borderRadius: R.round, background: i === at ? C.text : C.muted }} />)}
-        </div>
-      )}
-    </div>
-  );
+  return slides;
 }
 
 /** The "Union" rows of the Assets card. */

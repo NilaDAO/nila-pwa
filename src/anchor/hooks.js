@@ -65,10 +65,10 @@ export function useLpStatus() {
 }
 
 /** The union's open and accepted LP offers (fx_pool.offers_of → offer). */
-export function useUnionOffers({ poll = true } = {}) {
+export function useUnionOffers({ poll = true, on = true } = {}) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['stellar', 'offers', cfg?.union], enabled: !!cfg?.contracts?.fx_pool, refetchInterval: poll ? 20_000 : false,
+    queryKey: ['stellar', 'offers', cfg?.union], enabled: on && !!cfg?.contracts?.fx_pool, refetchInterval: poll ? 20_000 : false,
     queryFn: async () => {
       const ids = (await readContract(cfg, 'fx_pool', 'offers_of', [sv.address(cfg.union)])) || [];
       const out = await Promise.all(ids.map(async (id) => ({ id: Number(id), ...(await readContract(cfg, 'fx_pool', 'offer', [sv.u64(id)])) })));
