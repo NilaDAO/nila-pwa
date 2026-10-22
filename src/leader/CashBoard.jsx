@@ -18,7 +18,10 @@ import { usePost } from '../anchor/LeaderLp';
 import { COLLECT } from '../anchor/sep';
 import { C, FONT, R } from '../shell/tokens';
 import { Loading } from '../register/Boot';
-import { ScreenHeader } from '../shell/ListRow';
+import { StickyTop } from '../shell/ListRow';
+import RoundButton, { SettingsButton } from '../shell/RoundButton';
+import { HistoryIcon } from '../shell/icons';
+import { LeaderTasksButton } from '../shell/A1';
 import Segmented from '../shell/Segmented';
 import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
 
@@ -272,7 +275,14 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
   if (!cash) return <Loading />;   // S1 while the union loads (executive decision 21 Oct: every wait is S1)
   return (
     <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
-      <ScreenHeader title="Cash" onSettings={() => { window.location.hash = '#/settings'; }} />
+      {/* The header as on A1L (C4 audit, 22 Oct): History, All tasks, Settings. */}
+      <StickyTop>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <RoundButton label="History" onClick={() => { window.location.hash = '#/history'; }}><HistoryIcon color={C.text} /></RoundButton>
+          <LeaderTasksButton onClick={() => { window.location.hash = '#/tasks'; }} />
+          <SettingsButton onClick={() => { window.location.hash = '#/settings'; }} />
+        </div>
+      </StickyTop>
       <section style={{ ...card, textAlign: 'center' }} aria-label="Union treasury">
         <div style={{ color: C.muted }}>Union treasury</div>
         <div style={{ fontSize: 32, fontWeight: 700 }}>{inr(cash.treasury)}</div>

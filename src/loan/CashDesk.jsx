@@ -89,6 +89,8 @@ function Scan({ purpose, onBack, initialMember = '' }) {
     const voucher = l.vb ? BigInt(l.vb.senior_out) + (l.vb.dues || []).reduce((t, d) => t + BigInt(d.amount), 0n) : 0n;
     return Math.ceil(Number(cash + voucher) / Number(NIN));
   };
+  // From her G2 with one open loan: that loan is picked for her.
+  useEffect(() => { if (fixed && !token && loans.data?.length === 1) { setToken(loans.data[0].token); setAmount(Math.min(10000, owed(loans.data[0]))); } }, [loans.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const sel = loans.data?.find((l) => l.token === token);
   const who = purpose === 'repay' ? sel?.loan?.borrower : member.trim();
   const record = async ({ total, s3Keys }) => {
