@@ -29,6 +29,7 @@ import LeaderTasks from '../leader/LeaderTasks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { pointsSent } from '../register/Registration';
 import { BootLoading } from '../register/Boot';
+import RegFrame from '../register/RegFrame';
 import { TITLE_KEYS, useTitleCount } from '../register/titles';
 import { demoNew } from '../register/AfterCode';
 import History from '../history/History';
@@ -82,6 +83,24 @@ function TasksView({ leader, go }) {
       </ListSection>
     </div>
   );
+}
+
+/** S1 while her titles are read (22 Oct): a read that never starts (no Polygon connection or no Stellar settings) made
+ *  the loader wait forever with no request open. After 20 s the console names what is missing and she is told to
+ *  open the app again. */
+function TitleWait({ titleCount, s }) {
+  const [late, setLate] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setLate(true), 20_000); return () => clearTimeout(t); }, []);
+  useEffect(() => {
+    if (!late) return;
+    console.warn('[start] still waiting for her titles:', {
+      polygon: titleCount.polygon === undefined ? (titleCount.legacy?.fetchStatus === 'idle' ? 'not started (no Polygon connection or wallet)' : 'reading') : 'done',
+      stellar: titleCount.stellar === undefined ? 'not done (Stellar settings or title read)' : 'done',
+      evm: !!s?.evmAddress, stellarAddress: !!s?.stellarAddress,
+    });
+  }, [late]); // eslint-disable-line react-hooks/exhaustive-deps
+  return late ? <RegFrame><p style={{ margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>Check your internet and open the app again.</p></RegFrame>
+    : <BootLoading />;
 }
 
 export default function Shell({ leader }) {
@@ -139,7 +158,7 @@ export default function Shell({ leader }) {
   // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
   // A leader is also a member (notes leader-missing): the same gate applies to her; with a title she never sees it.
   // Until her titles are known she sees the registration ground, not a flash of the tab bar.
-  if (titleCount.loading) return <BootLoading />;
+  if (titleCount.loading) return <TitleWait titleCount={titleCount} s={s} />;
   // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
   // A leader who has sent her field points works in the leader app while her title waits (no R14 loop).
   if (!(leader && pointsSent(s?.evmAddress)) && (demoNew(s?.evmAddress) || (titleCount.count === 0 && s?.privyNew === true))) {
