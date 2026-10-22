@@ -34,12 +34,27 @@ const CALLS = {
   leader_deposit_treasury: ['Treasury deposit', 'Union treasury'],
 };
 
+// Horizon's parameters: [contract, function name, ...the call's arguments].
+function params(op) {
+  try { return (op.parameters || []).map((x) => scValToNative(xdr.ScVal.fromXDR(x.value, 'base64'))); } catch { return []; }
+}
 function callName(op) {
+  const fn = params(op)[1];
+  return typeof fn === 'string' ? fn : String(fn || '');
+}
+
+// Amounts the call names when no nIN / USDC of hers moved (board A12: every row has its amount): cash counted at the
+// office in rupees (nIN 7 decimals), machine hours. Argument positions from nila-soroban (fx_pool, machinery, fund_core).
+const U = 10_000_000;
+const rupees = (v) => `₹${(Number(v) / U).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+function amountFromArgs(fn, a) {
   try {
-    const p = op.parameters || [];
-    const fn = p[1] && scValToNative(xdr.ScVal.fromXDR(p[1].value, 'base64'));
-    return typeof fn === 'string' ? fn : String(fn || '');
-  } catch { return ''; }
+    if (fn === 'cash_scan_mint') return rupees(a[6]);                      // (leader, union, purpose, member, amount, …)
+    if (fn === 'claim') return `+${Number(a[8])} h`;                         // (owner, machine, union, token, code, hours)
+    if (fn === 'draw_loan' && Number(a[7])) return `+${Number(a[7])} h`;     // (union, member, token, cash, hours)
+    if (fn === 'repay_loan') return `−${rupees(a[4])}`;                      // (union, token, amount)
+  } catch { /* an argument the app does not know: no amount */ }
+  return '';
 }
 
 async function stellarRows(cfg, me) {
@@ -52,14 +67,7 @@ async function stellarRows(cfg, me) {
   for (const op of (await r.json())._embedded.records) {
     if (op.transaction_successful === false) continue;
     const at = new Date(op.created_at).getTime() / 1000;
-    if (op.type === 'create_account' || op.type === 'begin_sponsoring_future_reserves' || op.type === 'end_sponsoring_future_reserves') {
-      if (op.type === 'create_account' && op.account === me) rows.push({ id: op.id, at, title: 'Your Nila account', sub: 'Made for you', chain: 'stellar' });
-      continue;
-    }
-    if (op.type === 'change_trust') {
-      if (op.asset_code === usdcCode) rows.push({ id: op.id, at, title: 'USDC account opened', sub: 'For cash offers', chain: 'stellar' });
-      continue;
-    }
+    // a12-spec: account set-up, trustlines and fee wrappers are hidden.
     if (op.type !== 'invoke_host_function') continue;
     const fn = callName(op);
     const [title, sub] = CALLS[fn] || [fn.replace(/_/g, ' ') || 'Contract call', ''];
@@ -72,7 +80,7 @@ async function stellarRows(cfg, me) {
       if (c.asset_code === usdcCode && c.asset_issuer === usdcIssuer) usdc += sign * n(c.amount);
     }
     const amount = nin ? `${nin > 0 ? '+' : '−'}${Math.abs(nin).toLocaleString('en-IN')} nIN`
-      : usdc ? `${usdc > 0 ? '+' : '−'}${Math.abs(usdc).toFixed(2)} USDC` : '';
+      : usdc ? `${usdc > 0 ? '+' : '−'}${Math.abs(usdc).toFixed(2)} USDC` : amountFromArgs(fn, params(op));
     rows.push({ id: op.id, at, title, sub, amount, chain: 'stellar', hash: op.transaction_hash });
   }
   return rows;

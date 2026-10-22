@@ -3,7 +3,8 @@
 // call names the union); vouchers in hours and seed kg are not separate rows (the contract calls are); the Polygon
 // part needs the Etherscan key the live build has.
 // Board layout (22 Oct): one card per day (its date inside the card), each row a round arrow (out ← / in →), the title
-// and a muted line, the amount on the right in white. Today and Yesterday show the time; older days the row's detail.
+// and a muted line, the amount on the right in white. Today and Yesterday show the time only; older days the row's
+// detail (second pass, 22 Oct). No Polygon line under the cards (the board has none; A12 lists Stellar transactions).
 import MapCard from '../shell/MapCard';
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
@@ -55,7 +56,7 @@ export default function History({ onBack }) {
                     {arrow(r.amount?.startsWith('−'))}
                     <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                       <span style={{ fontWeight: 700 }}>{r.title}</span>
-                      <span style={{ color: C.muted }}>{recent ? [r.sub, time(r.at)].filter(Boolean).join(' · ') : r.sub || time(r.at)}</span>
+                      <span style={{ color: C.muted }}>{recent ? time(r.at) : r.sub || time(r.at)}</span>
                     </span>
                     {r.amount && <span style={{ fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, textAlign: 'right' }}>{r.amount}</span>}
                   </li>
@@ -65,7 +66,6 @@ export default function History({ onBack }) {
           );
         })}
       </div>
-      {h.data?.note && <p style={{ color: C.muted, fontSize: 14, padding: '0 14px' }}>{h.data.note}</p>}
     </MapCard>
   );
 }
