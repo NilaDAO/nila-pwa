@@ -15,7 +15,7 @@ import { usePlanClient } from '../plan/hooks';
 import { useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
 import { COLLECT } from '../anchor/sep';
-import { C, FONT, R } from '../shell/tokens';
+import { C, FONT, R, SHADOW } from '../shell/tokens';
 import { SkeletonRows } from '../shell/Skeleton';
 import { StickyTop } from '../shell/ListRow';
 import RoundButton, { SettingsButton } from '../shell/RoundButton';
@@ -28,25 +28,35 @@ import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
 const U = 10_000_000n;
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
-const card = { background: C.ink, borderRadius: R.card, padding: '18px 22px', marginBottom: 12, fontFamily: FONT, color: C.text };
-const rowS = { display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '6px 0' };
-const pill = { height: 36, padding: '0 14px', borderRadius: R.round, background: C.raised, border: 0, color: C.text, fontWeight: 700, fontFamily: FONT };
-const primary = { width: '100%', height: 44, borderRadius: R.button, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: FONT, marginTop: 12 };
+// The board's spacing (LeaderCash, LeaderCashAdjust): cards 24 radius with the card shadow, 22 padding, 16 between their
+// blocks; rows 14/1.5 in groups 8 apart; 24 between cards.
+const card = { background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
+  gap: 16, fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5 };
+const rowS = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontSize: 14, lineHeight: 1.5 };
+const rows = { display: 'flex', flexDirection: 'column', gap: 8 };
+const head = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 };
+const title = { fontSize: 16, fontWeight: 700, lineHeight: 1.3, margin: 0 };
+const pill = { flexShrink: 0, height: 36, padding: '0 14px', borderRadius: R.button, background: C.raised, border: 0, color: C.text, fontSize: 14, fontWeight: 700, fontFamily: FONT, cursor: 'pointer' };
+const primary = { width: '100%', height: 44, borderRadius: R.button, border: 0, background: C.accent, color: C.ink, fontSize: 14, fontWeight: 700, fontFamily: FONT, cursor: 'pointer' };
+const divider = { height: 1, background: C.raised };
 
 /** The N1–N3 screens over the whole tab, not inside a card. */
 const Over = ({ children }) => <div style={{ position: 'fixed', inset: 0, zIndex: 50, overflowY: 'auto', background: C.ink }}>{children}</div>;
 
 function Row({ k, v, accent, coral }) {
-  return <div style={rowS}><span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: coral ? C.coral : accent ? C.accent : C.text }}>{v}</span></div>;
+  return <div style={rowS}><span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, textAlign: 'right', color: coral ? C.coral : accent ? C.accent : C.text }}>{v}</span></div>;
 }
 
-function Stepper({ value, set, max, step = 100, label = 'Amount in rupees' }) {
-  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
+function Stepper({ value, set, max, step = 100, label = 'Amount in rupees', unit = '₹' }) {
+  const b = { width: 44, height: 44, flexShrink: 0, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 18, fontWeight: 700, lineHeight: 1, cursor: 'pointer' };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, margin: '12px 0' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <button type="button" aria-label="Less" style={b} onClick={() => set(Math.max(0, value - step))}>−</button>
-      <input aria-label={label} inputMode="numeric" value={value} onChange={(e) => set(Math.min(max, Number(e.target.value.replace(/\D/g, '')) || 0))}
-        style={{ width: 110, height: 44, textAlign: 'center', borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 18 }} />
+      <label style={{ flex: 1, minWidth: 0, height: 44, borderRadius: R.button, background: C.raised, display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', boxSizing: 'border-box' }}>
+        <input aria-label={label} inputMode="numeric" value={value.toLocaleString('en-IN')} onChange={(e) => set(Math.min(max, Number(e.target.value.replace(/\D/g, '')) || 0))}
+          style={{ flex: 1, minWidth: 0, width: '100%', border: 0, background: 'transparent', color: C.text, fontFamily: FONT, fontSize: 16, fontWeight: 700, padding: 0, outline: 'none' }} />
+        <span style={{ fontSize: 14, color: C.muted }}>{unit}</span>
+      </label>
       <button type="button" aria-label="More" style={b} onClick={() => set(Math.min(max, value + step))}>+</button>
       <button type="button" style={{ ...b, width: 'auto', padding: '0 14px', fontSize: 14 }} onClick={() => set(max)}>Max</button>
     </div>
@@ -121,20 +131,26 @@ function Adjust({ cash, onClose }) {
       : [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * U), sv.bool(fromRainy)],
     invalidate: [['stellar', 'unionCash'], ['stellar', 'account']],
   });
+  const arrow = (d) => <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
   return (
     <>
-      <div style={{ margin: '12px 0' }}>
-        <Segmented label="Deposit or withdraw" options={[['deposit', 'Deposit'], ['withdraw', 'Withdraw']]} value={dir} onChange={(v) => { setDir(v); setAmount(0); }} />
+      <div style={divider} />
+      <div style={head}>
+        <span style={{ color: C.muted }}>{dir === 'deposit' ? 'Deposit into the fund' : 'Withdraw from the fund'}</span>
+        <Segmented icon width="hug" label="Deposit or withdraw" value={dir} onChange={(v) => { setDir(v); setAmount(0); }}
+          options={[['deposit', arrow('M12 5v14M19 12l-7 7-7-7'), 'Deposit'], ['withdraw', arrow('M12 19V5M5 12l7-7 7 7'), 'Withdraw']]} />
       </div>
       {dir === 'withdraw' && (
-        <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14 }}>
+        <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <input type="checkbox" checked={rainy} onChange={(e) => setRainy(e.target.checked)} aria-label="From the rainy day fund" />
           From the rainy day fund ({inr(cash.rainy)})
         </label>
       )}
       <Stepper value={a} set={setAmount} max={max} />
-      {fromRainy ? <Row k="Rainy day fund after" v={inr(cash.rainy - a)} /> : <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />}
-      <Row k="Your nIN after" v={`${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />
+      <div style={rows}>
+        {fromRainy ? <Row k="Rainy day fund after" v={inr(cash.rainy - a)} /> : <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />}
+        <Row k="Your nIN after" v={`${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />
+      </div>
       <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={go}>{dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`}</button>
     </>
   );
@@ -172,12 +188,12 @@ function CashCard({ cash, open, setOpen, onScanLp }) {
   return (
     <>
       <section style={card} aria-label="Cash">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Cash</h2>
+        <div style={head}>
+          <h2 style={title}>Cash</h2>
           {open ? <button type="button" style={pill} onClick={() => setOpen(false)}>Close</button> : null}
         </div>
-        <div style={{ fontSize: 24, fontWeight: 700, margin: '6px 0' }}>{inr(cash.atHand)}</div>
-        {!open && <button type="button" style={{ ...pill, marginTop: 4 }} onClick={() => setOpen(true)}>Let an LP collect it</button>}
+        <div style={{ fontSize: 24, fontWeight: 700 }}>{inr(cash.atHand)}</div>
+        {!open && <button type="button" style={{ ...pill, alignSelf: 'flex-start' }} onClick={() => setOpen(true)}>Let an LP collect it</button>}
         {open && (
           <>
             {left && <Row k="Time left" v={left} coral={first.expires - now < 86400} />}
@@ -192,7 +208,7 @@ function CashCard({ cash, open, setOpen, onScanLp }) {
         )}
       </section>
       {live.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollSnapType: 'x mandatory', marginBottom: 12 }} aria-label="LP">
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollSnapType: 'x mandatory' }} aria-label="LP">
           {live.map((o) => (
             <section key={o.id} style={{ ...card, flex: '0 0 85%', scrollSnapAlign: 'center', marginBottom: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -230,7 +246,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
     queryFn: () => api.unionTitles().then((r) => r.titles || []) });
   if (cashQ.isError) return <div style={{ ...card, margin: 16 }}>Could not read the union. Try again.</div>;
   // The header as on A1L (22 Oct): History, All tasks, Settings.
-  const head = (
+  const top = (
     <StickyTop>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <RoundButton label="History" onClick={() => { window.location.hash = '#/history'; }}><HistoryIcon color={C.text} /></RoundButton>
@@ -240,45 +256,56 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
     </StickyTop>
   );
   // No S1 inside the app (22 Oct): the header at once and grey rows until the union is read.
-  if (!cash) return <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>{head}<section style={card}><SkeletonRows rows={4} /></section></div>;
+  if (!cash) return <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>{top}<section style={card}><SkeletonRows rows={4} /></section></div>;
+  const dot = (on) => <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: R.round, background: on ? C.coral : C.accent, display: 'inline-block', marginRight: 8 }} />;
   return (
     <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
-      {head}
-      <section style={{ ...card, textAlign: 'center' }} aria-label="Union treasury">
-        <div style={{ color: C.muted }}>Union treasury</div>
-        <div style={{ fontSize: 32, fontWeight: 700 }}>{inr(cash.treasury)}</div>
-        {book && book.earningsPending > 0 && <div style={{ color: C.muted }}>+ {inr(book.earningsPending)} earnings pending</div>}
-        <Chip book={book} api={api} onFound={() => bookQ.refetch()} />
-        {bookQ.isError && <p style={{ color: C.coral, fontSize: 13 }}>The share list could not be read: {bookQ.error.message}</p>}
-      </section>
-      <section style={card} aria-label="Funds">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Funds</h2>
-          <button type="button" style={pill} onClick={() => setAdjust((x) => !x)}>{adjust ? 'Close' : 'Adjust'}</button>
-        </div>
-        {/* The union's fund by its name (as Settings' union card); its members, cash working and vouchers from the union
-            sync lists: titles (members) and the active-loan list (cash out on loans, voucher hours). */}
-        <Row k={union.name || 'Union fund'} v={book ? `Total deposited ${inr(book.fundTotal)}` : '…'} />
-        <Row k="Members" v={titles.data ? titles.data.length : '—'} />
-        <Row k="Cash working (on loans)" v={book ? inr(book.loans.reduce((t, l) => t + l.outstanding, 0)) : '…'} />
-        <Row k="Vouchers" v={book ? `${book.loans.reduce((t, l) => t + (l.hours || 0), 0)} machine hours` : '…'} />
-        <Row k="Rainy day fund" v={inr(cash.rainy)} />
-        {adjust && <Adjust cash={cash} onClose={() => setAdjust(false)} />}
-      </section>
-      <section style={card} aria-label="Lending">
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Lending</h2>
-          <span role="img" aria-label={cash.overdue ? 'On hold' : 'Open'} title={cash.overdue ? 'On hold' : 'Open'}
-            style={{ width: 10, height: 10, borderRadius: R.round, background: cash.overdue ? C.coral : C.accent, alignSelf: 'center' }} />
-        </div>
-        {cash.overdue > 0 && <p style={{ color: C.coral, margin: '6px 0' }}>{cash.overdue} share{cash.overdue > 1 ? 's' : ''} overdue</p>}
-        <Row k="Member contributions" v={book ? inr(book.contributions) : '…'} />
-        <Row k="In circulation" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}%)`} />
-        <Row k="Interest pending" v={book ? inr(book.interestPending) : '…'} />
-        <Row k="Available to cash in" v={inr(cash.free)} accent />
-      </section>
-      <CashCard cash={cash} open={open} setOpen={setOpen} onScanLp={onScanLp} />
-      {tasks}
+      {top}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <section style={{ ...card, padding: '18px 22px', gap: 4, alignItems: 'center', textAlign: 'center' }} aria-label="Union treasury">
+          <div style={{ color: C.muted }}>Union treasury</div>
+          <div style={{ fontSize: 32, lineHeight: 1.2, fontWeight: 700 }}>{inr(cash.treasury)}</div>
+          {book && book.earningsPending > 0 && <div style={{ color: C.muted }}>+ {inr(book.earningsPending)} earnings pending</div>}
+          <Chip book={book} api={api} onFound={() => bookQ.refetch()} />
+          {bookQ.isError && <p style={{ color: C.coral, fontSize: 13, margin: 0 }}>The share list could not be read: {bookQ.error.message}</p>}
+        </section>
+        <section style={card} aria-label="Funds">
+          <div style={head}>
+            <h2 style={title}>Funds</h2>
+            <button type="button" style={pill} onClick={() => setAdjust((x) => !x)}>{adjust ? 'Close' : 'Adjust'}</button>
+          </div>
+          {/* The union's fund by its name (as Settings' union card); its members, cash working and vouchers from the union
+              sync lists: titles (members) and the active-loan list (cash out on loans, voucher hours). */}
+          <div style={rows}>
+            <Row k={union.name || 'Union fund'} v={book ? `Total deposited ${inr(book.fundTotal)}` : '…'} />
+            <Row k="Members" v={titles.data ? titles.data.length : '—'} />
+            <Row k="Cash working (on loans)" v={book ? inr(book.loans.reduce((t, l) => t + l.outstanding, 0)) : '…'} />
+            <Row k="Vouchers" v={book ? `${book.loans.reduce((t, l) => t + (l.hours || 0), 0)} machine hours` : '…'} />
+            <Row k="Rainy day fund" v={inr(cash.rainy)} />
+          </div>
+          {adjust && <Adjust cash={cash} onClose={() => setAdjust(false)} />}
+        </section>
+        <section style={card} aria-label="Lending">
+          <div style={head}>
+            <h2 style={title}>Lending</h2>
+            <span style={{ fontWeight: 700, display: 'flex', alignItems: 'center' }}>{dot(cash.overdue > 0)}{cash.overdue ? 'On hold' : 'Open'}</span>
+          </div>
+          <div style={rows}>
+            {cash.overdue > 0 && (
+              <a href="#/tasks" style={{ ...rowS, color: C.text, textDecoration: 'none', minHeight: 44, margin: '-10px 0' }}>
+                <span style={{ color: C.coral }}>{cash.overdue} share{cash.overdue > 1 ? 's' : ''} overdue</span>
+                <span style={{ fontWeight: 700 }}>In Tasks ›</span>
+              </a>
+            )}
+            <Row k="Member contributions" v={book ? inr(book.contributions) : '…'} />
+            <Row k="In circulation" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}%)`} />
+            <Row k="Interest pending" v={book ? inr(book.interestPending) : '…'} />
+            <Row k="Available to cash in" v={inr(cash.free)} accent />
+          </div>
+        </section>
+        <CashCard cash={cash} open={open} setOpen={setOpen} onScanLp={onScanLp} />
+        {tasks}
+      </div>
     </div>
   );
 }
