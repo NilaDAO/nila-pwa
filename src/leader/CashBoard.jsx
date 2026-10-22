@@ -16,7 +16,7 @@ import { useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
 import { COLLECT } from '../anchor/sep';
 import { C, FONT, R } from '../shell/tokens';
-import { Loading } from '../register/Boot';
+import { SkeletonRows } from '../shell/Skeleton';
 import { StickyTop } from '../shell/ListRow';
 import RoundButton, { SettingsButton } from '../shell/RoundButton';
 import { HistoryIcon } from '../shell/icons';
@@ -229,17 +229,21 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
   const titles = useQuery({ queryKey: ['stellar', 'unionTitles'], enabled: !!api, staleTime: 5 * 60_000,
     queryFn: () => api.unionTitles().then((r) => r.titles || []) });
   if (cashQ.isError) return <div style={{ ...card, margin: 16 }}>Could not read the union. Try again.</div>;
-  if (!cash) return <Loading />;   // S1 while the union loads (executive decision 21 Oct: every wait is S1)
+  // The header as on A1L (22 Oct): History, All tasks, Settings.
+  const head = (
+    <StickyTop>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <RoundButton label="History" onClick={() => { window.location.hash = '#/history'; }}><HistoryIcon color={C.text} /></RoundButton>
+        <LeaderTasksButton onClick={() => { window.location.hash = '#/tasks'; }} />
+        <SettingsButton onClick={() => { window.location.hash = '#/settings'; }} />
+      </div>
+    </StickyTop>
+  );
+  // No S1 inside the app (22 Oct): the header at once and grey rows until the union is read.
+  if (!cash) return <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>{head}<section style={card}><SkeletonRows rows={4} /></section></div>;
   return (
     <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
-      {/* The header as on A1L (22 Oct): History, All tasks, Settings. */}
-      <StickyTop>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <RoundButton label="History" onClick={() => { window.location.hash = '#/history'; }}><HistoryIcon color={C.text} /></RoundButton>
-          <LeaderTasksButton onClick={() => { window.location.hash = '#/tasks'; }} />
-          <SettingsButton onClick={() => { window.location.hash = '#/settings'; }} />
-        </div>
-      </StickyTop>
+      {head}
       <section style={{ ...card, textAlign: 'center' }} aria-label="Union treasury">
         <div style={{ color: C.muted }}>Union treasury</div>
         <div style={{ fontSize: 32, fontWeight: 700 }}>{inr(cash.treasury)}</div>

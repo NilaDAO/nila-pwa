@@ -2,7 +2,7 @@
 // and assembled here against the public RPC from /stellar/config, signed with her Privy Stellar wallet
 // (a 32-byte hash), then fee-bumped by the node (POST /stellar/feebump; she holds no XLM) and followed on
 // the RPC until it lands. Reads are simulations with no signature.
-import { Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
+import { Account, Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
 
 const API = process.env.REACT_APP_API_BASE_URL;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -31,12 +31,41 @@ export async function readContract(cfg, contractName, fn, args = []) {
   const s = server(cfg);
   const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
-  const src = await s.getAccount(cfg.sponsor);
-  const tx = new TransactionBuilder(src, { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
+  // A simulation checks no sequence number, so the source account is not loaded first (one RPC call per read, 22 Oct).
+  const tx = new TransactionBuilder(new Account(cfg.sponsor, '0'), { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
     .addOperation(new Contract(id).call(fn, ...args)).setTimeout(60).build();
   const sim = await s.simulateTransaction(tx);
   if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
   return sim.result?.retval ? scValToNative(sim.result.retval) : null;
+}
+
+// stellar-sdk 17 exposes XDR members as properties, older builds as methods.
+const at = (o, k) => (typeof o[k] === 'function' ? o[k]() : o[k]);
+
+/** Many crop shares at once (22 Oct): fund_core keeps each as persistent DataKey::FoodToken(union, token_id), so one
+ *  getLedgerEntries call reads up to 200 of them instead of a simulation each. Returns { [hex]: FoodToken | null }. */
+export async function readFoodTokens(cfg, union, hexes) {
+  const id = contractId(cfg, 'fund_core');
+  if (!id) throw new Error('no fund_core contract in the node config');
+  const contract = new Address(id).toScAddress();
+  const uniq = [...new Set(hexes.map((h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0')))];
+  const keyOf = (hex) => xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+    contract, durability: at(xdr.ContractDataDurability, 'persistent'),
+    key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol('FoodToken'), sv.address(union), sv.bytes32(hex)]),
+  }));
+  const out = Object.fromEntries(uniq.map((h) => [h, null]));
+  const s = server(cfg);
+  for (let i = 0; i < uniq.length; i += 200) {
+    const part = uniq.slice(i, i + 200);
+    const keys = part.map(keyOf);
+    const r = await s.getLedgerEntries(...keys);
+    for (const e of r.entries || []) {
+      const want = e.key.toXDR('base64');
+      const i2 = keys.findIndex((k) => k.toXDR('base64') === want);
+      if (i2 >= 0) out[part[i2]] = scValToNative(at(at(e.val, 'contractData'), 'val'));
+    }
+  }
+  return out;
 }
 
 async function feeBump(xdr) {

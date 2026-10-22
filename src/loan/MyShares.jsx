@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig, useStellarTitles } from '../stellar/hooks';
-import { readContract, sv, tokenHex } from '../stellar/soroban';
+import { readFoodTokens, sv, tokenHex } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { useCropPlan, useLandTitles, usePlanClient } from '../plan/hooks';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
@@ -42,8 +42,11 @@ export function useMyShares() {
     queryFn: async () => {
       const { mints } = await api.mintList(p.id);
       const zones = Object.keys(p.plan.proposal).sort();
-      return Promise.all(mints.filter((m) => m.token_id).map(async (m) => {
-        const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(tokenHex(m.token_id))]).catch(() => null);
+      // Every share's state in one batched read (22 Oct), instead of a simulation each.
+      const withId = mints.filter((m) => m.token_id);
+      const fts = withId.length ? await readFoodTokens(cfg, cfg.union, withId.map((m) => tokenHex(m.token_id))).catch(() => ({})) : {};
+      return Promise.all(withId.map(async (m) => {
+        const ft = fts[tokenHex(m.token_id)] || null;
         const share = (p.plan.shares || []).find((x) => x.key === m.share) || {};
         const drawn = !!ft && (Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
         const ready = !!ft && !drawn && Number(ft.from_date) * 1000 <= Date.now();

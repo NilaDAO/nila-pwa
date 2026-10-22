@@ -10,7 +10,7 @@ import MapCard from '../shell/MapCard';
 import RoundButton, { SettingsButton } from '../shell/RoundButton';
 import { HistoryIcon, ScanIcon, UserPlusIcon } from '../shell/icons';
 import { LeaderTasksButton } from '../shell/A1';
-import { Loading } from '../register/Boot';
+import { SkeletonRows, UpdatingDot } from '../shell/Skeleton';
 import AreaMap from '../plan/AreaMap';
 import CameraView from '../shell/CameraView';
 import ListRow from '../shell/ListRow';
@@ -48,7 +48,8 @@ export default function Members({ go }) {
   // A member picked on the map, in the list or by her QR opens G2.
   const pick = useMemo(() => (key) => { const m = all.find((x) => x.key === key); if (m) go(`members/${m.route}`); }, [all, go]);
   const map = useUnionMap(all, pick);
-  if (members.isLoading) return <Loading />;
+  // No S1 here (22 Oct): the card shows at once; grey rows until the first list, the phone's copy meanwhile.
+  const waiting = !members.data;
   const needle = q.trim().toLowerCase();
   const list = needle ? all.filter((m) => [m.label, m.name, m.phone, m.address, ...m.lands.map(String)].some((v) => String(v || '').toLowerCase().includes(needle))) : all;
   const left = list.length - n;
@@ -71,7 +72,10 @@ export default function Members({ go }) {
       <section aria-label="Growers" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: '14px 22px 22px',
         display: 'flex', flexDirection: 'column', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{list.length} grower{list.length === 1 ? '' : 's'}</h2>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {waiting ? 'Growers' : `${list.length} grower${list.length === 1 ? '' : 's'}`}
+            {members.isFetching && !waiting && <UpdatingDot />}
+          </h2>
           <button type="button" onClick={() => go('tasks/member')} style={{ ...field, height: 36, borderRadius: R.round, fontWeight: 700,
             padding: '0 14px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <UserPlusIcon color={C.text} />Add a member
@@ -97,7 +101,8 @@ export default function Members({ go }) {
             <ListRow key={m.key} first={i === 0} title={m.label} sub={<span style={{ color: m.loans.some((x) => x.overdue) ? C.coral : C.muted }}>{summary(m)}</span>}
               onClick={() => pick(m.key)} />
           ))}
-          {!list.length && <li style={{ color: C.muted, padding: '12px 0', borderTop: `1px solid ${C.raised}` }}>
+          {waiting && <li><SkeletonRows rows={5} /></li>}
+          {!waiting && !list.length && <li style={{ color: C.muted, padding: '12px 0', borderTop: `1px solid ${C.raised}` }}>
             {needle ? 'No member found.' : 'No members yet.'}</li>}
         </ul>
         {left > 0 && (

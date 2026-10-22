@@ -16,9 +16,9 @@ import AreaMap from '../plan/AreaMap';
 import { areasOf } from '../plan/record';
 import { currentSeason } from '../plan/ActivePlan';
 import { rowsInSeason } from '../plan/PlanResult';
-import { Loading } from '../register/Boot';
+import { SkeletonRows } from '../shell/Skeleton';
 import { inr } from '../plan/ui';
-import { useUnionMembers } from './unionMembers';
+import { useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -54,7 +54,16 @@ export default function MemberStatus({ id, go }) {
   const api = usePlanClient();
   const members = useUnionMembers(api);
   const { data: cfg } = useStellarConfig();
-  const m = (members.data || []).find((x) => x.route === id);
+  const found = (members.data || []).find((x) => x.route === id);
+  // Her crop shares and her loans' due dates are read only here (22 Oct), after the list.
+  const shares = useUnionShares(api);
+  const dues = useLoanDues(found?.loans);
+  const m = useMemo(() => {
+    if (!found) return found;
+    const mine = shares.data?.[found.address] || {};
+    return { ...found, plan: mine.plan, shares: mine.shares || [],
+      loans: found.loans.map((l) => ({ ...l, due: dues.data?.[l.token] || 0, ...((mine.shares || []).find((x) => x.token === l.token) ? { crop: mine.shares.find((x) => x.token === l.token).crop } : {}) })) };
+  }, [found, shares.data, dues.data]);
   const inv = useInvestment(m?.address);
   const tx = useSorobanTx();
   const labels = useMemo(() => {
@@ -63,7 +72,13 @@ export default function MemberStatus({ id, go }) {
     const rows = rowsInSeason(seasons, currentSeason(seasons));
     return Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, { text: r.name, colour: r.colour }]));
   }, [m]);
-  if (members.isLoading) return <Loading />;
+  if (members.isLoading) {
+    return (
+      <MapCard header={{ title: '', onBack: () => go('members'), onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+        <SkeletonRows rows={4} />
+      </MapCard>
+    );
+  }
   const back = () => go('members');
   if (!m) {
     return (
@@ -85,7 +100,7 @@ export default function MemberStatus({ id, go }) {
   const markDefault = () => tx.run({
     label: `Mark as default · ${m.label}`, rows: [['Owed', inr(dueLoan.left)], ['Crop share', dueLoan.crop || '—']],
     contractName: 'fund_core', fn: 'mark_default', args: [sv.address(cfg.union), sv.bytes32(dueLoan.token)],
-    invalidate: [['stellar', 'unionMembers'], ['stellar', 'loans']],
+    invalidate: [['stellar', 'unionMembers'], ['stellar', 'unionShares'], ['stellar', 'loans']],
   });
   const map = m.record ? <AreaMap record={m.record} labels={labels} /> : null;
   return (
@@ -126,6 +141,7 @@ export default function MemberStatus({ id, go }) {
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`cash/withdraw/${m.address}`)}>Withdraw</button>
         </Section>
       )}
+      {shares.isLoading && <Section title="Redeem from the plan"><SkeletonRows rows={2} /></Section>}
       {open.length > 0 && (
         <Section title="Redeem from the plan">
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>

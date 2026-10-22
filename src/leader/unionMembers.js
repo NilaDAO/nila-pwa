@@ -10,7 +10,7 @@
 // no "Sold" (no sales yet); crop health (useCropHealth) not shown.
 import { useQuery } from '@tanstack/react-query';
 import { useStellarConfig } from '../stellar/hooks';
-import { readContract, sv } from '../stellar/soroban';
+import { readContract, readFoodTokens, sv } from '../stellar/soroban';
 import { borderClient } from '../border/api';
 import { keypadClient } from '../keypad/api';
 import { fromNode } from '../plan/record';
@@ -19,6 +19,8 @@ import { rowOf } from '../loan/MyShares';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
+const FLAG_OVERDUE = 1;
+const FLAG_CLOSED = 4;
 const FLAG_DRAWN = 8;
 const hexOf = (id) => BigInt(id).toString(16).padStart(64, '0');
 const short = (g) => (g ? `${g.slice(0, 4)}…${g.slice(-4)}` : '');
@@ -32,87 +34,124 @@ const outline = (record) => record?.meta?.geometry?.out
   || { type: 'MultiPolygon', coordinates: (record?.zones || []).flatMap((z) => (z.geometry?.type === 'Polygon' ? [z.geometry.coordinates]
     : z.geometry?.type === 'MultiPolygon' ? z.geometry.coordinates : [])) };
 
+// The list as it was last seen, kept on the phone per account and union (22 Oct): G1 shows it at once on the next open
+// and refreshes it in the background. Only the list fields are kept (no field records), so it stays small.
+const cacheKey = (acct, union) => `nila.members.${union}.${acct}`;
+const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label'];
+function readKept(acct, union) {
+  try { const v = JSON.parse(localStorage.getItem(cacheKey(acct, union)) || 'null'); return Array.isArray(v) ? v : undefined; } catch { return undefined; }
+}
+function keep(acct, union, list) {
+  try { localStorage.setItem(cacheKey(acct, union), JSON.stringify(list.map((m) => Object.fromEntries(KEEP.map((k) => [k, m[k]]))))); } catch { /* full or private mode */ }
+}
+
+/** G1's list (22 Oct, lean): the union's titles, keypad members, open border jobs and the loan list, with each loan's
+ *  state from one batched read of its crop share (the loan sits inside it). Crop shares per member are read only on
+ *  G2 (useMemberShares), so G1 waits on no mint list and no per-token read. */
 export function useUnionMembers(api) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
+  const acct = s?.stellarAddress || '';
   return useQuery({
     queryKey: ['stellar', 'unionMembers', cfg?.union], enabled: !!api && !!s?.signHash && !!cfg?.contracts?.fund_core,
     staleTime: 2 * 60_000,
+    placeholderData: () => (cfg?.union && acct ? readKept(acct, cfg.union) : undefined),
     queryFn: async () => {
-      const u = sv.address(cfg.union);
-      const now = Date.now() / 1000;
       const by = new Map();
       const get = (key) => {
-        if (!by.has(key)) by.set(key, { key, address: key.startsWith('G') ? key : '', name: '', phone: '', lands: new Set(), shares: [], loans: [], places: [], note: '' });
+        if (!by.has(key)) by.set(key, { key, address: key.startsWith('G') ? key : '', name: '', phone: '', lands: new Set(), loans: [], places: [], note: '' });
         return by.get(key);
       };
       const border = borderClient(s);
-      const [titles, keypad, jobs, plans, loanList] = await Promise.all([
+      const [titles, keypad, jobs, loanList] = await Promise.all([
         api.unionTitles().then((r) => r.titles || []).catch(() => []),
         keypadClient(s).list().then((r) => r.members || []).catch(() => []),
         border.jobs().then((r) => r || []).catch(() => []),
-        api.approvedPlans().then((r) => r.plans || []).catch(() => []),
         api.unionLoans().then((r) => r.loans || []).catch(() => []),
       ]);
-      // Titles: the membership, and each property on the map from its field record.
-      await Promise.all(titles.map(async (t) => {
-        const m = get(t.holder); m.lands.add(t.title_id); m.name = m.name || t.farm || '';
-        const record = t.record_hash ? await fromNode(t.record_hash).catch(() => null) : null;
-        if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
-      }));
+      const hexes = loanList.map((l) => String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'));
+      const [, , fts] = await Promise.all([
+        // Titles: the membership, and each property on the map from its field record.
+        Promise.all(titles.map(async (t) => {
+          const m = get(t.holder); m.lands.add(t.title_id); m.name = m.name || t.farm || '';
+          const record = t.record_hash ? await fromNode(t.record_hash).catch(() => null) : null;
+          if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
+        })),
+        Promise.all(jobs.map(async (j) => {
+          if (!j.member) return;
+          const m = get(j.member); m.name = m.name || j.farm || j.name || ''; m.job = j.id;
+          if (!m.lands.size) m.note = `Fields sent · ${j.fields} field${j.fields === 1 ? '' : 's'} · borders ${j.status === 'minting' ? 'done, title on its way' : 'to check'}`;
+          const full = await border.job(j.id).catch(() => null);
+          const pts = (full?.job || full)?.fields || [];
+          if (!m.places.length && pts.length) {
+            m.places.push({ id: `job-${j.id}`, geometry: { type: 'MultiPolygon', coordinates: pts.filter((f) => f.point).map((f) => [square(f.point)]) } });
+          }
+        })),
+        hexes.length ? readFoodTokens(cfg, cfg.union, hexes).catch(() => ({})) : {},
+      ]);
       for (const k of keypad) {
         const m = get(`keypad:${k.id}`); m.name = m.name || k.name || ''; m.phone = k.phone || '';
         if (!m.lands.size) m.note = k.device ? 'Keypad phone set up' : k.link?.opened ? 'Opened the app link' : 'App link sent';
       }
-      await Promise.all(jobs.map(async (j) => {
-        if (!j.member) return;
-        const m = get(j.member); m.name = m.name || j.farm || j.name || ''; m.job = j.id;
-        if (!m.lands.size) m.note = `Fields sent · ${j.fields} field${j.fields === 1 ? '' : 's'} · borders ${j.status === 'minting' ? 'done, title on its way' : 'to check'}`;
-        const full = await border.job(j.id).catch(() => null);
-        const pts = (full?.job || full)?.fields || [];
-        if (!m.places.length && pts.length) {
-          m.places.push({ id: `job-${j.id}`, geometry: { type: 'MultiPolygon', coordinates: pts.filter((f) => f.point).map((f) => [square(f.point)]) } });
-        }
-      }));
-      const loans = new Map(loanList.map((l) => [String(l.token_id).toLowerCase().replace(/^0x/, ''), l]));
-      for (const p of plans) {
-        const { mints } = await api.mintList(p.id).catch(() => ({ mints: [] }));
-        const zones = Object.keys(p.plan?.proposal || {}).sort();
-        await Promise.all(mints.filter((x) => x.token_id).map(async (x) => {
-          const hex = hexOf(x.token_id);
-          const ft = await readContract(cfg, 'fund_core', 'food_token', [u, sv.bytes32(hex)]).catch(() => null);
-          if (!ft?.member) return;
-          const share = (p.plan.shares || []).find((y) => y.key === x.share) || {};
-          const r = rowOf({ ...x, share, plan: p }) || {};
-          const drawn = !!(Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
-          const m = get(ft.member); m.lands.add(p.land_id); m.plan = m.plan || p;
-          m.shares.push({ token: hex, crop: r.name || x.crop.replace(/_/g, ' '), colour: r.colour, area: zones.indexOf(x.zone) + 1,
-            harvest: r.harvest, kg: r.kg, from: Number(ft.from_date), drawn, ready: !drawn && Number(ft.from_date) <= now });
-        }));
-      }
-      // Loans: what is left and overdue, on the share it was drawn on (or a row of its own for a loan without a plan here).
-      await Promise.all([...loans.entries()].map(async ([hex, l]) => {
-        const [g, due] = await Promise.all([
-          readContract(cfg, 'fund_core', 'get_loan', [u, sv.bytes32(hex)]).catch(() => null),
-          readContract(cfg, 'fund_core', 'due_date', [u, sv.bytes32(hex)]).catch(() => null),
-        ]);
-        if (!g || g.closed) return;
+      // Loans: what is left and whether it is overdue, from the loan inside its crop share (one batched read).
+      loanList.forEach((l, i) => {
+        const g = fts[hexes[i]]?.loan;
+        if (!g || (Number(g.flags ?? 0) & FLAG_CLOSED)) return;
         const left = n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid);
-        const overdue = !!g.overdue || (Number(due || 0) > 0 && Number(due) < now);
-        const m = get(l.borrower);
-        const sh = m.shares.find((x) => x.token === hex);
-        m.loans.push({ token: hex, left, overdue, due: Number(due || 0), crop: sh?.crop, area: sh?.area });
-        if (sh) Object.assign(sh, { left, overdue, drawn: true, ready: false });
-        else m.shares.push({ token: hex, crop: 'Loan', left, overdue, drawn: true });
-      }));
-      return [...by.values()].map((m) => {
+        get(l.borrower).loans.push({ token: hexes[i], left, overdue: !!(Number(g.flags ?? 0) & FLAG_OVERDUE) });
+      });
+      const list = [...by.values()].map((m) => {
         const lands = [...m.lands].sort((a, b) => a - b);
-        m.shares.sort((a, b) => String(a.harvest || '').localeCompare(String(b.harvest || '')));
         // The route id (#/members/<id>): her title id, else her account, else her keypad id.
         const route = m.titleId || lands[0] || m.address || `k${m.key.replace(/^keypad:/, '')}`;
         return { ...m, lands, route: String(route), label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.address ? short(m.address) : m.phone || 'New member') };
-      }).sort((a, b) => b.shares.some((x) => x.overdue) - a.shares.some((x) => x.overdue) || a.label.localeCompare(b.label));
+      }).sort((a, b) => b.loans.some((x) => x.overdue) - a.loans.some((x) => x.overdue) || a.label.localeCompare(b.label));
+      if (acct) keep(acct, cfg.union, list);
+      return list;
     },
+  });
+}
+
+/** G2: her crop shares and her loans' due dates, read when her G2 opens. The approved plans of the union's lands, their
+ *  mint lists in parallel, then every share's state in one batched read; kept 2 minutes. */
+export function useUnionShares(api) {
+  const { data: cfg } = useStellarConfig();
+  return useQuery({
+    queryKey: ['stellar', 'unionShares', cfg?.union], enabled: !!api && !!cfg?.contracts?.fund_core,
+    staleTime: 2 * 60_000,
+    queryFn: async () => {
+      const now = Date.now() / 1000;
+      const plans = await api.approvedPlans().then((r) => r.plans || []).catch(() => []);
+      const lists = await Promise.all(plans.map((p) => api.mintList(p.id).then((r) => r.mints || []).catch(() => [])));
+      const items = plans.flatMap((p, i) => lists[i].filter((x) => x.token_id).map((x) => ({ p, x, hex: hexOf(x.token_id) })));
+      const fts = items.length ? await readFoodTokens(cfg, cfg.union, items.map((it) => it.hex)) : {};
+      const by = {};
+      for (const { p, x, hex } of items) {
+        const ft = fts[hex];
+        if (!ft?.member) continue;
+        const zones = Object.keys(p.plan?.proposal || {}).sort();
+        const share = (p.plan.shares || []).find((y) => y.key === x.share) || {};
+        const r = rowOf({ ...x, share, plan: p }) || {};
+        const drawn = !!(Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
+        const m = (by[ft.member] ||= { plan: p, shares: [] });
+        m.shares.push({ token: hex, crop: r.name || x.crop.replace(/_/g, ' '), colour: r.colour, area: zones.indexOf(x.zone) + 1,
+          harvest: r.harvest, kg: r.kg, from: Number(ft.from_date), drawn, ready: !drawn && Number(ft.from_date) <= now });
+      }
+      Object.values(by).forEach((m) => m.shares.sort((a, b) => String(a.harvest || '').localeCompare(String(b.harvest || ''))));
+      return by;
+    },
+  });
+}
+
+/** G2: the due date of each of her loans (fund_core.due_date), read only for her. */
+export function useLoanDues(loans) {
+  const { data: cfg } = useStellarConfig();
+  const tokens = (loans || []).map((l) => l.token);
+  return useQuery({
+    queryKey: ['stellar', 'loanDues', cfg?.union, tokens.join(',')], enabled: !!cfg?.contracts?.fund_core && tokens.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => Object.fromEntries(await Promise.all(tokens.map(async (t) => [t,
+      Number(await readContract(cfg, 'fund_core', 'due_date', [sv.address(cfg.union), sv.bytes32(t)]).catch(() => 0) || 0)]))),
   });
 }
 
