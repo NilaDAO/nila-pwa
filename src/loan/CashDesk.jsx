@@ -19,7 +19,6 @@ import PhotoCount from './PhotoCount';
 import RegisterMachine from '../machine/RegisterMachine';
 import { ScanLp } from '../anchor/LeaderLp';
 import CashBoard from '../leader/CashBoard';
-import { PickMember } from '../leader/LeaderTasks';
 import { Secondary } from './AssetParts';
 
 const PURPOSE = { invest: 0, repay: 1 };
@@ -162,7 +161,7 @@ const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/(G[A-Z2-7]
 
 export default function CashDesk({ initial }) {
   const [view, setView] = useState(OPEN[initial]);
-  const [member, setMember] = useState(herFromHash);   // from her G2; the machine flow picks on L5
+  const [member, setMember] = useState(herFromHash);   // from her G2; L13 takes the owner's wallet itself (no L5 pick, 22 Oct)
   const back = useMemo(() => () => {
     if (MEMBER_ACTIONS.includes(view)) { window.history.back(); return; }   // back to her G2
     setView(undefined); setMember(undefined);
@@ -172,13 +171,9 @@ export default function CashDesk({ initial }) {
   if (toMembers) return null;
   if (view === 'invest' || view === 'withdraw') return <ToMembersFrom member={member} />;
   if (view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
-  // L5 first for a machine: the members the app knows, or scan her wallet.
-  if (view === 'machine' && member === undefined) {
-    return <PickMember title="Register a machine" onBack={back} onPick={setMember} onScan={() => setMember('')} />;
-  }
   if (view === 'loan') return <LeaderLoan />;
   if (view === 'payout') return <PayOut onBack={back} />;
-  if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member} />;
+  if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member || ''} />;
   if (view === 'lpscan') return <ScanLp onBack={back} />;
   // The Cash tab is the C1–C4 board (P10): the union's money only; the cash tasks are on the Tasks tab (L1).
   return <CashBoard settle={initial === 'settle'} onScanLp={() => setView('lpscan')} />;
