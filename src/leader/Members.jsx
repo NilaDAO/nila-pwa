@@ -72,7 +72,8 @@ function useUnionMap(list, open, onPick) {
       .filter((z, i, a) => a.findIndex((y) => y.zone_id === z.zone_id) === i);
     if (!zones.length) return null;
     const labels = Object.fromEntries(list.map((m) => [m.key, { text: m.label }]));
-    return <AreaMap record={{ zones }} labels={labels} selected={open || null} onSelect={(z) => onPick(z || '')} />;
+    // Fitted with room for the name chips on the sides and for the lowered card and tab bar below.
+    return <AreaMap record={{ zones }} labels={labels} selected={open || null} onSelect={(z) => onPick(z || '')} fitSide={90} fitBottom={170} />;
   }, [list, open, onPick]);
 }
 
