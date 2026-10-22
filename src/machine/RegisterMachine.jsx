@@ -181,7 +181,17 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
           <span key={t} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, lineHeight: 1.5 }}><CheckMark color={C.gold} />{t}</span>
         ))}
         {error && <span style={{ ...sub, color: C.coral }}>{error}</span>}
-        <Primary disabled={!rate || taken < 8 || busy || !tx.ready || !api} onClick={() => (initialOwner ? register(initialOwner) : setScanning(true))}>{taken < 8 ? 'Take all 8 photos' : busy ? 'Sending the photos…' : initialOwner ? 'Register the machine' : "Scan the owner's wallet QR"}</Primary>
+        {/* The owner (executive decision 22 Oct): a union machine is registered to the leader herself (her app confirms
+            and collects; she deposits the dues into the treasury); a member's machine to her scanned wallet. */}
+        {initialOwner || taken < 8 || busy ? (
+          <Primary disabled={!rate || taken < 8 || busy || !tx.ready || !api} onClick={() => register(initialOwner)}>{taken < 8 ? 'Take all 8 photos' : busy ? 'Sending the photos…' : 'Register the machine'}</Primary>
+        ) : (
+          <>
+            <Primary disabled={!rate || !tx.ready || !api || !s?.stellarAddress} onClick={() => register(s.stellarAddress)}>Union machine: register to me</Primary>
+            <button type="button" disabled={!rate || !tx.ready || !api} onClick={() => setScanning(true)}
+              style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>A member's machine: scan her wallet QR</button>
+          </>
+        )}
       </Card>
     </>
   ));
