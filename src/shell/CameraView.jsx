@@ -63,7 +63,7 @@ export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false,
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {title && <b style={{ fontSize: 16, lineHeight: 1.5 }}>{title}</b>}
       {hint && <span style={muted}>{hint}</span>}
-      <div style={{ position: 'relative', width: 'min(280px, 100%)', aspectRatio: '1 / 1', margin: '12px auto', borderRadius: R.round,
+      <div style={{ position: 'relative', width: '85%', maxWidth: 420, aspectRatio: '1 / 1', margin: '12px auto', borderRadius: R.round,
         overflow: 'hidden', boxShadow: `0 0 0 8px ${C.raised}`, background: 'radial-gradient(circle, #2a2a2a 0%, #0b0b0b 75%)' }}>
         <style>{`#${id} video{width:100%!important;height:100%!important;object-fit:cover}#${id}{width:100%;height:100%}#${id} img,#${id} > div:not(:first-child){display:none!important}`}</style>
         {mode === 'qr'
