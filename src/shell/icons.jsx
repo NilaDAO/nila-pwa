@@ -86,7 +86,8 @@ export const NinTile = tile('#D4CF5A', mark);                    // nIN
 export const InvestedTile = tile('#D4A634', mark);               // nIN invested (union investment)
 export const TreasuryTile = tile('#D4A634', glyph(<path d="M3 21h18M5 21V10M19 21V10M9 21v-7M15 21v-7M2 10l10-6 10 6z" />));
 export const CashTile = tile('#E69283', glyph(<><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></>, { size: 16, width: 2.4 }));
-export const UsdcTile = tile('#2775CA', glyph(<><circle cx="12" cy="12" r="8" /><path d="M12 7v10" /><path d="M9 9.5h6" /></>, { color: '#FFFFFF', width: 2.4 }));
+// USDC: the official logo (public/USDC.svg, 22 Oct).
+export const UsdcTile = ({ size = 32 }) => <img src="/USDC.svg" alt="" aria-hidden="true" style={{ width: size, height: size, flexShrink: 0, display: 'block' }} />;
 const tractor = <path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" />;
 export const MachineryTile = tile('#E69283', glyph(tractor));    // machinery voucher
 export const MyMachineTile = tile('#D4A634', glyph(tractor));    // your machine (owner)

@@ -207,7 +207,7 @@ export default function Shell({ leader }) {
   }
   else if (view === 'history') body = <History onBack={() => go('assets')} />;
   else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('offers')} />;
-  else if (view === 'idleader' && leader) body = <IdCheck kind="leader" onBack={() => go('settings')} onUsdc={() => go('usdc')} />;
+  else if (view === 'idleader' && leader) body = <IdCheck kind="leader" onBack={() => go('settings')} onAccepted={() => go('assets')} />;
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
   // The leader app is the member app, extended (notes leader-missing): her Crop plan tab is her own plan (CP13 with
   // the leader tab bar); the union's plans to approve (L12) open from L1's To do.
@@ -217,7 +217,7 @@ export default function Shell({ leader }) {
   else if (view === 'loan') body = <LeaderLoan />;
   else if (view === 'cash' && leader) body = <CashDesk key={readArg() || 'menu'} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
-  else if (view === 'usdc' && leader) body = <UsdcAsset onBack={() => go('assets')} onReceive={() => go('wallet')} />;
+  else if (view === 'usdc' && leader) body = <UsdcAsset onBack={() => go('assets')} />;
   else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
   else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go('cash/invest')} onScan={() => go('scan')} />;
   // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.

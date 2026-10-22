@@ -2,7 +2,7 @@
 // and assembled here against the public RPC from /stellar/config, signed with her Privy Stellar wallet
 // (a 32-byte hash), then fee-bumped by the node (POST /stellar/feebump; she holds no XLM) and followed on
 // the RPC until it lands. Reads are simulations with no signature.
-import { Address, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
+import { Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
 
 const API = process.env.REACT_APP_API_BASE_URL;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -29,7 +29,7 @@ const server = (cfg) => new rpc.Server(cfg.rpc_url, { allowHttp: cfg.rpc_url?.st
 /** A read: simulate `fn` on `contract` (any funded account as source; the sponsor is). */
 export async function readContract(cfg, contractName, fn, args = []) {
   const s = server(cfg);
-  const id = cfg.contracts[contractName];
+  const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
   const src = await s.getAccount(cfg.sponsor);
   const tx = new TransactionBuilder(src, { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
@@ -71,9 +71,18 @@ export async function txStatus(cfg, hash) {
 }
 
 /** Her call: build → simulate → sign (her Privy wallet) → node fee-bump → wait. Returns { hash, result }. */
+/** A Nila contract by name, or 'usdc': the USDC Stellar asset contract (a leader's USDC send, 22 Oct). */
+export function contractId(cfg, name) {
+  if (name === 'usdc') {
+    const [code, issuer] = (cfg.usdc_asset || ':').split(':');
+    return code && issuer ? new Asset(code, issuer).contractId(cfg.passphrase) : undefined;
+  }
+  return cfg.contracts[name];
+}
+
 export async function invokeContract({ cfg, source, signHash, contractName, fn, args, auth, onSent }) {
   const s = server(cfg);
-  const id = cfg.contracts[contractName];
+  const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
   const acct = await s.getAccount(source);
   // `auth`: entries already signed by another address (base64 XDR; the leader's at the desk, 22 Oct). Her own
@@ -105,7 +114,7 @@ export async function invokeContract({ cfg, source, signHash, contractName, fn, 
  *  her Privy wallet, valid for `ledgers` ledgers (~5 s each). Returns the signed entry as base64 XDR. */
 export async function signAuthFor({ cfg, source, signer, signHash, contractName, fn, args, ledgers = 720 }) {
   const s = server(cfg);
-  const id = cfg.contracts[contractName];
+  const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
   const acct = await s.getAccount(source);
   const tx = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase: cfg.passphrase })

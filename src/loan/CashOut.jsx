@@ -20,6 +20,7 @@ import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C } from '../shell/tokens';
 import { Loading } from '../register/Boot';
 import { Camera } from './LoanScreens';
+import { SwapToUsdc } from '../shell/UsdcAsset';
 import { AssetScreen, Card, CardTitle, KV, MarkCircle, QrCircle, Secondary, Stepper, useOnline, when } from './AssetParts';
 
 const NIN = 10_000_000n;
@@ -179,6 +180,8 @@ export default function CashOut({ onBack }) {
           ? <div style={{ marginTop: -16 }}><Primary disabled={!tx.ready || maxScan.data == null || max < 1} onClick={() => send(a)}>Send and collect</Primary></div>
           : <Secondary disabled>Sending needs a connection</Secondary>}
       </Card>
+      {/* A leader whose identity is checked swaps her nIN to USDC (22 Oct). */}
+      <SwapToUsdc nin={nin} tx={tx} />
       {open.length > 0 && (
         <Card label="Your cash-outs" style={{ gap: 8 }}>
           <CardTitle>Your cash-outs</CardTitle>

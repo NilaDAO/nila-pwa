@@ -5,7 +5,8 @@
 // has no date (the SEP-12 answer carries none); "Get offers from <union>" is "Get cash offers" (no union
 // names on the node); a "Start" step before the form (her SEP-10 signature) and the REJECTED and
 // "Waiting for the network" states have no board. #leader (22 Oct): the same form and store (SEP-12 type leader);
-// accepted = fx_pool.id_checked on-chain, which opens her USDC (A9).
+// accepted = fx_pool.id_checked on-chain, which opens her USDC (A9); no result screen, straight back to her assets.
+import { Loading } from '../register/Boot';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Primary, Sheet, muted } from '../plan/ui';
@@ -33,7 +34,7 @@ async function selfieBlob(file) {
 
 const input = { width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box', fontSize: 15, marginBottom: 10 };
 
-export default function IdCheck({ kind = 'lp', onBack, onOffers, onUsdc }) {
+export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
   const leader = kind === 'leader';
   const info = useAnchorInfo();
   const getToken = useSep10Token();
@@ -58,6 +59,11 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onUsdc }) {
     const t = setInterval(() => lp.refetch(), 10_000);
     return () => clearInterval(t);
   }, [k1.data?.status, lpNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A leader accepted (22 Oct): no result screen; once her flag is on-chain she goes straight back to her assets,
+  // where the USDC row is now open.
+  useEffect(() => {
+    if (leader && k1.data?.status === 'ACCEPTED' && lpNow) onAccepted?.();
+  }, [leader, k1.data?.status, lpNow]); // eslint-disable-line react-hooks/exhaustive-deps
   const [selfieError, setSelfieError] = useState();
 
   const status = k1.data?.status;
@@ -95,14 +101,7 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onUsdc }) {
       </>
     );
   } else if (status === 'ACCEPTED' && leader) {
-    body = (
-      <>
-        <h2 style={{ fontSize: 16 }}>Identity checked</h2>
-        <p style={muted}>Accepted. Your USDC is open.</p>
-        <Primary disabled={!lpNow} onClick={onUsdc}>Open USDC</Primary>
-        {!lpNow && <p style={muted}>Waiting for the network…</p>}
-      </>
-    );
+    return <Loading />;   // until set_id_checked lands, then back to the assets (above)
   } else if (status === 'ACCEPTED') {
     body = (
       <>
