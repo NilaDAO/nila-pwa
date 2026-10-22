@@ -5,7 +5,7 @@
 // to the screen's edges; a scroll up (or the card back up) brings it back. ~200 ms. A map card's drag floor reads the
 // bar's top, so the bar tells it when it changes ('nila-tabbar').
 import { useEffect, useState } from 'react';
-import { C, FONT, SHADOW, TAB_BAR_HEIGHT } from './tokens';
+import { C, FONT, S, SHADOW, TAB_BAR_HEIGHT } from './tokens';
 import { AssetsIcon, CashIcon, CropPlanIcon, HarvestsIcon, MembersIcon, ScanIcon } from './icons';
 
 export const MEMBER_TABS = [['crop', 'Crop plan', CropPlanIcon], ['assets', 'Assets', AssetsIcon]];
@@ -43,10 +43,11 @@ function useCompact() {
 
 export default function BottomTabBar({ tabs, active, onSelect }) {
   const compact = useCompact();
-  const gap = 12;
+  const gap = 12;   // to the screen's bottom edge
   return (
+    // Compact, the pill has the cards' side gutter (S.gutter), so its edges line up with the cards above it.
     <nav aria-label="Main" data-compact={compact ? '1' : undefined} style={{
-      position: 'fixed', left: compact ? gap : 0, right: compact ? gap : 0, zIndex: 10,
+      position: 'fixed', left: compact ? S.gutter : 0, right: compact ? S.gutter : 0, zIndex: 10,
       bottom: compact ? `calc(${gap}px + env(safe-area-inset-bottom, 0px))` : 0,
       height: compact ? COMPACT : TAB_BAR_HEIGHT,
       background: C.ink, borderRadius: compact ? 24 : '24px 24px 0 0', padding: compact ? 6 : 8, gap: 4, display: 'flex',
