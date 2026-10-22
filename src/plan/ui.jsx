@@ -95,7 +95,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         <div data-sheet-scroll style={{ position: 'absolute', left: 0, right: 0, top: 76, bottom: 0, overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none', zIndex: 4, pointerEvents: 'none' }}>
           <div aria-hidden="true" style={{ height: Math.max(120, Math.round(window.innerHeight / 3) - 76) }} />
           <section ref={drag.ref} className="cp-sheet" {...swipe} style={{ pointerEvents: 'auto', background: cardBg, borderRadius: '24px 24px 0 0', padding: '10px 22px 104px', boxSizing: 'border-box', minHeight: '100%', boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', ...drag.style }}>
-            <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}[data-sheet-scroll]::-webkit-scrollbar{display:none}'}</style>
+            <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}.cp-sheet [data-sheet-head] h1{margin:0!important}[data-sheet-scroll]::-webkit-scrollbar{display:none}'}</style>
             <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
             {headRow}
             <div style={staged ? { opacity: drag.low ? 0 : 1, visibility: drag.low ? 'hidden' : 'visible', transition: drag.low ? 'none' : 'opacity 200ms' } : undefined}>
@@ -125,7 +125,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       <div ref={drag.ref} className="cp-sheet" {...swipe} style={{ background: cardBg, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, pointerEvents: 'auto', minHeight: full ? '100dvh' : undefined, boxSizing: 'border-box', ...drag.style, ...(full && staged ? { animation: 'nila-rise 320ms cubic-bezier(0.2,0.8,0.2,1)' } : {}) }}>
         {full && staged && <style>{`@keyframes nila-rise{from{transform:translateY(${Math.round(window.innerHeight * 0.34) - 24}px)}to{transform:translateY(0)}}`}</style>}
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
-        <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}html,body{overscroll-behavior-y:none}'}</style>
+        <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}.cp-sheet [data-sheet-head] h1{margin:0!important}html,body{overscroll-behavior-y:none}'}</style>
         {/* CP10's season / area bar sits on top of the card and moves with it (board CropPlanQ3-xdlz). */}
         {bar && <div style={{ position: 'absolute', left: 8, right: 8, bottom: 'calc(100% + 12px)' }}>{bar}</div>}
         <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
