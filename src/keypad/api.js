@@ -9,5 +9,6 @@ export function keypadClient(signer) {
       { name, phone, phone_type: phoneType, union_name: unionName || '', leader_name: leaderName || '' }),
     sendAgain: (id) => call('POST', `/keypad/members/${id}/link`, {}),
     member: (id) => call('GET', `/keypad/members/${id}`),
+    list: () => call('GET', '/keypad/members'),
   };
 }

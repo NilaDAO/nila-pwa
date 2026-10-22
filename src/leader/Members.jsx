@@ -1,17 +1,23 @@
-// G1 (board LeaderGrowers): the leader's Members tab — "N growers", Add a member (→ L14), search, and one accordion row
-// per grower: her name, a summary of her crop shares (coral when one is overdue), and opened her crop shares with their
-// state (Ready / Financed / Overdue, Planned before the share's start). Data: src/leader/unionMembers.js.
-// DESIGN GAPs: the scan button next to search (A1b #leader, g1-scan) and G2 (member status) are not built, so a crop
-// share row does not open anything yet; "Sold" needs sales (later).
-import { useState } from 'react';
+// G1 (board LeaderGrowers): the leader's Members tab, a map card. The header is A1L's (History, All tasks, Settings);
+// the card: "N growers", Add a member (→ L14), search with a scan button (her wallet QR, A1a → her row), and one
+// accordion row per grower: her name, a summary of her crop shares (coral when one is overdue), and opened her crop
+// shares with their state (Ready / Financed / Overdue, Planned before the share's start). The map behind shows every
+// property of the union with its name; tapping one opens that member's row, opening a row fits the map to her property.
+// Data: src/leader/unionMembers.js.
+// DESIGN GAPs: G2 (member status) is not built, so a crop share row opens nothing yet; "Sold" needs sales (later).
+import { useMemo, useState } from 'react';
 import { usePlanClient } from '../plan/hooks';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
-import { UserPlusIcon } from '../shell/icons';
+import RoundButton, { SettingsButton } from '../shell/RoundButton';
+import { HistoryIcon, ScanIcon, UserPlusIcon } from '../shell/icons';
+import { LeaderTasksButton } from '../shell/A1';
 import { Loading } from '../register/Boot';
+import AreaMap from '../plan/AreaMap';
+import { Camera } from '../loan/LoanScreens';
 import { inr } from '../plan/ui';
 import { amount } from '../loan/MyShares';
-import { useUnionMembers } from './unionMembers';
+import { addressFromQr, useUnionMembers } from './unionMembers';
 
 const PAGE = 10;
 const MORE = 20;
@@ -29,11 +35,11 @@ const when = (d) => {
   const y = t.getFullYear() !== new Date().getFullYear() ? ` ${t.getFullYear()}` : '';
   return `${part} ${t.toLocaleDateString('en-GB', { month: 'short' })}${y}`;
 };
-function summary(shares) {
-  if (!shares.length) return 'No crop share yet';
-  const parts = [`${shares.length} crop share${shares.length === 1 ? '' : 's'}`];
-  if (shares.some((x) => x.overdue)) parts.push('overdue');
-  const ready = shares.filter((x) => kind(x) === 'ready').length;
+function summary(m) {
+  if (!m.shares.length) return m.note || 'No crop share yet';
+  const parts = [`${m.shares.length} crop share${m.shares.length === 1 ? '' : 's'}`];
+  if (m.shares.some((x) => x.overdue)) parts.push('overdue');
+  const ready = m.shares.filter((x) => kind(x) === 'ready').length;
   if (ready) parts.push(`${ready} ready`);
   return parts.join(' · ');
 }
@@ -59,43 +65,91 @@ function Share({ x }) {
   );
 }
 
+/** The union's properties as one "record" for AreaMap: one area per member (her property), labelled with her name. */
+function useUnionMap(list, open, onPick) {
+  return useMemo(() => {
+    const zones = list.flatMap((m) => m.places.map((p) => ({ zone_id: m.key, geometry: p.geometry })))
+      .filter((z, i, a) => a.findIndex((y) => y.zone_id === z.zone_id) === i);
+    if (!zones.length) return null;
+    const labels = Object.fromEntries(list.map((m) => [m.key, { text: m.label }]));
+    return <AreaMap record={{ zones }} labels={labels} selected={open || null} onSelect={(z) => onPick(z || '')} />;
+  }, [list, open, onPick]);
+}
+
 export default function Members({ go }) {
   const api = usePlanClient();
   const members = useUnionMembers(api);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState('');
   const [n, setN] = useState(PAGE);
-  if (members.isLoading) return <Loading />;
+  const [scan, setScan] = useState(false);
+  const [msg, setMsg] = useState('');
   const all = members.data || [];
+  // A member picked on the map or by her QR: her row opens and comes into view.
+  const pick = useMemo(() => (key) => {
+    setOpen(key); setMsg('');
+    if (!key) return;
+    const i = all.findIndex((m) => m.key === key);
+    if (i >= n) setN(i + 1);
+    setTimeout(() => document.getElementById(`member-${key}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+  }, [all, n]);
+  const map = useUnionMap(all, open, pick);
+  if (members.isLoading) return <Loading />;
   const needle = q.trim().toLowerCase();
-  const list = needle ? all.filter((m) => [m.label, m.name, m.address, ...m.lands.map(String)].some((v) => String(v || '').toLowerCase().includes(needle))) : all;
+  const list = needle ? all.filter((m) => [m.label, m.name, m.phone, m.address, ...m.lands.map(String)].some((v) => String(v || '').toLowerCase().includes(needle))) : all;
   const left = list.length - n;
+  const onQr = (text) => {
+    setScan(false);
+    const g = addressFromQr(text);
+    const m = g && all.find((x) => x.address === g);
+    if (m) { setQ(''); pick(m.key); } else setMsg('Not a member of your union.');
+  };
+  const head = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <RoundButton label="History" onClick={() => go('history')}><HistoryIcon color={C.text} /></RoundButton>
+      <LeaderTasksButton onClick={() => go('tasks')} />
+      <SettingsButton onClick={() => go('settings')} />
+    </div>
+  );
+  const field = { height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 14 };
   return (
-    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text }} header={{ title: 'Members', onSettings: () => go('settings') }}>
+    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text }} head={head} map={map}>
       <section aria-label="Growers" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: '14px 22px 22px',
         display: 'flex', flexDirection: 'column', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 8 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{list.length} grower{list.length === 1 ? '' : 's'}</h2>
-          <button type="button" onClick={() => go('tasks/member')} style={{ height: 36, borderRadius: R.round, border: 0, background: C.raised,
-            color: C.text, fontFamily: FONT, fontSize: 14, fontWeight: 700, padding: '0 14px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <button type="button" onClick={() => go('tasks/member')} style={{ ...field, height: 36, borderRadius: R.round, fontWeight: 700,
+            padding: '0 14px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <UserPlusIcon color={C.text} />Add a member
           </button>
         </div>
-        <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setN(PAGE); }} placeholder="Search a member"
-          aria-label="Search a member" style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text,
-            fontFamily: FONT, fontSize: 14, padding: '0 14px', outline: 'none', boxSizing: 'border-box', width: '100%' }} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setN(PAGE); setMsg(''); }} placeholder="Search a member"
+            aria-label="Search a member" style={{ ...field, flexGrow: 1, minWidth: 0, padding: '0 14px', outline: 'none', boxSizing: 'border-box' }} />
+          <button type="button" aria-label="Scan her wallet QR" onClick={() => { setScan(!scan); setMsg(''); }}
+            style={{ ...field, width: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <ScanIcon color={C.text} />
+          </button>
+        </div>
+        {scan && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Camera onText={onQr} />
+            <span style={{ color: C.muted }}>Scan the QR on her Assets screen (her account number).</span>
+          </div>
+        )}
+        {msg && <span style={{ color: C.coral, fontWeight: 700 }}>{msg}</span>}
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
           {list.slice(0, n).map((m) => {
-            const isOpen = open === m.address;
+            const isOpen = open === m.key;
             const due = m.shares.some((x) => x.overdue);
             return (
-              <li key={m.address} style={{ borderTop: `1px solid ${C.raised}` }}>
-                <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? '' : m.address)} style={{ width: '100%',
+              <li key={m.key} id={`member-${m.key}`} style={{ borderTop: `1px solid ${C.raised}` }}>
+                <button type="button" aria-expanded={isOpen} onClick={() => pick(isOpen ? '' : m.key)} style={{ width: '100%',
                   display: 'flex', alignItems: 'center', gap: 12, border: 0, background: 'transparent', padding: '12px 0', fontFamily: FONT,
                   fontSize: 14, lineHeight: 1.5, color: C.text, textAlign: 'left', cursor: 'pointer' }}>
                   <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontWeight: 700 }}>{m.label}</span>
-                    <span style={{ color: due ? C.coral : C.muted }}>{summary(m.shares)}</span>
+                    <span style={{ color: due ? C.coral : C.muted }}>{summary(m)}</span>
                   </span>
                   <Chevron open={isOpen} />
                 </button>
@@ -108,11 +162,10 @@ export default function Members({ go }) {
             );
           })}
           {!list.length && <li style={{ color: C.muted, padding: '12px 0', borderTop: `1px solid ${C.raised}` }}>
-            {needle ? 'No member found.' : 'No members with a border job, a crop plan or a loan yet.'}</li>}
+            {needle ? 'No member found.' : 'No members yet.'}</li>}
         </ul>
         {left > 0 && (
-          <button type="button" onClick={() => setN(n + MORE)} style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised,
-            color: C.text, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+          <button type="button" onClick={() => setN(n + MORE)} style={{ ...field, fontWeight: 700, cursor: 'pointer' }}>
             Show {Math.min(MORE, left)} more of {left}
           </button>
         )}

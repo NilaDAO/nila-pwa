@@ -70,7 +70,7 @@ function Row({ icon, title, sub, value, valueSub, onClick, label, warn }) {
 const label = { fontSize: 14, fontWeight: 700, lineHeight: 1.5, color: C.muted };
 
 // The "All tasks" pill with its count (board: 196 px wide, the white badge inside on the right; hidden at 0).
-function TasksButton({ n, onClick }) {
+export function TasksButton({ n, onClick }) {
   return (
     <button type="button" onClick={onClick} aria-label={n ? `All tasks, ${n} to do` : 'All tasks'} style={{
       position: 'relative', width: 196, height: 40, padding: '0 40px', borderRadius: R.round, background: C.raised, border: 0, boxSizing: 'border-box',
@@ -82,7 +82,7 @@ function TasksButton({ n, onClick }) {
     </button>
   );
 }
-function LeaderTasksButton({ onClick }) { return <TasksButton n={useLeaderTaskCount()} onClick={onClick} />; }
+export function LeaderTasksButton({ onClick }) { return <TasksButton n={useLeaderTaskCount()} onClick={onClick} />; }
 
 const NinIcon = () => (
   <span aria-hidden="true" style={{
