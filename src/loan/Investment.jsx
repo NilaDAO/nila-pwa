@@ -4,8 +4,8 @@
 // L5 → C6). Withdraw = fund_core.request_unbond_junior (an amount of her free part, as shares), claimable 14 days later
 // (the contract; the spec's "3 weeks" is replaced, 16 Oct). A member collects it in cash at the office (22 Oct, desk only:
 // fund_core.claim_junior_cash, the leader's "Pay out investment" task, she confirms by scanning the leader's code); a
-// leader claims her own to her wallet with claim_junior. Assisted mode: both cards are messages. An Invest | Withdraw switch shows one
-// card at a time (22 Oct).
+// leader claims her own to her wallet with claim_junior. Assisted mode: both cards are messages. An Invest | Withdraw switch at the top of
+// the card shows one of the two at a time (22 Oct).
 // DESIGN GAPs: no union name, no rate arrow and so no "In a year" line (Q5); no "Your loan · Fully backed" row (the tree
 // discount is not in Nov 7, LOAN_RULES); no leader name ("Rosalie"); Cash teller is shown as soon.
 import { useEffect, useState } from 'react';
@@ -19,7 +19,7 @@ import { Primary, inr } from '../plan/ui';
 import { C } from '../shell/tokens';
 import { Loading } from '../register/Boot';
 import { assisted } from './MyShares';
-import { AssetScreen, Card, CardTitle, KV, Line, MarkCircle, QrCircle, Secondary, Stepper } from './AssetParts';
+import { AssetScreen, Card, KV, Line, MarkCircle, QrCircle, Secondary, Stepper } from './AssetParts';
 
 const RAY = 10n ** 27n;
 const n = (v) => Number(BigInt(v ?? 0)) / 1e7;
@@ -133,10 +133,8 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
         <KV k="Locked · what you owe" v={`${fmt(n(p.locked))} nIN`} />
       </Card>
 
-      <Switch value={mode} onChange={setPick} />
-
       {mode === 'invest' && <Card label="Invest">
-        <CardTitle>Invest</CardTitle>
+        <Switch value={mode} onChange={setPick} />
         {helped ? (
           <p style={{ ...muted, textAlign: 'center', padding: '12px 0' }}>Bring cash to your leader at the union office. She adds it to your union investment.</p>
         ) : (
@@ -158,11 +156,11 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
       </Card>}
 
       {mode === 'withdraw' && <Card label="Withdraw">
-        <CardTitle>Withdraw</CardTitle>
+        <Switch value={mode} onChange={setPick} />
         {helped ? (
           <p style={{ ...muted, textAlign: 'center', padding: '24px 0' }}>Ask your leader at the union office: you get your investment in cash.</p>
         ) : canClaim && leader ? (
-          <div style={{ marginTop: -16 }}><Primary disabled={!tx.ready} onClick={claim}>Get your withdrawal</Primary></div>
+          <Primary disabled={!tx.ready} onClick={claim}>Get your withdrawal</Primary>
         ) : canClaim ? (
           <>
             <KV k="Ready to collect" v={`${inr(Math.floor(toCollect))} in cash`} color={C.accent} />
