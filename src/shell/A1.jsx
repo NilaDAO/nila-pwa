@@ -34,10 +34,10 @@ const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
 // The board's tile per asset row (MemberAssets-ley3); rows drawn by other modules (UnionRows) get theirs by label.
 const TILE = { 'Open union treasury': <TreasuryTile />, 'Open cash': <CashTile /> };
 
-function Row({ icon, title, sub, value, valueSub, onClick, label }) {
+function Row({ icon, title, sub, value, valueSub, onClick, label, warn }) {
   icon = TILE[label] || icon;
   return (
-    <button type="button" aria-label={label} onClick={onClick} style={{
+    <button type="button" aria-label={label} onClick={onClick} disabled={!!warn} style={{
       display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: 12,
       padding: '12px 16px', minHeight: 48, width: '100%', border: 0, color: C.text, textAlign: 'left',
       fontSize: 14, lineHeight: 1.5, fontFamily: FONT, cursor: onClick ? 'pointer' : 'default',
@@ -46,8 +46,16 @@ function Row({ icon, title, sub, value, valueSub, onClick, label }) {
       <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontWeight: 700 }}>{title}</span>
         {sub && <span style={{ color: C.muted }}>{sub}</span>}
+        {warn && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.gold }}>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" />
+            </svg>
+            {warn}
+          </span>
+        )}
       </span>
-      {value !== undefined
+      {warn ? null : value !== undefined
         ? <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
           <span style={{ fontWeight: 700 }}>{value}</span>
           {valueSub !== undefined && <span style={{ color: C.muted }}>{valueSub}</span>}
@@ -82,7 +90,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onTreasury, onSettle, onScanLp }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const nin = s?.stellarAccount?.nin?.balance ?? 0;
@@ -174,7 +182,14 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         {machine && (
           <Row label="Open your machine" icon={<MyMachineTile />} title="Your machine" sub={`${typeName(machine.machine_type)} · ${!machine.confirmed ? 'confirm it' : machine.on_hold ? 'on hold' : 'available'}`} onClick={onMachine} />
         )}
-        {lp?.trustline && (
+        {/* A9 (22 Oct): every leader sees the USDC row; it opens only once her identity check is done (the anchor's K1
+            acceptance; there is no leader K1 yet, so a leader without it is "not checked") and is locked with a warning
+            until then. A member LP keeps her row to the cash offers. */}
+        {leader ? (
+          lp?.lp
+            ? <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="Digital US dollar" value={(lp.usdc || 0).toFixed(2)} valueSub="" onClick={onUsdc} />
+            : <Row label="USDC, identity check needed" icon={<UsdcTile />} title="USDC" warn="Identity check (KYC) needed" />
+        ) : lp?.trustline && (
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="For cash offers as an LP" value={lp.usdc.toFixed(2)} valueSub="" onClick={onOffers} />
         )}
         {moveNote && <p style={{ color: C.muted, fontSize: 14, margin: '4px 0 0' }} role="note">{moveNote}</p>}

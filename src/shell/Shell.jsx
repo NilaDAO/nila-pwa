@@ -13,6 +13,7 @@ import LeaderPlans from '../plan/LeaderApprove';
 import { LeaderLoan, MemberScan } from '../loan/LoanScreens';
 import CashDesk from '../loan/CashDesk';
 import WalletQr from './WalletQr';
+import UsdcAsset from './UsdcAsset';
 import LandTitle from './LandTitle';
 import Investment from '../loan/Investment';
 import CashOut from '../loan/CashOut';
@@ -178,7 +179,7 @@ export default function Shell({ leader }) {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} onLand={() => go('land')} moveNote={moveNote}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`cropshare/${t}`)}
-      onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')}
+      onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')} onUsdc={() => go('usdc')}
       onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} />;
   } else if (view === 'settings') {
     body = leader
@@ -196,6 +197,7 @@ export default function Shell({ leader }) {
   else if (view === 'loan') body = <LeaderLoan />;
   else if (view === 'cash' && leader) body = <CashDesk key={readArg() || 'menu'} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
+  else if (view === 'usdc' && leader) body = <UsdcAsset onBack={() => go('assets')} onReceive={() => go('wallet')} />;
   else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
   else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go('cash/invest')} />;
   else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
@@ -213,7 +215,7 @@ export default function Shell({ leader }) {
   // No tab is active on task, settings, history and wallet screens; a crop share (A4/A4a, and taking it up) belongs to
   // the Crop plan tab (21 Oct).
   // nIN and nIN invested (A7, A3) are Assets screens (boards MemberAssetNin, StNinWithdraw).
-  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' ? 'assets' : view;
+  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' || view === 'usdc' ? 'assets' : view;
   const active = tabs.some(([id]) => id === tabOf) ? tabOf : undefined;
   return (
     // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.
