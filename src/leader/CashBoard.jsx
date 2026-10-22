@@ -177,8 +177,12 @@ function useCountdown(ts) {
   const [now, setNow] = useState(() => Date.now() / 1000);
   useEffect(() => { const t = setInterval(() => setNow(Date.now() / 1000), 1000); return () => clearInterval(t); }, []);
   if (!ts) return null;
+  // "6 days 23 h", under a day "23 h 50 min", under an hour "50 min" (22 Oct).
   const s = Math.max(0, Math.floor(ts - now));
-  return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  const d = Math.floor(s / 86400); const h = Math.floor((s % 86400) / 3600); const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d} day${d > 1 ? 's' : ''} ${h} h`;
+  if (h > 0) return `${h} h ${m} min`;
+  return `${m} min`;
 }
 
 /** C4: the Cash card (time left, let an LP collect it) and the LP cards. */
@@ -220,7 +224,6 @@ function CashCard({ cash, onScanLp }) {
             <Stepper value={a} set={setAmount} max={max} />
             <div style={rows}>
               <Row k={`LP fee (${feeBp / 100}%)`} v={a ? inr(fee) : '—'} />
-              <Row k="Into the union treasury" v={a ? `${inr(a - fee)}${q.data ? ` · ${usdcOf(q.data.usdc)} USDC` : ''}` : '—'} />
             </div>
             {promised > 0 && <span style={{ color: C.muted }}>{inr(promised)} is offered to LPs already.</span>}
             <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={() => post(COLLECT, a)}>Let an LP collect {inr(a)}</button>
