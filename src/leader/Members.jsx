@@ -12,7 +12,7 @@ import { HistoryIcon, ScanIcon, UserPlusIcon } from '../shell/icons';
 import { LeaderTasksButton } from '../shell/A1';
 import { Loading } from '../register/Boot';
 import AreaMap from '../plan/AreaMap';
-import { Camera } from '../loan/LoanScreens';
+import CameraView from '../shell/CameraView';
 import ListRow from '../shell/ListRow';
 import { inr } from '../plan/ui';
 import { addressFromQr, useUnionMembers } from './unionMembers';
@@ -87,7 +87,7 @@ export default function Members({ go }) {
         </div>
         {scan && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Camera onText={onQr} />
+            <CameraView mode="qr" onText={onQr} />
             <span style={{ color: C.muted }}>Scan the QR on her Assets screen (her account number).</span>
           </div>
         )}

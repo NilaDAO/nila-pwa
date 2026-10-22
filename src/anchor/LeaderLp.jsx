@@ -11,7 +11,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
-import { Camera } from '../loan/LoanScreens';
+import CameraView from '../shell/CameraView';
 import PhotoCount from '../loan/PhotoCount';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
@@ -142,7 +142,7 @@ export function ScanLp({ onBack }) {
   const why = !o.data ? '' : !live ? 'expired' : ['not accepted by an LP yet', '', 'done already', 'cancelled', 'expired'][Number(o.data.state)] || 'not open';
   return (
     <Sheet landName="Cash" title="Scan an LP code" onBack={onBack}>
-      {id == null && !typing && <Camera onText={read} />}
+      {id == null && !typing && <CameraView mode="qr" onText={read} />}
       {id == null && typing && (
         <>
           <textarea aria-label="Her code" value={typed} onChange={(e) => setTyped(e.target.value)} rows={4}

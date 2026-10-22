@@ -19,7 +19,7 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C } from '../shell/tokens';
 import { Loading } from '../register/Boot';
-import { Camera } from './LoanScreens';
+import CameraView from '../shell/CameraView';
 import { useFxRate } from '../shell/UsdcAsset';
 import AssetSwapLayout, { AssetForm, SwapTarget, money } from '../shell/AssetSwapLayout';
 import { useLpStatus } from '../anchor/hooks';
@@ -223,7 +223,7 @@ export function PayOut({ onBack }) {
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   return (
     <Sheet landName="Cash" title="Pay out a cash-out" onBack={onBack}>
-      {!typing && clean.length !== 26 && <Camera onText={(t) => setCode(t)} />}
+      {!typing && clean.length !== 26 && <CameraView mode="qr" onText={(t) => setCode(t)} />}
       {(typing || clean.length === 26) && (
         <input aria-label="Her code" autoCapitalize="characters" value={typing ? code : grouped(clean)} onChange={(e) => setCode(e.target.value)}
           style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box', fontSize: 15, fontFamily: 'monospace' }} />

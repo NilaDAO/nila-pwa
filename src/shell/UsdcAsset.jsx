@@ -12,10 +12,10 @@ import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
-import { Camera } from '../loan/LoanScreens';
+import CameraView from './CameraView';
 import { Stepper } from '../loan/AssetParts';
 import { Primary } from '../plan/ui';
-import { UsdcTile } from './icons';
+import { ScanIcon, UsdcTile } from './icons';
 import { C, R } from './tokens';
 
 const UNIT = 10_000_000n;   // USDC and nIN, 7 decimals
@@ -67,14 +67,14 @@ export default function UsdcAsset({ onBack }) {
   const form = (
     <AssetForm
       to={tab === 'swap' ? <SwapTarget title="Nila swap · your nIN" rate={rate ? `1 USDC = ${money(rate)} nIN` : 'Rate not available now'} />
-        : scan ? <Camera onText={(t) => { const g = t.replace(/^.*?(G[A-Z2-7]{55}).*$/s, '$1'); setTo(g); setScan(false); }} />
+        : scan ? <CameraView mode="qr" onText={(t) => { const g = t.replace(/^.*?(G[A-Z2-7]{55}).*$/s, '$1'); setTo(g); setScan(false); }} />
           : (
             <div style={{ display: 'flex', gap: 8 }}>
               <input aria-label="Stellar address" placeholder="G… address" value={to} onChange={(e) => setTo(e.target.value.trim().toUpperCase())}
                 style={{ flex: 1, minWidth: 0, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 14px',
                   fontFamily: 'inherit', fontSize: 14, boxSizing: 'border-box' }} />
-              <button type="button" onClick={() => setScan(true)} style={{ height: 44, padding: '0 14px', border: 0, borderRadius: R.button, background: C.raised,
-                color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Scan QR</button>
+              <button type="button" aria-label="Scan QR" onClick={() => setScan(true)} style={{ width: 44, height: 44, flexShrink: 0, border: 0, borderRadius: R.button,
+                background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><ScanIcon color={C.text} /></button>
             </div>
           )}
       amount={<Stepper value={a} set={setAmount} step={1} min={0} max={Math.floor(usdc)} unit="USDC" label="USDC amount" />}

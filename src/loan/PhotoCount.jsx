@@ -1,32 +1,18 @@
 // C6 photo count (board LeaderPhotoCount, #invest / repay): the leader photographs the notes; the node
 // counts them (POST /inr/scan-bulk — the same API and model as today's app); each photo adds to the
 // count; a row can be removed. The receipt hash for cash_scan_mint is sha256 of the stored photo keys.
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
 import { Primary, inr, muted } from '../plan/ui';
+import CameraView from '../shell/CameraView';
 
 const API = process.env.REACT_APP_API_BASE_URL;
 
 export default function PhotoCount({ name, target, verb, onDone, onBack }) {
-  const video = useRef();
-  const stream = useRef();
   const [groups, setGroups] = useState([]);       // one per photo: { items, total, s3Key }
-  const [state, setState] = useState('idle');     // idle | counting | error | denied
-  useEffect(() => {
-    let live = true;
-    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } })
-      .then((s) => { if (!live) { s.getTracks().forEach((t) => t.stop()); return; } stream.current = s; if (video.current) { video.current.srcObject = s; video.current.play().catch(() => {}); } })
-      .catch(() => setState('denied'));
-    return () => { live = false; stream.current?.getTracks().forEach((t) => t.stop()); };
-  }, []);
-  const shoot = async () => {
-    const v = video.current;
-    if (!v?.videoWidth) return;
+  const [state, setState] = useState('idle');     // idle | counting | error
+  const shoot = async (blob) => {
     setState('counting');
-    const c = document.createElement('canvas');
-    c.width = v.videoWidth; c.height = v.videoHeight;
-    c.getContext('2d').drawImage(v, 0, 0);
-    const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.85));
     const fd = new FormData();
     fd.append('image', blob, `count_${Date.now()}.jpg`);
     try {
@@ -73,18 +59,9 @@ export default function PhotoCount({ name, target, verb, onDone, onBack }) {
         ))}
       </div>
       <div style={{ background: C.ink, borderRadius: R.card, padding: '18px 22px', marginTop: 16 }}>
-        <b>Take a photo</b>
-        <p style={muted}>Lay the notes inside the frame, face up, not overlapping.</p>
-        <div style={{ width: 280, height: 280, borderRadius: R.round, overflow: 'hidden', margin: '12px auto', border: `8px solid ${C.raised}`, background: '#000' }}>
-          <video ref={video} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <button type="button" aria-label="Take a photo" disabled={state === 'counting' || state === 'denied'} onClick={shoot}
-            style={{ width: 64, height: 64, borderRadius: R.round, border: `4px solid ${C.text}`, background: state === 'counting' ? C.muted : C.text }} />
-        </div>
+        <CameraView mode="photo" title="Take a photo" hint="Lay the notes inside the frame, face up, not overlapping." busy={state === 'counting'} onPhoto={shoot} />
         {state === 'counting' && <p style={{ ...muted, textAlign: 'center' }}>Counting…</p>}
         {state === 'error' && <p style={{ ...muted, color: C.coral, textAlign: 'center' }}>No cash detected — try again</p>}
-        {state === 'denied' && <p style={{ ...muted, color: C.coral, textAlign: 'center' }}>Allow the camera to count the cash.</p>}
         {target > 0 && total > 0 && (
           <p style={muted}>{left <= 0 ? '✓ Full amount counted.' : `ⓘ ${inr(left)} still to count.${verb === 'Repay' ? ' She can also repay part now.' : ''}`}</p>
         )}
