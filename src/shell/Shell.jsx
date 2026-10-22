@@ -31,6 +31,7 @@ import LeaderSettings from '../leader/LeaderSettings';
 import Settings from './Settings';
 import LeaderTasks from '../leader/LeaderTasks';
 import Members from '../leader/Members';
+import MemberStatus from '../leader/MemberStatus';
 import AddMember from '../leader/AddMember';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { pointsSent } from '../register/Registration';
@@ -232,7 +233,7 @@ export default function Shell({ leader }) {
   }
   // A2 Tasks: for an LP the board's "Cash offers" section; the other task rows come in a later step.
   else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
-  else if (view === 'members' && leader) body = <Members go={go} />;
+  else if (view === 'members' && leader) body = readArg() ? <MemberStatus key={readArg()} id={readArg()} go={go} /> : <Members go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
 
   // No tab is active on task, settings, history and wallet screens; a crop share (A4/A4a, and taking it up) belongs to

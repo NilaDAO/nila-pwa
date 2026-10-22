@@ -43,7 +43,7 @@ export function useUnionMembers(api) {
       const now = Date.now() / 1000;
       const by = new Map();
       const get = (key) => {
-        if (!by.has(key)) by.set(key, { key, address: key.startsWith('G') ? key : '', name: '', phone: '', lands: new Set(), shares: [], places: [], note: '' });
+        if (!by.has(key)) by.set(key, { key, address: key.startsWith('G') ? key : '', name: '', phone: '', lands: new Set(), shares: [], loans: [], places: [], note: '' });
         return by.get(key);
       };
       const border = borderClient(s);
@@ -58,7 +58,7 @@ export function useUnionMembers(api) {
       await Promise.all(titles.map(async (t) => {
         const m = get(t.holder); m.lands.add(t.title_id); m.name = m.name || t.farm || '';
         const record = t.record_hash ? await fromNode(t.record_hash).catch(() => null) : null;
-        if (record) m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) });
+        if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
       }));
       for (const k of keypad) {
         const m = get(`keypad:${k.id}`); m.name = m.name || k.name || ''; m.phone = k.phone || '';
@@ -85,7 +85,7 @@ export function useUnionMembers(api) {
           const share = (p.plan.shares || []).find((y) => y.key === x.share) || {};
           const r = rowOf({ ...x, share, plan: p }) || {};
           const drawn = !!(Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
-          const m = get(ft.member); m.lands.add(p.land_id);
+          const m = get(ft.member); m.lands.add(p.land_id); m.plan = m.plan || p;
           m.shares.push({ token: hex, crop: r.name || x.crop.replace(/_/g, ' '), colour: r.colour, area: zones.indexOf(x.zone) + 1,
             harvest: r.harvest, kg: r.kg, from: Number(ft.from_date), drawn, ready: !drawn && Number(ft.from_date) <= now });
         }));
@@ -101,13 +101,16 @@ export function useUnionMembers(api) {
         const overdue = !!g.overdue || (Number(due || 0) > 0 && Number(due) < now);
         const m = get(l.borrower);
         const sh = m.shares.find((x) => x.token === hex);
+        m.loans.push({ token: hex, left, overdue, due: Number(due || 0), crop: sh?.crop, area: sh?.area });
         if (sh) Object.assign(sh, { left, overdue, drawn: true, ready: false });
         else m.shares.push({ token: hex, crop: 'Loan', left, overdue, drawn: true });
       }));
       return [...by.values()].map((m) => {
         const lands = [...m.lands].sort((a, b) => a - b);
         m.shares.sort((a, b) => String(a.harvest || '').localeCompare(String(b.harvest || '')));
-        return { ...m, lands, label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.address ? short(m.address) : m.phone || 'New member') };
+        // The route id (#/members/<id>): her title id, else her account, else her keypad id.
+        const route = m.titleId || lands[0] || m.address || `k${m.key.replace(/^keypad:/, '')}`;
+        return { ...m, lands, route: String(route), label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.address ? short(m.address) : m.phone || 'New member') };
       }).sort((a, b) => b.shares.some((x) => x.overdue) - a.shares.some((x) => x.overdue) || a.label.localeCompare(b.label));
     },
   });

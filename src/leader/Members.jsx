@@ -1,10 +1,8 @@
 // G1 (board LeaderGrowers): the leader's Members tab, a map card. The header is A1L's (History, All tasks, Settings);
 // the card: "N growers", Add a member (→ L14), search with a scan button (her wallet QR, A1a → her row), and one
-// accordion row per grower: her name, a summary of her crop shares (coral when one is overdue), and opened her crop
-// shares with their state (Ready / Financed / Overdue, Planned before the share's start). The map behind shows every
-// property of the union with its name; tapping one opens that member's row, opening a row fits the map to her property.
+// row per grower: her name and a summary (coral when a loan is overdue); a row, or her property on the map, opens G2
+// (#/members/<id>). No crop shares here (22 Oct): they belong under batches (the Harvests tab, later).
 // Data: src/leader/unionMembers.js.
-// DESIGN GAPs: G2 (member status) is not built, so a crop share row opens nothing yet; "Sold" needs sales (later).
 import { useMemo, useState } from 'react';
 import { usePlanClient } from '../plan/hooks';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
@@ -15,86 +13,41 @@ import { LeaderTasksButton } from '../shell/A1';
 import { Loading } from '../register/Boot';
 import AreaMap from '../plan/AreaMap';
 import { Camera } from '../loan/LoanScreens';
+import ListRow from '../shell/ListRow';
 import { inr } from '../plan/ui';
-import { amount } from '../loan/MyShares';
 import { addressFromQr, useUnionMembers } from './unionMembers';
 
 const PAGE = 10;
 const MORE = 20;
-const PILL = {
-  ready: ['Ready', 'rgba(212,207,90,0.18)', C.accent],
-  fin: ['Financed', C.ink, C.muted],
-  due: ['Overdue', 'rgba(230,146,131,0.18)', C.coral],
-  plan: ['Planned', C.ink, C.muted],
-};
-const kind = (x) => (x.overdue ? 'due' : x.drawn ? 'fin' : x.ready ? 'ready' : 'plan');
-const when = (d) => {
-  if (!d) return '';
-  const t = new Date(d); const day = t.getDate();
-  const part = day <= 10 ? 'start of' : day <= 20 ? 'mid' : 'end of';
-  const y = t.getFullYear() !== new Date().getFullYear() ? ` ${t.getFullYear()}` : '';
-  return `${part} ${t.toLocaleDateString('en-GB', { month: 'short' })}${y}`;
-};
+// A row's second line: what she owes (coral when overdue), else where her onboarding stands, else her land.
 function summary(m) {
-  if (!m.shares.length) return m.note || 'No crop share yet';
-  const parts = [`${m.shares.length} crop share${m.shares.length === 1 ? '' : 's'}`];
-  if (m.shares.some((x) => x.overdue)) parts.push('overdue');
-  const ready = m.shares.filter((x) => kind(x) === 'ready').length;
-  if (ready) parts.push(`${ready} ready`);
-  return parts.join(' · ');
+  const owed = m.loans.reduce((a, x) => a + (x.left || 0), 0);
+  if (owed > 0) return `${inr(owed)} owed${m.loans.some((x) => x.overdue) ? ' · overdue' : ''}`;
+  return m.note || (m.lands.length ? `Land ${m.lands.join(', ')}` : 'Member');
 }
-const Chevron = ({ open }) => (
-  <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-    style={{ flexShrink: 0, transform: `rotate(${open ? 180 : 0}deg)` }}><path d="m6 9 6 6 6-6" /></svg>
-);
-
-function Share({ x }) {
-  const [label, bg, fg] = PILL[kind(x)];
-  const sub = [when(x.harvest), x.kg ? amount(x.kg) : '', x.left > 0 ? `${inr(x.left)} to repay` : ''].filter(Boolean).join(' · ')
-    || (x.area ? `Area ${x.area}` : '');
-  return (
-    <li style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: R.button, padding: '10px 14px', minHeight: 56 }}>
-      <span aria-hidden="true" style={{ width: 10, height: 10, flexShrink: 0, borderRadius: R.round, background: x.colour || C.muted }} />
-      <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <span style={{ fontWeight: 700 }}>{x.crop}</span>
-        <span style={{ color: C.muted }}>{sub}</span>
-      </span>
-      <span style={{ flexShrink: 0, height: 24, borderRadius: R.round, padding: '0 8px', display: 'flex', alignItems: 'center',
-        fontSize: 12, fontWeight: 700, background: bg, color: fg }}>{label}</span>
-    </li>
-  );
-}
-
 /** The union's properties as one "record" for AreaMap: one area per member (her property), labelled with her name. */
-function useUnionMap(list, open, onPick) {
+function useUnionMap(list, onPick) {
   return useMemo(() => {
     const zones = list.flatMap((m) => m.places.map((p) => ({ zone_id: m.key, geometry: p.geometry })))
       .filter((z, i, a) => a.findIndex((y) => y.zone_id === z.zone_id) === i);
     if (!zones.length) return null;
     const labels = Object.fromEntries(list.map((m) => [m.key, { text: m.label }]));
     // Fitted with room for the name chips on the sides and for the lowered card and tab bar below.
-    return <AreaMap record={{ zones }} labels={labels} selected={open || null} onSelect={(z) => onPick(z || '')} fitSide={90} fitBottom={170} />;
-  }, [list, open, onPick]);
+    return <AreaMap record={{ zones }} labels={labels} onSelect={(z) => z && onPick(z)} fitSide={90} fitBottom={170} />;
+  }, [list, onPick]);
 }
 
 export default function Members({ go }) {
   const api = usePlanClient();
   const members = useUnionMembers(api);
   const [q, setQ] = useState('');
-  const [open, setOpen] = useState('');
   const [n, setN] = useState(PAGE);
   const [scan, setScan] = useState(false);
   const [msg, setMsg] = useState('');
   const all = members.data || [];
-  // A member picked on the map or by her QR: her row opens and comes into view.
-  const pick = useMemo(() => (key) => {
-    setOpen(key); setMsg('');
-    if (!key) return;
-    const i = all.findIndex((m) => m.key === key);
-    if (i >= n) setN(i + 1);
-    setTimeout(() => document.getElementById(`member-${key}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
-  }, [all, n]);
-  const map = useUnionMap(all, open, pick);
+  // A member picked on the map, in the list or by her QR opens G2.
+  const pick = useMemo(() => (key) => { const m = all.find((x) => x.key === key); if (m) go(`members/${m.route}`); }, [all, go]);
+  const map = useUnionMap(all, pick);
   if (members.isLoading) return <Loading />;
   const needle = q.trim().toLowerCase();
   const list = needle ? all.filter((m) => [m.label, m.name, m.phone, m.address, ...m.lands.map(String)].some((v) => String(v || '').toLowerCase().includes(needle))) : all;
@@ -103,7 +56,7 @@ export default function Members({ go }) {
     setScan(false);
     const g = addressFromQr(text);
     const m = g && all.find((x) => x.address === g);
-    if (m) { setQ(''); pick(m.key); } else setMsg('Not a member of your union.');
+    if (m) pick(m.key); else setMsg('Not a member of your union.');
   };
   const head = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -139,29 +92,11 @@ export default function Members({ go }) {
           </div>
         )}
         {msg && <span style={{ color: C.coral, fontWeight: 700 }}>{msg}</span>}
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
-          {list.slice(0, n).map((m) => {
-            const isOpen = open === m.key;
-            const due = m.shares.some((x) => x.overdue);
-            return (
-              <li key={m.key} id={`member-${m.key}`} style={{ borderTop: `1px solid ${C.raised}` }}>
-                <button type="button" aria-expanded={isOpen} onClick={() => pick(isOpen ? '' : m.key)} style={{ width: '100%',
-                  display: 'flex', alignItems: 'center', gap: 12, border: 0, background: 'transparent', padding: '12px 0', fontFamily: FONT,
-                  fontSize: 14, lineHeight: 1.5, color: C.text, textAlign: 'left', cursor: 'pointer' }}>
-                  <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontWeight: 700 }}>{m.label}</span>
-                    <span style={{ color: due ? C.coral : C.muted }}>{summary(m)}</span>
-                  </span>
-                  <Chevron open={isOpen} />
-                </button>
-                {isOpen && m.shares.length > 0 && (
-                  <ul style={{ listStyle: 'none', margin: '0 0 12px', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {m.shares.map((x) => <Share key={x.token} x={x} />)}
-                  </ul>
-                )}
-              </li>
-            );
-          })}
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
+          {list.slice(0, n).map((m, i) => (
+            <ListRow key={m.key} first={i === 0} title={m.label} sub={<span style={{ color: m.loans.some((x) => x.overdue) ? C.coral : C.muted }}>{summary(m)}</span>}
+              onClick={() => pick(m.key)} />
+          ))}
           {!list.length && <li style={{ color: C.muted, padding: '12px 0', borderTop: `1px solid ${C.raised}` }}>
             {needle ? 'No member found.' : 'No members yet.'}</li>}
         </ul>
