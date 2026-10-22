@@ -45,8 +45,9 @@ export function PickMember({ title, onPick, onBack, onScan }) {
 const START = [
   ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon]]],
   ['Crop plan and crop share', [['Share request', 'For a crop plan the member accepted', 'cash/loan', RupeeIcon]]],
-  ['Cash', [['Invest', 'Cash in: she invests in the union', 'cash/invest', InvestIcon], ['Repay', 'Cash in: the member repays her crop share', 'cash/repay', RepayIcon],
-    ['Pay out investment', 'Her withdrawal, in cash at the desk', 'cash/withdraw', PayOutIcon],
+  // Her invest, repay and withdrawal start from her G2 (22 Oct): these rows open Members to find her.
+  ['Cash', [['Invest', 'Find her in Members', 'members', InvestIcon], ['Repay', 'Find her in Members', 'members', RepayIcon],
+    ['Pay out investment', 'Find her in Members', 'members', PayOutIcon],
     ['Pay out a cash-out', 'A leader\'s code: pay cash, burn the nIN', 'cash/payout', PayOutIcon], ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
   ['Vouchers', [['Register a machine', 'Her own machine, photos and price', 'cash/machine', TractorIcon]]],
 ];

@@ -147,8 +147,8 @@ export function useLeaderTodo(api, cash) {
         const owed = n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid);
         const d = Number(due || 0);
         const who = `${l.borrower.slice(0, 4)}…${l.borrower.slice(-4)}`;
-        if (g.overdue || (d && d < now)) out.push({ key: `collect-${l.token_id}`, title: 'Collect repayment', amount: owed, who, to: 'cash/repay', urgent: true });
-        else if (d && d - now < 14 * 86400) out.push({ key: `payback-${l.token_id}`, title: 'Payback coming', amount: owed, who, to: 'cash/repay' });
+        if (g.overdue || (d && d < now)) out.push({ key: `collect-${l.token_id}`, title: 'Collect repayment', amount: owed, who, to: `cash/repay/${l.borrower}`, urgent: true });
+        else if (d && d - now < 14 * 86400) out.push({ key: `payback-${l.token_id}`, title: 'Payback coming', amount: owed, who, to: `cash/repay/${l.borrower}` });
       }
       return out;
     },

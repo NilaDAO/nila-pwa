@@ -217,11 +217,11 @@ export default function Shell({ leader }) {
   else if (view === 'approvals' && leader) body = <LeaderPlans key={readArg() || 'one'} planId={readArg()} onBack={() => go('tasks')} />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
   else if (view === 'loan') body = <LeaderLoan />;
-  else if (view === 'cash' && leader) body = <CashDesk key={readArg() || 'menu'} initial={readArg()} />;
+  else if (view === 'cash' && leader) body = <CashDesk key={window.location.hash} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
   else if (view === 'usdc' && leader) body = <UsdcAsset onBack={() => go('assets')} />;
   else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
-  else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go('cash/invest')} onScan={() => go('scan')} />;
+  else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go(`cash/invest/${s?.stellarAddress}`)} onScan={() => go('scan')} />;
   // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.
   else if (view === 'cashout' && leader) body = <CashOut onBack={() => go('assets')} />;
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;

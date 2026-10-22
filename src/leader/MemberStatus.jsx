@@ -107,7 +107,7 @@ export default function MemberStatus({ id, go }) {
       {m.loans.length > 0 && (
         <Section title="Repay">
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" style={btn()} onClick={() => go('cash/repay')}>Photo count</button>
+            <button type="button" style={btn(!!m.address)} disabled={!m.address} onClick={() => go(`cash/repay/${m.address}`)}>Photo count</button>
             <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
           </div>
           <button type="button" style={{ ...btn(!!dueLoan && tx.ready), flex: 'none', width: '100%' }} disabled={!dueLoan || !tx.ready} onClick={markDefault}>
@@ -118,7 +118,12 @@ export default function MemberStatus({ id, go }) {
       )}
       {m.address && (
         <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
-          <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go('cash/invest')}>Invest more</button>
+          {/* Her actions start here only (executive decision 22 Oct: Members → G2 → action; the Cash tab is the union's money). */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" style={btn()} onClick={() => go(`cash/invest/${m.address}`)}>Photo count</button>
+            <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
+          </div>
+          <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`cash/withdraw/${m.address}`)}>Withdraw</button>
         </Section>
       )}
       {open.length > 0 && (

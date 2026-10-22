@@ -3,7 +3,7 @@
 // leader records the cash with fx_pool.cash_scan_mint (leader signs; the node sponsors the fee, 16 Oct).
 // The cash is counted on C6 (photo count, /inr/scan-bulk); the receipt hash (scan_hash) is sha256 of the
 // stored photo keys. DESIGN GAP: no N11 board (the tx screens N1/N2 show the result).
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
@@ -21,6 +21,7 @@ import { ScanLp } from '../anchor/LeaderLp';
 import CashBoard from '../leader/CashBoard';
 import { PickMember } from '../leader/LeaderTasks';
 import DeskWithdraw from './DeskWithdraw';
+import { Secondary } from './AssetParts';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
@@ -39,6 +40,7 @@ function Amount({ value, set, max = 10000 }) {
 }
 
 function Scan({ purpose, onBack, initialMember = '' }) {
+  const fixed = isG(initialMember);
   const s = useNilaSigner();
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
@@ -112,9 +114,13 @@ function Scan({ purpose, onBack, initialMember = '' }) {
   }
   return (
     <Sheet landName="Cash" title={purpose === 'invest' ? 'Invest' : 'Repay'} onBack={onBack}>
-      <p style={muted}>{purpose === 'invest' ? 'Her wallet (scan her wallet QR, or paste it)' : 'Her wallet (optional: only her loans)'}</p>
-      <input aria-label="Her wallet" value={member} onChange={(e) => setMember(e.target.value)} placeholder="G…"
-        style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box' }} />
+      {fixed ? <p style={muted}>For {member.slice(0, 4)}…{member.slice(-4)}</p> : (
+        <>
+          <p style={muted}>{purpose === 'invest' ? 'Her wallet (scan her wallet QR, or paste it)' : 'Her wallet (optional: only her loans)'}</p>
+          <input aria-label="Her wallet" value={member} onChange={(e) => setMember(e.target.value)} placeholder="G…"
+            style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box' }} />
+        </>
+      )}
       {purpose === 'repay' && (
         <>
           {loans.isLoading && <p style={muted}>…</p>}
@@ -129,29 +135,38 @@ function Scan({ purpose, onBack, initialMember = '' }) {
       <Amount value={amount} set={setAmount} />
       {noPhotos && <p style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</p>}
       <Primary disabled={!amount || !isG(who) || !tx.ready} onClick={() => { setNoPhotos(false); setCounting(true); }}>Photo count</Primary>
+      <Secondary disabled>Cash teller · soon</Secondary>
     </Sheet>
   );
 }
 
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
+// Her own actions (invest, repay, withdraw) start only from her G2 (executive decision 22 Oct: Members → G2 → action):
+// #/cash/<action>/<her Stellar address>. Without her the leader is sent to Members (G1) to find her.
 const OPEN = { lpscan: 'lpscan', loan: 'loan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw' };
-const TITLES = { invest: 'Invest', repay: 'Repay', machine: 'Register a machine', withdraw: 'Pay out investment' };
+const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];
+const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/(G[A-Z2-7]{55})/) || [])[1];
 
 export default function CashDesk({ initial }) {
   const [view, setView] = useState(OPEN[initial]);
-  const [member, setMember] = useState();      // L5's pick (or '' to type / scan her wallet)
-  const back = useMemo(() => () => { setView(undefined); setMember(undefined); }, []);
-  // Her investment over the desk (22 Oct): a member picked on L5 (scanning her wallet is not offered here).
-  if (view === 'withdraw') return member ? <DeskWithdraw member={member} onBack={back} /> : <PickMember title={TITLES.withdraw} onBack={back} onPick={setMember} />;
-  // L5 first for a task about a member: the members the app knows, or scan her wallet.
-  if (TITLES[view] && member === undefined) {
-    return <PickMember title={TITLES[view]} onBack={back} onPick={setMember} onScan={() => setMember('')} />;
+  const [member, setMember] = useState(herFromHash);   // from her G2; the machine flow picks on L5
+  const back = useMemo(() => () => {
+    if (MEMBER_ACTIONS.includes(view)) { window.history.back(); return; }   // back to her G2
+    setView(undefined); setMember(undefined);
+  }, [view]);
+  const toMembers = MEMBER_ACTIONS.includes(view) && !member;
+  useEffect(() => { if (toMembers) window.location.replace('#/members'); }, [toMembers]);
+  if (toMembers) return null;
+  if (view === 'withdraw') return <DeskWithdraw member={member} onBack={back} />;
+  if (view === 'invest' || view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
+  // L5 first for a machine: the members the app knows, or scan her wallet.
+  if (view === 'machine' && member === undefined) {
+    return <PickMember title="Register a machine" onBack={back} onPick={setMember} onScan={() => setMember('')} />;
   }
   if (view === 'loan') return <LeaderLoan />;
-  if (view === 'invest' || view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
   if (view === 'payout') return <PayOut onBack={back} />;
   if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member} />;
   if (view === 'lpscan') return <ScanLp onBack={back} />;
-  // The Cash tab is the C1–C4 board (P10); the cash tasks are on the Tasks tab (L1).
+  // The Cash tab is the C1–C4 board (P10): the union's money only; the cash tasks are on the Tasks tab (L1).
   return <CashBoard settle={initial === 'settle'} onScanLp={() => setView('lpscan')} />;
 }
