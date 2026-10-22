@@ -17,3 +17,10 @@ p { margin: 0 0 8px; }
 .row b { text-align: right; }
 .err { color: #E69283; }
 .focus { background: #D4CF5A; color: #121212; }
+.card { margin: 4px -2px; padding: 8px; border-radius: 6px; background: #1F2733; font-size: 13px; line-height: 1.35; }
+.rows .row { font-size: 13px; line-height: 1.35; padding: 3px 0; }
+.pic { display: block; margin: 4px auto 0; }
+.map { width: 220px; height: 150px; margin: 2px auto 0; border-radius: 4px; overflow: hidden; background: #1F2733;
+  display: flex; align-items: center; justify-content: center; text-align: center; }
+.map img { display: block; }
+.small { font-size: 12px; line-height: 1.35; margin-top: 4px; }
