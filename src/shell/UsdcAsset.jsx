@@ -3,24 +3,22 @@
 //  - Send: to any Stellar address she scans or pastes; a plain USDC transfer from her wallet (the node pays the fee
 //    once her identity is checked). DESIGN GAP: the board's contact list (union, providers) has no source yet.
 //  - Swap: USDC → nIN in her wallet at fx_pool's rate (fx_pool.swap_usdc_to_nin); no fee. The way back is on A7.
-// No Receive button (22 Oct).
+// No Receive button (22 Oct). Layout shared with A7 (AssetSwapLayout).
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import MapCard from './MapCard';
-import Segmented from './Segmented';
+import AssetSwapLayout, { AssetForm, SwapTarget, money } from './AssetSwapLayout';
 import { useLpStatus, useUsdcTrustline } from '../anchor/hooks';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Camera } from '../loan/LoanScreens';
-import { KV, Stepper } from '../loan/AssetParts';
-import { Notice, Primary } from '../plan/ui';
+import { Stepper } from '../loan/AssetParts';
+import { Primary } from '../plan/ui';
 import { UsdcTile } from './icons';
-import { C, FONT, R, SHADOW, TAB_BAR_HEIGHT } from './tokens';
+import { C, R } from './tokens';
 
 const UNIT = 10_000_000n;   // USDC and nIN, 7 decimals
-const card = { background: C.ink, borderRadius: 24, boxShadow: SHADOW, padding: 22, boxSizing: 'border-box' };
 const isG = (a) => /^G[A-Z2-7]{55}$/.test(a);
 
 /** fx_pool's rupees per USDC, or null when it is stale (a swap is then refused by the contract too). */
@@ -36,43 +34,6 @@ export function useFxRate() {
   });
 }
 
-const money = (n, d = 2) => n.toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
-
-/** Swap nIN → USDC for a leader (A7), paid back from the union's leader-swap USDC (fx_pool.swap_nin_to_usdc). */
-/** bare: only the form, for a card that already has its own title / switch (A7, 22 Oct). */
-export function SwapToUsdc({ nin, tx, bare }) {
-  const s = useNilaSigner();
-  const { data: cfg } = useStellarConfig();
-  const lp = useLpStatus().data;
-  const rate = useFxRate().data;
-  const [amount, setAmount] = useState(0);
-  if (!lp?.idChecked || !lp?.trustline) return null;
-  const a = Math.max(0, Math.min(amount, Math.floor(nin)));
-  const get = rate ? a / rate : 0;
-  const swap = () => tx.run({
-    label: `Swap ${a} nIN to USDC`, rows: [['You give', `${a} nIN`], ['You get about', `${money(get)} USDC`]],
-    contractName: 'fx_pool', fn: 'swap_nin_to_usdc',
-    args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * UNIT)],
-    invalidate: [['stellar', 'account'], ['stellar', 'lp']],
-  });
-  const form = (
-    <>
-      <Stepper value={a} set={setAmount} step={100} min={0} max={Math.floor(nin)} unit="nIN" label="nIN to swap" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <KV k="You get about" v={rate ? `${money(get)} USDC` : '—'} />
-        <KV k="Rate" v={rate ? `1 USDC = ${money(rate)} nIN` : 'Not available now'} />
-      </div>
-      <Primary disabled={!tx.ready || !rate || a < 1} onClick={swap}>{a < 1 ? 'Enter an amount' : 'Swap to USDC'}</Primary>
-    </>
-  );
-  if (bare) return form;
-  return (
-    <section aria-label="Swap to USDC" style={{ ...card, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Swap to USDC</h2>
-      {form}
-    </section>
-  );
-}
 
 export default function UsdcAsset({ onBack }) {
   const s = useNilaSigner();
@@ -103,40 +64,11 @@ export default function UsdcAsset({ onBack }) {
     args: [sv.address(s.stellarAddress), sv.address(to), sv.i128(BigInt(a) * UNIT)],
     invalidate: [['stellar', 'lp']],
   });
-  return (
-    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, minHeight: `calc(100dvh - ${TAB_BAR_HEIGHT + 16}px)`, display: 'flex', flexDirection: 'column', gap: 24 }}
-      header={{ title: '', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}>
-      <section aria-label="USDC" style={card}>
-        <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 24px' }}><UsdcTile size={72} /></div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-          <span style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>USDC</span>
-            <span style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>Digital US dollar{rate ? ` · ₹${money(rate)}` : ''}</span>
-          </span>
-          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{lp ? money(usdc) : '…'}</span>
-            {rate && <span style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>₹{money(usdc * rate, 0)}</span>}
-          </span>
-        </div>
-        {noLine && (
-          <>
-            <Primary disabled={trust.isPending} onClick={() => trust.mutate()}>{trust.isPending ? 'Opening your USDC account…' : 'Open your USDC account'}</Primary>
-            {trust.isError && <p style={{ color: C.coral, fontSize: 14 }}>{trust.error.message}</p>}
-          </>
-        )}
-      </section>
-      {lp?.trustline && (
-        <section aria-label="Send or swap" style={{ ...card, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Segmented label="Send or swap" options={[['send', 'Send'], ['swap', 'Swap']]} value={tab} onChange={setTab} />
-          <span style={{ fontSize: 14, fontWeight: 700 }}>To</span>
-          {tab === 'swap' ? (
-            <div style={{ display: 'flex', flexDirection: 'column', padding: '12px 16px', borderRadius: R.button, background: C.raised }}>
-              <span style={{ fontSize: 14, fontWeight: 700 }}>Nila swap · your nIN</span>
-              <span style={{ fontSize: 14, color: C.muted }}>{rate ? `1 USDC = ${money(rate)} nIN` : 'Rate not available now'}</span>
-            </div>
-          ) : scan ? (
-            <Camera onText={(t) => { const g = t.replace(/^.*?(G[A-Z2-7]{55}).*$/s, '$1'); setTo(g); setScan(false); }} />
-          ) : (
+  const form = (
+    <AssetForm
+      to={tab === 'swap' ? <SwapTarget title="Nila swap · your nIN" rate={rate ? `1 USDC = ${money(rate)} nIN` : 'Rate not available now'} />
+        : scan ? <Camera onText={(t) => { const g = t.replace(/^.*?(G[A-Z2-7]{55}).*$/s, '$1'); setTo(g); setScan(false); }} />
+          : (
             <div style={{ display: 'flex', gap: 8 }}>
               <input aria-label="Stellar address" placeholder="G… address" value={to} onChange={(e) => setTo(e.target.value.trim().toUpperCase())}
                 style={{ flex: 1, minWidth: 0, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 14px',
@@ -145,22 +77,25 @@ export default function UsdcAsset({ onBack }) {
                 color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Scan QR</button>
             </div>
           )}
-          <span style={{ fontSize: 14, fontWeight: 700 }}>Amount</span>
-          <Stepper value={a} set={setAmount} step={1} min={0} max={Math.floor(usdc)} unit="USDC" label="USDC amount" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {tab === 'swap' && <KV k="You get about" v={rate && a ? `${money(a * rate, 0)} nIN` : '—'} />}
-            <KV k="Fee" v="None" />
-            <KV k="Left after" v={`${money(left)} USDC`} />
-          </div>
-          {tab === 'swap'
-            ? <Primary disabled={!tx.ready || !rate || a < 1} onClick={swap}>{a < 1 ? 'Enter an amount' : 'Swap to nIN'}</Primary>
-            : <Primary disabled={!tx.ready || a < 1 || !isG(to) || to === s?.stellarAddress} onClick={send}>
-              {!isG(to) ? 'Enter an address' : a < 1 ? 'Enter an amount' : `Send ${a} USDC`}</Primary>}
-        </section>
+      amount={<Stepper value={a} set={setAmount} step={1} min={0} max={Math.floor(usdc)} unit="USDC" label="USDC amount" />}
+      rows={[tab === 'swap' && ['You get about', rate && a ? `${money(a * rate, 0)} nIN` : '—'], ['Fee', 'None'], ['Left after', `${money(left)} USDC`]]}
+      button={tab === 'swap'
+        ? <Primary disabled={!tx.ready || !rate || a < 1} onClick={swap}>{a < 1 ? 'Enter an amount' : 'Swap to nIN'}</Primary>
+        : <Primary disabled={!tx.ready || a < 1 || !isG(to) || to === s?.stellarAddress} onClick={send}>
+          {!isG(to) ? 'Enter an address' : a < 1 ? 'Enter an amount' : `Send ${a} USDC`}</Primary>} />
+  );
+  return (
+    <AssetSwapLayout onBack={onBack} icon={<UsdcTile size={72} />} name="USDC" sub={`Digital US dollar${rate ? ` · ₹${money(rate)}` : ''}`}
+      amount={lp ? money(usdc) : '…'} value={rate ? `₹${money(usdc * rate, 0)}` : null}
+      head={noLine && (
+        <>
+          <Primary disabled={trust.isPending} onClick={() => trust.mutate()}>{trust.isPending ? 'Opening your USDC account…' : 'Open your USDC account'}</Primary>
+          {trust.isError && <p style={{ color: C.coral, fontSize: 14 }}>{trust.error.message}</p>}
+        </>
       )}
-      <section style={{ ...card, paddingTop: 10, paddingBottom: 10 }}>
-        <Notice kind="info">Worth US dollars, so its rupee value moves with the exchange rate. Swapping to nIN is free.</Notice>
-      </section>
-    </MapCard>
+      switchLabel="Send or swap" options={[['send', 'Send'], ['swap', 'Swap']]} tab={tab} onTab={setTab}
+      note="Worth US dollars, so its rupee value moves with the exchange rate. Swapping to nIN is free.">
+      {lp?.trustline ? form : null}
+    </AssetSwapLayout>
   );
 }

@@ -20,8 +20,8 @@ import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C } from '../shell/tokens';
 import { Loading } from '../register/Boot';
 import { Camera } from './LoanScreens';
-import { SwapToUsdc } from '../shell/UsdcAsset';
-import Segmented from '../shell/Segmented';
+import { useFxRate } from '../shell/UsdcAsset';
+import AssetSwapLayout, { AssetForm, SwapTarget, money } from '../shell/AssetSwapLayout';
 import { useLpStatus } from '../anchor/hooks';
 import { AssetScreen, Card, CardTitle, KV, MarkCircle, QrCircle, Secondary, Stepper, useOnline, when } from './AssetParts';
 
@@ -114,7 +114,7 @@ function Code({ e, img, onDone, onBack, reclaim, ready }) {
   );
 }
 
-const SWITCH = [['cash', 'Cash out'], ['swap', 'Swap to USDC']];
+const SWITCH = [['cash', 'Cash out'], ['swap', 'Swap']];
 
 export default function CashOut({ onBack }) {
   const s = useNilaSigner();
@@ -131,6 +131,8 @@ export default function CashOut({ onBack }) {
   const lp = useLpStatus().data;
   const canSwap = !!lp?.idChecked && !!lp?.trustline;
   const [mode, setPick] = useState('cash');
+  const [swapAmt, setSwapAmt] = useState(0);
+  const rate = useFxRate().data;
   const pick = canSwap ? mode : 'cash';
   const [show, setShow] = useState();      // hash of the code on screen
   const [img, setImg] = useState();
@@ -167,32 +169,32 @@ export default function CashOut({ onBack }) {
 
   const a = max < 1 ? 0 : Math.max(1, Math.min(amount, max));   // nothing to cash out: 0, and the button is off
   const open = list.filter((e) => e.state !== 'paid');
+  const sa = Math.max(0, Math.min(swapAmt, nin));
+  const swap = () => tx.run({
+    label: `Swap ${sa} nIN to USDC`, rows: [['You give', `${sa} nIN`], ['You get about', `${money(rate ? sa / rate : 0)} USDC`]],
+    contractName: 'fx_pool', fn: 'swap_nin_to_usdc',
+    args: [sv.address(me), sv.address(cfg.union), sv.i128(BigInt(sa) * NIN)],
+    invalidate: [['stellar', 'account'], ['stellar', 'lp']],
+  });
+  // The same layout as A9 (22 Oct): asset card, then one card with Cash out | Swap (the swap only for a leader whose
+  // identity is checked and who has a USDC account), then her open codes and the note.
+  const form = pick === 'swap' ? (
+    <AssetForm to={<SwapTarget title="Nila swap · your USDC" rate={rate ? `1 USDC = ${money(rate)} nIN` : 'Rate not available now'} />}
+      amount={<Stepper value={sa} set={setSwapAmt} step={100} min={0} max={nin} unit="nIN" label="nIN to swap" />}
+      rows={[['You get about', rate && sa ? `${money(sa / rate)} USDC` : '—'], ['Fee', 'None'], ['Left after', `${fmt(nin - sa)} nIN`]]}
+      button={<Primary disabled={!tx.ready || !rate || sa < 1} onClick={swap}>{sa < 1 ? 'Enter an amount' : 'Swap to USDC'}</Primary>} />
+  ) : (
+    <AssetForm
+      amount={<Stepper value={a} set={setAmount} min={max < 1 ? 0 : 1} max={max} unit="nIN" label="nIN to cash out" />}
+      rows={[['You get', `₹${fmt(a)} in cash`, C.accent], ['Where', 'Union office']]}
+      button={online
+        ? <Primary disabled={!tx.ready || maxScan.data == null || max < 1} onClick={() => send(a)}>Send and collect</Primary>
+        : <Secondary disabled>Sending needs a connection</Secondary>} />
+  );
   return (
-    <AssetScreen onBack={onBack} note={online ? 'You send the nIN to the union now. Your leader pays you the same in cash at the office.'
-      : `You are offline. Balance from today, ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`}>
-      <Card label="nIN" style={{ alignItems: 'center', textAlign: 'center', padding: '18px 22px' }}>
-        <MarkCircle />
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', fontSize: 14, lineHeight: 1.5 }}>
-          <span style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.2 }}>{fmt(nin)} nIN</span>
-          <span style={{ color: C.muted }}>Worth ₹1 each</span>
-        </div>
-      </Card>
-      {/* One card (22 Oct): Cash out | Swap to USDC in the card's own switch, as A3's Invest | Withdraw; the swap only for
-          a leader whose identity is checked and who has a USDC account. */}
-      <Card label={pick === 'swap' ? 'Swap to USDC' : 'Cash out'}>
-        {canSwap ? <Segmented label="Cash out or swap to USDC" options={SWITCH} value={pick} onChange={setPick} /> : <CardTitle>Cash out</CardTitle>}
-        {pick === 'swap' ? <SwapToUsdc nin={nin} tx={tx} bare /> : <>
-        <Stepper value={a} set={setAmount} min={max < 1 ? 0 : 1} max={max} unit="nIN" label="nIN to cash out" />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <KV k="You get" v={`₹${fmt(a)} in cash`} color={C.accent} />
-          <KV k="Where" v="Union office" />
-        </div>
-        {online
-          ? <div style={{ marginTop: -16 }}><Primary disabled={!tx.ready || maxScan.data == null || max < 1} onClick={() => send(a)}>Send and collect</Primary></div>
-          : <Secondary disabled>Sending needs a connection</Secondary>}
-        </>}
-      </Card>
-      {open.length > 0 && (
+    <AssetSwapLayout onBack={onBack} icon={<MarkCircle />} name="nIN" sub="Worth ₹1 each" amount={`${fmt(nin)} nIN`} value={`₹${fmt(nin)}`}
+      switchLabel="Cash out or swap" options={canSwap ? SWITCH : null} tab={pick} onTab={setPick}
+      after={open.length > 0 && (
         <Card label="Your cash-outs" style={{ gap: 8 }}>
           <CardTitle>Your cash-outs</CardTitle>
           {open.map((e) => (
@@ -201,7 +203,11 @@ export default function CashOut({ onBack }) {
           ))}
         </Card>
       )}
-    </AssetScreen>
+      note={online ? 'You send the nIN to the union now. Your leader pays you the same in cash at the office.'
+        : `You are offline. Balance from today, ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`}>
+      {!canSwap && <CardTitle>Cash out</CardTitle>}
+      {form}
+    </AssetSwapLayout>
   );
 }
 
