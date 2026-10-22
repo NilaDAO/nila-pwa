@@ -20,7 +20,7 @@ export default function WalletQr({ onBack }) {
   };
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, minHeight: `calc(100dvh - ${TAB_BAR_HEIGHT + 16}px)`, display: 'flex', flexDirection: 'column' }}
-      header={{ title: '', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}>
+      header={{ title: 'Your account number', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}>
       <section aria-label="Wallet QR code" style={{ background: C.ink, borderRadius: 24, boxShadow: SHADOW, padding: 22, boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, marginBottom: 140 }}>
         <div style={{ width: '100%', aspectRatio: '1', borderRadius: 9999, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
