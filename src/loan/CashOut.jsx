@@ -165,7 +165,7 @@ export default function CashOut({ onBack }) {
         <MarkCircle />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', fontSize: 14, lineHeight: 1.5 }}>
           <span style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.2 }}>{fmt(nin)} nIN</span>
-          <span style={{ color: C.muted }}>Nila digital rupee · worth ₹1 each</span>
+          <span style={{ color: C.muted }}>Worth ₹1 each</span>
         </div>
       </Card>
       <Card label="Cash out">
