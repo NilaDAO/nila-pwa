@@ -1,6 +1,6 @@
 // G1 (board LeaderGrowers): the leader's Members tab — "N growers", Add a member (→ L14), search, and one accordion row
 // per grower: her name, a summary of her crop shares (coral when one is overdue), and opened her crop shares with their
-// state (Ready / Financed / Overdue, Planned before the share's start). Data: src/leader/members.js.
+// state (Ready / Financed / Overdue, Planned before the share's start). Data: src/leader/unionMembers.js.
 // DESIGN GAPs: the scan button next to search (A1b #leader, g1-scan) and G2 (member status) are not built, so a crop
 // share row does not open anything yet; "Sold" needs sales (later).
 import { useState } from 'react';
@@ -11,7 +11,7 @@ import { UserPlusIcon } from '../shell/icons';
 import { Loading } from '../register/Boot';
 import { inr } from '../plan/ui';
 import { amount } from '../loan/MyShares';
-import { useUnionMembers } from './members';
+import { useUnionMembers } from './unionMembers';
 
 const PAGE = 10;
 const MORE = 20;
