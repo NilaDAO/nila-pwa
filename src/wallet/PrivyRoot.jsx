@@ -150,7 +150,9 @@ function SignerBridge({ children }) {
   const autoSetup = chain !== undefined && chain !== '137';  // undefined: not read yet
   const tried = useRef();
   useEffect(() => {
-    if (!signersReady || !autoSetup || account.data?.exists !== false || tried.current === stellar.address) return;
+    // Also for her existing account without this network's nIN trustline (22 Oct): the setup adds it, sponsored.
+    const missing = account.data?.exists === false || (account.data?.exists && account.data.nin === null);
+    if (!signersReady || !autoSetup || !missing || tried.current === stellar.address) return;
     tried.current = stellar.address;
     runSetup(undefined, { onError: (e) => console.error('[privy] Stellar account setup failed', e) });
   }, [signersReady, autoSetup, account.data, stellar, runSetup]);
