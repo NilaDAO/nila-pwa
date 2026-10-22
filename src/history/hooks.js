@@ -17,6 +17,7 @@ const CALLS = {
   reclaim_cash_out: ['Cash-out taken back', 'Your nIN back'],
   request_unbond_junior: ['Withdrawal started', 'Union investment'],
   claim_junior: ['Withdrawal paid', 'Union investment'],
+  claim_junior_cash: ['Collected at the office', 'Union investment, in cash'],
   open_code: ['Machine code made', 'Machinery voucher'],
   cancel_code: ['Machine code cancelled', 'Machinery voucher'],
   claim: ['Machine job', 'Machinery voucher'],
