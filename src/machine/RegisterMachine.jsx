@@ -12,7 +12,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { Primary, Sheet, inr, muted } from '../plan/ui';
+import { Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
 import { Card, CardTitle } from '../loan/AssetParts';
@@ -95,7 +95,13 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
     ));
   }
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
-  if (scanning) return <Sheet landName="Register a machine" title="Scan the owner's wallet QR" onBack={() => setScanning(false)}><CameraView mode="qr" onText={(t) => { setScanning(false); register(t.match(/G[A-Z2-7]{55}/)?.[0]); }} /></Sheet>;
+  if (scanning) {
+    return page('Register a machine', () => setScanning(false), (
+      <Card label="Scan the owner's wallet QR">
+        <CameraView mode="qr" title="Scan the owner's wallet QR" onText={(t) => { setScanning(false); register(t.match(/G[A-Z2-7]{55}/)?.[0]); }} />
+      </Card>
+    ));
+  }
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, cursor: 'pointer' };
   const field = { height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 14 };
   const sub = { fontSize: 14, lineHeight: 1.5, color: C.muted };
