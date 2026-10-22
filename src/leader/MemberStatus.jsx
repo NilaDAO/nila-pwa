@@ -19,6 +19,12 @@ import { SEASON } from '../loan/MyShares';
 import { SkeletonRows } from '../shell/Skeleton';
 import { inr } from '../plan/ui';
 import { useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
+import { useQuery } from '@tanstack/react-query';
+import { useNilaSigner } from '../wallet/signer';
+import PhotoCount from '../loan/PhotoCount';
+import DeskWithdraw from '../loan/DeskWithdraw';
+import { recordCash } from '../loan/CashDesk';
+import { deskClaim } from '../loan/desk';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -76,7 +82,14 @@ export default function MemberStatus({ id, go }) {
   }, [found, shares.data, dues.data]);
   const inv = useInvestment(m?.address);
   const tx = useSorobanTx();
-  const [investing, setInvesting] = useState(false);
+  // Invest / Withdraw run in place (22 Oct): the button row turns into Photo count | Cash teller; Photo count opens the
+  // C6 count with her and the action set; a withdrawal then shows the code she scans (her claimable amount).
+  const s = useNilaSigner();
+  const [act, setAct] = useState();          // 'invest' | 'withdraw': the row shows the count choice
+  const [step, setStep] = useState();        // 'count' (C6) | 'code' (her withdrawal code)
+  const [noPhotos, setNoPhotos] = useState(false);
+  const claim = useQuery({ queryKey: ['stellar', 'deskClaim', found?.address], enabled: act === 'withdraw' && !!cfg && !!found?.address,
+    queryFn: () => deskClaim(cfg, found.address) });
   const labels = useMemo(() => {
     // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
     const seasons = m?.plan?.plan?.seasons || [];
@@ -101,6 +114,17 @@ export default function MemberStatus({ id, go }) {
         <p style={{ color: C.muted, padding: '0 14px' }}>This member is not in your union's list.</p>
       </MapCard>
     );
+  }
+  const done = () => { setStep(); setAct(); };
+  if (step === 'code') return <DeskWithdraw member={m.address} auto onBack={done} />;
+  if (step === 'count') {
+    const pay = act === 'withdraw';
+    return <PhotoCount name={`${pay ? 'Pay out' : 'Invest'} · ${m.label}`} target={pay ? Math.floor(claim.data?.inr || 0) : 0} verb={pay ? 'Pay out' : 'Invest'}
+      onBack={() => setStep()} onDone={async (c) => {
+        if (pay) { setStep('code'); return; }
+        setStep();
+        if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose: 'invest', who: m.address, total: c.total, s3Keys: c.s3Keys }))) setNoPhotos(true);
+      }} />;
   }
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); members.refetch(); }} onRetry={() => tx.retry()} />;
   const now = Date.now() / 1000;
@@ -153,17 +177,27 @@ export default function MemberStatus({ id, go }) {
         <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
           {/* Her actions start here only (executive decision 22 Oct: Members → G2 → action; the Cash tab is the union's money).
               Nothing invested: Invest only; else Invest more and Withdraw. Invest opens the count choice. */}
-          {!investing ? (
+          {!act ? (
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" style={btn()} onClick={() => setInvesting(true)}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
-              {invested > 0 && <button type="button" style={btn()} onClick={() => go(`cash/withdraw/${m.address}`)}>Withdraw</button>}
+              <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
+              {invested > 0 && <button type="button" style={btn()} onClick={() => setAct('withdraw')}>Withdraw</button>}
             </div>
+          ) : act === 'withdraw' && claim.isSuccess && !(claim.data?.shares > 0n) ? (
+            <span style={{ color: C.muted }}>She has no withdrawal to collect. She asks for one on her phone (Union investment → Withdraw).</span>
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" style={btn()} onClick={() => go(`cash/invest/${m.address}`)}>Photo count</button>
+              <button type="button" style={btn(act === 'invest' || claim.isSuccess)} disabled={act === 'withdraw' && !claim.isSuccess}
+                onClick={() => setStep('count')}>Photo count</button>
               <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
             </div>
           )}
+          {act && (
+            <button type="button" onClick={() => setAct()} style={{ alignSelf: 'center', border: 0, background: 'transparent', color: C.muted,
+              fontFamily: FONT, fontSize: 14, cursor: 'pointer', padding: 4 }}>
+              {act === 'withdraw' && claim.data?.shares > 0n ? `Withdraw ${inr(Math.floor(claim.data.inr))} · ` : ''}Cancel
+            </button>
+          )}
+          {noPhotos && <span style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</span>}
         </Section>
       )}
       {shares.isLoading && <Section title="Crop shares"><SkeletonRows rows={2} /></Section>}

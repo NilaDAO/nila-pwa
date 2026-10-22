@@ -18,7 +18,8 @@ const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 const dateOf = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const muted = { color: C.muted, fontSize: 14, lineHeight: 1.5, margin: 0 };
 
-export default function DeskWithdraw({ member, onBack }) {
+/** auto: make her code at once (G2, after the photo count of the notes). */
+export default function DeskWithdraw({ member, onBack, auto }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const [qr, setQr] = useState();
@@ -30,6 +31,12 @@ export default function DeskWithdraw({ member, onBack }) {
   const [first, setFirst] = useState();
   useEffect(() => { if (claim.data && first === undefined) setFirst(claim.data.inr); }, [claim.data, first]);
   useEffect(() => { if (qr) QRCode.toDataURL(qr, { width: 400, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [qr]);
+  // G2 after the photo count: her code is made at once (no "Make her code" step).
+  useEffect(() => {
+    if (!auto || qr || busy || error || !s?.ready || !(claim.data?.shares > 0n)) return;
+    setBusy(true);
+    makeDeskRequest(cfg, { leader: s.stellarAddress, member, signHash: s.signHash }).then(setQr, (e) => setError(e.message)).finally(() => setBusy(false));
+  }, [auto, claim.data, s?.ready]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!cfg || claim.isLoading) return <Loading />;
   const c = claim.data;
   const paid = qr && c && c.shares <= 0n;

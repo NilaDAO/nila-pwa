@@ -20,11 +20,27 @@ import RegisterMachine from '../machine/RegisterMachine';
 import { ScanLp } from '../anchor/LeaderLp';
 import CashBoard from '../leader/CashBoard';
 import { PickMember } from '../leader/LeaderTasks';
-import DeskWithdraw from './DeskWithdraw';
 import { Secondary } from './AssetParts';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+
+/** Records counted cash for her (fx_pool.cash_scan_mint; the leader signs, the node pays the fee). The receipt is the
+ *  stored photos of this count (one scan per receipt, ScanUsed on reuse). Returns false when no photo was stored. */
+export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys, token }) {
+  if (!s3Keys?.length) return false;
+  const amt = BigInt(Math.round(total)) * NIN;
+  const scanHash = await sha(`${s3Keys.join('|')}|${who}|${purpose}|${amt}`);
+  await tx.run({
+    label: purpose === 'invest' ? `Invest ${inr(total)}` : `Repay ${inr(total)}`,
+    rows: [['Amount', inr(total)], ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
+    contractName: 'fx_pool', fn: 'cash_scan_mint',
+    args: [sv.address(leader), sv.address(cfg.union), sv.u32(PURPOSE[purpose]), sv.address(who), sv.i128(amt), sv.bytes(scanHash),
+      purpose === 'repay' ? sv.bytes32(token) : sv.none()],
+    invalidate: [['stellar', 'loans'], ['stellar', 'investment']],
+  });
+  return true;
+}
 const isG = (a) => /^G[A-Z2-7]{55}$/.test(a || '');
 
 function Amount({ value, set, max = 10000 }) {
@@ -95,19 +111,8 @@ function Scan({ purpose, onBack, initialMember = '' }) {
   const who = purpose === 'repay' ? sel?.loan?.borrower : member.trim();
   const record = async ({ total, s3Keys }) => {
     setAmount(total);
-    // The receipt is the stored photos: without them there is no unique scan, so nothing is recorded.
-    if (!s3Keys?.length) { setNoPhotos(true); return; }
-    const amt = BigInt(Math.round(total)) * NIN;
-    // The receipt: the stored photos of this count (one scan per receipt, ScanUsed on reuse).
-    const scanHash = await sha(`${s3Keys.join('|')}|${who}|${purpose}|${amt}`);
-    await tx.run({
-      label: purpose === 'invest' ? `Invest ${inr(total)}` : `Repay ${inr(total)}`,
-      rows: [['Amount', inr(total)], ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
-      contractName: 'fx_pool', fn: 'cash_scan_mint',
-      args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.u32(PURPOSE[purpose]), sv.address(who), sv.i128(amt), sv.bytes(scanHash),
-        purpose === 'repay' ? sv.bytes32(sel.token) : sv.none()],
-      invalidate: [['stellar', 'loans'], ['stellar', 'investment']],
-    });
+    // Without stored photos there is no unique scan, so nothing is recorded.
+    if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose, who, total, s3Keys, token: sel?.token }))) setNoPhotos(true);
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   if (counting) {
@@ -142,11 +147,17 @@ function Scan({ purpose, onBack, initialMember = '' }) {
   );
 }
 
+// An old #/cash/invest|withdraw/<her> link: her G2 does these in place now.
+function ToMembersFrom({ member }) {
+  useEffect(() => { window.location.replace(`#/members/${member}`); }, [member]);
+  return null;
+}
+
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
 // Her own actions (invest, repay, withdraw) start only from her G2 (executive decision 22 Oct: Members → G2 → action):
 // #/cash/<action>/<her Stellar address>. Without her the leader is sent to Members (G1) to find her.
 const OPEN = { lpscan: 'lpscan', loan: 'loan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw' };
-const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];
+const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
 const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/(G[A-Z2-7]{55})/) || [])[1];
 
 export default function CashDesk({ initial }) {
@@ -159,8 +170,8 @@ export default function CashDesk({ initial }) {
   const toMembers = MEMBER_ACTIONS.includes(view) && !member;
   useEffect(() => { if (toMembers) window.location.replace('#/members'); }, [toMembers]);
   if (toMembers) return null;
-  if (view === 'withdraw') return <DeskWithdraw member={member} onBack={back} />;
-  if (view === 'invest' || view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
+  if (view === 'invest' || view === 'withdraw') return <ToMembersFrom member={member} />;
+  if (view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
   // L5 first for a machine: the members the app knows, or scan her wallet.
   if (view === 'machine' && member === undefined) {
     return <PickMember title="Register a machine" onBack={back} onPick={setMember} onScan={() => setMember('')} />;
