@@ -8,10 +8,10 @@ const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
 export const PURPOSES = ['Invest', 'Repay', 'Recovery', 'Treasury', 'LP brings cash'];
 
-export function useUnionCash({ poll = 30_000 } = {}) {
+export function useUnionCash({ poll = 30_000, on = true } = {}) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['stellar', 'unionCash', cfg?.union], enabled: !!cfg?.contracts?.fund_core && !!cfg?.contracts?.fx_pool,
+    queryKey: ['stellar', 'unionCash', cfg?.union], enabled: on && !!cfg?.contracts?.fund_core && !!cfg?.contracts?.fx_pool,
     refetchInterval: poll, staleTime: 15_000,
     queryFn: async () => {
       const u = [sv.address(cfg.union)];
@@ -67,7 +67,7 @@ export function useUnionBook(api) {
         const out = n(g.principal) - n(g.principal_paid);
         const since = Math.max(0, now - Number(g.last_accrual_ts || g.drawdown_ts));
         const interest = n(g.interest_accrued) - n(g.interest_paid) + (out * Number(g.rate_bp) * since) / (10_000 * YEAR);
-        return { token: l.token_id, borrower: l.borrower, drawnAt: l.drawn_at, outstanding: out, interest, rateBp: Number(g.rate_bp), overdue: !!g.overdue };
+        return { token: l.token_id, borrower: l.borrower, drawnAt: l.drawn_at, outstanding: out, interest, rateBp: Number(g.rate_bp), overdue: !!g.overdue, hours: Number(l.hours || 0) };
       }));
       const open = rows.filter(Boolean);
       const feeBp = Number(uc?.treasury_fee_bp ?? 0) + Number(uc?.rainy_fee_bp ?? 0);
@@ -147,8 +147,8 @@ export function useLeaderTodo(api, cash) {
         const owed = n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid);
         const d = Number(due || 0);
         const who = `${l.borrower.slice(0, 4)}…${l.borrower.slice(-4)}`;
-        if (g.overdue || (d && d < now)) out.push({ key: `collect-${l.token_id}`, title: 'Collect repayment', amount: owed, who, to: 'cash/repay', urgent: true });
-        else if (d && d - now < 14 * 86400) out.push({ key: `payback-${l.token_id}`, title: 'Payback coming', amount: owed, who, to: 'cash/repay' });
+        if (g.overdue || (d && d < now)) out.push({ key: `collect-${l.token_id}`, title: 'Collect repayment', amount: owed, who, to: `cash/repay/${l.borrower}`, urgent: true });
+        else if (d && d - now < 14 * 86400) out.push({ key: `payback-${l.token_id}`, title: 'Payback coming', amount: owed, who, to: `cash/repay/${l.borrower}` });
       }
       return out;
     },

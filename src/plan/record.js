@@ -14,7 +14,7 @@ const TITLE_ABI = ['function getCommitment(uint256) view returns (bytes32)',
   'function getRecordHash(uint256) returns (bytes32)'];
 const ZERO = `0x${'0'.repeat(64)}`;
 
-async function fromNode(hash) {
+export async function fromNode(hash) {
   const r = await fetch(`${API}/gis/record-by-hash/${hash}`);
   if (!r.ok) throw new Error(`record ${r.status}`);
   const bytes = new Uint8Array(await r.arrayBuffer());

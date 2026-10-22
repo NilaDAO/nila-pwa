@@ -69,6 +69,7 @@ export const CropIcon = task(<>
   <path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z" />
   <path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" />
 </>);
+export const UserPlusIcon = task(<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M19 8v6M22 11h-6" /></>);
 export const BanknoteIcon = task(<><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01" /><path d="M18 12h.01" /></>);
 
 // A1 asset row tiles (board MemberAssets-ley3): a 32 px round tile in the board's colour with its glyph.
@@ -85,7 +86,8 @@ export const NinTile = tile('#D4CF5A', mark);                    // nIN
 export const InvestedTile = tile('#D4A634', mark);               // nIN invested (union investment)
 export const TreasuryTile = tile('#D4A634', glyph(<path d="M3 21h18M5 21V10M19 21V10M9 21v-7M15 21v-7M2 10l10-6 10 6z" />));
 export const CashTile = tile('#E69283', glyph(<><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></>, { size: 16, width: 2.4 }));
-export const UsdcTile = tile('#2775CA', glyph(<><circle cx="12" cy="12" r="8" /><path d="M12 7v10" /><path d="M9 9.5h6" /></>, { color: '#FFFFFF', width: 2.4 }));
+// USDC: the official logo (public/USDC.svg, 22 Oct).
+export const UsdcTile = ({ size = 32 }) => <img src="/USDC.svg" alt="" aria-hidden="true" style={{ width: size, height: size, flexShrink: 0, display: 'block' }} />;
 const tractor = <path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" />;
 export const MachineryTile = tile('#E69283', glyph(tractor));    // machinery voucher
 export const MyMachineTile = tile('#D4A634', glyph(tractor));    // your machine (owner)

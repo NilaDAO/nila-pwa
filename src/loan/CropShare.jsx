@@ -56,7 +56,8 @@ function statusOf(x) {
   return 'Financed';
 }
 
-export default function CropShare({ token, onBack, onTakeUp }) {
+/** bar / onSwipe (map-central trial): the ‹ asset › bar on top of the card, and a swipe on the card that steps it. */
+export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   const shares = useMyShares();
   const land = useMyLand();
   const field = useFieldRecord(land.landId, land.evm, land.stellarTitle ? land.stellarTitle.record_hash || '' : undefined);
@@ -79,7 +80,9 @@ export default function CropShare({ token, onBack, onTakeUp }) {
   // (same crop on several areas, 21 Oct) colours each of its areas.
   const own = x.zones || x.share.zones || [x.zone];
   const labels = Object.fromEntries(own.map((z) => [z, { text: name, colour: r.colour }]));
-  const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 ? x.zone : null} /> : null;
+  // With the asset bar (map-central trial) the card starts at the middle of the screen: her area stays above it.
+  const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 ? x.zone : null}
+    fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
   const head = (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
       <span style={{ display: 'flex', flexDirection: 'column' }}>
@@ -100,7 +103,7 @@ export default function CropShare({ token, onBack, onTakeUp }) {
     const vouchers = Number(r.finance?.voucher_value || 0);
     const from = x.ft ? new Date(Number(x.ft.from_date) * 1000) : x.share.from_date ? new Date(x.share.from_date) : null;
     return (
-      <Sheet map={map} onBack={onBack}>
+      <Sheet map={map} onBack={onBack} bar={bar} onSwipe={onSwipe}>
         {head}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Row k="Status" v={statusOf(x)} />
@@ -136,7 +139,7 @@ export default function CropShare({ token, onBack, onTakeUp }) {
   const noteBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14,
     fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: 0.5, cursor: 'default' };
   return (
-    <Sheet map={map} onBack={onBack}>
+    <Sheet map={map} onBack={onBack} bar={bar} onSwipe={onSwipe}>
       {head}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Row k="Status" v={statusOf(x)} />

@@ -53,6 +53,7 @@ export function planClient(signer) {
     machinePhotos: (photos) => call('POST', '/machines/photos', { photos }),
     // P10 / O15: the union's loan list (the async list) and C2's event search, one window per tap.
     unionLoans: () => call('GET', '/stellar/union/loans'),
+    unionTitles: () => call('GET', '/stellar/union/titles'),
     unionSearch: (window) => call('POST', '/stellar/union/search', { window }),
   };
 }

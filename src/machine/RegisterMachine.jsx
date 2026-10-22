@@ -14,7 +14,7 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { Camera } from '../loan/LoanScreens';
+import CameraView from '../shell/CameraView';
 import { PARTS, useRates } from './hooks';
 
 // Walk order (machines/photos.py LABELS): Front first, then round. Grid: 3×3 with the machine in the middle.
@@ -84,7 +84,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
     );
   }
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
-  if (scanning) return <Sheet landName="Register a machine" title="Scan her wallet QR" onBack={() => setScanning(false)}><Camera onText={(t) => { setOwner(t); setScanning(false); }} /></Sheet>;
+  if (scanning) return <Sheet landName="Register a machine" title="Scan her wallet QR" onBack={() => setScanning(false)}><CameraView mode="qr" onText={(t) => { setOwner(t); setScanning(false); }} /></Sheet>;
   if (picking) {
     return (
       <Sheet landName="Register a machine" title="Machine" onBack={() => setPicking(false)}>

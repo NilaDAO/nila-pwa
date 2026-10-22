@@ -2,7 +2,7 @@
 // and assembled here against the public RPC from /stellar/config, signed with her Privy Stellar wallet
 // (a 32-byte hash), then fee-bumped by the node (POST /stellar/feebump; she holds no XLM) and followed on
 // the RPC until it lands. Reads are simulations with no signature.
-import { Address, BASE_FEE, Contract, TransactionBuilder, nativeToScVal, rpc, scValToNative } from '@stellar/stellar-sdk';
+import { Account, Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
 
 const API = process.env.REACT_APP_API_BASE_URL;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -29,14 +29,43 @@ const server = (cfg) => new rpc.Server(cfg.rpc_url, { allowHttp: cfg.rpc_url?.st
 /** A read: simulate `fn` on `contract` (any funded account as source; the sponsor is). */
 export async function readContract(cfg, contractName, fn, args = []) {
   const s = server(cfg);
-  const id = cfg.contracts[contractName];
+  const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
-  const src = await s.getAccount(cfg.sponsor);
-  const tx = new TransactionBuilder(src, { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
+  // A simulation checks no sequence number, so the source account is not loaded first (one RPC call per read, 22 Oct).
+  const tx = new TransactionBuilder(new Account(cfg.sponsor, '0'), { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
     .addOperation(new Contract(id).call(fn, ...args)).setTimeout(60).build();
   const sim = await s.simulateTransaction(tx);
   if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
   return sim.result?.retval ? scValToNative(sim.result.retval) : null;
+}
+
+// stellar-sdk 17 exposes XDR members as properties, older builds as methods.
+const at = (o, k) => (typeof o[k] === 'function' ? o[k]() : o[k]);
+
+/** Many crop shares at once (22 Oct): fund_core keeps each as persistent DataKey::FoodToken(union, token_id), so one
+ *  getLedgerEntries call reads up to 200 of them instead of a simulation each. Returns { [hex]: FoodToken | null }. */
+export async function readFoodTokens(cfg, union, hexes) {
+  const id = contractId(cfg, 'fund_core');
+  if (!id) throw new Error('no fund_core contract in the node config');
+  const contract = new Address(id).toScAddress();
+  const uniq = [...new Set(hexes.map((h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0')))];
+  const keyOf = (hex) => xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+    contract, durability: at(xdr.ContractDataDurability, 'persistent'),
+    key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol('FoodToken'), sv.address(union), sv.bytes32(hex)]),
+  }));
+  const out = Object.fromEntries(uniq.map((h) => [h, null]));
+  const s = server(cfg);
+  for (let i = 0; i < uniq.length; i += 200) {
+    const part = uniq.slice(i, i + 200);
+    const keys = part.map(keyOf);
+    const r = await s.getLedgerEntries(...keys);
+    for (const e of r.entries || []) {
+      const want = e.key.toXDR('base64');
+      const i2 = keys.findIndex((k) => k.toXDR('base64') === want);
+      if (i2 >= 0) out[part[i2]] = scValToNative(at(at(e.val, 'contractData'), 'val'));
+    }
+  }
+  return out;
 }
 
 async function feeBump(xdr) {
@@ -54,12 +83,14 @@ async function feeBump(xdr) {
 // stellar-sdk 17 exposes XDR fields as properties (union: `.type`); older builds as methods (`.switch()`).
 const credType = (a) => (typeof a.credentials === 'function' ? a.credentials().switch().name : a.credentials?.type);
 
-function checkPrepared(raw, tx, source) {
+function checkPrepared(raw, tx, source, given = []) {
   const ops = tx.operations;
   const bad = () => { throw new Error('The network returned a different transaction. Nothing was signed.'); };
   if (tx.source !== source || ops.length !== 1 || ops[0].type !== 'invokeHostFunction' || (ops[0].source && ops[0].source !== source)) bad();
   if (ops[0].func.toXDR('base64') !== raw.operations[0].func.toXDR('base64')) bad();
-  if ((ops[0].auth || []).some((a) => credType(a) !== 'sorobanCredentialsSourceAccount')) bad();
+  // Another address's entry only when it is exactly one she was given (a leader's signed entry, 22 Oct).
+  const ok = new Set(given.map((e) => e.toXDR('base64')));
+  if ((ops[0].auth || []).some((a) => credType(a) !== 'sorobanCredentialsSourceAccount' && !ok.has(a.toXDR('base64')))) bad();
 }
 
 /** A sent transaction's status on the RPC: SUCCESS | FAILED | NOT_FOUND (null when the RPC fails). */
@@ -69,15 +100,32 @@ export async function txStatus(cfg, hash) {
 }
 
 /** Her call: build → simulate → sign (her Privy wallet) → node fee-bump → wait. Returns { hash, result }. */
-export async function invokeContract({ cfg, source, signHash, contractName, fn, args, onSent }) {
+/** A Nila contract by name, or 'usdc': the USDC Stellar asset contract (a leader's USDC send, 22 Oct). */
+export function contractId(cfg, name) {
+  if (name === 'usdc') {
+    const [code, issuer] = (cfg.usdc_asset || ':').split(':');
+    return code && issuer ? new Asset(code, issuer).contractId(cfg.passphrase) : undefined;
+  }
+  return cfg.contracts[name];
+}
+
+export async function invokeContract({ cfg, source, signHash, contractName, fn, args, auth, onSent }) {
   const s = server(cfg);
-  const id = cfg.contracts[contractName];
+  const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
   const acct = await s.getAccount(source);
+  // `auth`: entries already signed by another address (base64 XDR; the leader's at the desk, 22 Oct). Her own
+  // authorization is then given as her source account over the same call, and the simulation checks them all.
+  const given = (auth || []).map((a) => xdr.SorobanAuthorizationEntry.fromXDR(a, 'base64'));
+  const op = given.length
+    ? Operation.invokeContractFunction({ contract: id, function: fn, args, auth: [
+      new xdr.SorobanAuthorizationEntry({ credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(), rootInvocation: typeof given[0].rootInvocation === 'function' ? given[0].rootInvocation() : given[0].rootInvocation }),
+      ...given] })
+    : new Contract(id).call(fn, ...args);
   const raw = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
-    .addOperation(new Contract(id).call(fn, ...args)).setTimeout(300).build();
+    .addOperation(op).setTimeout(300).build();
   const tx = await s.prepareTransaction(raw);           // simulate + footprint + resource fee + auth
-  checkPrepared(raw, tx, source);
+  checkPrepared(raw, tx, source, given);
   tx.addSignature(source, b64(await signHash(tx.hash())));
   const hash = await feeBump(tx.toXDR());
   onSent?.(hash);
@@ -88,4 +136,31 @@ export async function invokeContract({ cfg, source, signHash, contractName, fn, 
     await sleep(1000);
   }
   throw Object.assign(new Error('No answer from the Stellar network yet.'), { hash });
+}
+
+/** The leader's side of a call another account submits (22 Oct, the desk: claim_junior_cash): the call is simulated
+ *  with `source` (the member) as the transaction's account, and the entry for `signer` (the leader) is signed with
+ *  her Privy wallet, valid for `ledgers` ledgers (~5 s each). Returns the signed entry as base64 XDR. */
+export async function signAuthFor({ cfg, source, signer, signHash, contractName, fn, args, ledgers = 720 }) {
+  const s = server(cfg);
+  const id = contractId(cfg, contractName);
+  if (!id) throw new Error(`no ${contractName} contract in the node config`);
+  const acct = await s.getAccount(source);
+  const tx = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
+    .addOperation(new Contract(id).call(fn, ...args)).setTimeout(60).build();
+  const sim = await s.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
+  const until = (await s.getLatestLedger()).sequence + ledgers;
+  const sign = async (_preimage, payload) => Uint8Array.from(await signHash(payload));
+  // The entry with a credential node for her address (the sdk checks it: forAddress); a source-account entry is the
+  // member's own.
+  let signed;
+  for (const e of sim.result?.auth || []) {
+    if (credType(e) === 'sorobanCredentialsSourceAccount') continue;
+    try { signed = await authorizeEntry(e, sign, until, cfg.passphrase, signer); break; } catch (err) {
+      if (!/no credential node/.test(err.message)) throw err;
+    }
+  }
+  if (!signed) throw new Error('This call needs no signature from you.');
+  return signed.toXDR('base64');
 }

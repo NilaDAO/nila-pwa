@@ -26,6 +26,10 @@ export const buildAccount = (member) => post('/stellar/account', { member });
 export const submitAccount = (xdr, polygon, polygonSig) =>
   post('/stellar/account/submit', { xdr, polygon, polygon_sig: polygonSig });
 
+/** Her existing account without this network's nIN trustline (22 Oct): the sponsored trustline, two steps. */
+export const buildNinTrustline = (member) => post('/stellar/nin-trustline', { member });
+export const submitNinTrustline = (xdr) => post('/stellar/nin-trustline/submit', { xdr });
+
 /** What her Polygon key signs (must match stellar/sponsor.py link_message). */
 export const linkMessage = (network, stellar, polygon) =>
   `Nila: my Stellar account\nnetwork: ${network}\nstellar: ${stellar}\npolygon: ${polygon}`;

@@ -3,7 +3,7 @@
 // leader records the cash with fx_pool.cash_scan_mint (leader signs; the node sponsors the fee, 16 Oct).
 // The cash is counted on C6 (photo count, /inr/scan-bulk); the receipt hash (scan_hash) is sha256 of the
 // stored photo keys. DESIGN GAP: no N11 board (the tx screens N1/N2 show the result).
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
@@ -20,9 +20,27 @@ import RegisterMachine from '../machine/RegisterMachine';
 import { ScanLp } from '../anchor/LeaderLp';
 import CashBoard from '../leader/CashBoard';
 import { PickMember } from '../leader/LeaderTasks';
+import { Secondary } from './AssetParts';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+
+/** Records counted cash for her (fx_pool.cash_scan_mint; the leader signs, the node pays the fee). The receipt is the
+ *  stored photos of this count (one scan per receipt, ScanUsed on reuse). Returns false when no photo was stored. */
+export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys, token }) {
+  if (!s3Keys?.length) return false;
+  const amt = BigInt(Math.round(total)) * NIN;
+  const scanHash = await sha(`${s3Keys.join('|')}|${who}|${purpose}|${amt}`);
+  await tx.run({
+    label: purpose === 'invest' ? `Invest ${inr(total)}` : `Repay ${inr(total)}`,
+    rows: [['Amount', inr(total)], ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
+    contractName: 'fx_pool', fn: 'cash_scan_mint',
+    args: [sv.address(leader), sv.address(cfg.union), sv.u32(PURPOSE[purpose]), sv.address(who), sv.i128(amt), sv.bytes(scanHash),
+      purpose === 'repay' ? sv.bytes32(token) : sv.none()],
+    invalidate: [['stellar', 'loans'], ['stellar', 'investment']],
+  });
+  return true;
+}
 const isG = (a) => /^G[A-Z2-7]{55}$/.test(a || '');
 
 function Amount({ value, set, max = 10000 }) {
@@ -38,6 +56,7 @@ function Amount({ value, set, max = 10000 }) {
 }
 
 function Scan({ purpose, onBack, initialMember = '' }) {
+  const fixed = isG(initialMember);
   const s = useNilaSigner();
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
@@ -86,23 +105,14 @@ function Scan({ purpose, onBack, initialMember = '' }) {
     const voucher = l.vb ? BigInt(l.vb.senior_out) + (l.vb.dues || []).reduce((t, d) => t + BigInt(d.amount), 0n) : 0n;
     return Math.ceil(Number(cash + voucher) / Number(NIN));
   };
+  // From her G2 with one open loan: that loan is picked for her.
+  useEffect(() => { if (fixed && !token && loans.data?.length === 1) { setToken(loans.data[0].token); setAmount(Math.min(10000, owed(loans.data[0]))); } }, [loans.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const sel = loans.data?.find((l) => l.token === token);
   const who = purpose === 'repay' ? sel?.loan?.borrower : member.trim();
   const record = async ({ total, s3Keys }) => {
     setAmount(total);
-    // The receipt is the stored photos: without them there is no unique scan, so nothing is recorded.
-    if (!s3Keys?.length) { setNoPhotos(true); return; }
-    const amt = BigInt(Math.round(total)) * NIN;
-    // The receipt: the stored photos of this count (one scan per receipt, ScanUsed on reuse).
-    const scanHash = await sha(`${s3Keys.join('|')}|${who}|${purpose}|${amt}`);
-    await tx.run({
-      label: purpose === 'invest' ? `Invest ${inr(total)}` : `Repay ${inr(total)}`,
-      rows: [['Amount', inr(total)], ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
-      contractName: 'fx_pool', fn: 'cash_scan_mint',
-      args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.u32(PURPOSE[purpose]), sv.address(who), sv.i128(amt), sv.bytes(scanHash),
-        purpose === 'repay' ? sv.bytes32(sel.token) : sv.none()],
-      invalidate: [['stellar', 'loans'], ['stellar', 'investment']],
-    });
+    // Without stored photos there is no unique scan, so nothing is recorded.
+    if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose, who, total, s3Keys, token: sel?.token }))) setNoPhotos(true);
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   if (counting) {
@@ -111,9 +121,13 @@ function Scan({ purpose, onBack, initialMember = '' }) {
   }
   return (
     <Sheet landName="Cash" title={purpose === 'invest' ? 'Invest' : 'Repay'} onBack={onBack}>
-      <p style={muted}>{purpose === 'invest' ? 'Her wallet (scan her wallet QR, or paste it)' : 'Her wallet (optional: only her loans)'}</p>
-      <input aria-label="Her wallet" value={member} onChange={(e) => setMember(e.target.value)} placeholder="G…"
-        style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box' }} />
+      {fixed ? <p style={muted}>For {member.slice(0, 4)}…{member.slice(-4)}</p> : (
+        <>
+          <p style={muted}>{purpose === 'invest' ? 'Her wallet (scan her wallet QR, or paste it)' : 'Her wallet (optional: only her loans)'}</p>
+          <input aria-label="Her wallet" value={member} onChange={(e) => setMember(e.target.value)} placeholder="G…"
+            style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box' }} />
+        </>
+      )}
       {purpose === 'repay' && (
         <>
           {loans.isLoading && <p style={muted}>…</p>}
@@ -128,27 +142,44 @@ function Scan({ purpose, onBack, initialMember = '' }) {
       <Amount value={amount} set={setAmount} />
       {noPhotos && <p style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</p>}
       <Primary disabled={!amount || !isG(who) || !tx.ready} onClick={() => { setNoPhotos(false); setCounting(true); }}>Photo count</Primary>
+      <Secondary disabled>Cash teller · soon</Secondary>
     </Sheet>
   );
 }
 
+// An old #/cash/invest|withdraw/<her> link: her G2 does these in place now.
+function ToMembersFrom({ member }) {
+  useEffect(() => { window.location.replace(`#/members/${member}`); }, [member]);
+  return null;
+}
+
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
-const OPEN = { lpscan: 'lpscan', loan: 'loan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine' };
-const TITLES = { invest: 'Invest', repay: 'Repay', machine: 'Register a machine' };
+// Her own actions (invest, repay, withdraw) start only from her G2 (executive decision 22 Oct: Members → G2 → action):
+// #/cash/<action>/<her Stellar address>. Without her the leader is sent to Members (G1) to find her.
+const OPEN = { lpscan: 'lpscan', loan: 'loan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw' };
+const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
+const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/(G[A-Z2-7]{55})/) || [])[1];
 
 export default function CashDesk({ initial }) {
   const [view, setView] = useState(OPEN[initial]);
-  const [member, setMember] = useState();      // L5's pick (or '' to type / scan her wallet)
-  const back = useMemo(() => () => { setView(undefined); setMember(undefined); }, []);
-  // L5 first for a task about a member: the members the app knows, or scan her wallet.
-  if (TITLES[view] && member === undefined) {
-    return <PickMember title={TITLES[view]} onBack={back} onPick={setMember} onScan={() => setMember('')} />;
+  const [member, setMember] = useState(herFromHash);   // from her G2; the machine flow picks on L5
+  const back = useMemo(() => () => {
+    if (MEMBER_ACTIONS.includes(view)) { window.history.back(); return; }   // back to her G2
+    setView(undefined); setMember(undefined);
+  }, [view]);
+  const toMembers = MEMBER_ACTIONS.includes(view) && !member;
+  useEffect(() => { if (toMembers) window.location.replace('#/members'); }, [toMembers]);
+  if (toMembers) return null;
+  if (view === 'invest' || view === 'withdraw') return <ToMembersFrom member={member} />;
+  if (view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
+  // L5 first for a machine: the members the app knows, or scan her wallet.
+  if (view === 'machine' && member === undefined) {
+    return <PickMember title="Register a machine" onBack={back} onPick={setMember} onScan={() => setMember('')} />;
   }
   if (view === 'loan') return <LeaderLoan />;
-  if (view === 'invest' || view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
   if (view === 'payout') return <PayOut onBack={back} />;
   if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member} />;
   if (view === 'lpscan') return <ScanLp onBack={back} />;
-  // The Cash tab is the C1–C4 board (P10); the cash tasks are on the Tasks tab (L1).
+  // The Cash tab is the C1–C4 board (P10): the union's money only; the cash tasks are on the Tasks tab (L1).
   return <CashBoard settle={initial === 'settle'} onScanLp={() => setView('lpscan')} />;
 }

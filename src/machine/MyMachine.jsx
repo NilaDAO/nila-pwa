@@ -15,7 +15,7 @@ import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { Camera } from '../loan/LoanScreens';
+import CameraView from '../shell/CameraView';
 import { HOLD_REASONS, saveJob, typeName, useMyMachine, useOwnerDues, useRates } from './hooks';
 
 const LABELS = ['Front left', 'Front', 'Front right', 'Left', null, 'Right', 'Back left', 'Back', 'Back right'];
@@ -165,7 +165,7 @@ function Claim({ machine, rate, onBack }) {
   }
   return (
     <Sheet landName="Nila" title="Scan her code" onBack={onBack}>
-      {!typing ? <Camera onText={read} /> : (
+      {!typing ? <CameraView mode="qr" onText={read} /> : (
         <>
           <textarea aria-label="The code" value={typed} onChange={(e) => setTyped(e.target.value)} style={{ width: '100%', minHeight: 90, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box' }} />
           <Primary disabled={!typed.trim()} onClick={() => read(typed)}>Check the code</Primary>

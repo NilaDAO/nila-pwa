@@ -1,0 +1,238 @@
+// G2 (board LeaderMember): one grower for the leader, a map card from G1 (#/members/<title id>). Header: back to G1,
+// her farm name, settings. Her map with this season's crops; then, from what the app can already read:
+// property and fields (the title's fields), the next crop share; Lending (what she owes, repay date) with Repay (Photo count → the desk)
+// and Mark as default (fund_core.mark_default, once her loan is past due); Invested (fund_core.position) with Invest
+// more (→ the desk); Redeem from the plan (her crop shares not drawn yet; Ready → L11); her record.
+// DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
+// repayment outlook, the rate on her investment, Plan next year, refreshing the record.
+import { useMemo, useState } from 'react';
+import { useStellarConfig, useInvestment } from '../stellar/hooks';
+import { sv } from '../stellar/soroban';
+import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
+import { usePlanClient } from '../plan/hooks';
+import { C, FONT, R } from '../shell/tokens';
+import MapCard from '../shell/MapCard';
+import AreaMap from '../plan/AreaMap';
+import { areasOf } from '../plan/record';
+import { rowsInSeason } from '../plan/PlanResult';
+import { SEASON } from '../loan/MyShares';
+import { SkeletonRows } from '../shell/Skeleton';
+import { inr } from '../plan/ui';
+import { useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
+import { useQuery } from '@tanstack/react-query';
+import { useNilaSigner } from '../wallet/signer';
+import PhotoCount from '../loan/PhotoCount';
+import DeskWithdraw from '../loan/DeskWithdraw';
+import { recordCash } from '../loan/CashDesk';
+import { deskClaim } from '../loan/desk';
+
+const U = 10_000_000;
+const n = (v) => Number(BigInt(v ?? 0)) / U;
+const month = (d) => {
+  const t = new Date(d); const day = t.getDate();
+  return `${day <= 10 ? 'start of' : day <= 20 ? 'mid' : 'end of'} ${t.toLocaleDateString('en-GB', { month: 'short' })}`;
+};
+const fromLabel = (ts) => `From ${new Date(ts * 1000).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`;
+
+// A crop share's state: Planned (from <month>), Ready (Take up → L11), Financed / Overdue from her open loan, Repaid
+// once drawn and no loan is open any more. Harvested / Sold need the harvest and sales data (later).
+function stateOf(x, loans) {
+  const loan = loans.find((l) => l.token === x.token);
+  if (loan) return loan.overdue ? { label: 'Overdue', bg: 'rgba(230,146,131,0.18)', fg: C.coral } : { label: 'Financed', bg: C.ink, fg: C.muted };
+  if (x.drawn) return { label: 'Repaid', bg: C.ink, fg: C.text };
+  if (x.ready) return { take: true };
+  return { label: fromLabel(x.from), bg: C.ink, fg: C.muted };
+}
+
+function Row({ k, v, tone }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <span style={{ color: C.muted }}>{k}</span>
+      <span style={{ fontWeight: 700, textAlign: 'right', color: tone || C.text }}>{v}</span>
+    </div>
+  );
+}
+const Section = ({ title, right, children }) => (
+  <section style={{ borderTop: `1px solid ${C.raised}`, paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+    {(title || right) && (
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
+        {right && <span style={{ fontWeight: 700 }}>{right}</span>}
+      </div>
+    )}
+    {children}
+  </section>
+);
+const btn = (enabled = true) => ({ flex: 1, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT,
+  fontSize: 14, fontWeight: 700, opacity: enabled ? 1 : 0.5, cursor: enabled ? 'pointer' : 'default' });
+
+export default function MemberStatus({ id, go }) {
+  const api = usePlanClient();
+  const members = useUnionMembers(api);
+  const { data: cfg } = useStellarConfig();
+  const found = (members.data || []).find((x) => x.route === id);
+  // Her crop shares and her loans' due dates are read only here (22 Oct), after the list.
+  const shares = useUnionShares(api);
+  const dues = useLoanDues(found?.loans);
+  const m = useMemo(() => {
+    if (!found) return found;
+    const mine = shares.data?.[found.address] || {};
+    return { ...found, plan: mine.plan, shares: mine.shares || [],
+      loans: found.loans.map((l) => ({ ...l, due: dues.data?.[l.token] || 0, ...((mine.shares || []).find((x) => x.token === l.token) ? { crop: mine.shares.find((x) => x.token === l.token).crop } : {}) })) };
+  }, [found, shares.data, dues.data]);
+  const inv = useInvestment(m?.address);
+  const tx = useSorobanTx();
+  // Invest / Withdraw run in place (22 Oct): the button row turns into Photo count | Cash teller; Photo count opens the
+  // C6 count with her and the action set; a withdrawal then shows the code she scans (her claimable amount).
+  const s = useNilaSigner();
+  const [act, setAct] = useState();          // 'invest' | 'withdraw': the row shows the count choice
+  const [step, setStep] = useState();        // 'count' (C6) | 'code' (her withdrawal code)
+  const [noPhotos, setNoPhotos] = useState(false);
+  const claim = useQuery({ queryKey: ['stellar', 'deskClaim', found?.address], enabled: act === 'withdraw' && !!cfg && !!found?.address,
+    queryFn: () => deskClaim(cfg, found.address) });
+  const labels = useMemo(() => {
+    // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
+    const seasons = m?.plan?.plan?.seasons || [];
+    const today = new Date();
+    const out = {};
+    seasons.forEach((_, i) => Object.entries(rowsInSeason(seasons, i)).forEach(([z, r]) => {
+      if (r.sow && new Date(r.sow) <= today && (!r.harvest || new Date(r.harvest) >= today)) out[z] = { text: r.name, colour: r.colour };
+    }));
+    return out;
+  }, [m]);
+  if (members.isLoading) {
+    return (
+      <MapCard header={{ title: '', onBack: () => go('members'), onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+        <SkeletonRows rows={4} />
+      </MapCard>
+    );
+  }
+  const back = () => go('members');
+  if (!m) {
+    return (
+      <MapCard header={{ title: 'Member', onBack: back, onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+        <p style={{ color: C.muted, padding: '0 14px' }}>This member is not in your union's list.</p>
+      </MapCard>
+    );
+  }
+  const done = () => { setStep(); setAct(); };
+  if (step === 'code') return <DeskWithdraw member={m.address} auto onBack={done} />;
+  if (step === 'count') {
+    const pay = act === 'withdraw';
+    return <PhotoCount name={`${pay ? 'Pay out' : 'Invest'} · ${m.label}`} target={pay ? Math.floor(claim.data?.inr || 0) : 0} verb={pay ? 'Pay out' : 'Invest'}
+      onBack={() => setStep()} onDone={async (c) => {
+        if (pay) { setStep('code'); return; }
+        setStep();
+        if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose: 'invest', who: m.address, total: c.total, s3Keys: c.s3Keys }))) setNoPhotos(true);
+      }} />;
+  }
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); members.refetch(); }} onRetry={() => tx.retry()} />;
+  const now = Date.now() / 1000;
+  const areas = areasOf(m.record);
+  const fields = m.record?.meta?.geometry?.field_features?.features || [];
+  const acres = areas.reduce((a, z) => a + (z.area_m2 || 0), 0) / 4046.86;
+  const open = m.shares.filter((x) => !x.drawn && x.from);
+  const next = [...open].sort((a, b) => a.from - b.from)[0];
+  const owed = m.loans.reduce((a, x) => a + (x.left || 0), 0);
+  const loan = [...m.loans].sort((a, b) => (a.due || 9e12) - (b.due || 9e12))[0];
+  const dueLoan = m.loans.find((x) => x.due && x.due < now);
+  const invested = inv.data ? n(inv.data.invested) : null;
+  const markDefault = () => tx.run({
+    label: `Mark as default · ${m.label}`, rows: [['Owed', inr(dueLoan.left)], ['Crop share', dueLoan.crop || '—']],
+    contractName: 'fund_core', fn: 'mark_default', args: [sv.address(cfg.union), sv.bytes32(dueLoan.token)],
+    invalidate: [['stellar', 'unionMembers'], ['stellar', 'unionShares'], ['stellar', 'loans']],
+  });
+  const map = m.record ? <AreaMap record={m.record} labels={labels} /> : null;
+  return (
+    <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings') }}
+      style={{ fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5 }}>
+      {/* The card's 22 px side padding (MapCard takes the sheet's padding back for screens with cards of their own). */}
+      <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {m.record && <Row k="Property" v={`${acres.toFixed(1)} acres`} />}
+        {/* Fields: the fields her title was minted with (L3/L4), from the title's record (meta.geometry.field_features);
+            the record's areas are only for the crops on the map. "—" when the record lists none. */}
+        {m.record && <Row k="Fields" v={fields.length || '—'} />}
+        {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? 'ready' : month(next.from * 1000)}`} />}
+        {!m.record && <Row k="Status" v={m.note || 'No land title yet'} />}
+      </div>
+      {m.loans.length > 0 && (
+        <Section title="Lending" right={`${inr(owed)} owed now`}>
+          {loan?.due ? <Row k="Repay" v={`${inr(loan.left)} · ${month(loan.due * 1000)}`} tone={loan.overdue ? C.coral : undefined} /> : null}
+        </Section>
+      )}
+      {m.loans.length > 0 && (
+        <Section title="Repay">
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" style={btn(!!m.address)} disabled={!m.address} onClick={() => go(`cash/repay/${m.address}`)}>Photo count</button>
+            <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
+          </div>
+          <button type="button" style={{ ...btn(!!dueLoan && tx.ready), flex: 'none', width: '100%' }} disabled={!dueLoan || !tx.ready} onClick={markDefault}>
+            Mark as default
+          </button>
+          {!dueLoan && <span style={{ color: C.muted }}>Possible once her repay date has passed.</span>}
+        </Section>
+      )}
+      {m.address && (
+        <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
+          {/* Her actions start here only (executive decision 22 Oct: Members → G2 → action; the Cash tab is the union's money).
+              Nothing invested: Invest only; else Invest more and Withdraw. Invest opens the count choice. */}
+          {!act ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
+              {invested > 0 && <button type="button" style={btn()} onClick={() => setAct('withdraw')}>Withdraw</button>}
+            </div>
+          ) : act === 'withdraw' && claim.isSuccess && !(claim.data?.shares > 0n) ? (
+            <span style={{ color: C.muted }}>She has no withdrawal to collect. She asks for one on her phone (Union investment → Withdraw).</span>
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" style={btn(act === 'invest' || claim.isSuccess)} disabled={act === 'withdraw' && !claim.isSuccess}
+                onClick={() => setStep('count')}>Photo count</button>
+              <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
+            </div>
+          )}
+          {act && (
+            <button type="button" onClick={() => setAct()} style={{ alignSelf: 'center', border: 0, background: 'transparent', color: C.muted,
+              fontFamily: FONT, fontSize: 14, cursor: 'pointer', padding: 4 }}>
+              {act === 'withdraw' && claim.data?.shares > 0n ? `Withdraw ${inr(Math.floor(claim.data.inr))} · ` : ''}Cancel
+            </button>
+          )}
+          {noPhotos && <span style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</span>}
+        </Section>
+      )}
+      {shares.isLoading && <Section title="Crop shares"><SkeletonRows rows={2} /></Section>}
+      {m.shares.length > 0 && (
+        <Section title="Crop shares">
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[...m.shares].sort((a, b) => b.from - a.from).map((x) => {
+              const st = stateOf(x, m.loans);
+              return (
+                <li key={x.token} style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: R.button,
+                  padding: '10px 14px', minHeight: 56 }}>
+                  <span aria-hidden="true" style={{ width: 10, height: 10, flexShrink: 0, borderRadius: R.round, background: x.colour || C.muted }} />
+                  <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <span style={{ fontWeight: 700 }}>{x.crop}</span>
+                    <span style={{ color: C.muted }}>Area {x.area}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
+                  </span>
+                  {st.take ? (
+                    <button type="button" onClick={() => go('cash/loan')} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
+                      background: C.accent, color: C.ink, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Take up</button>
+                  ) : (
+                    <span style={{ flexShrink: 0, height: 24, borderRadius: R.round, padding: '0 8px', display: 'flex', alignItems: 'center', fontSize: 12,
+                      fontWeight: 700, background: st.bg, color: st.fg }}>{st.label}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </Section>
+      )}
+      {m.recordHash && (
+        <Section>
+          <Row k="Record" v={<span style={{ color: C.accent }}>{`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`}</span>} />
+        </Section>
+      )}
+      </div>
+    </MapCard>
+  );
+}

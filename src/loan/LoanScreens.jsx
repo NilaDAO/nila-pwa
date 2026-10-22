@@ -3,9 +3,10 @@
 // machine hours only; her tokens from her approved plan's mint list, read with fund_core.food_token.
 // DESIGN GAPs: no member names on the node ("Land N", "Your union leader"); the union checks on L11 (cash
 // on hand, stock, union limit) are not shown yet; "Type the code" is a text box for the whole code.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
+import CameraView from '../shell/CameraView';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv, tokenHex } from '../stellar/soroban';
@@ -14,6 +15,7 @@ import { usePlanClient } from '../plan/hooks';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { NIN, checkRequest, makeRequest } from './request';
+import { checkDeskRequest, isDeskRequest } from './desk';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import PostBring from '../anchor/PostBring';
 
@@ -150,27 +152,6 @@ export function LeaderLoan() {
   );
 }
 
-export function Camera({ onText }) {
-  const box = useRef();
-  useEffect(() => {
-    let scanner;
-    let live = true;
-    let running = false;
-    // stop() throws synchronously while the scanner is not running yet (e.g. "Type the code instead" right away):
-    // never let that reach the screen.
-    const stop = () => { if (!running) return; running = false; try { scanner.stop().catch(() => {}); } catch { /* not running */ } };
-    import('html5-qrcode').then(({ Html5Qrcode }) => {
-      if (!live || !box.current) return;
-      scanner = new Html5Qrcode(box.current.id);
-      scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 240 }, (t) => { onText(t); stop(); }, () => {})
-        .then(() => { running = true; if (!live) stop(); })
-        .catch(() => {});
-    });
-    return () => { live = false; stop(); };
-  }, [onText]);
-  return <div id="nila-scan" ref={box} style={{ width: '100%', minHeight: 260, background: '#000', borderRadius: 12 }} aria-label="Camera view" />;
-}
-
 /** A1b (Scan) → N10 (Confirm) → N1/N2/N3. */
 export function MemberScan({ onDone }) {
   const s = useNilaSigner();
@@ -182,7 +163,10 @@ export function MemberScan({ onDone }) {
   const [typing, setTyping] = useState(false);
   const read = useMemo(() => async (text) => {
     setError(undefined);
-    try { setReq(await checkRequest(text.trim(), { cfg, me: s?.stellarAddress })); } catch (e) { setError(e.message); }
+    try {
+      const t = text.trim();
+      setReq(isDeskRequest(t) ? { desk: await checkDeskRequest(t, { cfg, me: s?.stellarAddress }) } : await checkRequest(t, { cfg, me: s?.stellarAddress }));
+    } catch (e) { setError(e.message); }
   }, [cfg, s]);
 
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); setReq(undefined); onDone?.(); }} onRetry={() => tx.retry()} />;
@@ -193,6 +177,24 @@ export function MemberScan({ onDone }) {
       args: [sv.address(req.union), sv.address(req.member), sv.bytes32(req.token), sv.i128(req.cash), sv.u32(req.hours)],
       invalidate: [['stellar', 'account'], ['stellar', 'investment'], ['oracle', 'shares']],
     });
+  }
+  // Her investment paid over the desk (22 Oct): the leader's signed entry comes in the QR; she submits the claim.
+  if (req?.desk) {
+    const d = req.desk;
+    const collect = () => tx.run({
+      label: `Collect ${inr(Math.floor(d.inr))}`, rows: [['You collect', `${inr(Math.floor(d.inr))} in cash`], ['Where', 'Union office']],
+      contractName: 'fund_core', fn: 'claim_junior_cash', args: [sv.address(d.union), sv.address(d.member), sv.address(d.leader), sv.i128(0n)],
+      auth: d.auth, invalidate: [['stellar', 'investment'], ['stellar', 'fund']],
+    });
+    return (
+      <Sheet landName="Nila" title="Your union leader asks you to confirm">
+        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>You collect {inr(Math.floor(d.inr))}</p>
+        <p style={{ ...muted, textAlign: 'center' }}>Your union investment, in cash at the office</p>
+        <p style={{ color: C.gold, textAlign: 'center' }}>Only confirm when your leader is with you and hands you the cash.</p>
+        <Primary disabled={!tx.ready} onClick={collect}>Confirm</Primary>
+        <button type="button" onClick={() => setReq(undefined)} style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 }}>Cancel</button>
+      </Sheet>
+    );
   }
   if (req) {
     const cash = Number(BigInt(req.cash) / NIN);
@@ -210,7 +212,7 @@ export function MemberScan({ onDone }) {
   }
   return (
     <Sheet landName="Nila" title="Scan">
-      {!typing ? <Camera onText={read} /> : (
+      {!typing ? <CameraView mode="qr" onText={read} /> : (
         <>
           <textarea aria-label="The code" value={typed} onChange={(e) => setTyped(e.target.value)} style={{ width: '100%', minHeight: 90, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box' }} />
           <Primary disabled={!typed.trim()} onClick={() => read(typed)}>Check the code</Primary>

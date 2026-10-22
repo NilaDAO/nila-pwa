@@ -51,7 +51,8 @@ export default function AreaMap(props) {
   return ok ? <GoogleAreaMap {...props} /> : <LeafletAreaMap {...props} />;
 }
 
-const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, gestureHandling: 'none', keyboardShortcuts: false, clickableIcons: false,
+// Every map can be zoomed and panned with one finger or the wheel (22 Oct, G1); a tap on an area still picks it.
+const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, gestureHandling: 'greedy', keyboardShortcuts: false, clickableIcons: false,
   maxZoom: 20, tilt: 0, mapId: '8fa18e8fd7e4c318', isFractionalZoomEnabled: true };
 
 // CP10's map label (board CropPlanQ3-xdlz): one chip, the crop bold and the yield under it; the picked area's chip
@@ -82,7 +83,7 @@ const ringsOf = (g) => (g?.type === 'Polygon' ? [g.coordinates[0]] : g?.type ===
 
 /** outline: the parcel (record meta.geometry.out), drawn as a dashed white line; areas get their crop colour as fill
  *  and border (board CP10). selected / onSelect: tapping an area or its chip picks it; the others fade. */
-function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, fitBottom }) {
+function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, fitBottom, fitSide = 40 }) {
   const map = useRef(null);
   const drawn = useRef([]);
   const fitted = useRef(null);
@@ -134,7 +135,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       fitted.current = fitKey;
       // Her areas sit in the part above the card (the card covers the lower part of the screen).
       const full = height === '100%';
-      m.fitBounds(target, full ? { top: 80, left: 40, right: 40, bottom: fitBottom ?? Math.round(window.innerHeight * 0.6) } : 16);
+      m.fitBounds(target, full ? { top: 80, left: fitSide, right: fitSide, bottom: fitBottom ?? Math.round(window.innerHeight * 0.6) } : 16);
     }
   };
   useEffect(draw, [record, labels, selected, onSelect, height, fitBottom]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -153,7 +154,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
   useEffect(() => {
     if (!ready || !window.L || !box.current || !record) return undefined;
     const L = window.L;
-    const map = L.map(box.current, { zoomControl: false, scrollWheelZoom: false, dragging: false, doubleClickZoom: false, touchZoom: false });
+    const map = L.map(box.current, { zoomControl: false });
     map.attributionControl.setPrefix(false);
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Esri World Imagery' }).addTo(map);
     const areas = areasOf(record);

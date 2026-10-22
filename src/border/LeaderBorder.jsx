@@ -12,7 +12,8 @@ import BorderMap, { ShapeThumb } from './BorderMap';
 import { useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
-export const memberName = (job) => job?.farm || short(job?.polygon || job?.member);   // her Polygon address, as the union knows her
+// The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
+export const memberName = (job) => job?.farm || job?.name || short(job?.polygon || job?.member);
 const pill = { background: 'rgba(18,18,18,0.85)', borderRadius: R.round, boxShadow: SHADOW };
 const btn = (primary) => ({ flex: 1, height: 44, borderRadius: R.button, border: 0, fontWeight: 700, fontSize: 14, fontFamily: FONT,
   background: primary ? C.accent : C.raised, color: primary ? C.ink : C.text });
@@ -175,7 +176,11 @@ function Done({ job, onField, onBack }) {
             style={{ padding: 10, fontSize: 16, borderRadius: 8, border: `1px solid ${C.muted}`, background: C.raised, color: C.text }} />
         </label>
       )}
-      {!st && <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim())} style={{ ...btn(true), flex: 'none' }}
+      {!st && !job.polygon && (
+        // A keypad member (O17, F14) has no wallet yet: her server wallet is a later keypad step, so no mint now.
+        <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Her wallet is not made yet (keypad phone). The land title can be minted once it is.</p>
+      )}
+      {!st && <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim()) || !job.polygon} style={{ ...btn(true), flex: 'none' }}
         onClick={() => mint.mutate(job.farm ? {} : { farm: farm.trim() })}>Mint land title</button>}
       {st === 'minted' && <button type="button" style={{ ...btn(false), flex: 'none' }} onClick={onBack}>Back to tasks</button>}
     </Frame>

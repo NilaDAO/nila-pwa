@@ -1,99 +1,81 @@
-// LS — leader settings (board LeaderSettings, P10b). The union card (address, identity check), the union's signers
-// note, the voucher prices (machinery.rate per type, read-only: the union account sets them, 3 of 5), the LP section,
-// and the account rows. DESIGN GAPs: no on-chain list of the union's signers (roles only checks one address) — the
-// names and "Change signers" are not built; the contact-book union key (show / scan / mismatch) needs the union-key
-// encryption that does not exist yet (Q17) — not built; "Propose new factors" and seed prices (no source) not built;
-// notifications and theme rows not built; the leader identity check (K1 #leader) is not built (K1 is LP only).
-import { useState } from 'react';
-import { useNilaSigner } from '../wallet/signer';
+// LS — leader settings (board LeaderSettings; no assisted mode). Your credit union (with the leader's identity
+// check), union signers, contact book, voucher prices (machinery.rate per type, read-only: the union account sets
+// them, 3 of 5), liquidity provider, notifications, account and reset — the parts shared with A11 in
+// shell/SettingsParts.
+// The identity-check row opens K1 #leader (22 Oct; checked = fx_pool.id_checked).
+// DESIGN GAPs, shown disabled: no on-chain list of the union's
+// signers (roles only checks one address), so no names and no "Change signers"; the contact-book union key (show / scan
+// / mismatch) needs the union-key encryption that does not exist yet (Q17); voucher factors need a market price (none):
+// the rates show as set, "Propose new factors" and the seed prices (no source) are not built.
+import MapCard from '../shell/MapCard';
 import { useStellarConfig } from '../stellar/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useRates } from '../machine/hooks';
-import { deleteAllItems } from '../utils/db';
 import { C, FONT, R } from '../shell/tokens';
-import { ScreenHeader } from '../shell/ListRow';
-
-/** Reset account, as the current app does (features/wallet/Settings.js handleLogout): clear the field-registration
- *  leftovers and the offsite cookie, fire the IndexedDB wipe and reload at once — the delete stays blocked while the
- *  app holds the DB open, and the reload is what closes it, so it is never awaited. */
-function resetAccount() {
-  try {
-    localStorage.removeItem('fields');
-    localStorage.removeItem('positions');
-    document.cookie = 'offsite=; Max-Age=0; path=/;';
-  } catch (_) { /* storage blocked: the wipe and reload still run */ }
-  deleteAllItems();
-  window.location.reload();
-}
+import { ChevronIcon } from '../shell/icons';
+import { AccountCard, Card, CardButton, NotificationsCard, ResetCard, Row, SwitchRow, Text, UnionCard, btn } from '../shell/SettingsParts';
 
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
-const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
-const card = { background: C.ink, borderRadius: R.card, padding: '18px 22px', marginBottom: 12 };
-const h2 = { fontSize: 14, fontWeight: 700, margin: '0 0 10px' };
-const muted = { color: C.muted, fontSize: 14 };
 
-function Row({ k, v, onClick }) {
+/** The board's identity-check row inside the union card: K1 #leader; "Checked" once fx_pool.id_checked. */
+function IdentityRow({ checked, onClick }) {
   return (
-    <button type="button" onClick={onClick} disabled={!onClick} style={{ display: 'flex', justifyContent: 'space-between', width: '100%', background: 'none', border: 0, color: C.text, fontFamily: FONT, fontSize: 14, padding: '8px 0', textAlign: 'left' }}>
-      <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700 }}>{v}</span>
+    <button type="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: C.raised, borderRadius: 12,
+      padding: '12px 16px', marginTop: 4, border: 0, color: C.text, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', fontSize: 14, lineHeight: 1.5 }}>
+        <span style={{ fontWeight: 700 }}>Identity check</span><span style={{ color: C.muted }}>Needed for union leaders</span>
+      </span>
+      {checked
+        ? <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Checked</span>
+        : <span style={{ fontSize: 12, fontWeight: 700, color: C.gold, background: 'rgba(212,166,52,0.15)', borderRadius: R.round, padding: '2px 8px' }}>To do</span>}
+      <ChevronIcon color={C.muted} />
     </button>
   );
 }
 
-export default function LeaderSettings({ onBack, onIdCheck, onOffers }) {
-  const s = useNilaSigner();
+export default function LeaderSettings({ onBack, onIdCheck, onIdLeader, onOffers }) {
   const { data: cfg } = useStellarConfig();
   const rates = useRates();
   const lp = useLpStatus();
-  const [copied, setCopied] = useState();
-  const [reset, setReset] = useState(false);
-  const copy = async (what, v) => { try { await navigator.clipboard.writeText(v); setCopied(what); setTimeout(() => setCopied(undefined), 1500); } catch { /* no clipboard */ } };
+  const isLp = !!lp.data?.lp;
   return (
-    <div style={{ padding: 16, fontFamily: FONT, color: C.text }}>
-      <ScreenHeader title="Settings" onBack={onBack} settings={false} />
+    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }} header={{ title: 'Settings', onBack, settings: false }}>
+      <UnionCard extra={<IdentityRow checked={!!lp.data?.idChecked} onClick={onIdLeader} />} />
 
-      <section style={card} aria-label="Your credit union">
-        <h2 style={h2}>Your credit union</h2>
-        <Row k="Union address" v={copied === 'union' ? 'Copied' : short(cfg?.union)} onClick={() => copy('union', cfg?.union)} />
-        <Row k="Network" v={cfg ? (cfg.network === 'mainnet' ? 'Stellar' : `Stellar ${cfg.network}`) : '…'} />
-      </section>
+      <Card title="Union signers">
+        <Text>3 of 5 must sign: a new leader, the voucher price list and a change of signers.</Text>
+        <CardButton>Change signers</CardButton>
+      </Card>
 
-      <section style={card} aria-label="Union signers">
-        <h2 style={h2}>Union signers</h2>
-        <p style={muted}>3 of 5 must sign: a new leader, the voucher price list and a change of signers.</p>
-      </section>
+      <Card title="Contact book">
+        <Text>Members' names and phone numbers are locked with the union key. Share it only face to face.</Text>
+        <Row k="Union key" v="Not made yet" />
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button type="button" disabled style={{ ...btn, flex: 1, opacity: 0.5, cursor: 'default' }}>Show key</button>
+          <button type="button" disabled style={{ ...btn, flex: 1, opacity: 0.5, cursor: 'default' }}>Scan a key</button>
+        </div>
+      </Card>
 
-      <section style={card} aria-label="Voucher prices">
-        <h2 style={h2}>Voucher prices</h2>
-        <p style={muted}>Machine hours, as the union set them. New prices need the signers.</p>
-        {rates.isLoading && <p style={muted}>…</p>}
+      <Card title="Voucher prices">
+        <Text>Each category follows the market price. The union sets a factor per item. New factors need the signers.</Text>
+        <div style={{ height: 1, background: C.raised, margin: '4px 0' }} />
+        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>Machine hours</span>
+        {rates.isLoading && <Text>…</Text>}
         {(rates.data || []).map((r) => <Row key={r.type} k={r.name} v={`${inr(r.total)} /h`} />)}
-        {rates.isSuccess && !rates.data.length && <p style={muted}>No machine prices set for the union yet.</p>}
-      </section>
+        {rates.isSuccess && !rates.data.length && <Text>No machine prices set for the union yet.</Text>}
+        <CardButton>Propose new factors</CardButton>
+      </Card>
 
       {cfg?.anchor_url && lp.data?.member && (
-        <section style={card} aria-label="Liquidity provider">
-          <h2 style={h2}>Liquidity provider</h2>
-          <p style={muted}>Bring or collect cash at the union office for USDC. You earn 1% on each swap.</p>
-          <Row k={lp.data.lp ? 'You are an LP' : 'Become an LP'} v={lp.data.lp && lp.data.trustline ? 'Cash offers ›' : 'Check my identity ›'}
-            onClick={lp.data.lp && lp.data.trustline ? onOffers : onIdCheck} />
-        </section>
+        <Card title="Liquidity provider">
+          <SwitchRow title="I am also an LP" on={isLp} onClick={isLp ? undefined : onIdCheck} disabled={isLp} />
+          {isLp && lp.data.trustline && <CardButton onClick={onOffers}>Cash offers</CardButton>}
+        </Card>
       )}
 
-      <section style={card} aria-label="Account">
-        <h2 style={h2}>Account</h2>
-        <Row k="Wallet address" v={copied === 'wallet' ? 'Copied' : short(s?.stellarAddress)} onClick={() => copy('wallet', s?.stellarAddress)} />
-        <Row k="Version" v={process.env.REACT_APP_VERSION || '—'} />
-        {!reset ? <Row k="Reset account" v="Removes your account from this phone ›" onClick={() => setReset(true)} /> : (
-          <div>
-            <p style={muted}>Remove your account from this phone? Your assets and your signer role stay with your wallet. To open it again you need your phone number.</p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={() => setReset(false)} style={{ flex: 1, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontWeight: 700 }}>Cancel</button>
-              <button type="button" onClick={resetAccount} style={{ flex: 1, height: 44, borderRadius: R.button, border: 0, background: C.coral, color: C.ink, fontWeight: 700 }}>Reset</button>
-            </div>
-          </div>
-        )}
-      </section>
-    </div>
+      <NotificationsCard />
+      <AccountCard />
+      <ResetCard leader />
+    </MapCard>
   );
 }
