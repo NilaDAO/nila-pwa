@@ -6,7 +6,7 @@
 // DESIGN GAPs: the owner is her wallet QR, scanned as the last step (no member names on the node; 22 Oct);
 // "Show QR to <owner>" becomes "Ask her to confirm in Your machine" (her app finds the machine itself);
 // the price rows show the union's rate parts as set on-chain (read-only).
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
@@ -55,16 +55,14 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   const [hours, setHours] = useState(40);
   const [error, setError] = useState();
   const [busy, setBusy] = useState(false);
-  const input = useRef();
-  const target = useRef();
+  const [shooting, setShooting] = useState();
   const rate = useMemo(() => rates.data?.find((r) => r.type === type) || rates.data?.[0], [rates.data, type]);
   const taken = WALK.filter((l) => photos[l]).length;
 
-  const take = (label) => { target.current = label; input.current.click(); };
-  const onFile = async (e) => {
-    const f = e.target.files?.[0]; e.target.value = '';
-    if (!f) return;
-    try { const p = await shrink(f); setPhotos((x) => ({ ...x, [target.current]: p })); } catch { setError('That photo could not be read. Take it again.'); }
+  // A tap on a cell shows the camera over the grid, the shutter under it (as C6); the shot fills the cell (22 Oct).
+  const onPhoto = async (blob) => {
+    const label = shooting; setShooting(undefined);
+    try { const p = await shrink(blob); setPhotos((x) => ({ ...x, [label]: p })); } catch { setError('That photo could not be read. Take it again.'); }
   };
   // The owner is the last step (executive decision 22 Oct): her wallet QR is scanned at the end and registers at once.
   const register = async (own) => {
@@ -110,7 +108,6 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   const sub = { fontSize: 14, lineHeight: 1.5, color: C.muted };
   return page('Register a machine', onBack, (
     <>
-      <input ref={input} type="file" accept="image/*" capture="environment" onChange={onFile} style={{ display: 'none' }} />
       <Card label="Machine">
         <CardTitle>Machine</CardTitle>
         {rates.isLoading && <span style={sub}>…</span>}
@@ -126,22 +123,29 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
       <Card label="Photos" style={{ gap: 12 }}>
         <CardTitle right={<span style={{ fontSize: 14, fontWeight: 700, color: C.gold }}>{taken} of 8</span>}>Photos</CardTitle>
         <span style={sub}>Walk around the machine: one photo every 45°.</span>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          {GRID.map((l, i) => (l ? (
-            <button key={l} type="button" aria-label={`${l}, ${photos[l] ? 'photo taken' : 'take photo'}`} onClick={() => take(l)}
-              style={{ aspectRatio: '1.1', borderRadius: R.button, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
-                fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
-                ...(photos[l]
-                  ? { border: 0, background: `linear-gradient(rgba(18,18,18,.45), rgba(18,18,18,.45)), center / cover url(${photos[l].url})`, color: C.accent }
-                  : { border: `1px dashed ${C.muted}66`, background: 'transparent', color: C.muted }) }}>
-              {photos[l] ? <CheckMark /> : <CameraMark />}{l}
-            </button>
-          ) : (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ width: 56, height: 56, borderRadius: R.round, background: C.gold, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><TractorMark /></span>
-            </div>
-          )))}
-        </div>
+        {shooting ? (
+          <>
+            <CameraView mode="photo" title={shooting} onPhoto={onPhoto} />
+            <button type="button" onClick={() => setShooting(undefined)} style={{ border: 0, background: 'none', color: C.muted, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+          </>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {GRID.map((l, i) => (l ? (
+              <button key={l} type="button" aria-label={`${l}, ${photos[l] ? 'photo taken' : 'take photo'}`} onClick={() => setShooting(l)}
+                style={{ aspectRatio: '1.1', borderRadius: R.button, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
+                  ...(photos[l]
+                    ? { border: 0, background: `linear-gradient(rgba(18,18,18,.45), rgba(18,18,18,.45)), center / cover url(${photos[l].url})`, color: C.accent }
+                    : { border: `1px dashed ${C.muted}66`, background: 'transparent', color: C.muted }) }}>
+                {photos[l] ? <CheckMark /> : <CameraMark />}{l}
+              </button>
+            ) : (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ width: 56, height: 56, borderRadius: R.round, background: C.gold, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><TractorMark /></span>
+              </div>
+            )))}
+          </div>
+        )}
       </Card>
       {rate && (
         <Card label="Price an hour" style={{ gap: 12 }}>
