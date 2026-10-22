@@ -174,7 +174,7 @@ export default function CashOut({ onBack }) {
         <MarkCircle />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', fontSize: 14, lineHeight: 1.5 }}>
           <span style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.2 }}>{fmt(nin)} nIN</span>
-          <span style={{ color: C.muted }}>Nila digital rupee · worth ₹1 each</span>
+          <span style={{ color: C.muted }}>Worth ₹1 each</span>
         </div>
       </Card>
       {/* One card (22 Oct): Cash out | Swap to USDC in the card's own switch, as A3's Invest | Withdraw; the swap only for
