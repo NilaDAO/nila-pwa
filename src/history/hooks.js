@@ -44,14 +44,14 @@ function callName(op) {
 }
 
 // Amounts the call names when no nIN / USDC of hers moved (board A12: every row has its amount): cash counted at the
-// office in rupees (nIN 7 decimals), machine hours. Argument positions from nila-soroban (fx_pool, machinery, fund_core).
+// office in rupees (nIN 7 decimals), machine hours. Argument positions from nila-soroban (fx_pool, machinery, fund_core); a[0] is the contract, a[1] the function.
 const U = 10_000_000;
 const rupees = (v) => `₹${(Number(v) / U).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 function amountFromArgs(fn, a) {
   try {
     if (fn === 'cash_scan_mint') return rupees(a[6]);                      // (leader, union, purpose, member, amount, …)
-    if (fn === 'claim') return `+${Number(a[8])} h`;                         // (owner, machine, union, token, code, hours)
-    if (fn === 'draw_loan' && Number(a[7])) return `+${Number(a[7])} h`;     // (union, member, token, cash, hours)
+    if (fn === 'claim') return `+${Number(a[7])} h`;                         // (owner, machine, union, token, code, hours)
+    if (fn === 'draw_loan' && Number(a[6])) return `+${Number(a[6])} h`;     // (union, member, token, cash, hours)
     if (fn === 'repay_loan') return `−${rupees(a[4])}`;                      // (union, token, amount)
   } catch { /* an argument the app does not know: no amount */ }
   return '';
