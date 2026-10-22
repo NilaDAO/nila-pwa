@@ -63,49 +63,68 @@ function Stepper({ value, set, max, step = 100, label = 'Amount in rupees', unit
 }
 
 /** C2: one wider search per tap (24 h → week → month → 6 months) until the list and the chain agree. */
-// The C1/C2 result as the board's chip: a raised rounded chip, gold check-circle "Every rupee is accounted for", a coral
-// alert "₹X not accounted for" (a tap searches one wider window), a spinner while the list loads or a search runs.
+// The C1/C2 result as the board's chip: a raised rounded chip with the app's amber icons (as Notice, src/plan/ui.jsx):
+// check-circle "Every rupee is accounted for", warning "₹X not accounted for", a spinner while the list loads or a
+// search runs. A tap opens the two totals it compares (fund_core's book and the loan list) and Recheck: a refetch, or,
+// when they differ, the next wider event search (C2: 24 h, a week, 6 months).
+const AMBER = '#D4A634';
 const chipS = { marginTop: 10, minHeight: 40, padding: '0 14px', borderRadius: R.button, background: C.raised, border: 0, display: 'flex',
-  alignItems: 'center', gap: 8, fontFamily: FONT, fontSize: 14, fontWeight: 700, color: C.text };
+  alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: FONT, fontSize: 14, fontWeight: 700, lineHeight: 1.5, color: C.text };
 const ico = (stroke, children, spin) => (
-  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
-    style={spin ? { animation: 'chk-spin 900ms linear infinite' } : undefined}>{children}</svg>
+  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    style={{ display: 'block', flexShrink: 0, ...(spin ? { animation: 'chk-spin 900ms linear infinite' } : {}) }}>{children}</svg>
 );
-const OK = ico(C.accent, <><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></>);
-const OFF = ico(C.coral, <><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></>);
+const OK = ico(AMBER, <><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></>);
+const OFF = ico(AMBER, <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></>);
 const BUSY = ico(C.muted, <path d="M21 12a9 9 0 1 1-6.2-8.6" />, true);
 
 function Chip({ book, api, onFound }) {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   const [note, setNote] = useState();
   const [gapInStore, setGapInStore] = useState(false);
   const spin = <style>{'@keyframes chk-spin{to{transform:rotate(360deg)}}'}</style>;
   // The share list is a part of C1 that loads after the screen: the chip spins, never S1 inside the card (22 Oct).
   if (!book) return <div role="status" style={chipS}>{spin}{BUSY}<span style={{ color: C.muted }}>Checking the share list…</span></div>;
-  if (book.gap <= 0) return <div role="status" style={chipS}>{OK}Every rupee is accounted for</div>;
   const [win, label] = SEARCH_WINDOWS[Math.min(step, SEARCH_WINDOWS.length - 1)];
-  const search = async () => {
+  const off = book.gap > 0;
+  const done = off && (step >= SEARCH_WINDOWS.length || gapInStore);
+  const recheck = async () => {
     setBusy(true);
     try {
-      const before = book.loans.length;
-      const r = await api.unionSearch(win);
-      if (r.store_gap) setGapInStore(true);
-      const after = (await onFound()).data?.loans.length ?? before;
-      const n = Math.max(0, after - before);
-      setNote(`Searched ${label} · ${n ? `${n} share${n > 1 ? 's' : ''} added` : 'nothing new'}`);
-      setStep((x) => x + 1);
+      if (!off) { await onFound(); setNote('Checked again'); }
+      else {
+        const before = book.loans.length;
+        const r = await api.unionSearch(win);
+        if (r.store_gap) setGapInStore(true);
+        const after = (await onFound()).data?.loans.length ?? before;
+        const n = Math.max(0, after - before);
+        setNote(`Searched ${label} · ${n ? `${n} share${n > 1 ? 's' : ''} added` : 'nothing new'}`);
+        setStep((x) => x + 1);
+      }
     } catch (e) { setNote(e.message); }
     setBusy(false);
   };
-  const done = step >= SEARCH_WINDOWS.length || gapInStore;
-  if (busy) return <div role="status" style={chipS}>{spin}{BUSY}<span style={{ color: C.muted }}>Searching {label}…</span></div>;
-  const next = SEARCH_WINDOWS[Math.min(step, SEARCH_WINDOWS.length - 1)][1];
+  if (busy) return <div role="status" style={chipS}>{spin}{BUSY}<span style={{ color: C.muted }}>{off ? `Searching ${label}…` : 'Checking…'}</span></div>;
+  const diff = Math.round(book.chain - book.listed);
   return (
     <>
-      <button type="button" onClick={done ? undefined : search} aria-label={`${inr(book.gap)} not accounted for. ${done ? 'Ask Nila support.' : `Tap to search ${next}.`}`}
-        style={{ ...chipS, cursor: done ? 'default' : 'pointer' }}>{OFF}{inr(book.gap)} not accounted for</button>
-      <span style={{ color: C.muted, fontSize: 13 }}>{note ? `${note}. ` : ''}{done ? 'Ask Nila support.' : `Tap to search ${next}.`}</span>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((x) => !x)} style={{ ...chipS, cursor: 'pointer' }}>
+        {off ? OFF : OK}{off ? `${inr(book.gap)} not accounted for` : 'Every rupee is accounted for'}
+      </button>
+      {open && (
+        <div style={{ alignSelf: 'stretch', display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, textAlign: 'left' }}>
+          <div style={rows}>
+            <Row k="On-chain book" v={inr(book.chain)} />
+            <Row k="Loan list" v={inr(book.listed)} />
+            {diff !== 0 && <Row k="Difference" v={inr(Math.abs(diff))} />}
+          </div>
+          {note && <span style={{ color: C.muted, fontSize: 13 }}>{note}.</span>}
+          {done ? <span style={{ color: C.muted, fontSize: 13 }}>Ask Nila support.</span>
+            : <button type="button" style={{ ...pill, width: '100%', height: 44 }} onClick={recheck}>{off ? `Recheck · search ${SEARCH_WINDOWS[Math.min(step, SEARCH_WINDOWS.length - 1)][1]}` : 'Recheck'}</button>}
+        </div>
+      )}
     </>
   );
 }
