@@ -161,7 +161,7 @@ function useCountdown(ts) {
 }
 
 /** C4: the Cash card (time left, let an LP collect it) and the LP cards. */
-function CashCard({ cash, open, setOpen, onScanLp }) {
+function CashCard({ cash, onScanLp }) {
   const s = useNilaSigner();
   const offers = useUnionOffers().data || [];
   const { tx, post } = usePost();
@@ -183,23 +183,26 @@ function CashCard({ cash, open, setOpen, onScanLp }) {
   const live = offers.filter((o) => o.state <= 1 && o.expires > now);
   return (
     <>
+      {/* C4 (22 Oct): the amount beside the title; the details and the primary action only while there is cash at hand. */}
       <section style={card} aria-label="Cash">
         <div style={head}>
           <h2 style={title}>Cash</h2>
-          {open ? <button type="button" style={pill} onClick={() => setOpen(false)}>Close</button> : null}
+          <span style={{ fontSize: 16, fontWeight: 700 }}>{inr(cash.atHand)}</span>
         </div>
-        <div style={{ fontSize: 24, fontWeight: 700 }}>{inr(cash.atHand)}</div>
-        {!open && <button type="button" style={{ ...pill, alignSelf: 'flex-start' }} onClick={() => setOpen(true)}>Let an LP collect it</button>}
-        {open && (
+        {cash.atHand > 0 && (
           <>
-            {left && <Row k="Time left" v={left} coral={first.expires - now < 86400} />}
-            <Row k="After the deadline" v="Treasury covers it" />
-            <h3 style={{ fontSize: 14, margin: '14px 0 0' }}>Cash for your LPs to collect</h3>
+            <div style={rows}>
+              {left && <Row k="Time left" v={left} coral={first.expires - now < 86400} />}
+              <Row k="After the deadline" v="Treasury covers it" />
+            </div>
+            <span style={{ fontWeight: 700 }}>Cash for your LPs to collect</span>
             <Stepper value={a} set={setAmount} max={max} />
-            <Row k={`LP fee (${feeBp / 100}%)`} v={a ? inr(fee) : '—'} />
-            <Row k="Into the union treasury" v={a ? `${inr(a - fee)}${q.data ? ` · ${usdcOf(q.data.usdc)} USDC` : ''}` : '—'} />
-            {promised > 0 && <p style={{ color: C.muted, fontSize: 13 }}>{inr(promised)} is offered to LPs already.</p>}
-            <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={() => post(COLLECT, a)}>Let LPs collect {inr(a)}</button>
+            <div style={rows}>
+              <Row k={`LP fee (${feeBp / 100}%)`} v={a ? inr(fee) : '—'} />
+              <Row k="Into the union treasury" v={a ? `${inr(a - fee)}${q.data ? ` · ${usdcOf(q.data.usdc)} USDC` : ''}` : '—'} />
+            </div>
+            {promised > 0 && <span style={{ color: C.muted }}>{inr(promised)} is offered to LPs already.</span>}
+            <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={() => post(COLLECT, a)}>Let an LP collect {inr(a)}</button>
           </>
         )}
       </section>
@@ -234,7 +237,6 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
   const cashQ = useUnionCash();
   const bookQ = useUnionBook(api);
   const [adjust, setAdjust] = useState(null);   // null (closed), 'deposit' or 'withdraw'
-  const [open, setOpen] = useState(!!settle);
   const cash = cashQ.data;
   const book = bookQ.data;
   const union = useUnionInfo();
@@ -302,7 +304,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
             <Row k="Available to cash in" v={inr(cash.free)} accent />
           </div>
         </section>
-        <CashCard cash={cash} open={open} setOpen={setOpen} onScanLp={onScanLp} />
+        <CashCard cash={cash} onScanLp={onScanLp} />
         {tasks}
       </div>
     </div>
