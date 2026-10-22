@@ -2,9 +2,9 @@
 // Stellar and from Polygon (the old app). DESIGN GAPs: no contact names ("From Mother Theresa Union" only where the
 // call names the union); vouchers in hours and seed kg are not separate rows (the contract calls are); the Polygon
 // part needs the Etherscan key the live build has.
+import MapCard from '../shell/MapCard';
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT, R } from '../shell/tokens';
-import { ScreenHeader } from '../shell/ListRow';
 import { useHistory } from './hooks';
 
 const day = (ts) => {
@@ -26,8 +26,7 @@ export default function History({ onBack }) {
     groups[groups.length - 1][1].push(r);
   }
   return (
-    <div style={{ padding: 16, fontFamily: FONT, color: C.text }}>
-      <ScreenHeader title="History" onBack={onBack} />
+    <MapCard style={{ padding: 16, fontFamily: FONT, color: C.text }} header={{ title: 'History', onBack }}>
       {h.isLoading && <p style={{ color: C.muted }}>…</p>}
       {h.isError && <p style={{ color: C.coral }}>Your history could not be read. Try again.</p>}
       {h.isSuccess && !groups.length && <p style={{ color: C.muted }}>Nothing yet. Your payments and crop shares appear here.</p>}
@@ -48,6 +47,6 @@ export default function History({ onBack }) {
         </section>
       ))}
       {h.data?.note && <p style={{ color: C.muted, fontSize: 13 }}>{h.data.note}</p>}
-    </div>
+    </MapCard>
   );
 }

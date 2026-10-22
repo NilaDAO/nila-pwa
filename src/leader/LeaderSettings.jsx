@@ -6,11 +6,11 @@
 // signers (roles only checks one address), so no names and no "Change signers"; the contact-book union key (show / scan
 // / mismatch) needs the union-key encryption that does not exist yet (Q17); voucher factors need a market price (none):
 // the rates show as set, "Propose new factors" and the seed prices (no source) are not built.
+import MapCard from '../shell/MapCard';
 import { useStellarConfig } from '../stellar/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useRates } from '../machine/hooks';
 import { C, FONT, R } from '../shell/tokens';
-import { ScreenHeader } from '../shell/ListRow';
 import { ChevronIcon } from '../shell/icons';
 import { AccountCard, Card, CardButton, NotificationsCard, ResetCard, Row, SwitchRow, Text, UnionCard, btn } from '../shell/SettingsParts';
 
@@ -35,8 +35,7 @@ export default function LeaderSettings({ onBack, onIdCheck, onOffers }) {
   const lp = useLpStatus();
   const isLp = !!lp.data?.lp;
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <ScreenHeader title="Settings" onBack={onBack} settings={false} />
+    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }} header={{ title: 'Settings', onBack, settings: false }}>
       <UnionCard extra={<IdentityRow />} />
 
       <Card title="Union signers">
@@ -73,6 +72,6 @@ export default function LeaderSettings({ onBack, onIdCheck, onOffers }) {
       <NotificationsCard />
       <AccountCard />
       <ResetCard leader />
-    </div>
+    </MapCard>
   );
 }

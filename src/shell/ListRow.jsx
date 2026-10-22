@@ -54,9 +54,13 @@ export function StickyTop({ children }) {
 }
 
 /** The non-map screen header (boards Tasks, Settings): the round back button left, the title centred, Settings right. */
-export function ScreenHeader({ title, onBack, onSettings, settings = true }) {
+export function ScreenHeader(props) {
+  return <StickyTop><HeaderRow {...props} /></StickyTop>;
+}
+
+/** ScreenHeader's row alone: also the header inside a map card (map-central trial, MapCard). */
+export function HeaderRow({ title, onBack, onSettings, settings = true }) {
   return (
-    <StickyTop>
     <div style={{ position: 'relative', height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT, color: C.text }}>
       {onBack && (
         <span style={{ position: 'absolute', left: 0, top: 0 }}>
@@ -68,6 +72,5 @@ export function ScreenHeader({ title, onBack, onSettings, settings = true }) {
       <h1 style={{ margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{title}</h1>
       {settings && <span style={{ position: 'absolute', right: 0, top: 0 }}><SettingsButton onClick={onSettings} /></span>}
     </div>
-    </StickyTop>
   );
 }

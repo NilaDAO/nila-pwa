@@ -1,10 +1,10 @@
 // A1a (board MemberWalletQR): her Stellar wallet as a QR in a white circle, for the leader to scan (invest, cash),
 // the short address with Copy, and the info note above the tab bar.
+import MapCard from './MapCard';
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT, R, TAB_BAR_HEIGHT } from './tokens';
-import { ScreenHeader } from './ListRow';
 
 const SHADOW = 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px';
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
@@ -19,8 +19,8 @@ export default function WalletQr({ onBack }) {
     try { await navigator.clipboard.writeText(addr); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* no clipboard */ }
   };
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, minHeight: `calc(100dvh - ${TAB_BAR_HEIGHT + 16}px)`, display: 'flex', flexDirection: 'column' }}>
-      <ScreenHeader title="" onBack={onBack} onSettings={() => { window.location.hash = '#/settings'; }} />
+    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, minHeight: `calc(100dvh - ${TAB_BAR_HEIGHT + 16}px)`, display: 'flex', flexDirection: 'column' }}
+      header={{ title: '', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}>
       <section aria-label="Wallet QR code" style={{ background: C.ink, borderRadius: 24, boxShadow: SHADOW, padding: 22, boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, marginBottom: 140 }}>
         <div style={{ width: '100%', aspectRatio: '1', borderRadius: 9999, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -42,6 +42,6 @@ export default function WalletQr({ onBack }) {
         </div>
         <div style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>Your wallet address. The union uses it to give you nIN and vouchers.</div>
       </div>
-    </div>
+    </MapCard>
   );
 }

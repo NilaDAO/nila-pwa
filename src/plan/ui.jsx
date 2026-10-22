@@ -7,7 +7,8 @@ import { SettingsButton } from '../shell/RoundButton';
 
 /** head: header buttons in place of Back / name / Settings. top: the card's top (px) when it opens. onSwipe(±1): a
  *  sideways swipe on the card (A4/A5's ‹ asset › bar). */
-export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe }) {
+/** full (map-central): the card takes the whole screen height, rising from where A1's card stands. */
+export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full }) {
   const drag = useSheetDrag(undefined, resetKey);   // the drag line as on R5 (all map screens, 21 Oct)
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell the one map behind the tabs
   // (shell/MapStage) draws this sheet's map, so it is never mounted again between screens.
@@ -114,11 +115,12 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
           a short card never floats mid-screen, and scrolling never lifts it further than its own height. */}
       <div style={{ height: map ? 'auto' : 180, flex: map ? '1 0 auto' : '0 0 auto', position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: map ? 0 : 24, pointerEvents: map ? 'none' : 'auto' }}>
         {/* CP10 (a bar on the card): the card's top starts at the middle of the screen (board CropPlanQ3-xdlz). */}
-        {map && <div style={{ height: bar ? Math.round(window.innerHeight / 2) + 24 : top ?? 220 }} />}
+        {map && <div style={{ height: full ? 24 : bar ? Math.round(window.innerHeight / 2) + 24 : top ?? 220 }} />}
       </div>
       {/* The header buttons stay fixed at the top, above map and card; they never scroll away (21 Oct) — with or without a map. */}
       {!staged && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
-      <div ref={drag.ref} className="cp-sheet" {...swipe} style={{ background: cardBg, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, pointerEvents: 'auto', ...drag.style }}>
+      <div ref={drag.ref} className="cp-sheet" {...swipe} style={{ background: cardBg, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, pointerEvents: 'auto', minHeight: full ? '100dvh' : undefined, boxSizing: 'border-box', ...drag.style, ...(full && staged ? { animation: 'nila-rise 320ms cubic-bezier(0.2,0.8,0.2,1)' } : {}) }}>
+        {full && staged && <style>{`@keyframes nila-rise{from{transform:translateY(${Math.round(window.innerHeight * 0.34) - 24}px)}to{transform:translateY(0)}}`}</style>}
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
         <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}html,body{overscroll-behavior-y:none}'}</style>
         {/* CP10's season / area bar sits on top of the card and moves with it (board CropPlanQ3-xdlz). */}

@@ -43,6 +43,9 @@ export function shareOn(shares, seasons, i, zone) {
     && (x.crop === row.crop || x.crop === row.name) && (rowOf(x)?.sow === row.sow));
 }
 
+/** Where A1's card opens (its top, px): a strip of map above it. */
+export const homeTop = () => Math.round(window.innerHeight * 0.34);
+
 /** A1's map: { map, record } — her areas with this season's crops; a tap on an area opens its crop share. */
 export function useHomeMap(onShare, fitBottom) {
   const land = useMyLand();

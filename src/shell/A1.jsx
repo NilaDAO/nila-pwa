@@ -20,7 +20,7 @@ import { StickyTop } from './ListRow';
 import MessageSlider, { memberSlides } from './MessageSlider';
 import { Sheet } from '../plan/ui';
 import { useStage } from './stageCtx';
-import { useHomeMap } from './MapStage';
+import { homeTop, useHomeMap } from './MapStage';
 import { MEMBER_TODO_ROWS, useLeaderTaskCount } from './taskCount';
 
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
@@ -105,7 +105,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   // land (drag line, rounded top), opening high with a strip of map; History, All tasks and Settings are the card's
   // sticky header under the drag line.
   const stage = useStage();
-  const top = Math.round(window.innerHeight * 0.34);
+  const top = homeTop();
   const home = useHomeMap(onShare, window.innerHeight - top + 32);
   const buttons = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

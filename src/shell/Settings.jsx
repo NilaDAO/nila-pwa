@@ -4,6 +4,7 @@
 // machinery.set_hold), account and reset.
 // DESIGN GAPs: Change union has no flow (one union); "Registered · date · leader" has no source (no indexer, no names on
 // the node), left out; the hold reason "Other" has no free text (the contract keeps a reason number only); one theme.
+import MapCard from './MapCard';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
@@ -13,7 +14,6 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { useLpStatus } from '../anchor/hooks';
 import { HOLD_REASONS, typeName, useMyMachine, useRates } from '../machine/hooks';
 import { inr } from '../plan/ui';
-import { ScreenHeader } from './ListRow';
 import { AccountCard, Card, CardButton, ConfirmCard, NotificationsCard, ResetCard, Row, SwitchRow, Text, UnionCard, useUnionInfo } from './SettingsParts';
 import { C, FONT } from './tokens';
 
@@ -112,8 +112,7 @@ function MachineCard() {
 
 export default function Settings({ onBack, onIdCheck, onOffers }) {
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <ScreenHeader title="Settings" onBack={onBack} settings={false} />
+    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }} header={{ title: 'Settings', onBack, settings: false }}>
       <UnionCard />
       <NotificationsCard />
       <ModeCard />
@@ -121,6 +120,6 @@ export default function Settings({ onBack, onIdCheck, onOffers }) {
       <MachineCard />
       <AccountCard />
       <ResetCard />
-    </div>
+    </MapCard>
   );
 }
