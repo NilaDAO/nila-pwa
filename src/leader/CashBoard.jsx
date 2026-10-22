@@ -110,11 +110,12 @@ function Chip({ book, api, onFound }) {
 
 /** C3: Deposit her own nIN into the treasury or Withdraw to her wallet (C10; the node sponsors both). nIN only
  *  (executive decision 22 Oct): a leader with USDC swaps it to nIN on A9 first; counted cash never goes in. */
-function Adjust({ cash, onClose }) {
+const arrow = (d) => <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
+
+function Adjust({ cash, dir, onClose }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
-  const [dir, setDir] = useState('deposit');
   const [rainy, setRainy] = useState(false);
   const [amount, setAmount] = useState(0);
   const mine = Math.floor(s?.stellarAccount?.nin?.balance ?? 0);
@@ -131,15 +132,10 @@ function Adjust({ cash, onClose }) {
       : [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * U), sv.bool(fromRainy)],
     invalidate: [['stellar', 'unionCash'], ['stellar', 'account']],
   });
-  const arrow = (d) => <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
   return (
     <>
       <div style={divider} />
-      <div style={head}>
-        <span style={{ color: C.muted }}>{dir === 'deposit' ? 'Deposit into the fund' : 'Withdraw from the fund'}</span>
-        <Segmented icon width="hug" label="Deposit or withdraw" value={dir} onChange={(v) => { setDir(v); setAmount(0); }}
-          options={[['deposit', arrow('M12 5v14M19 12l-7 7-7-7'), 'Deposit'], ['withdraw', arrow('M12 19V5M5 12l7-7 7 7'), 'Withdraw']]} />
-      </div>
+      <span style={{ color: C.muted }}>{dir === 'deposit' ? 'Deposit into the fund' : 'Withdraw from the fund'}</span>
       {dir === 'withdraw' && (
         <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <input type="checkbox" checked={rainy} onChange={(e) => setRainy(e.target.checked)} aria-label="From the rainy day fund" />
@@ -237,7 +233,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
   const api = usePlanClient();
   const cashQ = useUnionCash();
   const bookQ = useUnionBook(api);
-  const [adjust, setAdjust] = useState(false);
+  const [adjust, setAdjust] = useState(null);   // null (closed), 'deposit' or 'withdraw'
   const [open, setOpen] = useState(!!settle);
   const cash = cashQ.data;
   const book = bookQ.data;
@@ -270,9 +266,12 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
           {bookQ.isError && <p style={{ color: C.coral, fontSize: 13, margin: 0 }}>The share list could not be read: {bookQ.error.message}</p>}
         </section>
         <section style={card} aria-label="Funds">
+          {/* C3 (22 Oct): the ↓ deposit / ↑ withdraw pair is the card's control; none selected = closed, tapping the selected
+              one again closes it, and it closes after the transaction. */}
           <div style={head}>
             <h2 style={title}>Funds</h2>
-            <button type="button" style={pill} onClick={() => setAdjust((x) => !x)}>{adjust ? 'Close' : 'Adjust'}</button>
+            <Segmented icon width="hug" label="Deposit or withdraw" value={adjust} onChange={(v) => setAdjust((x) => (x === v ? null : v))}
+              options={[['deposit', arrow('M12 5v14M19 12l-7 7-7-7'), 'Deposit'], ['withdraw', arrow('M12 19V5M5 12l7-7 7 7'), 'Withdraw']]} />
           </div>
           {/* The union's fund by its name (as Settings' union card); its members, cash working and vouchers from the union
               sync lists: titles (members) and the active-loan list (cash out on loans, voucher hours). */}
@@ -283,7 +282,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
             <Row k="Vouchers" v={book ? `${book.loans.reduce((t, l) => t + (l.hours || 0), 0)} machine hours` : '…'} />
             <Row k="Rainy day fund" v={inr(cash.rainy)} />
           </div>
-          {adjust && <Adjust cash={cash} onClose={() => setAdjust(false)} />}
+          {adjust && <Adjust key={adjust} cash={cash} dir={adjust} onClose={() => setAdjust(null)} />}
         </section>
         <section style={card} aria-label="Lending">
           <div style={head}>
