@@ -22,7 +22,10 @@ export default function useSheetDrag(onLowered, resetKey) {
     // bottom edge (executive decision 21 Oct).
     const nav = document.querySelector('nav[aria-label="Main"]');
     const floor = nav ? nav.getBoundingClientRect().top : window.innerHeight;
-    return Math.max(0, Math.round(floor - KEEP - top));
+    // A card with a header strip (map-central, [data-sheet-head]) keeps all of it above the bar, plus a small gap.
+    const head = el.querySelector('[data-sheet-head]');
+    const keep = head ? Math.ceil(head.getBoundingClientRect().bottom - el.getBoundingClientRect().top) + 8 : KEEP;
+    return Math.max(0, Math.round(floor - keep - top));
   };
   // The tab bar goes compact while the card is down (map-central trial, 'nila-sheet-low').
   const tell = (v) => window.dispatchEvent(new CustomEvent('nila-sheet-low', { detail: v }));

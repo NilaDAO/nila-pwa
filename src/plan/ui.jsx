@@ -65,7 +65,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
     };
   }); // eslint-disable-line react-hooks/exhaustive-deps
   const headRow = staged && (
-    <div ref={headRef} style={{ position: 'sticky', top: 0, zIndex: 3, background: GRADIENT, backgroundRepeat: 'no-repeat', margin: '0 -22px 8px', padding: '4px 22px 12px' }}>
+    <div ref={headRef} data-sheet-head style={{ position: 'sticky', top: 0, zIndex: 3, background: GRADIENT, backgroundRepeat: 'no-repeat', margin: '0 -22px 8px', padding: '4px 22px 12px' }}>
       {ownHead || (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           {onBack ? <button type="button" aria-label="Back" onClick={onBack} style={btnIn}>←</button> : <span style={{ width: 40 }} />}
