@@ -20,6 +20,7 @@ import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
 import { TakeUp, rowOf, useMyShares } from '../loan/MyShares';
 import MapStage from './MapStage';
+import MapCard from './MapCard';
 import { SlideBar } from '../plan/PlanResult';
 import CropShare from '../loan/CropShare';
 import IdCheck from '../anchor/IdCheck';
@@ -36,7 +37,7 @@ import { demoNew } from '../register/AfterCode';
 import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, GRADIENT, TAB_BAR_HEIGHT, loadInter } from './tokens';
-import ListRow, { ListSection, ScreenHeader } from './ListRow';
+import ListRow, { ListSection } from './ListRow';
 import { BanknoteIcon, CropIcon } from './icons';
 
 const MOVE = {
@@ -72,8 +73,8 @@ function TasksView({ leader, go }) {
   // plant, invest, register trees, repay) need her plan's task list, not built yet; her crop plan row stands in.
   const isLp = lp.data?.lp && lp.data?.trustline;
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <ScreenHeader title="Tasks" onBack={() => go('assets')} onSettings={() => go('settings')} />
+    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
+      header={{ title: 'Tasks', onBack: () => go('assets'), onSettings: () => go('settings') }}>
       {isLp && (
         <ListSection title="Cash offers">
           <ListRow first icon={BanknoteIcon} tone="new" title="Cash offers" sub="Bring or collect cash for USDC" onClick={() => go('offers')} />
@@ -82,7 +83,7 @@ function TasksView({ leader, go }) {
       <ListSection title="To do">
         <ListRow first icon={CropIcon} title="Your crop plan" sub="Make, check or follow your plan" onClick={() => go('crop')} />
       </ListSection>
-    </div>
+    </MapCard>
   );
 }
 

@@ -26,7 +26,8 @@ export default function MapStage({ children }) {
   return (
     <StageCtx.Provider value={api}>
       {props?.record && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 0 }} data-testid="map-stage">
+        // Clipped: the map's tiles reach past its box and would otherwise make the page taller than the card.
+        <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }} data-testid="map-stage">
           <AreaMap {...props} height="100%" />
         </div>
       )}

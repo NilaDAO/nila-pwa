@@ -14,6 +14,7 @@ import { useBorderJobs } from '../border/hooks';
 import { memberName } from '../border/LeaderBorder';
 import { C, FONT } from '../shell/tokens';
 import ListRow, { ListSection, ScreenHeader } from '../shell/ListRow';
+import MapCard from '../shell/MapCard';
 import { BanknoteIcon, CalendarIcon, CropIcon, InvestIcon, PayOutIcon, PinIcon, RepayIcon, RupeeIcon, TractorIcon } from '../shell/icons';
 import { useKnownMembers, useLeaderTodo, useUnionCash } from './hooks';
 
@@ -80,8 +81,8 @@ export default function LeaderTasks({ go }) {
       title={t.amount ? `${t.title} ${inr(t.amount)}` : t.title} sub={t.who} onClick={() => go(t.to)} />;
   };
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <ScreenHeader title="Tasks" onBack={() => go('assets')} onSettings={() => go('settings')} />
+    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
+      header={{ title: 'Tasks', onBack: () => go('assets'), onSettings: () => go('settings') }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: 10, height: 44, borderRadius: 12, background: C.raised, padding: '0 14px', boxSizing: 'border-box', marginTop: -12 }}>
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
         <input type="search" aria-label="Search a task" placeholder="Search a task" value={q} onChange={(e) => setQ(e.target.value)}
@@ -105,6 +106,6 @@ export default function LeaderTasks({ go }) {
           {rows.map(([title, sub, to, icon], i) => <ListRow key={title} first={i === 0} icon={icon} title={title} sub={sub} onClick={() => go(to)} />)}
         </ListSection>
       ))}
-    </div>
+    </MapCard>
   );
 }
