@@ -2,9 +2,11 @@
 // Stellar and from Polygon (the old app). DESIGN GAPs: no contact names ("From Mother Theresa Union" only where the
 // call names the union); vouchers in hours and seed kg are not separate rows (the contract calls are); the Polygon
 // part needs the Etherscan key the live build has.
+// Board layout (22 Oct): one card per day (its date inside the card), each row a round arrow (out ← / in →), the title
+// and a muted line, the amount on the right in white. Today and Yesterday show the time; older days the row's detail.
 import MapCard from '../shell/MapCard';
 import { useNilaSigner } from '../wallet/signer';
-import { C, FONT, R } from '../shell/tokens';
+import { C, FONT, R, SHADOW } from '../shell/tokens';
 import { useHistory } from './hooks';
 
 const day = (ts) => {
@@ -16,6 +18,15 @@ const day = (ts) => {
 };
 const time = (ts) => new Date(ts * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
+const arrow = (out) => (
+  <span aria-hidden="true" style={{ width: 32, height: 32, flexShrink: 0, borderRadius: R.round, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      {out ? <><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></> : <><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></>}
+    </svg>
+  </span>
+);
+const card = { background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: '14px 22px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 4 };
+
 export default function History({ onBack }) {
   const s = useNilaSigner();
   const h = useHistory(s?.stellarAddress, s?.evmAddress);
@@ -26,27 +37,35 @@ export default function History({ onBack }) {
     groups[groups.length - 1][1].push(r);
   }
   return (
-    <MapCard style={{ padding: 16, fontFamily: FONT, color: C.text }} header={{ title: 'History', onBack }}>
-      {h.isLoading && <p style={{ color: C.muted }}>…</p>}
-      {h.isError && <p style={{ color: C.coral }}>Your history could not be read. Try again.</p>}
-      {h.isSuccess && !groups.length && <p style={{ color: C.muted }}>Nothing yet. Your payments and crop shares appear here.</p>}
-      {groups.map(([g, rows]) => (
-        <section key={g} style={{ marginBottom: 12 }}>
-          <h2 style={{ fontSize: 14, color: C.muted, margin: '12px 0 6px' }}>{g}</h2>
-          <div style={{ background: C.ink, borderRadius: R.card, padding: '6px 16px' }}>
-            {rows.map((r) => (
-              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '10px 0', borderBottom: `1px solid ${C.raised}`, fontSize: 14 }}>
-                <span style={{ display: 'flex', flexDirection: 'column' }}>
-                  <b>{r.title}</b>
-                  <span style={{ color: C.muted }}>{[r.sub, time(r.at), r.chain === 'polygon' ? 'Polygon' : null].filter(Boolean).join(' · ')}</span>
-                </span>
-                <b style={{ whiteSpace: 'nowrap', color: r.amount?.startsWith('+') ? C.accent : C.text }}>{r.amount}</b>
-              </div>
-            ))}
-          </div>
-        </section>
-      ))}
-      {h.data?.note && <p style={{ color: C.muted, fontSize: 13 }}>{h.data.note}</p>}
+    <MapCard style={{ padding: 8, fontFamily: FONT, color: C.text }}
+      header={{ title: 'History', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}>
+      {h.isLoading && <p style={{ color: C.muted, padding: '0 14px' }}>…</p>}
+      {h.isError && <p style={{ color: C.coral, padding: '0 14px' }}>Your history could not be read. Try again.</p>}
+      {h.isSuccess && !groups.length && <p style={{ color: C.muted, padding: '0 14px' }}>Nothing yet. Your payments and crop shares appear here.</p>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {groups.map(([g, rows]) => {
+          const recent = g === 'Today' || g === 'Yesterday';
+          return (
+            <section key={g} aria-label={g} style={card}>
+              <h2 style={{ margin: 0, paddingTop: 8, fontSize: 14, fontWeight: 700, lineHeight: 1.5, color: C.muted }}>{g}</h2>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
+                {rows.map((r, i) => (
+                  <li key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', minHeight: 48, boxSizing: 'border-box',
+                    fontSize: 14, lineHeight: 1.5, borderTop: i ? `1px solid ${C.raised}` : 0 }}>
+                    {arrow(r.amount?.startsWith('−'))}
+                    <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: 700 }}>{r.title}</span>
+                      <span style={{ color: C.muted }}>{recent ? [r.sub, time(r.at)].filter(Boolean).join(' · ') : r.sub || time(r.at)}</span>
+                    </span>
+                    {r.amount && <span style={{ fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, textAlign: 'right' }}>{r.amount}</span>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
+      {h.data?.note && <p style={{ color: C.muted, fontSize: 14, padding: '0 14px' }}>{h.data.note}</p>}
     </MapCard>
   );
 }
