@@ -13,7 +13,12 @@ const hexOf = (b) => Buffer.from(b).toString('hex');
 
 // Type numbers as the plan engine's finance table uses them (plan/reference/finance_v1.json); a type the
 // union sets a rate for without a name here shows as "Machine type N". DESIGN GAP: no type names on-chain.
-export const TYPE_NAMES = { 1: 'Tractor', 2: 'Planter', 3: 'Power weeder' };
+// One type per tractor + implement (executive decision 22 Oct, lean): an owner registers her tractor once per implement.
+export const TYPE_NAMES = {
+  1: 'Tractor + rotavator', 2: 'Seed drill / planter', 3: 'Power weeder', 4: 'Tractor + cultivator', 5: 'Tractor + plough',
+  6: 'Tractor + disc harrow', 7: 'Tractor + ridger', 8: 'Tractor + puddler', 9: 'Tractor + trailer', 10: 'Tractor + cane trailer',
+  11: 'Power tiller', 12: 'Paddy transplanter', 13: 'Sugarcane sett planter',
+};
 export const typeName = (t) => TYPE_NAMES[t] || `Machine type ${t}`;
 export const PARTS = [['diesel', 'Diesel'], ['driver', 'Driver'], ['maintenance', 'Maintenance'],
   ['insurance', 'Insurance'], ['depreciation', 'Depreciation'], ['margin', 'Margin']];
