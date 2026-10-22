@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Asset, TransactionBuilder } from '@stellar/stellar-sdk';
 import { ethers } from 'ethers';
-import { buildAccount, getAccount, getStellarConfig, linkMessage, submitAccount } from './api';
+import { buildAccount, buildNinTrustline, getAccount, getStellarConfig, linkMessage, submitAccount, submitNinTrustline } from './api';
 import { qk } from './keys';
 
 export function useStellarConfig() {
@@ -54,10 +54,38 @@ function checkAccountTx(tx, cfg, me) {
   if (!ok) throw new Error('the node sent a transaction that is not her sponsored account');
 }
 
+const hasNin = (account, cfg) => {
+  const [code, issuer] = cfg.nin_asset.split(':');
+  return !!account?.balances?.some((b) => b.asset_code === code && b.asset_issuer === issuer);
+};
+
+/** Her existing account without this network's nIN trustline (an account made before the nIN asset was replaced,
+ *  e.g. a redeployed issuer; 22 Oct): the node's sponsored trustline, checked, signed with her key, submitted. */
+async function addNinTrustline(cfg, me, signHash) {
+  const { xdr } = await buildNinTrustline(me);
+  const tx = TransactionBuilder.fromXDR(xdr, cfg.passphrase);
+  const [code, issuer] = cfg.nin_asset.split(':');
+  const ops = tx.operations || [];
+  const ok = ops.length === 3 && (!cfg.sponsor || tx.source === cfg.sponsor)
+    && ops[0].type === 'beginSponsoringFutureReserves' && ops[0].sponsoredId === me
+    && ops[1].type === 'changeTrust' && ops[1].source === me && ops[1].line instanceof Asset
+    && ops[1].line.getCode() === code && ops[1].line.getIssuer() === issuer
+    && ops[2].type === 'endSponsoringFutureReserves' && ops[2].source === me;
+  if (!ok) throw new Error('the node sent a transaction that is not her nIN trustline');
+  tx.addSignature(me, btoa(String.fromCharCode(...(await signHash(tx.hash())))));
+  const { hash } = await submitNinTrustline(tx.toXDR());
+  for (let i = 0; i < 30; i++) {
+    await sleep(2000);
+    if (hasNin(await getAccount(cfg.horizon_url, me).catch(() => null), cfg)) return { hash, trustline: true };
+  }
+  throw new Error(`nIN trustline not on Stellar 60 s after ${hash}`);
+}
+
 /**
  * Her sponsored Stellar account with the nIN trustline only (R9), at login (R4) or at the move
  * (M1 step 1): the node builds it, she signs it with her Stellar key, her Polygon key signs the
- * wallet pair, the node's sponsor co-signs and submits. Safe to repeat: an existing account is a no-op.
+ * wallet pair, the node's sponsor co-signs and submits. Safe to repeat: an existing account is a no-op, unless it lacks
+ * this network's nIN trustline, which is then added (sponsored).
  */
 export function useSetupAccount({ stellarAddress, evmWallet, signHash }) {
   const qc = useQueryClient();
@@ -66,7 +94,8 @@ export function useSetupAccount({ stellarAddress, evmWallet, signHash }) {
     mutationKey: ['stellar', 'setup', stellarAddress],
     mutationFn: async () => {
       if (!cfg || !stellarAddress || !evmWallet) throw new Error('not ready');
-      if (await getAccount(cfg.horizon_url, stellarAddress)) return { existed: true };
+      const existing = await getAccount(cfg.horizon_url, stellarAddress);
+      if (existing) return hasNin(existing, cfg) ? { existed: true } : addNinTrustline(cfg, stellarAddress, signHash);
       const polygon = ethers.getAddress(evmWallet.address);
       const polygonSig = await evmWallet.signMessage(linkMessage(cfg.network, stellarAddress, polygon));
       let hash;
