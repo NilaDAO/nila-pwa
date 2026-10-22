@@ -21,6 +21,8 @@ import { C } from '../shell/tokens';
 import { Loading } from '../register/Boot';
 import { Camera } from './LoanScreens';
 import { SwapToUsdc } from '../shell/UsdcAsset';
+import Segmented from '../shell/Segmented';
+import { useLpStatus } from '../anchor/hooks';
 import { AssetScreen, Card, CardTitle, KV, MarkCircle, QrCircle, Secondary, Stepper, useOnline, when } from './AssetParts';
 
 const NIN = 10_000_000n;
@@ -112,6 +114,8 @@ function Code({ e, img, onDone, onBack, reclaim, ready }) {
   );
 }
 
+const SWITCH = [['cash', 'Cash out'], ['swap', 'Swap to USDC']];
+
 export default function CashOut({ onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -124,6 +128,10 @@ export default function CashOut({ onBack }) {
   const nin = Math.floor(s?.stellarAccount?.nin?.balance ?? 0);
   const max = maxScan.data != null ? Math.min(nin, Number(BigInt(maxScan.data) / NIN)) : 0;
   const [amount, setAmount] = useState(1000);
+  const lp = useLpStatus().data;
+  const canSwap = !!lp?.idChecked && !!lp?.trustline;
+  const [mode, setPick] = useState('cash');
+  const pick = canSwap ? mode : 'cash';
   const [show, setShow] = useState();      // hash of the code on screen
   const [img, setImg] = useState();
   const [closed, setClosed] = useState([]);   // paid codes she tapped Done on (before the list is read again)
@@ -169,8 +177,11 @@ export default function CashOut({ onBack }) {
           <span style={{ color: C.muted }}>Nila digital rupee · worth ₹1 each</span>
         </div>
       </Card>
-      <Card label="Cash out">
-        <CardTitle>Cash out</CardTitle>
+      {/* One card (22 Oct): Cash out | Swap to USDC in the card's own switch, as A3's Invest | Withdraw; the swap only for
+          a leader whose identity is checked and who has a USDC account. */}
+      <Card label={pick === 'swap' ? 'Swap to USDC' : 'Cash out'}>
+        {canSwap ? <Segmented label="Cash out or swap to USDC" options={SWITCH} value={pick} onChange={setPick} /> : <CardTitle>Cash out</CardTitle>}
+        {pick === 'swap' ? <SwapToUsdc nin={nin} tx={tx} bare /> : <>
         <Stepper value={a} set={setAmount} min={max < 1 ? 0 : 1} max={max} unit="nIN" label="nIN to cash out" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <KV k="You get" v={`₹${fmt(a)} in cash`} color={C.accent} />
@@ -179,9 +190,8 @@ export default function CashOut({ onBack }) {
         {online
           ? <div style={{ marginTop: -16 }}><Primary disabled={!tx.ready || maxScan.data == null || max < 1} onClick={() => send(a)}>Send and collect</Primary></div>
           : <Secondary disabled>Sending needs a connection</Secondary>}
+        </>}
       </Card>
-      {/* A leader whose identity is checked swaps her nIN to USDC (22 Oct). */}
-      <SwapToUsdc nin={nin} tx={tx} />
       {open.length > 0 && (
         <Card label="Your cash-outs" style={{ gap: 8 }}>
           <CardTitle>Your cash-outs</CardTitle>

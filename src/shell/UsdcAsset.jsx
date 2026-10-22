@@ -39,7 +39,8 @@ export function useFxRate() {
 const money = (n, d = 2) => n.toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 /** Swap nIN → USDC for a leader (A7), paid back from the union's leader-swap USDC (fx_pool.swap_nin_to_usdc). */
-export function SwapToUsdc({ nin, tx }) {
+/** bare: only the form, for a card that already has its own title / switch (A7, 22 Oct). */
+export function SwapToUsdc({ nin, tx, bare }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const lp = useLpStatus().data;
@@ -54,15 +55,21 @@ export function SwapToUsdc({ nin, tx }) {
     args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * UNIT)],
     invalidate: [['stellar', 'account'], ['stellar', 'lp']],
   });
-  return (
-    <section aria-label="Swap to USDC" style={{ ...card, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Swap to USDC</h2>
+  const form = (
+    <>
       <Stepper value={a} set={setAmount} step={100} min={0} max={Math.floor(nin)} unit="nIN" label="nIN to swap" />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <KV k="You get about" v={rate ? `${money(get)} USDC` : '—'} />
         <KV k="Rate" v={rate ? `1 USDC = ${money(rate)} nIN` : 'Not available now'} />
       </div>
       <Primary disabled={!tx.ready || !rate || a < 1} onClick={swap}>{a < 1 ? 'Enter an amount' : 'Swap to USDC'}</Primary>
+    </>
+  );
+  if (bare) return form;
+  return (
+    <section aria-label="Swap to USDC" style={{ ...card, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Swap to USDC</h2>
+      {form}
     </section>
   );
 }
