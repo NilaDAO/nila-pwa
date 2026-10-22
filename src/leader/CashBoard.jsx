@@ -301,7 +301,6 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
             )}
             <Row k="Member contributions" v={book ? inr(book.contributions) : '…'} />
             <Row k="In circulation" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}%)`} />
-            <Row k="Interest pending" v={book ? inr(book.interestPending) : '…'} />
             <Row k="Available to cash in" v={inr(cash.free)} accent />
           </div>
         </section>
