@@ -40,7 +40,7 @@ export function useSep10Token() {
   }, [s, cfg, info]);
 }
 
-/** Her LP standing in the union: a title (may apply, R20), accepted by the anchor, her USDC trustline. */
+/** Her LP standing in the union: a title (may apply, R20), accepted by the anchor, her identity checked (K1), her USDC trustline. */
 export function useLpStatus() {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -50,14 +50,16 @@ export function useLpStatus() {
     refetchOnMount: 'always',   // Settings and A1 read it afresh (a title or the anchor's acceptance can land meanwhile)
     queryFn: async () => {
       const um = [sv.address(cfg.union), sv.address(me)];
-      const [title, m, a] = await Promise.all([
+      const [title, m, a, idc] = await Promise.all([
         readContract(cfg, 'land_title', 'holds_title', um).catch(() => false),
         readContract(cfg, 'fx_pool', 'lp_member', um).catch(() => null),
         getAccount(cfg.horizon_url, me).catch(() => null),
+        // K1 (22 Oct): the anchor marked her identity checked on fx_pool (a leader's USDC, A9).
+        readContract(cfg, 'fx_pool', 'id_checked', [sv.address(me)]).catch(() => false),
       ]);
       const [code, issuer] = (cfg.usdc_asset || ':').split(':');
       const line = a?.balances?.find((b) => b.asset_code === code && b.asset_issuer === issuer);
-      return { member: !!title, lp: !!m?.accepted, trustline: !!line, usdc: line ? Number(line.balance) : 0 };
+      return { member: !!title, lp: !!m?.accepted, idChecked: !!idc, trustline: !!line, usdc: line ? Number(line.balance) : 0 };
     },
   });
 }

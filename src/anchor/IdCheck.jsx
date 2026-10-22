@@ -4,7 +4,8 @@
 // DESIGN GAPs: "We send ₹1 to your bank account" is left out (no penny-drop vendor yet); "Accepted on <date>"
 // has no date (the SEP-12 answer carries none); "Get offers from <union>" is "Get cash offers" (no union
 // names on the node); a "Start" step before the form (her SEP-10 signature) and the REJECTED and
-// "Waiting for the network" states have no board; the leader variant (#leader) is not built in P9.
+// "Waiting for the network" states have no board. #leader (22 Oct): the same form and store (SEP-12 type leader);
+// accepted = fx_pool.id_checked on-chain, which opens her USDC (A9).
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Primary, Sheet, muted } from '../plan/ui';
@@ -32,7 +33,8 @@ async function selfieBlob(file) {
 
 const input = { width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box', fontSize: 15, marginBottom: 10 };
 
-export default function IdCheck({ onBack, onOffers }) {
+export default function IdCheck({ kind = 'lp', onBack, onOffers, onUsdc }) {
+  const leader = kind === 'leader';
   const info = useAnchorInfo();
   const getToken = useSep10Token();
   const lp = useLpStatus();
@@ -45,12 +47,12 @@ export default function IdCheck({ onBack, onOffers }) {
   const [error, setError] = useState();
   // Her K1 at the anchor; read after she signed in (one SEP-10 signature), refreshed while it is checked.
   const k1 = useQuery({
-    queryKey: ['anchor', 'k1'], enabled: signedIn && !!info.data, retry: 1,
+    queryKey: ['anchor', 'k1', kind], enabled: signedIn && !!info.data, retry: 1,
     refetchInterval: (q) => (q.state.data?.status === 'PROCESSING' ? 30_000 : false),
-    queryFn: async () => getCustomer(info.data, await getToken()),
+    queryFn: async () => getCustomer(info.data, await getToken(), kind),
   });
-  // Accepted at the anchor: wait until set_lp is on-chain too (it lands a little later).
-  const lpNow = lp.data?.lp;
+  // Accepted at the anchor: wait until set_lp (a leader: set_id_checked) is on-chain too (it lands a little later).
+  const lpNow = leader ? lp.data?.idChecked : lp.data?.lp;
   useEffect(() => {
     if (k1.data?.status !== 'ACCEPTED' || lpNow) return undefined;
     const t = setInterval(() => lp.refetch(), 10_000);
@@ -65,9 +67,9 @@ export default function IdCheck({ onBack, onOffers }) {
     setBusy(true); setError(undefined);
     try {
       const t = await getToken();
-      if (!needs) await putConsent(info.data, t);
+      if (!needs) await putConsent(info.data, t, kind);
       const fields = Object.fromEntries(Object.entries(vals).filter(([k, v]) => asked.includes(k) && v));
-      await putCustomer(info.data, t, fields, asked.includes('proof_of_liveness') ? selfie?.blob : null);
+      await putCustomer(info.data, t, fields, asked.includes('proof_of_liveness') ? selfie?.blob : null, kind);
       await k1.refetch();
     } catch (e) { setError(e.message); }
     setBusy(false);
@@ -79,7 +81,7 @@ export default function IdCheck({ onBack, onOffers }) {
   } else if (!signedIn || k1.isLoading) {
     body = (
       <>
-        <p style={muted}>Needed to become an LP.</p>
+        <p style={muted}>{leader ? 'Needed for union leaders.' : 'Needed to become an LP.'}</p>
         {k1.isError && <p style={{ color: C.coral }}>{k1.error.message}</p>}
         <Primary onClick={() => setSignedIn(true)}>{signedIn ? '…' : 'Start'}</Primary>
       </>
@@ -90,6 +92,15 @@ export default function IdCheck({ onBack, onOffers }) {
         <h2 style={{ fontSize: 16 }}>We are checking</h2>
         <p style={muted}>This takes up to 2 days.</p>
         <Primary onClick={onBack}>Done</Primary>
+      </>
+    );
+  } else if (status === 'ACCEPTED' && leader) {
+    body = (
+      <>
+        <h2 style={{ fontSize: 16 }}>Identity checked</h2>
+        <p style={muted}>Accepted. Your USDC is open.</p>
+        <Primary disabled={!lpNow} onClick={onUsdc}>Open USDC</Primary>
+        {!lpNow && <p style={muted}>Waiting for the network…</p>}
       </>
     );
   } else if (status === 'ACCEPTED') {
@@ -115,7 +126,7 @@ export default function IdCheck({ onBack, onOffers }) {
             <h2 style={{ fontSize: 16 }}>We need one more thing</h2>
             {Object.values(k1.data.provided_fields).filter((f) => f.error).map((f) => <p key={f.description} style={{ color: C.coral }}>{f.error}</p>)}
           </>
-        ) : <p style={muted}>Needed to become an LP.</p>}
+        ) : <p style={muted}>{leader ? 'Needed for union leaders.' : 'Needed to become an LP.'}</p>}
         <h2 style={{ fontSize: 14, marginTop: 16 }}>Your details</h2>
         {FIELDS.filter(([k]) => asked.includes(k)).map(([k, label, type]) => (
           <label key={k} style={{ display: 'block' }}>

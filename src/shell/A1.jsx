@@ -183,11 +183,11 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         {machine && (
           <Row label="Open your machine" icon={<MyMachineTile />} title="Your machine" sub={`${typeName(machine.machine_type)} · ${!machine.confirmed ? 'confirm it' : machine.on_hold ? 'on hold' : 'available'}`} onClick={onMachine} />
         )}
-        {/* A9 (22 Oct): every leader sees the USDC row; it opens only once her identity check is done (the anchor's K1
-            acceptance; there is no leader K1 yet, so a leader without it is "not checked") and is locked with a warning
-            until then. A member LP keeps her row to the cash offers. */}
+        {/* A9 (22 Oct): every leader sees the USDC row; it opens only once the anchor marked her identity checked
+            (fx_pool.id_checked, K1 #leader from LS) and is locked with a warning until then. A member LP keeps her row
+            to the cash offers. */}
         {leader ? (
-          lp?.lp
+          lp?.idChecked
             ? <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="Digital US dollar" value={(lp.usdc || 0).toFixed(2)} valueSub="" onClick={onUsdc} />
             : <Row label="USDC, identity check needed" icon={<UsdcTile />} title="USDC" warn="Identity check (KYC) needed" />
         ) : lp?.trustline && (
