@@ -19,6 +19,7 @@ import { COLLECT } from '../anchor/sep';
 import { C, FONT, R } from '../shell/tokens';
 import { Loading } from '../register/Boot';
 import { ScreenHeader } from '../shell/ListRow';
+import Segmented from '../shell/Segmented';
 import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
 
 const U = 10_000_000n;
@@ -146,12 +147,10 @@ function Adjust({ cash, onClose }) {
       : [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * U), sv.bool(fromRainy)],
     invalidate: [['stellar', 'unionCash'], ['stellar', 'account']],
   });
-  const seg = (on) => ({ flex: 1, height: 40, borderRadius: R.button, border: 0, background: on ? C.accent : C.raised, color: on ? C.ink : C.text, fontWeight: 700, fontFamily: FONT });
   return (
     <>
-      <div style={{ display: 'flex', gap: 8, margin: '12px 0' }}>
-        <button type="button" style={seg(dir === 'deposit')} onClick={() => setDir('deposit')}>Deposit into the fund</button>
-        <button type="button" style={seg(dir === 'withdraw')} onClick={() => setDir('withdraw')}>Withdraw from the fund</button>
+      <div style={{ margin: '12px 0' }}>
+        <Segmented label="Deposit or withdraw" options={[['deposit', 'Deposit into the fund'], ['withdraw', 'Withdraw from the fund']]} value={dir} onChange={setDir} />
       </div>
       {dir === 'withdraw' && (
         <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14 }}>
@@ -160,9 +159,8 @@ function Adjust({ cash, onClose }) {
         </label>
       )}
       {dir === 'deposit' && (
-        <div style={{ display: 'flex', gap: 8, margin: '0 0 12px' }}>
-          <button type="button" style={seg(src === 'nin')} onClick={() => { setSrc('nin'); setAmount(0); }}>My nIN</button>
-          <button type="button" style={seg(src === 'usdc')} onClick={() => { setSrc('usdc'); setAmount(0); }}>USDC</button>
+        <div style={{ margin: '0 0 12px' }}>
+          <Segmented label="Deposit from" options={[['nin', 'My nIN'], ['usdc', 'USDC']]} value={src} onChange={(v) => { setSrc(v); setAmount(0); }} />
         </div>
       )}
       {viaUsdc && !uq.data?.trust && <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>You hold no USDC.</p>}
