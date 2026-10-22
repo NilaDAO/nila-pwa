@@ -15,8 +15,5 @@ p { margin: 0 0 8px; }
 .muted { color: #94A3B8; }
 .row { display: flex; justify-content: space-between; gap: 8px; }
 .row b { text-align: right; }
-.pin { display: flex; justify-content: center; margin: 16px 0; }
-.pin span { width: 16px; height: 16px; margin: 0 7px; border: 2px solid #94A3B8; border-radius: 50%; }
-.pin span.on { background: #F1F5F9; border-color: #F1F5F9; }
 .err { color: #E69283; }
 .focus { background: #D4CF5A; color: #121212; }

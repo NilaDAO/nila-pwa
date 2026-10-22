@@ -9,9 +9,7 @@
 // SMS only (executive decision, 20 Oct; LOAN_RULES §5 "Login and Privy": no WhatsApp with Privy): R2 has one button,
 // 'Send code via SMS', and no WhatsApp line; R3 and R4 say SMS (the boards' #sms state).
 import { useEffect, useRef, useState } from 'react';
-import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
-import flags from 'react-phone-number-input/flags';
-import '../components/UI/phone_input.css';
+import PhoneField, { phoneOk, phoneValue } from './PhoneField';
 import { createItem } from '../utils/db';
 import { signUp, initAuth, respondToAuthChallenge, getUserAttributes } from '../utils/cognito_helpers';
 import { announceAuthChange } from '../wallet/session';
@@ -23,15 +21,6 @@ const NEW_CHAIN = 'stellar';
 // wallet is made (the demo's Cognito stand-in, never AWS). Unset in every real build.
 const DEMO = DEMO_COGNITO;                               // utils/demoMode.js: never in a real build
 const DEMO_CODE = '000000';
-// Any length from 6 digits (the input drops one leading 0, an Indian trunk prefix): all 0s, all 1s or all 2s.
-const demoNumber = (p) => { const m = /^\+91(0{5,10}|1{6,10}|2{6,10})$/.exec(p || ''); return m ? `+91${m[1][0].repeat(10)}` : null; };
-// The board's field around today's phone input (features/registration: +91 put in on focus; backspace changes it).
-const PHONE_CSS = `.nl-phone{display:flex;align-items:center;gap:8px;width:100%}
-.nl-phone .PhoneInputCountry{display:flex;align-items:center;gap:6px}
-.nl-phone .PhoneInputCountrySelect{background:#1F2733;color:#F1F5F9}
-.nl-phone .PhoneInputCountryIcon{width:24px;height:16px;border-radius:2px;overflow:hidden}
-.nl-phone .PhoneInputCountrySelectArrow{color:#94A3B8}
-.nl-phone .PhoneInputInput{flex:1;min-width:0;height:44px;padding:0;border:0;background:#1F2733!important;color:#FFFFFF!important;font-family:inherit;font-size:16px;outline:none}`;
 const BOX = { width: 44, height: 44, borderRadius: 12, background: '#1F2733', display: 'flex', alignItems: 'center',
   justifyContent: 'center', fontSize: 16, fontWeight: 700 };
 
@@ -76,18 +65,15 @@ function Wallet({ onPick }) {
 /** R2: her phone number. Today's input, with +91 already in it; it can be deleted to give another country code. */
 function Phone({ busy, error, onSend }) {
   const [phone, setPhone] = useState('+91');         // shown from the start; backspace changes it
-  // Demo only: the dummy numbers 0000000000 (leader), 1111111111 (new member) and 2222222222 (member with a title).
-  const ok = !!phone && (isValidPhoneNumber(phone) || (DEMO && !!demoNumber(phone)));
+  // Demo only: the dummy numbers 0000000000 (leader), 1111111111 (new member), 2222222222 (member with a title) and
+  // 3333333333 (keypad member, L14).
+  const ok = phoneOk(phone);
   return (
     <RegFrame info="We send a 6-digit code to this number.">
-      <style>{PHONE_CSS}</style>
       <h1 style={cardTitle}>Your phone number</h1>
-      <div style={{ display: 'flex', alignItems: 'center', height: 44, borderRadius: 12, background: '#1F2733', padding: '0 14px', boxSizing: 'border-box' }}>
-        <PhoneInput className="nl-phone" international defaultCountry="IN" flags={flags} value={phone} autoComplete="tel" aria-label="Phone number"
-          onChange={(v) => setPhone(v || '')} />
-      </div>
+      <PhoneField value={phone} onChange={setPhone} />
       {error && <p role="alert" style={{ margin: 0, color: '#E69283', fontSize: 14 }}>{error}</p>}
-      <button type="button" style={ok && !busy ? btnPrimary : btnDisabled} disabled={!ok || busy} onClick={() => onSend((DEMO && demoNumber(phone)) || phone)}>Send code via SMS</button>
+      <button type="button" style={ok && !busy ? btnPrimary : btnDisabled} disabled={!ok || busy} onClick={() => onSend(phoneValue(phone))}>Send code via SMS</button>
     </RegFrame>
   );
 }

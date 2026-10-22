@@ -1,7 +1,8 @@
 /* Nila lite (P8): the keypad (KaiOS 2.5, Gecko 48) app. Plain ES5 + Promises: no async/await, no arrow functions,
  * no spread, no build step. Screens are #hash routes (nila-design "Keypad phones"):
- *   #/l/<code>        F9 #welcome: her name, union, leader, phone; OK = consent to SMS and calls
- *   #/l/<code>/pin    F9 #pin: make a 4-number PIN; the phone makes its device key and registers it
+ *   #/l/<code>        F9 #welcome: her name, union, leader, phone; OK = consent to SMS and calls, then the phone
+ *                     makes its device key and registers it (no PIN, executive decision 22 Oct: the device key's
+ *                     signature is her consent)
  *   #/expired         F9 #expired: the link was used, voided or is older than 30 minutes
  *   #/next            F14 (send each field's location) is the next step and not built yet
  * The node: keypad endpoints of nila-sensing O17 (docs/stellar/O17.md). The device key: ECDSA P-256 made with
@@ -26,7 +27,6 @@
   var sk = { l: document.getElementById('sk-l'), c: document.getElementById('sk-c'), r: document.getElementById('sk-r') };
   var keys = {};          // the screen's key handlers: SoftLeft, Enter, SoftRight, digits, Backspace
   var invite = null;      // the opened link: { code, name, phone, union_name, leader_name }
-  var pin = '';
   var busy = false;
 
   function esc(s) {
@@ -137,21 +137,8 @@
     html += '<p class="muted" style="margin-top:8px">Nila sends you SMS and calls about your money. OK means you agree.</p><p id="msg" class="err"></p>';
     screen(html, null, ['OK', function () {
       busy = true;
-      call('POST', '/keypad/l/' + code + '/consent').then(function () {
-        busy = false; pin = ''; go('#/l/' + code + '/pin');
-      }, fail);
+      call('POST', '/keypad/l/' + code + '/consent').then(function () { finish(code); }, fail);
     }]);
-  }
-
-  function pinScreen(code) {
-    var dots = '';
-    for (var k = 0; k < 4; k++) dots += '<span' + (k < pin.length ? ' class="on"' : '') + '></span>';
-    screen('<h1>Make a 4-number PIN</h1><div class="pin" aria-label="' + pin.length + ' of 4 numbers">' + dots + '</div>' +
-      '<p class="muted">You use it to confirm loans and cash-outs. Your union leader is with you now.</p><p id="msg" class="err"></p>',
-      ['Delete', function () { pin = pin.slice(0, -1); pinScreen(code); }],
-      ['OK', function () { if (pin.length === 4) finish(code); }]);
-    keys.Backspace = keys.SoftLeft;
-    keys.digit = function (d) { if (pin.length < 4) { pin += d; pinScreen(code); } };
   }
 
   function finish(code) {
@@ -159,9 +146,9 @@
     var msg = document.getElementById('msg');
     if (msg) msg.textContent = '';
     makeKey(code).then(function (k) {
-      return call('POST', '/keypad/l/' + code + '/finish', { pin: pin, device_key: k.device_key, sig: k.sig });
+      return call('POST', '/keypad/l/' + code + '/finish', { device_key: k.device_key, sig: k.sig });
     }).then(function (out) {
-      busy = false; pin = '';
+      busy = false;
       try { localStorage.setItem('nila.lite.member', out.member); } catch (e) { /* no storage */ }
       go('#/next');
     }, fail);
@@ -176,7 +163,7 @@
 
   function next() {
     // F14 (each field's location, then F13 #pending) is the next build step.
-    screen('<h1>Send your fields</h1><p class="muted">Your PIN is made. Next you send the location of each field, ' +
+    screen('<h1>Send your fields</h1><p class="muted">Your phone is set up. Next you send the location of each field, ' +
       'with your union leader.</p><p class="muted">Not built yet (F14).</p>');
   }
 
@@ -190,7 +177,6 @@
 
   function route() {
     var h = location.hash, m;
-    if ((m = /^#\/l\/([0-9A-Z]+)\/pin$/.exec(h))) { open(m[1], function () { pinScreen(m[1]); }); return; }
     if ((m = /^#\/l\/([0-9A-Z]+)$/.exec(h))) { open(m[1], function () { welcome(m[1]); }); return; }
     if (h === '#/expired') { expired(); return; }
     var member = null;
