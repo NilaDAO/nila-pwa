@@ -26,8 +26,9 @@ import { homeTop, useHomeMap } from './MapStage';
 import { MEMBER_TODO_ROWS, useLeaderTaskCount } from './taskCount';
 
 // Where A1's card was left (map-central trial, 22 Oct): back from any asset screen it returns at the same scroll position
-// and raised or lowered as it was. Kept for the session in memory only.
+// and raised or lowered as it was. Kept for the session in memory only. A tap on the bottom bar starts it over (22 Oct).
 const memory = { y: 0, low: false };
+export const resetA1Scroll = () => { memory.y = 0; memory.low = false; window.scrollTo(0, 0); };
 
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');

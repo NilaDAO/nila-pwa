@@ -7,7 +7,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { getMoveStatus, requestMoveNin } from '../move/api';
 import { useLegacyBalances } from '../move/hooks';
 import { useStellarConfig } from '../stellar/hooks';
-import A1 from './A1';
+import A1, { resetA1Scroll } from './A1';
 import CropPlanFlow from '../plan/CropPlanFlow';
 import LeaderPlans from '../plan/LeaderApprove';
 import { LeaderLoan, MemberScan } from '../loan/LoanScreens';
@@ -247,7 +247,7 @@ export default function Shell({ leader }) {
     <MapStage>
       <div style={{ minHeight: '100vh', background: GRADIENT, paddingBottom: TAB_BAR_HEIGHT + 16, position: 'relative', zIndex: 1 }} data-testid="shell">
         {body}
-        <BottomTabBar tabs={tabs} active={active} onSelect={go} />
+        <BottomTabBar tabs={tabs} active={active} onSelect={(v) => { resetA1Scroll(); go(v); }} />
       </div>
     </MapStage>
   );
