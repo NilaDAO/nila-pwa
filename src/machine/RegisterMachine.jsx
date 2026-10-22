@@ -12,7 +12,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
+import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
 import { Card, CardTitle } from '../loan/AssetParts';
@@ -96,13 +96,6 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   }
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   if (scanning) return <Sheet landName="Register a machine" title="Scan the owner's wallet QR" onBack={() => setScanning(false)}><CameraView mode="qr" onText={(t) => { setScanning(false); register(t.match(/G[A-Z2-7]{55}/)?.[0]); }} /></Sheet>;
-  if (picking) {
-    return page('Machine', () => setPicking(false), (
-      <Card label="Machine">
-        {(rates.data || []).map((r) => <Choice key={r.type} on={rate?.type === r.type} sub={`${inr(r.total)} an hour`} onClick={() => { setType(r.type); setPicking(false); }}>{r.name}</Choice>)}
-      </Card>
-    ));
-  }
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, cursor: 'pointer' };
   const field = { height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 14 };
   const sub = { fontSize: 14, lineHeight: 1.5, color: C.muted };
@@ -112,12 +105,21 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
         <CardTitle>Machine</CardTitle>
         {rates.isLoading && <span style={sub}>…</span>}
         {rates.data && !rates.data.length && <span style={{ ...sub, color: C.coral }}>The union has set no machine rates yet (union account, set_rate).</span>}
+        {/* The machine list opens inside the card under the row (22 Oct), no screen of its own. */}
         {rate && (
-          <button type="button" onClick={() => setPicking(true)} style={{ ...field, display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left' }}>
-            <span style={{ flexGrow: 1, fontWeight: 700 }}>{rate.name}</span>
-            <span style={{ color: C.muted }}>{inr(rate.total)} an hour</span>
-            {svg(<path d="m6 9 6 6 6-6" />, C.muted)}
-          </button>
+          <div style={{ background: C.raised, borderRadius: R.button, overflow: 'hidden' }}>
+            <button type="button" aria-expanded={picking} onClick={() => setPicking(!picking)} style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left' }}>
+              <span style={{ flexGrow: 1, fontWeight: 700 }}>{rate.name}</span>
+              <span style={{ color: C.muted }}>{inr(rate.total)} an hour</span>
+              <span style={{ display: 'flex', transform: picking ? 'rotate(180deg)' : 'none' }}>{svg(<path d="m6 9 6 6 6-6" />, C.muted)}</span>
+            </button>
+            {picking && (rates.data || []).filter((r) => r.type !== rate.type).map((r) => (
+              <button key={r.type} type="button" onClick={() => { setType(r.type); setPicking(false); }}
+                style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left', borderTop: `1px solid ${C.ink}`, borderRadius: 0 }}>
+                <span style={{ flexGrow: 1 }}>{r.name}</span><span style={{ color: C.muted }}>{inr(r.total)} an hour</span>
+              </button>
+            ))}
+          </div>
         )}
       </Card>
       <Card label="Photos" style={{ gap: 12 }}>
