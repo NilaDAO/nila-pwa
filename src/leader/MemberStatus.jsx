@@ -90,7 +90,9 @@ export default function MemberStatus({ id, go }) {
   const map = m.record ? <AreaMap record={m.record} labels={labels} /> : null;
   return (
     <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings') }}
-      style={{ padding: '0 22px', fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      style={{ fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5 }}>
+      {/* The card's 22 px side padding (MapCard takes the sheet's padding back for screens with cards of their own). */}
+      <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {m.record && <Row k="Property" v={`${acres.toFixed(1)} acres`} />}
         {m.record && <Row k="Fields" v={areas.length} />}
@@ -145,6 +147,7 @@ export default function MemberStatus({ id, go }) {
           <Row k="Record" v={<span style={{ color: C.accent }}>{`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`}</span>} />
         </Section>
       )}
+      </div>
     </MapCard>
   );
 }
