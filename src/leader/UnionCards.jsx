@@ -3,7 +3,9 @@
 // DESIGN GAPs: LP names (the node has none) are short wallet addresses; the member slides (repay, invest,
 // withdrawal) and the Tasks badge come with their own steps.
 import { useEffect, useState } from 'react';
-import { Bar, Title, big, card, small } from '../shell/MessageSlider';
+import { Bar, Steps, Title, big, card, small } from '../shell/MessageSlider';
+import { useMachines } from '../machine/hooks';
+import { MachineryTile } from '../shell/icons';
 import { timeLeft } from '../shell/timeLeft';
 import { useUnionOffers } from '../anchor/hooks';
 import { C, FONT, R } from '../shell/tokens';
@@ -35,8 +37,9 @@ const LpBadge = badge(C.raised, C.text, <><path d="m16 3 4 4-4 4" /><path d="M20
 /** The leader's cards for A1's one message slider (board MemberAssets-ley3, leader on): the cash to lend out or settle
  *  and the LP requests, first in the slider; nothing when there is no cash at hand and no LP offer (22 Oct: one slider
  *  for member and leader). */
-export function useLeaderSlides({ on = true, onSettle, onScanLp }) {
+export function useLeaderSlides({ on = true, onSettle, onScanLp, onMachine }) {
   const cash = useUnionCash({ on }).data;
+  const machines = useMachines({ on });
   const offers = useUnionOffers({ on }).data || [];
   const now = useNow();
   const slides = [];
@@ -79,6 +82,16 @@ export function useLeaderSlides({ on = true, onSettle, onScanLp }) {
           })}
         </div>
         {here && <button type="button" style={primary} onClick={onScanLp}>Accept {inr(here.inr)} from {short(here.lp)}</button>}
+      </section>,
+    );
+  }
+  // No machine in the union yet (22 Oct): how vouchers start, in steps (as the invest card), with the L13 task.
+  if (machines.isSuccess && !machines.data.length) {
+    slides.push(
+      <section key="machine" aria-label="Register a machine" style={card}>
+        <Title Icon={MachineryTile}>Register a machine</Title>
+        <Steps items={['Register a member\'s machine: photos, price and hours a week.', 'New crop plans then get machine vouchers.', 'Members hire the machine by the hour with their vouchers.']} />
+        <button type="button" style={secondary} onClick={onMachine}>Register a machine</button>
       </section>,
     );
   }

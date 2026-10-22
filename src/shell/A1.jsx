@@ -92,7 +92,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp, onRegisterMachine }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   // A member never holds nIN (LOAN_RULES §5, desk only, 22 Oct): no nIN row and none in her total; leaders keep theirs.
@@ -119,7 +119,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
       paid: n(l.principal_paid) + n(l.interest_paid), due: Number(l.maturity_ts || 0) ? Number(l.maturity_ts) + 21 * 86400 : null };
   });
   // One slider for member and leader (22 Oct): the leader's cash and LP cards first, then her own.
-  const leaderSlides = useLeaderSlides({ on: !!leader, onSettle, onScanLp });
+  const leaderSlides = useLeaderSlides({ on: !!leader, onSettle, onScanLp, onMachine: onRegisterMachine });
   const slides = [...leaderSlides, ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans })];
 
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell A1 is a card over the map of her

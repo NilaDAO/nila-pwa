@@ -64,10 +64,10 @@ export function useVouchers(member) {
 /** Every machine of the union with its id (machinery.machine(1..) until the first empty id). A read error fails
  *  the query, so the last good list stays (a cut-short list would hide her machine). `poll`: refresh every
  *  minute (A13 while she waits for the leader's registration); elsewhere on open only. */
-export function useMachines({ poll = false } = {}) {
+export function useMachines({ poll = false, on = true } = {}) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['stellar', 'machines', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 60_000,
+    queryKey: ['stellar', 'machines', cfg?.union], enabled: on && !!cfg?.contracts?.machinery, staleTime: 60_000,
     refetchInterval: poll ? 60_000 : false,
     queryFn: async () => {
       const out = [];

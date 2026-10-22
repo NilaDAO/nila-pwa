@@ -201,7 +201,7 @@ export default function Shell({ leader }) {
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} onLand={() => go('land')} moveNote={moveNote}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`cropshare/${t}`)}
       onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')} onUsdc={() => go('usdc')}
-      onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} />;
+      onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} onRegisterMachine={() => go('cash/machine')} />;
   } else if (view === 'settings') {
     body = leader
       ? <LeaderSettings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onIdLeader={() => go('idleader')} onOffers={() => go('offers')} />
