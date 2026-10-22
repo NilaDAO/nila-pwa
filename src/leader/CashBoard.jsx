@@ -22,7 +22,6 @@ import RoundButton, { SettingsButton } from '../shell/RoundButton';
 import { HistoryIcon } from '../shell/icons';
 import { LeaderTasksButton } from '../shell/A1';
 import Segmented from '../shell/Segmented';
-import { useUnionInfo } from '../shell/SettingsParts';
 import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
 
 const U = 10_000_000n;
@@ -64,17 +63,27 @@ function Stepper({ value, set, max, step = 100, label = 'Amount in rupees', unit
 }
 
 /** C2: one wider search per tap (24 h → week → month → 6 months) until the list and the chain agree. */
+// The C1/C2 result as the board's chip: a raised rounded chip, gold check-circle "Every rupee is accounted for", a coral
+// alert "₹X not accounted for" (a tap searches one wider window), a spinner while the list loads or a search runs.
+const chipS = { marginTop: 10, minHeight: 40, padding: '0 14px', borderRadius: R.button, background: C.raised, border: 0, display: 'flex',
+  alignItems: 'center', gap: 8, fontFamily: FONT, fontSize: 14, fontWeight: 700, color: C.text };
+const ico = (stroke, children, spin) => (
+  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+    style={spin ? { animation: 'chk-spin 900ms linear infinite' } : undefined}>{children}</svg>
+);
+const OK = ico(C.accent, <><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></>);
+const OFF = ico(C.coral, <><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></>);
+const BUSY = ico(C.muted, <path d="M21 12a9 9 0 1 1-6.2-8.6" />, true);
+
 function Chip({ book, api, onFound }) {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState();
-  const [added, setAdded] = useState(0);
   const [gapInStore, setGapInStore] = useState(false);
-  // The share list is a part of C1 that loads after the screen: an inline line, never S1 inside the card (22 Oct).
-  if (!book) return <p role="status" style={{ textAlign: 'center', margin: '8px 0 0', color: C.muted, fontSize: 14 }}>Checking the share list…</p>;
-  if (book.gap <= 0) {
-    return <p style={{ textAlign: 'center', margin: '8px 0 0' }}><b>✓ Every rupee is accounted for</b><br /><span style={{ color: C.muted, fontSize: 14 }}>{added ? `${added} share${added > 1 ? 's' : ''} added to the list` : 'Treasury and share list agree'}</span></p>;
-  }
+  const spin = <style>{'@keyframes chk-spin{to{transform:rotate(360deg)}}'}</style>;
+  // The share list is a part of C1 that loads after the screen: the chip spins, never S1 inside the card (22 Oct).
+  if (!book) return <div role="status" style={chipS}>{spin}{BUSY}<span style={{ color: C.muted }}>Checking the share list…</span></div>;
+  if (book.gap <= 0) return <div role="status" style={chipS}>{OK}Every rupee is accounted for</div>;
   const [win, label] = SEARCH_WINDOWS[Math.min(step, SEARCH_WINDOWS.length - 1)];
   const search = async () => {
     setBusy(true);
@@ -84,27 +93,20 @@ function Chip({ book, api, onFound }) {
       if (r.store_gap) setGapInStore(true);
       const after = (await onFound()).data?.loans.length ?? before;
       const n = Math.max(0, after - before);
-      setAdded((x) => x + n);
       setNote(`Searched ${label} · ${n ? `${n} share${n > 1 ? 's' : ''} added` : 'nothing new'}`);
       setStep((x) => x + 1);
     } catch (e) { setNote(e.message); }
     setBusy(false);
   };
   const done = step >= SEARCH_WINDOWS.length || gapInStore;
-  if (busy) {
-    return (
-      <p style={{ textAlign: 'center', margin: '8px 0 0' }}><b>Searching {label}…</b><br />
-        <span style={{ color: C.muted, fontSize: 14 }}>{win === '6months' ? 'This can take a few minutes. You can leave this screen.' : 'A few seconds'}</span></p>
-    );
-  }
+  if (busy) return <div role="status" style={chipS}>{spin}{BUSY}<span style={{ color: C.muted }}>Searching {label}…</span></div>;
   const next = SEARCH_WINDOWS[Math.min(step, SEARCH_WINDOWS.length - 1)][1];
   return (
-    <button type="button" onClick={done ? undefined : search} style={{ ...pill, display: 'block', margin: '8px auto 0', height: 'auto', padding: '8px 16px', color: C.coral, textAlign: 'center' }}>
-      {inr(book.gap)} not accounted for<br />
-      <span style={{ color: C.muted, fontWeight: 400, fontSize: 13 }}>
-        {done ? `${note ? `${note}. ` : ''}Ask Nila support.` : `${note ? `${note}. ` : ''}Tap to search ${next}.`}
-      </span>
-    </button>
+    <>
+      <button type="button" onClick={done ? undefined : search} aria-label={`${inr(book.gap)} not accounted for. ${done ? 'Ask Nila support.' : `Tap to search ${next}.`}`}
+        style={{ ...chipS, cursor: done ? 'default' : 'pointer' }}>{OFF}{inr(book.gap)} not accounted for</button>
+      <span style={{ color: C.muted, fontSize: 13 }}>{note ? `${note}. ` : ''}{done ? 'Ask Nila support.' : `Tap to search ${next}.`}</span>
+    </>
   );
 }
 
@@ -239,7 +241,6 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
   const [adjust, setAdjust] = useState(null);   // null (closed), 'deposit' or 'withdraw'
   const cash = cashQ.data;
   const book = bookQ.data;
-  const union = useUnionInfo();
   const titles = useQuery({ queryKey: ['stellar', 'unionTitles'], enabled: !!api, staleTime: 5 * 60_000,
     queryFn: () => api.unionTitles().then((r) => r.titles || []) });
   if (cashQ.isError) return <div style={{ ...card, margin: 16 }}>Could not read the union. Try again.</div>;
@@ -263,7 +264,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
         <section style={{ ...card, padding: '18px 22px', gap: 4, alignItems: 'center', textAlign: 'center' }} aria-label="Union treasury">
           <div style={{ color: C.muted }}>Union treasury</div>
           <div style={{ fontSize: 32, lineHeight: 1.2, fontWeight: 700 }}>{inr(cash.treasury)}</div>
-          {book && book.earningsPending > 0 && <div style={{ color: C.muted }}>+ {inr(book.earningsPending)} earnings pending</div>}
+          <div style={{ color: C.muted }}>+ {book ? inr(book.earningsPending) : '…'} earnings pending</div>
           <Chip book={book} api={api} onFound={() => bookQ.refetch()} />
           {bookQ.isError && <p style={{ color: C.coral, fontSize: 13, margin: 0 }}>The share list could not be read: {bookQ.error.message}</p>}
         </section>
@@ -275,13 +276,13 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
             <Segmented icon width="hug" label="Deposit or withdraw" value={adjust} onChange={(v) => setAdjust((x) => (x === v ? null : v))}
               options={[['deposit', arrow('M12 5v14M19 12l-7 7-7-7'), 'Deposit'], ['withdraw', arrow('M12 19V5M5 12l7-7 7 7'), 'Withdraw']]} />
           </div>
-          {/* The union's fund by its name (as Settings' union card); its members, cash working and vouchers from the union
-              sync lists: titles (members) and the active-loan list (cash out on loans, voucher hours). */}
+          {/* Total funds; members, cash working and vouchers (machine hours) from the union sync lists: titles (members)
+              and the active-loan list (cash out on loans, voucher hours). */}
           <div style={rows}>
-            <Row k={union.name || 'Union fund'} v={book ? `Total deposited ${inr(book.fundTotal)}` : '…'} />
+            <Row k="Total funds" v={book ? inr(book.fundTotal) : '…'} />
             <Row k="Members" v={titles.data ? titles.data.length : '—'} />
             <Row k="Cash working (on loans)" v={book ? inr(book.loans.reduce((t, l) => t + l.outstanding, 0)) : '…'} />
-            <Row k="Vouchers" v={book ? `${book.loans.reduce((t, l) => t + (l.hours || 0), 0)} machine hours` : '…'} />
+            <Row k="Vouchers" v={book ? book.loans.reduce((t, l) => t + (l.hours || 0), 0) : '…'} />
             <Row k="Rainy day fund" v={inr(cash.rainy)} />
           </div>
           {adjust && <Adjust key={adjust} cash={cash} dir={adjust} onClose={() => setAdjust(null)} />}
