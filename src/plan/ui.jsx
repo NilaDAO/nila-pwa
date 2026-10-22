@@ -108,7 +108,10 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
     );
   }
   return (
-    <div style={{ fontFamily: FONT, color: C.text, position: 'relative', minHeight: '100dvh', background: stage ? 'transparent' : '#25361f', display: 'flex', flexDirection: 'column', pointerEvents: staged ? 'none' : undefined }}>
+    <div style={{ fontFamily: FONT, color: C.text, position: 'relative', minHeight: '100dvh', background: stage ? 'transparent' : '#25361f', display: 'flex', flexDirection: 'column', pointerEvents: staged ? 'none' : undefined,
+      // The card's rise (full) leaves its start offset as scrollable overflow in Chrome: clipped, so the page ends where
+      // the card does (clip keeps the sticky header working, unlike hidden).
+      overflow: staged ? 'clip' : undefined }}>
       {/* The map fills the whole screen behind the card (21 Oct), so dragging the card down shows more map. */}
       {shown && <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>{isValidElement(shown) ? cloneElement(shown, { height: '100%' }) : shown}</div>}
       {/* The band above the card takes the free height, so the card sits glued to the bottom (executive decision 21 Oct):
