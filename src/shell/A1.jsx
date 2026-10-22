@@ -13,6 +13,7 @@ import { useInvestment } from '../stellar/hooks';
 import { ShareRows, useMyShares } from '../loan/MyShares';
 import { typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
+import { useFxRate } from './UsdcAsset';
 import { LeaderSlides, UnionRows } from '../leader/UnionCards';
 import { C, FONT, R, SHADOW } from './tokens';
 import { CashTile, ChevronIcon, HistoryIcon, InvestedTile, LandIcon, MachineryTile, MyMachineTile, NinTile, QrIcon, RefreshIcon, TreasuryTile, UsdcTile } from './icons';
@@ -103,6 +104,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const vOpen = (vouchers.data || []).find((v) => v.code?.open);
   const machine = useMyMachine(s?.stellarAddress).data;
   const lp = useLpStatus().data;
+  // A leader's USDC in rupees at fx_pool's current rate (22 Oct); an expired rate leaves it out of the total.
+  const rate = useFxRate().data;
+  const usdcInr = leader && lp?.idChecked && rate ? (lp.usdc || 0) * rate : 0;
   const shares = useMyShares().data || [];
   const refresh = () => { qc.invalidateQueries({ queryKey: ['stellar'] }); qc.invalidateQueries({ queryKey: ['oracle', 'myShares'] }); };
   const fetching = useIsFetching({ queryKey: ['stellar'] }) > 0;
@@ -152,7 +156,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           </button>
           <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
         </div>
-        <div style={{ fontSize: 32, fontWeight: 700, margin: '4px 0 12px' }} data-testid="total-balance">{inr(nin + (invested || 0))}/-</div>
+        <div style={{ fontSize: 32, fontWeight: 700, margin: '4px 0 12px' }} data-testid="total-balance">{inr(nin + (invested || 0) + usdcInr)}/-</div>
         <button type="button" aria-label="Show wallet QR code" onClick={onWalletQr} style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, height: 40, padding: '0 16px',
           borderRadius: R.button, background: C.raised, border: 0, color: C.text, fontWeight: 700,
@@ -188,7 +192,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
             to the cash offers. */}
         {leader ? (
           lp?.idChecked
-            ? <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="Digital US dollar" value={(lp.usdc || 0).toFixed(2)} valueSub="" onClick={onUsdc} />
+            ? <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="Digital US dollar" value={(lp.usdc || 0).toFixed(2)} valueSub={rate ? `≈ ${inr(usdcInr)}` : ""} onClick={onUsdc} />
             : <Row label="USDC, identity check needed" icon={<UsdcTile />} title="USDC" warn="Identity check (KYC) needed" />
         ) : lp?.trustline && (
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="For cash offers as an LP" value={lp.usdc.toFixed(2)} valueSub="" onClick={onOffers} />
