@@ -176,13 +176,15 @@ function eventRows(events, me, shareLabel) {
   const titles = new Set();
   for (const e of events) if (e.name === 'title_set' && e.v.holder === me) titles.add(String(e.topics[1]));
   const rows = [];
-  for (const e of events) {
+  const shown = new Set();
+  for (const e of [...events].sort((a, b) => a.at - b.at)) {
     const tok = e.topics[2] && typeof e.topics[2] === 'object' ? hexOf(e.topics[2]) : '';
     const share = tok && shareLabel(tok);
     const has = (x) => mine.has(x);
     const row = (title, sub, amount) => rows.push({ id: `ev-${e.id}`, at: e.at, title, sub, amount, chain: 'stellar', hash: e.hash });
     switch (e.name) {
-      case 'title_set': if (has(e.v.holder)) row('Land title on Stellar', `id ${e.topics[1]}`, '+1'); break;
+      // The first time her title is set (a later set of the same title, e.g. a new record, is not a new title).
+      case 'title_set': if (has(e.v.holder) && !shown.has(String(e.topics[1]))) { shown.add(String(e.topics[1])); row('Land title on Stellar', `id ${e.topics[1]}`, '+1'); } break;
       case 'title_burned': if (has(e.v.holder) || titles.has(String(e.topics[1]))) row('Land title burned', `id ${e.topics[1]}`, '−1'); break;
       case 'food_token_attested': if (has(e.v.member) || share) row('Crop share ready', share || 'From your union', `₹${nin(e.v.amount)}`); break;
       case 'loan_drawn': if (has(e.v.borrower) || share) row('Crop share taken', share || 'From your union', `+₹${nin(e.v.cash)}`); break;
