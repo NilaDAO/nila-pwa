@@ -29,6 +29,7 @@ import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
 import Settings from './Settings';
 import LeaderTasks from '../leader/LeaderTasks';
+import AddMember from '../leader/AddMember';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { pointsSent } from '../register/Registration';
 import { BootLoading } from '../register/Boot';
@@ -63,11 +64,15 @@ function Later({ title, step }) {
 
 // tasks/border/<job id>[/<field>]: L2a–L4 for a leader.
 const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+))?/) || [];
+// tasks/member[/<id>]: L14 Add a member and its #sent progress (P8).
+const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?$/);
 
 function TasksView({ leader, go }) {
   const lp = useLpStatus();
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
+  const member = readMember();
+  if (leader && member) return <AddMember key={member[1] || 'new'} id={member[1]} go={go} />;
   if (leader) return <LeaderTasks go={go} />;
   // A2 (board Tasks): "Cash offers" for an LP, then "To do". DESIGN GAP: the board's to-do rows (use machine hours,
   // plant, invest, register trees, repay) need her plan's task list, not built yet; her crop plan row stands in.

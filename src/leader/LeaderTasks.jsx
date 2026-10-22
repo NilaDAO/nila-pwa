@@ -2,10 +2,10 @@
 // "To do": the union's tasks the contracts and the node give today (plans to approve, crop share requests, cash to
 // settle, LPs who arrived, paybacks coming and overdue), with a search. "Start a task": the board's groups, each
 // row opening the flow that exists. DESIGN GAPs: no member names (land and short address); not built yet and left
-// out of the list: Add a member (L14, keypad), Make a crop plan with a member, Change her crop plan, Get cash and
+// out of the list: Make a crop plan with a member, Change her crop plan, Get cash and
 // vouchers for her, Withdraw her investment, Use machine hours / seeds for her, Register trees, Add field note,
 // Add a water source, Farm improvements; "Your own" tasks; crop not seen, price updates. P11: field border checks
-// (L1 "Check field borders" → L2a–L4) from the node's border jobs (O16).
+// (L1 "Check field borders" → L2a–L4) from the node's border jobs (O16). P8: Add a member (L14, O17).
 import { useState } from 'react';
 import { usePlanClient } from '../plan/hooks';
 import { useLpStatus } from '../anchor/hooks';
@@ -15,7 +15,7 @@ import { memberName } from '../border/LeaderBorder';
 import { C, FONT } from '../shell/tokens';
 import ListRow, { ListSection, ScreenHeader } from '../shell/ListRow';
 import MapCard from '../shell/MapCard';
-import { BanknoteIcon, CalendarIcon, CropIcon, InvestIcon, PayOutIcon, PinIcon, RepayIcon, RupeeIcon, TractorIcon } from '../shell/icons';
+import { BanknoteIcon, CalendarIcon, CropIcon, InvestIcon, PayOutIcon, PinIcon, RepayIcon, RupeeIcon, TractorIcon, UserPlusIcon } from '../shell/icons';
 import { useKnownMembers, useLeaderTodo, useUnionCash } from './hooks';
 
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
@@ -43,6 +43,7 @@ export function PickMember({ title, onPick, onBack, onScan }) {
 // The board's groups (LeaderBorders "Start a task"), only the rows whose flow exists; icons as on the board.
 // "Scan an LP code" has no board row (LP scan, P9): it keeps the cash icon.
 const START = [
+  ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon]]],
   ['Crop plan and crop share', [['Share request', 'For a crop plan the member accepted', 'cash/loan', RupeeIcon]]],
   ['Cash', [['Invest', 'Cash in: she invests in the union', 'cash/invest', InvestIcon], ['Repay', 'Cash in: the member repays her crop share', 'cash/repay', RepayIcon],
     ['Pay out a cash-out', 'Scan her code, pay cash, burn her nIN', 'cash/payout', PayOutIcon], ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
