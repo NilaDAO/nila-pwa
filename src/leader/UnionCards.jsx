@@ -90,7 +90,7 @@ export function useLeaderSlides({ on = true, onSettle, onScanLp, onMachine }) {
     slides.push(
       <section key="machine" aria-label="Register a machine" style={card}>
         <Title Icon={MachineryTile}>Register a machine</Title>
-        <Steps items={['Register a member\'s machine: photos, price and hours a week.', 'New crop plans then get machine vouchers.', 'Members hire the machine by the hour with their vouchers.']} />
+        <Steps items={['Go to Tasks and register a machine.', 'New crop plans then get machine vouchers.', 'Members hire the machine by the hour with their vouchers.']} />
         <button type="button" style={secondary} onClick={onMachine}>Register a machine</button>
       </section>,
     );
