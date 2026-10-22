@@ -9,8 +9,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { readContract, sv } from '../stellar/soroban';
-import { getAccount } from '../stellar/api';
+import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
@@ -20,6 +19,7 @@ import { C, FONT, R } from '../shell/tokens';
 import { Loading } from '../register/Boot';
 import { ScreenHeader } from '../shell/ListRow';
 import Segmented from '../shell/Segmented';
+import { useUnionInfo } from '../shell/SettingsParts';
 import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
 
 const U = 10_000_000n;
@@ -95,50 +95,21 @@ function Chip({ book, api, onFound }) {
   );
 }
 
-/** Her USDC and fx_pool's rate, for a USDC deposit into the treasury (22 Oct). */
-function useUsdcIn(cfg, address) {
-  return useQuery({
-    queryKey: ['stellar', 'treasuryUsdcIn', address], enabled: !!cfg && !!address, staleTime: 15_000,
-    queryFn: async () => {
-      const a = await getAccount(cfg.horizon_url, address);
-      const [code, issuer] = (cfg.usdc_asset || ':').split(':');
-      const b = a?.balances?.find((x) => x.asset_code === code && x.asset_issuer === issuer);
-      const r = await readContract(cfg, 'fx_pool', 'rate', []).catch(() => null);
-      const fresh = r && Number(r.valid_until) * 1000 > Date.now();
-      return { usdc: b ? Number(b.balance) : 0, trust: !!b, inrPerUsd: fresh ? Number(r.inr_per_usd) / 1e7 : null };
-    },
-  });
-}
-
-/** C3: add to the treasury with her own nIN or with USDC, or withdraw to her wallet (C10; the node sponsors all).
- *  The treasury is the mirror of cash and always USDC-backed (executive decision 22 Oct): counted cash never goes in;
- *  USDC is swapped by fx_pool at its rate (deposit_usdc_treasury) and stays there as the backing. */
+/** C3: Deposit her own nIN into the treasury or Withdraw to her wallet (C10; the node sponsors both). nIN only
+ *  (executive decision 22 Oct): a leader with USDC swaps it to nIN on A9 first; counted cash never goes in. */
 function Adjust({ cash, onClose }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
   const [dir, setDir] = useState('deposit');
-  const [src, setSrc] = useState('nin');
   const [rainy, setRainy] = useState(false);
   const [amount, setAmount] = useState(0);
-  const uq = useUsdcIn(cfg, s?.stellarAddress);
   const mine = Math.floor(s?.stellarAccount?.nin?.balance ?? 0);
   const fromRainy = dir === 'withdraw' && rainy;
-  const viaUsdc = dir === 'deposit' && src === 'usdc';
-  const rate = uq.data?.inrPerUsd;
-  // In USDC: the stepper counts whole USDC; the treasury gets its rupee value at fx_pool's rate (max ₹10,000 a call).
-  const max = viaUsdc ? (rate ? Math.min(Math.floor(uq.data.usdc), Math.floor(10_000 / rate)) : 0)
-    : dir === 'deposit' ? mine : fromRainy ? Math.floor(cash.rainy) : Math.floor(cash.free);
+  const max = dir === 'deposit' ? mine : fromRainy ? Math.floor(cash.rainy) : Math.floor(cash.free);
   const a = Math.min(amount, max);
-  const inrIn = viaUsdc ? Math.floor(a * (rate || 0)) : a;
   if (tx.status !== 'idle') return <Over><TxScreens tx={tx} onClose={() => { tx.reset(); onClose(); }} onRetry={() => tx.retry()} /></Over>;
-  const go = () => tx.run(viaUsdc ? {
-    label: `Add ${a} USDC`,
-    rows: [['USDC', `${a} USDC`], ['Into the treasury', `~${inr(inrIn)}`], ['Union treasury after', `~${inr(cash.treasury + inrIn)}`]],
-    contractName: 'fx_pool', fn: 'deposit_usdc_treasury',
-    args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * U)],
-    invalidate: [['stellar', 'unionCash'], ['stellar', 'treasuryUsdcIn']],
-  } : {
+  const go = () => tx.run({
     label: dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`,
     rows: [['Amount', inr(a)], fromRainy ? ['Rainy day fund after', inr(cash.rainy - a)] : ['Union treasury after', inr(cash.treasury + (dir === 'deposit' ? a : -a))]],
     contractName: 'fund_core', fn: dir === 'deposit' ? 'leader_deposit_treasury' : 'withdraw_union_treasury',
@@ -150,7 +121,7 @@ function Adjust({ cash, onClose }) {
   return (
     <>
       <div style={{ margin: '12px 0' }}>
-        <Segmented label="Deposit or withdraw" options={[['deposit', 'Deposit into the fund'], ['withdraw', 'Withdraw from the fund']]} value={dir} onChange={setDir} />
+        <Segmented label="Deposit or withdraw" options={[['deposit', 'Deposit'], ['withdraw', 'Withdraw']]} value={dir} onChange={(v) => { setDir(v); setAmount(0); }} />
       </div>
       {dir === 'withdraw' && (
         <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14 }}>
@@ -158,27 +129,10 @@ function Adjust({ cash, onClose }) {
           From the rainy day fund ({inr(cash.rainy)})
         </label>
       )}
-      {dir === 'deposit' && (
-        <div style={{ margin: '0 0 12px' }}>
-          <Segmented label="Deposit from" options={[['nin', 'My nIN'], ['usdc', 'USDC']]} value={src} onChange={(v) => { setSrc(v); setAmount(0); }} />
-        </div>
-      )}
-      {viaUsdc && !uq.data?.trust && <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>You hold no USDC.</p>}
-      {viaUsdc && uq.data?.trust && !rate && <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>No current rate: try again later.</p>}
-      <Stepper value={a} set={setAmount} max={max} step={viaUsdc ? 1 : 100} label={viaUsdc ? 'Amount in USDC' : 'Amount in rupees'} />
-      {viaUsdc ? (
-        <>
-          <Row k="Into the treasury" v={`~${inr(inrIn)}${rate ? ` (₹${rate.toFixed(2)} a USDC)` : ''}`} />
-          <Row k="Union treasury after" v={`~${inr(cash.treasury + inrIn)}`} />
-          <Row k="Your USDC after" v={`${((uq.data?.usdc || 0) - a).toFixed(2)} USDC`} />
-        </>
-      ) : (
-        <>
-          {fromRainy ? <Row k="Rainy day fund after" v={inr(cash.rainy - a)} /> : <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />}
-          <Row k="Your nIN after" v={`${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />
-        </>
-      )}
-      <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={go}>{viaUsdc ? `Add ${a} USDC` : dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`}</button>
+      <Stepper value={a} set={setAmount} max={max} />
+      {fromRainy ? <Row k="Rainy day fund after" v={inr(cash.rainy - a)} /> : <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />}
+      <Row k="Your nIN after" v={`${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />
+      <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={go}>{dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`}</button>
     </>
   );
 }
@@ -268,6 +222,9 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
   const [open, setOpen] = useState(!!settle);
   const cash = cashQ.data;
   const book = bookQ.data;
+  const union = useUnionInfo();
+  const titles = useQuery({ queryKey: ['stellar', 'unionTitles'], enabled: !!api, staleTime: 5 * 60_000,
+    queryFn: () => api.unionTitles().then((r) => r.titles || []) });
   if (cashQ.isError) return <div style={{ ...card, margin: 16 }}>Could not read the union. Try again.</div>;
   if (!cash) return <Loading />;   // S1 while the union loads (executive decision 21 Oct: every wait is S1)
   return (
@@ -282,24 +239,29 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
       </section>
       <section style={card} aria-label="Funds">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Funds</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Funds</h2>
           <button type="button" style={pill} onClick={() => setAdjust((x) => !x)}>{adjust ? 'Close' : 'Adjust'}</button>
         </div>
-        <Row k="Union fund" v={book ? inr(book.fundTotal) : '…'} />
+        {/* The union's fund by its name (as Settings' union card); its members, cash working and vouchers from the union
+            sync lists: titles (members) and the active-loan list (cash out on loans, voucher hours). */}
+        <Row k={union.name || 'Union fund'} v={book ? `Total deposited ${inr(book.fundTotal)}` : '…'} />
+        <Row k="Members" v={titles.data ? titles.data.length : '—'} />
+        <Row k="Cash working (on loans)" v={book ? inr(book.loans.reduce((t, l) => t + l.outstanding, 0)) : '…'} />
+        <Row k="Vouchers" v={book ? `${book.loans.reduce((t, l) => t + (l.hours || 0), 0)} machine hours` : '…'} />
         <Row k="Rainy day fund" v={inr(cash.rainy)} />
         {adjust && <Adjust cash={cash} onClose={() => setAdjust(false)} />}
       </section>
       <section style={card} aria-label="Lending">
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Lending</h2>
-          <span style={{ color: cash.overdue ? C.coral : C.accent, fontWeight: 700 }}>{cash.overdue ? '● On hold' : 'Open'}</span>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Lending</h2>
+          <span role="img" aria-label={cash.overdue ? 'On hold' : 'Open'} title={cash.overdue ? 'On hold' : 'Open'}
+            style={{ width: 10, height: 10, borderRadius: R.round, background: cash.overdue ? C.coral : C.accent, alignSelf: 'center' }} />
         </div>
         {cash.overdue > 0 && <p style={{ color: C.coral, margin: '6px 0' }}>{cash.overdue} share{cash.overdue > 1 ? 's' : ''} overdue</p>}
         <Row k="Member contributions" v={book ? inr(book.contributions) : '…'} />
         <Row k="In circulation" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}%)`} />
         <Row k="Interest pending" v={book ? inr(book.interestPending) : '…'} />
         <Row k="Available to cash in" v={inr(cash.free)} accent />
-        <Row k="Union USDC" v={`${(cash.usdc.lp + cash.usdc.domestic + cash.usdc.offshore).toFixed(2)} (LP ${cash.usdc.lp.toFixed(2)} · senior ${(cash.usdc.domestic + cash.usdc.offshore).toFixed(2)})`} />
       </section>
       <CashCard cash={cash} open={open} setOpen={setOpen} onScanLp={onScanLp} />
       {tasks}

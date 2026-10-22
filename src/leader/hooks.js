@@ -67,7 +67,7 @@ export function useUnionBook(api) {
         const out = n(g.principal) - n(g.principal_paid);
         const since = Math.max(0, now - Number(g.last_accrual_ts || g.drawdown_ts));
         const interest = n(g.interest_accrued) - n(g.interest_paid) + (out * Number(g.rate_bp) * since) / (10_000 * YEAR);
-        return { token: l.token_id, borrower: l.borrower, drawnAt: l.drawn_at, outstanding: out, interest, rateBp: Number(g.rate_bp), overdue: !!g.overdue };
+        return { token: l.token_id, borrower: l.borrower, drawnAt: l.drawn_at, outstanding: out, interest, rateBp: Number(g.rate_bp), overdue: !!g.overdue, hours: Number(l.hours || 0) };
       }));
       const open = rows.filter(Boolean);
       const feeBp = Number(uc?.treasury_fee_bp ?? 0) + Number(uc?.rainy_fee_bp ?? 0);
