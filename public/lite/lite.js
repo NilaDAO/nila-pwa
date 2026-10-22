@@ -173,7 +173,8 @@
       busy = false;
       try {
         localStorage.setItem('nila.lite.member', out.member);
-        localStorage.removeItem('nila.lite.fields');           // a new phone set-up starts at Field 1
+        // A new phone goes on from the fields her open job already has (a lost phone, L14 again).
+        localStorage.setItem('nila.lite.fields', String(out.fields || 0));
         localStorage.removeItem('nila.lite.done');
       } catch (e) { /* no storage */ }
       go('#/fields');
