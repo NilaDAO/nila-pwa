@@ -32,6 +32,7 @@ const CALLS = {
   mint_moved: ['From the old app', 'Your nIN moved to Stellar'],
   withdraw_union_treasury: ['Treasury withdrawal', 'Union treasury'],
   leader_deposit_treasury: ['Treasury deposit', 'Union treasury'],
+  deposit_usdc_treasury: ['Treasury deposit', 'USDC into the union treasury'],
 };
 
 function callName(op) {

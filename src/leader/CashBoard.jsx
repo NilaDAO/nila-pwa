@@ -6,9 +6,11 @@
 // waiting cash-outs list (executive decision 20 Oct: the leader scans her code when she comes); LP names are
 // short addresses; "Take a tour" is not built; the cash tasks the board leaves to L1 are listed below the cards.
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { sv } from '../stellar/soroban';
+import { readContract, sv } from '../stellar/soroban';
+import { getAccount } from '../stellar/api';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
@@ -34,14 +36,14 @@ function Row({ k, v, accent, coral }) {
   return <div style={rowS}><span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: coral ? C.coral : accent ? C.accent : C.text }}>{v}</span></div>;
 }
 
-function Stepper({ value, set, max }) {
+function Stepper({ value, set, max, step = 100, label = 'Amount in rupees' }) {
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, margin: '12px 0' }}>
-      <button type="button" aria-label="Less" style={b} onClick={() => set(Math.max(0, value - 100))}>−</button>
-      <input aria-label="Amount in rupees" inputMode="numeric" value={value} onChange={(e) => set(Math.min(max, Number(e.target.value.replace(/\D/g, '')) || 0))}
+      <button type="button" aria-label="Less" style={b} onClick={() => set(Math.max(0, value - step))}>−</button>
+      <input aria-label={label} inputMode="numeric" value={value} onChange={(e) => set(Math.min(max, Number(e.target.value.replace(/\D/g, '')) || 0))}
         style={{ width: 110, height: 44, textAlign: 'center', borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 18 }} />
-      <button type="button" aria-label="More" style={b} onClick={() => set(Math.min(max, value + 100))}>+</button>
+      <button type="button" aria-label="More" style={b} onClick={() => set(Math.min(max, value + step))}>+</button>
       <button type="button" style={{ ...b, width: 'auto', padding: '0 14px', fontSize: 14 }} onClick={() => set(max)}>Max</button>
     </div>
   );
@@ -92,20 +94,50 @@ function Chip({ book, api, onFound }) {
   );
 }
 
-/** C3: deposit her own nIN into the treasury, or withdraw to her wallet (C10; the node sponsors both). */
+/** Her USDC and fx_pool's rate, for a USDC deposit into the treasury (22 Oct). */
+function useUsdcIn(cfg, address) {
+  return useQuery({
+    queryKey: ['stellar', 'treasuryUsdcIn', address], enabled: !!cfg && !!address, staleTime: 15_000,
+    queryFn: async () => {
+      const a = await getAccount(cfg.horizon_url, address);
+      const [code, issuer] = (cfg.usdc_asset || ':').split(':');
+      const b = a?.balances?.find((x) => x.asset_code === code && x.asset_issuer === issuer);
+      const r = await readContract(cfg, 'fx_pool', 'rate', []).catch(() => null);
+      const fresh = r && Number(r.valid_until) * 1000 > Date.now();
+      return { usdc: b ? Number(b.balance) : 0, trust: !!b, inrPerUsd: fresh ? Number(r.inr_per_usd) / 1e7 : null };
+    },
+  });
+}
+
+/** C3: add to the treasury with her own nIN or with USDC, or withdraw to her wallet (C10; the node sponsors all).
+ *  The treasury is the mirror of cash and always USDC-backed (executive decision 22 Oct): counted cash never goes in;
+ *  USDC is swapped by fx_pool at its rate (deposit_usdc_treasury) and stays there as the backing. */
 function Adjust({ cash, onClose }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
   const [dir, setDir] = useState('deposit');
+  const [src, setSrc] = useState('nin');
   const [rainy, setRainy] = useState(false);
   const [amount, setAmount] = useState(0);
+  const uq = useUsdcIn(cfg, s?.stellarAddress);
   const mine = Math.floor(s?.stellarAccount?.nin?.balance ?? 0);
   const fromRainy = dir === 'withdraw' && rainy;
-  const max = dir === 'deposit' ? mine : fromRainy ? Math.floor(cash.rainy) : Math.floor(cash.free);
+  const viaUsdc = dir === 'deposit' && src === 'usdc';
+  const rate = uq.data?.inrPerUsd;
+  // In USDC: the stepper counts whole USDC; the treasury gets its rupee value at fx_pool's rate (max ₹10,000 a call).
+  const max = viaUsdc ? (rate ? Math.min(Math.floor(uq.data.usdc), Math.floor(10_000 / rate)) : 0)
+    : dir === 'deposit' ? mine : fromRainy ? Math.floor(cash.rainy) : Math.floor(cash.free);
   const a = Math.min(amount, max);
+  const inrIn = viaUsdc ? Math.floor(a * (rate || 0)) : a;
   if (tx.status !== 'idle') return <Over><TxScreens tx={tx} onClose={() => { tx.reset(); onClose(); }} onRetry={() => tx.retry()} /></Over>;
-  const go = () => tx.run({
+  const go = () => tx.run(viaUsdc ? {
+    label: `Add ${a} USDC`,
+    rows: [['USDC', `${a} USDC`], ['Into the treasury', `~${inr(inrIn)}`], ['Union treasury after', `~${inr(cash.treasury + inrIn)}`]],
+    contractName: 'fx_pool', fn: 'deposit_usdc_treasury',
+    args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * U)],
+    invalidate: [['stellar', 'unionCash'], ['stellar', 'treasuryUsdcIn']],
+  } : {
     label: dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`,
     rows: [['Amount', inr(a)], fromRainy ? ['Rainy day fund after', inr(cash.rainy - a)] : ['Union treasury after', inr(cash.treasury + (dir === 'deposit' ? a : -a))]],
     contractName: 'fund_core', fn: dir === 'deposit' ? 'leader_deposit_treasury' : 'withdraw_union_treasury',
@@ -127,10 +159,28 @@ function Adjust({ cash, onClose }) {
           From the rainy day fund ({inr(cash.rainy)})
         </label>
       )}
-      <Stepper value={a} set={setAmount} max={max} />
-      {fromRainy ? <Row k="Rainy day fund after" v={inr(cash.rainy - a)} /> : <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />}
-      <Row k="Your nIN after" v={`${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />
-      <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={go}>{dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`}</button>
+      {dir === 'deposit' && (
+        <div style={{ display: 'flex', gap: 8, margin: '0 0 12px' }}>
+          <button type="button" style={seg(src === 'nin')} onClick={() => { setSrc('nin'); setAmount(0); }}>My nIN</button>
+          <button type="button" style={seg(src === 'usdc')} onClick={() => { setSrc('usdc'); setAmount(0); }}>USDC</button>
+        </div>
+      )}
+      {viaUsdc && !uq.data?.trust && <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>You hold no USDC.</p>}
+      {viaUsdc && uq.data?.trust && !rate && <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>No current rate: try again later.</p>}
+      <Stepper value={a} set={setAmount} max={max} step={viaUsdc ? 1 : 100} label={viaUsdc ? 'Amount in USDC' : 'Amount in rupees'} />
+      {viaUsdc ? (
+        <>
+          <Row k="Into the treasury" v={`~${inr(inrIn)}${rate ? ` (₹${rate.toFixed(2)} a USDC)` : ''}`} />
+          <Row k="Union treasury after" v={`~${inr(cash.treasury + inrIn)}`} />
+          <Row k="Your USDC after" v={`${((uq.data?.usdc || 0) - a).toFixed(2)} USDC`} />
+        </>
+      ) : (
+        <>
+          {fromRainy ? <Row k="Rainy day fund after" v={inr(cash.rainy - a)} /> : <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />}
+          <Row k="Your nIN after" v={`${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />
+        </>
+      )}
+      <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={go}>{viaUsdc ? `Add ${a} USDC` : dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`}</button>
     </>
   );
 }
