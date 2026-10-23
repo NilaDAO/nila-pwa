@@ -5,11 +5,12 @@
 // TODO(reverse QR): when the reverse-QR flow is built (product/specs/Keypad_Reverse_QR_Consent.md) the leader
 // prepares the request and scans her signed QR instead; this direction then goes.
 import { Address, scValToNative, xdr } from '@stellar/stellar-sdk';
-import { readContract, signAuthFor, sv } from '../stellar/soroban';
+import { readAuthEntry, readContract, signAuthFor, sv } from '../stellar/soroban';
 
 const PREFIX = 'nila:desk:';
 const RAY = 10n ** 27n;
 const DAYS_14 = 14 * 86400;
+const ONE_NIN = 10_000_000n;
 const b64u = (b64) => b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = (s) => s.replace(/-/g, '+').replace(/_/g, '/');
 const get = (o, k) => (typeof o?.[k] === 'function' ? o[k]() : o?.[k]);
@@ -58,4 +59,41 @@ export async function checkDeskRequest(text, { cfg, me }) {
   const claim = await deskClaim(cfg, me);
   if (claim.shares <= 0n) throw new Error('You have nothing to collect yet.');
   return { entry: text.slice(PREFIX.length), union, member, leader, inr: claim.inr, auth: [unb64u(text.slice(PREFIX.length))] };
+}
+
+// Withdrawal start, the leader drives (executive decision 23 Oct, LOAN_RULES "Member signature by task"): the leader
+// prepares it on G2 (node POST /stellar/union/task), her phone reads it on A3 (GET), she confirms and shows her signed
+// authorization of fund_core.request_unbond_junior as a QR; the leader's app scans it and submits the call (fee-bumped
+// by the node like her own calls). The QR is the authorization entry itself (base64 XDR), valid ~10 minutes.
+
+/** Shares for `rupees` of her free part now; her free part moves every second while she owes (interest), so it is
+ *  read just before, with a margin of 1 nIN while a loan is open (else BadShares). */
+export async function unbondShares(cfg, member, rupees) {
+  const u = [sv.address(cfg.union), sv.address(member)];
+  const [pos, m] = await Promise.all([
+    readContract(cfg, 'fund_core', 'position', u),
+    readContract(cfg, 'fund_core', 'get_junior_market', [sv.address(cfg.union)]),
+  ]);
+  const freeNow = BigInt(pos.free) - (BigInt(pos.locked) > 0n ? ONE_NIN : 0n);
+  const want = BigInt(rupees) * ONE_NIN;
+  const take = want < freeNow ? want : freeNow;
+  return { take, shares: take > 0n ? (take * RAY) / BigInt(m.index) : 0n };
+}
+
+/** Member: her signed authorization for the leader's withdrawal task, as the QR text. */
+export async function signUnbond(cfg, { task, me, signHash }) {
+  const { shares } = await unbondShares(cfg, me, task.amount);
+  if (shares <= 0n) throw new Error('None of your investment is free to withdraw now.');
+  return signAuthFor({ cfg, source: task.leader, signer: me, signHash, contractName: 'fund_core', fn: 'request_unbond_junior',
+    args: [sv.address(cfg.union), sv.address(me), sv.i128(shares)], ledgers: 120 });
+}
+
+/** Leader: her scanned withdrawal QR. Throws a plain reason when it is not her signed withdrawal in this union. */
+export function readUnbond(cfg, text, member) {
+  let e;
+  try { e = readAuthEntry(cfg, (text || '').trim()); } catch { throw new Error('This is not her withdrawal code.'); }
+  if (e.contractName !== 'fund_core' || e.fn !== 'request_unbond_junior' || e.native.length !== 3) throw new Error('This is not her withdrawal code.');
+  if (e.signer !== member || String(e.native[1]) !== member) throw new Error('This code is from someone else.');
+  if (String(e.native[0]) !== cfg.union) throw new Error('This code is for another union.');
+  return { entry: text.trim(), args: e.args };
 }

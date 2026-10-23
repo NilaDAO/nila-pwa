@@ -4,7 +4,9 @@
 // L5 → C6). Withdraw = fund_core.request_unbond_junior (an amount of her free part, as shares), claimable 14 days later
 // (the contract; the spec's "3 weeks" is replaced, 16 Oct). A member collects it in cash at the office (22 Oct, desk only:
 // fund_core.claim_junior_cash, the leader's "Pay out investment" task, she confirms by scanning the leader's code); a
-// leader claims her own to her wallet with claim_junior. Assisted mode: both cards are messages. An Invest | Withdraw segmented control (component book) at the top of
+// leader claims her own to her wallet with claim_junior. Assisted mode: both cards are messages. A withdrawal the leader
+// prepared for her on G2 (23 Oct, LOAN_RULES "Member signature by task") shows on Withdraw: she confirms and shows her
+// signed QR, the leader scans it and starts it (desk.js signUnbond). An Invest | Withdraw segmented control (component book) at the top of
 // the card shows one of the two at a time (22 Oct).
 // DESIGN GAPs: no union name, no rate arrow and so no "In a year" line (Q5); no "Your loan · Fully backed" row (the tree
 // discount is not in Nov 7, LOAN_RULES); no leader name ("Rosalie"); Cash teller is shown as soon.
@@ -14,6 +16,8 @@ import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
 import { useInvestment, useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
+import { usePlanClient } from '../plan/hooks';
+import { signUnbond, unbondShares } from './desk';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Primary, inr } from '../plan/ui';
 import { C } from '../shell/tokens';
@@ -25,7 +29,7 @@ import { AssetScreen, Card, KV, Line, MarkCircle, QrCircle, Secondary, Stepper }
 const RAY = 10n ** 27n;
 const n = (v) => Number(BigInt(v ?? 0)) / 1e7;
 const DAYS_14 = 14 * 86400;
-const ONE_NIN = 10_000_000n;
+const TASK_DONE = 'nila.task.done';
 const fmt = (x) => Math.floor(x).toLocaleString('en-IN');
 const SWITCH = [['invest', 'Invest'], ['withdraw', 'Withdraw']];
 const NOTE = 'What you owe stays locked in your investment. It frees up as you repay.';
@@ -37,6 +41,24 @@ const ico = (d) => (
 );
 const CameraIcon = () => ico(<><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" /><circle cx="12" cy="13" r="3" /></>);
 const TellerIcon = () => ico(<><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4M7 10h10" /></>);
+
+/** Her signed withdrawal for the leader to scan (~10 minutes). */
+function SignedWithdraw({ amount, text, onDone }) {
+  const [img, setImg] = useState();
+  useEffect(() => { QRCode.toDataURL(text, { width: 400, margin: 0, errorCorrectionLevel: 'L' }).then(setImg); }, [text]);
+  return (
+    <AssetScreen title={`Withdraw ${inr(amount)}`} onBack={onDone} note="Show this to your leader. When she scans it, your withdrawal starts.">
+      <Card label="Your signed code">
+        <QrCircle img={img} alt="Your signed withdrawal code" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <KV k="Collect in cash" v={`from about ${dateOf(Date.now() / 1000 + DAYS_14)}`} />
+          <KV k="Valid" v="10 minutes" />
+        </div>
+        <Secondary onClick={onDone}>Done</Secondary>
+      </Card>
+    </AssetScreen>
+  );
+}
 
 /** A7b #invest: her wallet QR for the leader, the amount she brings and her investment after it. */
 function BringCash({ amount, after, address, onBack }) {
@@ -67,6 +89,14 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
   const [out, setOut] = useState(100);
   const [showQr, setShowQr] = useState(false);
   const [pick, setPick] = useState();
+  // The leader's prepared withdrawal (node, newest for her, 10 minutes); read every 5 s in assisted mode.
+  const api = usePlanClient();
+  const task = useQuery({ queryKey: ['stellar', 'task', s?.stellarAddress], enabled: !!api && !leader,
+    queryFn: () => api.myTask(), refetchInterval: assisted() ? 5000 : false });
+  const [doneTask, setDoneTask] = useState(() => { try { return Number(localStorage.getItem(TASK_DONE)) || 0; } catch { return 0; } });
+  const [signed, setSigned] = useState();
+  const [signErr, setSignErr] = useState();
+  const ask = task.data?.task === 'unbond' && task.data.ts !== doneTask ? task.data : null;
   const p = inv.data;
   const now = Date.now() / 1000;
   const claimAt = p?.request_ts ? Number(p.request_ts) + DAYS_14 : 0;
@@ -75,17 +105,17 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
   // Her free part moves every second while she owes (interest), so position and index are read
   // again just before the call, with a margin of 1 nIN while a loan is open (else BadShares).
   const withdraw = async (amt) => {
-    const u = [sv.address(cfg.union), sv.address(s.stellarAddress)];
-    const [pos, m] = await Promise.all([
-      readContract(cfg, 'fund_core', 'position', u),
-      readContract(cfg, 'fund_core', 'get_junior_market', [sv.address(cfg.union)]),
-    ]);
-    const freeNow = BigInt(pos.free) - (BigInt(pos.locked) > 0n ? ONE_NIN : 0n);
-    const want = BigInt(amt) * ONE_NIN;
-    const take = want < freeNow ? want : freeNow;
+    const { take, shares } = await unbondShares(cfg, s.stellarAddress, amt);
     if (take <= 0n) return;
-    const shares = (take * RAY) / BigInt(m.index);
-    return run('request_unbond_junior', [...u, sv.i128(shares)], `Withdraw ${inr(n(take))}`);
+    return run('request_unbond_junior', [sv.address(cfg.union), sv.address(s.stellarAddress), sv.i128(shares)], `Withdraw ${inr(n(take))}`);
+  };
+  const confirmAsk = async () => {
+    setSignErr();
+    try { setSigned(await signUnbond(cfg, { task: ask, me: s.stellarAddress, signHash: s.signHash })); } catch (e) { setSignErr(e.message); }
+  };
+  const doneAsk = () => {
+    try { localStorage.setItem(TASK_DONE, String(ask.ts)); } catch { /* private */ }
+    setDoneTask(ask.ts); setSigned();
   };
   // claim_junior itself moves the pending shares to claimable after 14 days; 0 = all of them.
   const claim = () => run('claim_junior', [sv.address(cfg.union), sv.address(s.stellarAddress), sv.i128(0n)], 'Your withdrawal');
@@ -101,7 +131,8 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
   const index = BigInt(market.data?.index ?? 0);
   const toCollect = n(((BigInt(p?.claimable_shares ?? 0) + (claimAt && claimAt <= now ? BigInt(p?.pending_shares ?? 0) : 0n)) * index) / RAY);
   // A withdrawal on its way or ready opens on Withdraw; otherwise Invest.
-  const mode = pick ?? (pending || canClaim ? 'withdraw' : 'invest');
+  const mode = pick ?? (pending || canClaim || ask ? 'withdraw' : 'invest');
+  if (signed && ask) return <SignedWithdraw amount={ask.amount} text={signed} onDone={doneAsk} />;
   if (showQr) return <BringCash amount={bring} after={invested + bring} address={s?.stellarAddress} onBack={() => setShowQr(false)} />;
   return (
     <AssetScreen title="Union investment" onBack={onBack} note={NOTE}>
@@ -145,7 +176,14 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
 
       {mode === 'withdraw' && <Card label="Withdraw">
         <Segmented label="Invest or withdraw" options={SWITCH} value={mode} onChange={setPick} />
-        {helped ? (
+        {ask ? (
+          <>
+            <KV k="Your leader asks you to withdraw" v={inr(ask.amount)} color={C.accent} />
+            <p style={muted}>{`Collect it in cash at the union office from about ${dateOf(now + DAYS_14)}.`}</p>
+            <Primary disabled={!s?.ready || !market.data} onClick={confirmAsk}>Confirm</Primary>
+            {signErr && <p style={{ ...muted, color: C.coral }}>{signErr}</p>}
+          </>
+        ) : helped ? (
           <p style={{ ...muted, textAlign: 'center', padding: '24px 0' }}>Ask your leader at the union office: you get your investment in cash.</p>
         ) : canClaim && leader ? (
           <Primary disabled={!tx.ready} onClick={claim}>Get your withdrawal</Primary>

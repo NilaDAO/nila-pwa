@@ -2,7 +2,7 @@
 // and assembled here against the public RPC from /stellar/config, signed with her Privy Stellar wallet
 // (a 32-byte hash), then fee-bumped by the node (POST /stellar/feebump; she holds no XLM) and followed on
 // the RPC until it lands. Reads are simulations with no signature.
-import { Account, Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
+import { Account, Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, authorizeInvocation, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
 
 const API = process.env.REACT_APP_API_BASE_URL;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -114,16 +114,21 @@ export async function invokeContract({ cfg, source, signHash, contractName, fn, 
   const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
   const acct = await s.getAccount(source);
-  // `auth`: entries already signed by another address (base64 XDR; the leader's at the desk, 22 Oct). Her own
-  // authorization is then given as her source account over the same call, and the simulation checks them all.
+  // `auth`: entries already signed by another address (base64 XDR; the leader's at the desk, 22 Oct; hers from her QR,
+  // 23 Oct). Her own part is the source-account entries a first simulation records for the call; the second
+  // (prepare) then checks them all with the given ones.
   const given = (auth || []).map((a) => xdr.SorobanAuthorizationEntry.fromXDR(a, 'base64'));
-  const op = given.length
-    ? Operation.invokeContractFunction({ contract: id, function: fn, args, auth: [
-      new xdr.SorobanAuthorizationEntry({ credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(), rootInvocation: typeof given[0].rootInvocation === 'function' ? given[0].rootInvocation() : given[0].rootInvocation }),
-      ...given] })
-    : new Contract(id).call(fn, ...args);
-  const raw = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
+  // A copy each time: building advances the account's sequence.
+  const build = (op) => new TransactionBuilder(new Account(acct.accountId(), acct.sequenceNumber()), { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
     .addOperation(op).setTimeout(300).build();
+  let op = new Contract(id).call(fn, ...args);
+  if (given.length) {
+    const sim = await s.simulateTransaction(build(op));
+    if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
+    const own = (sim.result?.auth || []).filter((a) => credType(a) === 'sorobanCredentialsSourceAccount');
+    op = Operation.invokeContractFunction({ contract: id, function: fn, args, auth: [...own, ...given] });
+  }
+  const raw = build(op);
   const tx = await s.prepareTransaction(raw);           // simulate + footprint + resource fee + auth
   checkPrepared(raw, tx, source, given);
   tx.addSignature(source, b64(await signHash(tx.hash())));
@@ -163,4 +168,36 @@ export async function signAuthFor({ cfg, source, signer, signHash, contractName,
   }
   if (!signed) throw new Error('This call needs no signature from you.');
   return signed.toXDR('base64');
+}
+
+/** Her signed authorization of (contract, fn, args) for a call another account submits later (23 Oct, the voucher:
+ *  machinery.claim checks her auth of (union, token, max hours) only): no simulation, a random nonce (one use) and
+ *  an expiry `ledgers` ahead (~5 s each). Returns { entry (base64 XDR), until (unix seconds, about) }. */
+export async function signInvocation({ cfg, signer, signHash, contractName, fn, args, ledgers }) {
+  const id = contractId(cfg, contractName);
+  if (!id) throw new Error(`no ${contractName} contract in the node config`);
+  const invocation = new xdr.SorobanAuthorizedInvocation({
+    function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(new xdr.InvokeContractArgs({
+      contractAddress: new Address(id).toScAddress(), functionName: fn, args })),
+    subInvocations: [],
+  });
+  const latest = (await server(cfg).getLatestLedger()).sequence;
+  const entry = await authorizeInvocation({ signer: async (_preimage, payload) => Uint8Array.from(await signHash(payload)),
+    validUntilLedgerSeq: latest + ledgers, invocation, networkPassphrase: cfg.passphrase, publicKey: signer, authV2: false });
+  return { entry: entry.toXDR('base64'), until: Math.floor(Date.now() / 1000) + ledgers * 5 };
+}
+
+/** A signed authorization entry (base64 XDR) read back: its signer, contract name, function, ScVal and native args. */
+export function readAuthEntry(cfg, b64) {
+  const get = (o, k) => (typeof o?.[k] === 'function' ? o[k]() : o?.[k]);
+  const e = xdr.SorobanAuthorizationEntry.fromXDR(b64, 'base64');
+  const cred = get(e, 'credentials');
+  const addr = get(cred, 'address');
+  const c = get(get(get(e, 'rootInvocation'), 'function'), 'contractFn');
+  if (!addr || !c) throw new Error('This code cannot be read.');
+  const contract = Address.fromScAddress(get(c, 'contractAddress')).toString();
+  const name = Object.keys(cfg.contracts).find((k) => cfg.contracts[k] === contract);
+  const args = get(c, 'args') || [];
+  return { signer: Address.fromScAddress(get(addr, 'address')).toString(), contractName: name, fn: String(get(c, 'functionName')),
+    args, native: args.map((a) => scValToNative(a)) };
 }

@@ -55,6 +55,9 @@ export function planClient(signer) {
     unionLoans: () => call('GET', '/stellar/union/loans'),
     unionTitles: () => call('GET', '/stellar/union/titles'),
     unionSearch: (window) => call('POST', '/stellar/union/search', { window }),
+    // Member-signed tasks (23 Oct): the leader prepares one for her; her phone reads the newest for her.
+    prepareTask: (member, task, amount) => call('POST', '/stellar/union/task', { member, task, amount }),
+    myTask: () => call('GET', '/stellar/union/task'),
   };
 }
 
