@@ -49,10 +49,11 @@ async function rpcKey(m) {
   if (m.method === 'simulateTransaction') {
     try {
       sdk ||= await import('@stellar/stellar-sdk');
-      const env = sdk.xdr.TransactionEnvelope.fromXDR(p.transaction, 'base64');
-      const op = env.value().tx().operations()[0].body().value().hostFunction().value();
-      const c = sdk.Address.fromScAddress(op.contractAddress()).toString();
-      return `sim ${c}.${op.functionName().toString()}(${plain(op.args().map((a) => sdk.scValToNative(a)))})`;
+      const at = (o, k) => (typeof o[k] === 'function' ? o[k]() : o[k]);   // sdk 17: XDR members are properties
+      const tx = at(at(sdk.xdr.TransactionEnvelope.fromXDR(p.transaction, 'base64'), 'value'), 'tx');
+      const op = at(at(at(at(at(tx, 'operations')[0], 'body'), 'value'), 'hostFunction'), 'value');
+      const c = sdk.Address.fromScAddress(at(op, 'contractAddress')).toString();
+      return `sim ${c}.${at(op, 'functionName').toString()}(${plain(at(op, 'args').map((a) => sdk.scValToNative(a)))})`;
     } catch { return `sim ${p.transaction}`; }
   }
   if (m.method === 'getLedgerEntries') return `ledger ${(p.keys || []).join(',')}`;
