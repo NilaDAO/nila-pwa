@@ -190,8 +190,6 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           <Row label="Open nIN invested" icon={<InvestedTile />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}
             value={Math.floor(invested)} valueSub={inr(invested)} onClick={onInvested} />
         )}
-        {/* Her own crop shares, also for a leader (a leader is also a member; A1L 'Yours'). */}
-        <ShareRows onOpen={onShare} />
         {vouchers.data?.length > 0 && (
           <Row label="Open machinery" icon={<MachineryTile />} title="Machinery" sub={vOpen ? `1 open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
             value={`${vHours} h`} valueSub="" onClick={onMachinery} />
@@ -211,6 +209,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         ) : lp?.trustline && (
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="For cash offers as an LP" value={lp.usdc.toFixed(2)} valueSub="" onClick={onOffers} />
         )}
+        {/* Her crop shares last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}
+        <ShareRows onOpen={onShare} />
         {moveNote && <p style={{ color: C.muted, fontSize: 14, margin: '4px 0 0' }} role="note">{moveNote}</p>}
       </section>
     </>
