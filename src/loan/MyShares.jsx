@@ -108,7 +108,7 @@ function ShareScan({ x, onBack }) {
   const [camera, setCamera] = useState(false);
   const [img, setImg] = useState();
   useEffect(() => {
-    if (s?.stellarAddress) QRCode.toDataURL(`nila:share:${x.plan.id}_${x.token_id}:${s.stellarAddress}`, { width: 360, margin: 2 }).then(setImg);
+    if (s?.stellarAddress) QRCode.toDataURL(`nila:share:${x.plan.id}_${x.token_id}:${s.stellarAddress}`, { width: 360, margin: 0 }).then(setImg);
   }, [s, x]);
   const read = useMemo(() => async (text) => {
     setError(undefined);
@@ -143,8 +143,11 @@ function ShareScan({ x, onBack }) {
   return (
     <Page title={`${name} · Area ${x.area}`} onBack={onBack}>
       {camera ? <CameraView key={tries} mode="qr" onText={read} /> : (
-        <button type="button" aria-label="Scan your leader's QR" onClick={() => setCamera(true)} style={{ border: 0, padding: 0, background: 'none', cursor: 'pointer' }}>
-          {img && <img src={img} alt="Your crop share QR" style={{ display: 'block', width: '100%', maxWidth: 360, margin: '0 auto', aspectRatio: '1', background: '#fff', borderRadius: 12 }} />}
+        // The same circle as the camera that takes its place (CameraView): white, the QR inscribed in it (71%).
+        <button type="button" aria-label="Scan your leader's QR" onClick={() => setCamera(true)} style={{ display: 'flex', alignItems: 'center',
+          justifyContent: 'center', width: 'calc(100% - 16px)', maxWidth: 420, aspectRatio: '1 / 1', margin: '16px auto 12px', padding: 0, border: 0,
+          borderRadius: R.round, overflow: 'hidden', boxShadow: `0 0 0 8px ${C.raised}`, background: '#fff', cursor: 'pointer' }}>
+          {img && <img src={img} alt="Your crop share QR" style={{ display: 'block', width: '71%', aspectRatio: '1' }} />}
         </button>
       )}
       <p style={{ ...muted, textAlign: 'center' }}>{camera ? "Scan the QR on your leader's phone." : 'Let your leader scan this at the union office.'}</p>
