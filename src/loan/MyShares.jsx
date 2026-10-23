@@ -150,19 +150,26 @@ function ShareScan({ x, onBack }) {
   return (
     <Page title={`${name} · Area ${x.area}`} onBack={onBack}>
       {camera ? <CameraView key={tries} mode="qr" onText={read} /> : (
-        // As big as the screen allows (23 Oct): the QR spans the screen's width (its own white margin is the quiet
-        // zone), inscribed in a white circle that runs off the screen's sides (clipped there); its height is the whole
-        // circle where the screen is tall enough with the text and button still in view (320 px: header, text, button, tab bar).
-        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', height: 'clamp(100vw, 100dvh - 320px, 100vw * 1.42)', overflow: 'hidden', position: 'relative' }}>
-          <button type="button" aria-label="Scan your leader's QR" onClick={() => setCamera(true)} style={{ position: 'absolute', left: '50%', top: '50%',
-            transform: 'translate(-50%, -50%)', width: 'calc(100vw * 1.42)', aspectRatio: '1 / 1', padding: 0, border: 0, borderRadius: R.round,
-            background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            {img && <img src={img} alt="Your crop share QR" style={{ display: 'block', width: '100vw', aspectRatio: '1' }} />}
+        // As big as the screen allows (23 Oct): the QR spans the screen's width (its own white margin, 2 modules, is the
+        // quiet zone), inscribed in a white circle that runs off the screen's sides (clipped there). The text and the
+        // button sit in the circle under the QR, clear of its quiet zone; the whole circle shows where the screen is tall
+        // enough (220 px: header, card padding, tab bar).
+        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', height: 'clamp(100vw + 176px, 100dvh - 220px, 100vw * 1.42)', overflow: 'hidden', position: 'relative' }}>
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 'calc(100vw * 1.42)', aspectRatio: '1 / 1',
+            borderRadius: R.round, background: '#fff' }} />
+          <button type="button" aria-label="Scan your leader's QR" onClick={() => setCamera(true)} style={{ position: 'absolute', left: 0, top: 'calc(50% - 50vw)',
+            width: '100vw', aspectRatio: '1', padding: 0, border: 0, background: 'none', cursor: 'pointer' }}>
+            {img && <img src={img} alt="Your crop share QR" style={{ display: 'block', width: '100%', aspectRatio: '1' }} />}
           </button>
+          <div style={{ position: 'absolute', left: '50%', top: 'calc(50% + 50vw + 4px)', transform: 'translateX(-50%)', width: '62vw',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: C.ink, fontSize: 14, lineHeight: 1.4, textAlign: 'center' }}>Let your leader scan this</span>
+            <button type="button" onClick={() => setCamera(true)} style={{ width: '100%', height: 44, borderRadius: R.button, border: 0, background: C.ink,
+              color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' }}>Scan your union's QR</button>
+          </div>
         </div>
       )}
-      <p style={{ ...muted, textAlign: 'center' }}>{camera ? "Scan the QR on your leader's phone." : 'Let your leader scan this at the union office.'}</p>
-      {!camera && <Primary onClick={() => setCamera(true)}>Scan your union's QR</Primary>}
+      {camera && <p style={{ ...muted, textAlign: 'center' }}>Scan the QR on your leader's phone.</p>}
       {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
     </Page>
   );
