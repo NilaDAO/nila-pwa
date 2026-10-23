@@ -62,12 +62,17 @@ export function useUnionBook(api) {
       ]);
       const now = Date.now() / 1000;
       const rows = await Promise.all(loans.map(async (l) => {
-        const g = await readContract(cfg, 'fund_core', 'get_loan', [u, sv.bytes32(l.token_id)]).catch(() => null);
+        const [g, v] = await Promise.all([
+          readContract(cfg, 'fund_core', 'get_loan', [u, sv.bytes32(l.token_id)]).catch(() => null),
+          // Her voucher's tractor hours left, from the chain (23 Oct: the node's list carried no hours).
+          cfg.contracts.machinery ? readContract(cfg, 'machinery', 'voucher', [u, sv.bytes32(l.token_id)]).catch(() => null) : null,
+        ]);
         if (!g || g.closed) return null;
         const out = n(g.principal) - n(g.principal_paid);
         const since = Math.max(0, now - Number(g.last_accrual_ts || g.drawdown_ts));
         const interest = n(g.interest_accrued) - n(g.interest_paid) + (out * Number(g.rate_bp) * since) / (10_000 * YEAR);
-        return { token: l.token_id, borrower: l.borrower, drawnAt: l.drawn_at, outstanding: out, interest, rateBp: Number(g.rate_bp), overdue: !!g.overdue, hours: Number(l.hours || 0) };
+        return { token: l.token_id, borrower: l.borrower, drawnAt: l.drawn_at, outstanding: out, interest, rateBp: Number(g.rate_bp), overdue: !!g.overdue,
+          hours: v && !v.void ? (Number(v.hours) - Number(v.used)) / 100 : 0 };
       }));
       const open = rows.filter(Boolean);
       const feeBp = Number(uc?.treasury_fee_bp ?? 0) + Number(uc?.rainy_fee_bp ?? 0);
@@ -135,7 +140,7 @@ export function useLeaderTodo(api, cash) {
           const ft = await readContract(cfg, 'fund_core', 'food_token', [u, sv.bytes32(hex)]).catch(() => null);
           if (ft && Number(ft.from_date) <= now && !(Number(ft.loan?.flags ?? 0) & 8)) { ready += 1; amount += n(ft.amount); }
         }
-        if (ready) out.push({ key: `share-${p.id}`, title: 'Crop share request', amount, who: `Land ${p.land_id}`, to: 'cash/loan' });
+        if (ready) out.push({ key: `share-${p.id}`, title: 'Crop share request', amount, who: `Land ${p.land_id}`, to: `loan/${p.id}` });
       }
       const { loans } = await api.unionLoans().catch(() => ({ loans: [] }));
       for (const l of loans) {

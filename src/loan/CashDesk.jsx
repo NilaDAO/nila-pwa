@@ -12,14 +12,12 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { LeaderLoan } from './LoanScreens';
 import { PayOut } from './CashOut';
 import { NIN } from './request';
 import PhotoCount from './PhotoCount';
 import RegisterMachine from '../machine/RegisterMachine';
 import { ScanLp } from '../anchor/LeaderLp';
 import CashBoard from '../leader/CashBoard';
-import { PickMember } from '../leader/LeaderTasks';
 import { Secondary } from './AssetParts';
 
 const PURPOSE = { invest: 0, repay: 1 };
@@ -156,13 +154,13 @@ function ToMembersFrom({ member }) {
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
 // Her own actions (invest, repay, withdraw) start only from her G2 (executive decision 22 Oct: Members → G2 → action):
 // #/cash/<action>/<her Stellar address>. Without her the leader is sent to Members (G1) to find her.
-const OPEN = { lpscan: 'lpscan', loan: 'loan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw' };
+const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw' };
 const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
 const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/(G[A-Z2-7]{55})/) || [])[1];
 
 export default function CashDesk({ initial }) {
   const [view, setView] = useState(OPEN[initial]);
-  const [member, setMember] = useState(herFromHash);   // from her G2; the machine flow picks on L5
+  const [member, setMember] = useState(herFromHash);   // from her G2; L13 takes the owner's wallet itself (no L5 pick, 22 Oct)
   const back = useMemo(() => () => {
     if (MEMBER_ACTIONS.includes(view)) { window.history.back(); return; }   // back to her G2
     setView(undefined); setMember(undefined);
@@ -172,13 +170,8 @@ export default function CashDesk({ initial }) {
   if (toMembers) return null;
   if (view === 'invest' || view === 'withdraw') return <ToMembersFrom member={member} />;
   if (view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
-  // L5 first for a machine: the members the app knows, or scan her wallet.
-  if (view === 'machine' && member === undefined) {
-    return <PickMember title="Register a machine" onBack={back} onPick={setMember} onScan={() => setMember('')} />;
-  }
-  if (view === 'loan') return <LeaderLoan />;
   if (view === 'payout') return <PayOut onBack={back} />;
-  if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member} />;
+  if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member || ''} />;
   if (view === 'lpscan') return <ScanLp onBack={back} />;
   // The Cash tab is the C1–C4 board (P10): the union's money only; the cash tasks are on the Tasks tab (L1).
   return <CashBoard settle={initial === 'settle'} onScanLp={() => setView('lpscan')} />;

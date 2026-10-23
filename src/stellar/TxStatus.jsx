@@ -95,7 +95,7 @@ const Button = ({ children, onClick, primary }) => (
 );
 
 /** Shows N1/N2/N3 for a running tx; renders nothing while idle. */
-export function TxScreens({ tx, onClose, onRetry }) {
+export function TxScreens({ tx, onClose, onRetry, network = 'Stellar' }) {
   const [left, setLeft] = useState(5);
   const close = useRef(onClose);
   close.current = onClose;
@@ -139,7 +139,7 @@ export function TxScreens({ tx, onClose, onRetry }) {
       <Screen>
         <Mark bg={C.coral} stroke={C.ink}><path d="M18 6 6 18M6 6l12 12" /></Mark>
         <h1 style={title}>Not sent</h1>
-        <p style={sub}>The Stellar network did not accept this transaction. Nothing left your wallet.</p>
+        <p style={sub}>The {network} network did not accept this transaction. Nothing left your wallet.</p>
         <Card>
           {tx.rows.map(([k, v]) => <Row key={k} k={k} v={v} />)}
           <Row k="Reason" v={tx.reason} />

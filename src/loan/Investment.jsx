@@ -145,9 +145,8 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
 
       {mode === 'withdraw' && <Card label="Withdraw">
         <Segmented label="Invest or withdraw" options={SWITCH} value={mode} onChange={setPick} />
-        {helped ? (
-          <p style={{ ...muted, textAlign: 'center', padding: '24px 0' }}>Ask your leader at the union office: you get your investment in cash.</p>
-        ) : canClaim && leader ? (
+        {/* Assisted (23 Oct): the leader drives her phone; she confirms and signs here, as in self mode. */}
+        {canClaim && leader ? (
           <Primary disabled={!tx.ready} onClick={claim}>Get your withdrawal</Primary>
         ) : canClaim ? (
           <>

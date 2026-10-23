@@ -63,7 +63,7 @@ const rupees = (v) => `₹${(Number(v) / U).toLocaleString('en-IN', { maximumFra
 function amountFromArgs(fn, a) {
   try {
     if (fn === 'cash_scan_mint') return rupees(a[6]);                      // (leader, union, purpose, member, amount, …)
-    if (fn === 'claim') return `+${Number(a[7])} h`;                         // (owner, machine, union, token, code, hours)
+    if (fn === 'claim') return `+${Number(a[7])} h`;                         // (owner, machine, union, token, max_hours, hours)
     if (fn === 'draw_loan' && Number(a[6])) return `+${Number(a[6])} h`;     // (union, member, token, cash, hours)
     if (fn === 'repay_loan') return `−${rupees(a[4])}`;                      // (union, token, amount)
   } catch { /* an argument the app does not know: no amount */ }
@@ -192,10 +192,11 @@ function eventRows(events, me, shareLabel) {
       case 'loan_drawn': if (has(e.v.borrower) || share) row(share ? `Crop share taken · ${share}` : 'Crop share taken', 'Cash at union office', `+₹${nin(e.v.cash)}`); break;
       case 'loan_repaid': if (share) row(`Loan repaid · ${share}`, 'Cash at union office', `−₹${nin(BigInt(e.v.principal_paid || 0) + BigInt(e.v.interest_paid || 0))}`); break;
       case 'loan_overdue': if (share) row(`Repayment overdue · ${share}`, 'Your crop share', ''); break;
-      case 'voucher_granted': if (has(e.v.member) || share) row('Machinery voucher', 'From your union', `+${e.v.hours} h`); break;
+      // Vouchers in centi tractor hours, hours worked in hundredths of an hour (23 Oct).
+      case 'voucher_granted': if (has(e.v.member) || share) row('Machinery voucher', 'From your union', `+${(Number(e.v.hours) / 100).toFixed(1)} tractor h`); break;
       case 'voucher_claimed':
-        if (has(e.v.owner)) row('Machine job done', 'Your machine', `+${e.v.hours} h`);
-        else if (share) row(`Machine job · ${share}`, 'Machinery voucher', `−${e.v.hours} h`);
+        if (has(e.v.owner)) row('Machine job done', 'Your machine', `+${(Number(e.v.hours) / 100).toFixed(1)} h`);
+        else if (share) row(`Machine job · ${share}`, 'Machinery voucher', `−${(Number(e.v.units ?? e.v.hours) / 100).toFixed(1)} tractor h`);
         break;
       case 'dues_collected': if (has(e.topics[2])) row('Machine dues collected', 'From your union', `+₹${nin(e.v.amount)}`); break;
       case 'machine_registered': if (has(e.v.owner)) row('Machine registered', 'By your leader', '+1'); break;

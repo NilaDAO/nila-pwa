@@ -122,7 +122,7 @@ function Code({ verifying, error, onVerify, onResend, sent }) {
             <div aria-hidden="true" style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
               {[0, 1, 2, 3, 4, 5].map((i) => <span key={i} style={{ ...BOX, outline: i === code.length ? '2px solid #D4CF5A' : 'none' }}>{code[i] || ''}</span>)}
             </div>
-            <input ref={input} aria-label="Enter the code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
+            <input ref={input} autoFocus aria-label="Enter the code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', border: 0 }} />
           </div>

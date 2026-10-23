@@ -1,6 +1,7 @@
 // P6 machinery vouchers (executive decision, 17 Oct; LOAN_RULES §5 "Machinery vouchers (P6)"), read from the
 // Stellar machinery contract (the design's Polygon voucher contract is replaced by C5; query keys moved
-// to `stellar`). Whole hours: any machine uses one voucher hour per hour worked, priced at its type's rate.
+// to `stellar`). Vouchers in tractor hours (executive decision 23 Oct): held on-chain in hundredths (units); an hour
+// of a machine uses its rate ÷ the tractor's (type 1) rate, rounded up to a unit, as machinery.claim counts it.
 // The contract has no list views: machine types are found by reading rate(union, 1..16), machines by
 // reading machine(1..) until the first empty id, her vouchers through fund_core.loans_of.
 import { useQuery } from '@tanstack/react-query';
@@ -13,12 +14,28 @@ const hexOf = (b) => Buffer.from(b).toString('hex');
 
 // Type numbers as the plan engine's finance table uses them (plan/reference/finance_v1.json); a type the
 // union sets a rate for without a name here shows as "Machine type N". DESIGN GAP: no type names on-chain.
-export const TYPE_NAMES = { 1: 'Tractor', 2: 'Planter', 3: 'Power weeder' };
+// One type per tractor + implement (executive decision 22 Oct, lean): an owner registers her tractor once per implement.
+export const TYPE_NAMES = {
+  1: 'Tractor + rotavator', 2: 'Seed drill / planter', 3: 'Power weeder', 4: 'Tractor + cultivator', 5: 'Tractor + plough',
+  6: 'Tractor + disc harrow', 7: 'Tractor + ridger', 8: 'Tractor + puddler', 9: 'Tractor + trailer', 10: 'Tractor + cane trailer',
+  11: 'Power tiller', 12: 'Paddy transplanter', 13: 'Sugarcane sett planter',
+};
 export const typeName = (t) => TYPE_NAMES[t] || `Machine type ${t}`;
 export const PARTS = [['diesel', 'Diesel'], ['driver', 'Driver'], ['maintenance', 'Maintenance'],
   ['insurance', 'Insurance'], ['depreciation', 'Depreciation'], ['margin', 'Margin']];
 export const HOLD_REASONS = { 1: 'In repair', 2: 'Driver not available', 3: 'Other' };
 const MAX_TYPES = 16;
+/** The machine type whose hour is the voucher's unit. */
+export const TRACTOR = 1;
+/** Units (centi tractor hours) as tractor hours with one decimal. */
+export const th = (u) => (Math.round(Number(u || 0) / 10) / 10).toFixed(1);
+/** Hours worked as the contract takes them: hundredths of an hour (23 Oct). */
+export const centi = (hours) => Math.round(Number(hours || 0) * 100);
+/** Units that `hours` of a machine at `rate` (₹ an hour) use against a tractor at `tractor` (as the contract:
+ *  ceil(hundredths worked × rate ÷ tractor rate)). */
+export const unitsOf = (hours, rate, tractor) => (tractor > 0 ? Math.ceil(Math.round((centi(hours) * rate) / tractor * 1e6) / 1e6) : 0);
+/** Hours of a machine at `rate` that `units` pay for, down to a tenth of an hour. */
+export const hoursFor = (units, rate, tractor) => (rate > 0 ? Math.floor(Math.round((units * tractor) / (10 * rate) * 1e6) / 1e6) / 10 : 0);
 const MAX_MACHINES = 500;
 
 /** The union's rate table: [{type, name, parts (₹ an hour), total}] (machinery.rate, set by the union account). */
@@ -40,7 +57,12 @@ export function useRates() {
   });
 }
 
-/** Her vouchers: one per loan with hours (fund_core.loans_of → machinery.voucher). Left = hours − used. */
+// Her voucher code (A8a, 23 Oct): { entry, token, hours, type, used, until }, the one signed code on this phone.
+const CODE_KEY = 'nila.voucher.signed';
+export const loadVoucherCode = () => { try { return JSON.parse(localStorage.getItem(CODE_KEY)) || null; } catch { return null; } };
+export const saveVoucherCode = (c) => { try { if (c) localStorage.setItem(CODE_KEY, JSON.stringify(c)); else localStorage.removeItem(CODE_KEY); } catch { /* private */ } };
+
+/** Her vouchers: one per loan with hours (fund_core.loans_of → machinery.voucher), in units. Left = hours − used. */
 export function useVouchers(member) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
@@ -51,12 +73,9 @@ export function useVouchers(member) {
         const token = hexOf(id);
         const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null);
         if (!v || v.void) return null;
-        const now = Date.now() / 1000;
-        const open = v.code_hash && Number(v.code_expires) > now;
-        return { token, hours: Number(v.hours), used: Number(v.used), left: Number(v.hours) - Number(v.used),
-          code: v.code_hash ? { hash: hexOf(v.code_hash), max: Number(v.code_max), expires: Number(v.code_expires), open } : null };
+        return { token, hours: Number(v.hours), used: Number(v.used), left: Number(v.hours) - Number(v.used) };
       }));
-      return rows.filter((r) => r && (r.left > 0 || r.code));
+      return rows.filter(Boolean);
     },
   });
 }
@@ -64,10 +83,10 @@ export function useVouchers(member) {
 /** Every machine of the union with its id (machinery.machine(1..) until the first empty id). A read error fails
  *  the query, so the last good list stays (a cut-short list would hide her machine). `poll`: refresh every
  *  minute (A13 while she waits for the leader's registration); elsewhere on open only. */
-export function useMachines({ poll = false } = {}) {
+export function useMachines({ poll = false, on = true } = {}) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['stellar', 'machines', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 60_000,
+    queryKey: ['stellar', 'machines', cfg?.union], enabled: on && !!cfg?.contracts?.machinery, staleTime: 60_000,
     refetchInterval: poll ? 60_000 : false,
     queryFn: async () => {
       const out = [];
@@ -92,7 +111,7 @@ export function useMyMachine(owner, { pick, poll } = {}) {
     queryKey: ['stellar', 'machine', mine?.id, 'week'], enabled: !!mine && !!cfg, staleTime: 30_000,
     queryFn: () => readContract(cfg, 'machinery', 'hours_this_week', [sv.u64(mine.id)]),
   });
-  return { ...machines, data: machines.data && (mine ? { ...mine, usedThisWeek: Number(week.data ?? 0), all } : null) };
+  return { ...machines, data: machines.data && (mine ? { ...mine, usedThisWeek: Number(week.data ?? 0) / 100, all } : null) };
 }
 
 // The owner's jobs, kept on her phone from her claim results (no indexer yet, 17 Oct): the pending part

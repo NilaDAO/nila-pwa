@@ -11,7 +11,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { useTitleCount } from '../register/titles';
 import { useInvestment } from '../stellar/hooks';
 import { ShareRows, useMyShares } from '../loan/MyShares';
-import { typeName, useMyMachine, useVouchers } from '../machine/hooks';
+import { loadVoucherCode, th, typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
 import { UnionRows, useLeaderSlides } from '../leader/UnionCards';
@@ -19,15 +19,16 @@ import { C, FONT, R, SHADOW } from './tokens';
 import { CashTile, ChevronIcon, HistoryIcon, InvestedTile, LandIcon, MachineryTile, MyMachineTile, NinTile, QrIcon, RefreshIcon, TreasuryTile, UsdcTile } from './icons';
 import RoundButton, { SettingsButton } from './RoundButton';
 import { StickyTop } from './ListRow';
-import MessageSlider, { memberSlides } from './MessageSlider';
+import MessageSlider, { Title, card, memberSlides, small } from './MessageSlider';
 import { Sheet } from '../plan/ui';
 import { useStage } from './stageCtx';
 import { homeTop, useHomeMap } from './MapStage';
 import { MEMBER_TODO_ROWS, useLeaderTaskCount } from './taskCount';
 
 // Where A1's card was left (map-central trial, 22 Oct): back from any asset screen it returns at the same scroll position
-// and raised or lowered as it was. Kept for the session in memory only.
+// and raised or lowered as it was. Kept for the session in memory only. A tap on the bottom bar starts it over (22 Oct).
 const memory = { y: 0, low: false };
+export const resetA1Scroll = () => { memory.y = 0; memory.low = false; window.scrollTo(0, 0); };
 
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
@@ -91,7 +92,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp, onRegisterMachine }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   // A member never holds nIN (LOAN_RULES §5, desk only, 22 Oct): no nIN row and none in her total; leaders keep theirs.
@@ -100,8 +101,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const inv = useInvestment(s?.stellarAddress);
   const invested = inv.data ? Number(inv.data.invested) / 1e7 : undefined;
   const vouchers = useVouchers(s?.stellarAddress);
-  const vHours = (vouchers.data || []).reduce((a, v) => a + v.left, 0);
-  const vOpen = (vouchers.data || []).find((v) => v.code?.open);
+  // Her voucher code is kept on her phone (A8a, 23 Oct): open while unused and not expired.
+  const vCode = loadVoucherCode();
+  const vOpen = vCode && vCode.until > Date.now() / 1000 && (vouchers.data || []).some((v) => v.token === vCode.token && v.used === vCode.used) ? vCode : null;
   const machine = useMyMachine(s?.stellarAddress).data;
   const lp = useLpStatus().data;
   // A leader's USDC in rupees at fx_pool's current rate (22 Oct); an expired rate leaves it out of the total.
@@ -118,8 +120,16 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
       paid: n(l.principal_paid) + n(l.interest_paid), due: Number(l.maturity_ts || 0) ? Number(l.maturity_ts) + 21 * 86400 : null };
   });
   // One slider for member and leader (22 Oct): the leader's cash and LP cards first, then her own.
-  const leaderSlides = useLeaderSlides({ on: !!leader, onSettle, onScanLp });
-  const slides = [...leaderSlides, ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans })];
+  const leaderSlides = useLeaderSlides({ on: !!leader, onSettle, onScanLp, onMachine: onRegisterMachine });
+  // Her machine waits for her confirmation (23 Oct): first in the slider, straight to Your machine.
+  const confirmSlide = machine && !machine.confirmed ? [(
+    <section key="confirm-machine" aria-label="Confirm your machine" style={card}>
+      <Title Icon={MyMachineTile}>Confirm your machine</Title>
+      <span style={{ ...small, color: C.muted }}>{typeName(machine.machine_type)}, registered by your union leader. Members can hire it once you confirm.</span>
+      <button type="button" onClick={() => onMachine(machine.id)} style={{ height: 44, borderRadius: 12, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>Confirm your machine</button>
+    </section>
+  )] : [];
+  const slides = [...confirmSlide, ...leaderSlides, ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans })];
 
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell A1 is a card over the map of her
   // land (drag line, rounded top), opening high with a strip of map; History, All tasks and Settings are the card's
@@ -179,15 +189,11 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           <Row label="Open nIN invested" icon={<InvestedTile />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}
             value={Math.floor(invested)} valueSub={inr(invested)} onClick={onInvested} />
         )}
-        {/* Her own crop shares, also for a leader (a leader is also a member; A1L 'Yours'). */}
-        <ShareRows onOpen={onShare} />
-        {vouchers.data?.length > 0 && (
-          <Row label="Open machinery" icon={<MachineryTile />} title="Machinery" sub={vOpen ? `1 open code · ${Math.max(0, Math.floor((vOpen.code.expires - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
-            value={`${vHours} h`} valueSub="" onClick={onMachinery} />
-        )}
-        {machine && (
-          <Row label="Open your machine" icon={<MyMachineTile />} title="Your machine" sub={`${typeName(machine.machine_type)} · ${!machine.confirmed ? 'confirm it' : machine.on_hold ? 'on hold' : 'available'}`} onClick={onMachine} />
-        )}
+        {/* One row per machine she owns (23 Oct), named by its type. */}
+        {machine?.all.map((x) => (
+          <Row key={x.id} label={`Open ${typeName(x.machine_type)}`} icon={<MyMachineTile />} title={typeName(x.machine_type)}
+            sub={!x.confirmed ? 'Confirm it' : x.on_hold ? 'On hold' : 'Available'} onClick={() => onMachine(x.id)} />
+        ))}
         {/* A9 (22 Oct): every leader sees the USDC row; it opens only once the anchor marked her identity checked
             (fx_pool.id_checked, K1 #leader from LS) and is locked with a warning until then. A member LP keeps her row
             to the cash offers. */}
@@ -198,6 +204,18 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         ) : lp?.trustline && (
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="For cash offers as an LP" value={lp.usdc.toFixed(2)} valueSub="" onClick={onOffers} />
         )}
+        {/* Vouchers under their own label (any voucher kind; machine hours today, 23 Oct): one row for her machine
+            vouchers, all her crop shares' hours left together, in tractor hours; no crop named. */}
+        {vouchers.data?.length > 0 && (
+          <>
+            <span style={label}>Vouchers</span>
+            <Row label="Open machine vouchers" icon={<MachineryTile />} title="Machine vouchers"
+              sub={vOpen ? `Open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'In tractor hours'}
+              value={`${th(vouchers.data.reduce((a, v) => a + v.left, 0))} h`} valueSub="" onClick={onMachinery} />
+          </>
+        )}
+        {/* Her crop shares last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}
+        <ShareRows onOpen={onShare} />
         {moveNote && <p style={{ color: C.muted, fontSize: 14, margin: '4px 0 0' }} role="note">{moveNote}</p>}
       </section>
     </>

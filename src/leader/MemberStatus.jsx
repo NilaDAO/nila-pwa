@@ -73,13 +73,19 @@ export default function MemberStatus({ id, go }) {
   const found = (members.data || []).find((x) => x.route === id);
   // Her crop shares and her loans' due dates are read only here (22 Oct), after the list.
   const shares = useUnionShares(api);
-  const dues = useLoanDues(found?.loans);
+  // Her open loans: the node's list, plus any drawn share it does not hold yet (read from the share on-chain).
+  const loans = useMemo(() => {
+    if (!found) return undefined;
+    const extra = (shares.data?.[found.address]?.shares || []).filter((x) => x.loan && !found.loans.some((l) => l.token === x.token)).map((x) => x.loan);
+    return [...found.loans, ...extra];
+  }, [found, shares.data]);
+  const dues = useLoanDues(loans);
   const m = useMemo(() => {
     if (!found) return found;
     const mine = shares.data?.[found.address] || {};
     return { ...found, plan: mine.plan, shares: mine.shares || [],
-      loans: found.loans.map((l) => ({ ...l, due: dues.data?.[l.token] || 0, ...((mine.shares || []).find((x) => x.token === l.token) ? { crop: mine.shares.find((x) => x.token === l.token).crop } : {}) })) };
-  }, [found, shares.data, dues.data]);
+      loans: loans.map((l) => ({ ...l, due: dues.data?.[l.token] || 0, ...((mine.shares || []).find((x) => x.token === l.token) ? { crop: mine.shares.find((x) => x.token === l.token).crop } : {}) })) };
+  }, [found, loans, shares.data, dues.data]);
   const inv = useInvestment(m?.address);
   const tx = useSorobanTx();
   // Invest / Withdraw run in place (22 Oct): the button row turns into Photo count | Cash teller; Photo count opens the
@@ -92,17 +98,21 @@ export default function MemberStatus({ id, go }) {
     queryFn: () => deskClaim(cfg, found.address) });
   const labels = useMemo(() => {
     // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
+    // A financed share grows too (23 Oct): its draw is the start, whatever the plan's sowing date says.
     const seasons = m?.plan?.plan?.seasons || [];
     const today = new Date();
     const out = {};
     seasons.forEach((_, i) => Object.entries(rowsInSeason(seasons, i)).forEach(([z, r]) => {
       if (r.sow && new Date(r.sow) <= today && (!r.harvest || new Date(r.harvest) >= today)) out[z] = { text: r.name, colour: r.colour };
     }));
+    (m?.shares || []).filter((x) => x.loan).forEach((x) => x.zones.forEach((z) => { out[z] = { text: x.crop, colour: x.colour }; }));
     return out;
   }, [m]);
-  if (members.isLoading) {
+  // Still loading, or only the list kept on this phone while the fresh one loads (a new member is not in it yet,
+  // 23 Oct): the skeleton, never "not in your union's list".
+  if (members.isLoading || (!found && (members.isFetching || members.isPlaceholderData))) {
     return (
-      <MapCard header={{ title: '', onBack: () => go('members'), onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+      <MapCard map={<span />} header={{ title: '', onBack: () => go('members'), onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
         <SkeletonRows rows={4} />
       </MapCard>
     );
@@ -110,7 +120,7 @@ export default function MemberStatus({ id, go }) {
   const back = () => go('members');
   if (!m) {
     return (
-      <MapCard header={{ title: 'Member', onBack: back, onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+      <MapCard map={<span />} header={{ title: 'Member', onBack: back, onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
         <p style={{ color: C.muted, padding: '0 14px' }}>This member is not in your union's list.</p>
       </MapCard>
     );
@@ -142,7 +152,8 @@ export default function MemberStatus({ id, go }) {
     contractName: 'fund_core', fn: 'mark_default', args: [sv.address(cfg.union), sv.bytes32(dueLoan.token)],
     invalidate: [['stellar', 'unionMembers'], ['stellar', 'unionShares'], ['stellar', 'loans']],
   });
-  const map = m.record ? <AreaMap record={m.record} labels={labels} /> : null;
+  // Her fields only (23 Oct): until her record is in, no map at all, never the leader's own fields.
+  const map = m.record ? <AreaMap record={m.record} labels={labels} /> : <span />;
   return (
     <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings') }}
       style={{ fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5 }}>
@@ -204,7 +215,7 @@ export default function MemberStatus({ id, go }) {
       {m.shares.length > 0 && (
         <Section title="Crop shares">
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[...m.shares].sort((a, b) => b.from - a.from).map((x) => {
+            {[...m.shares].sort((a, b) => a.from - b.from).map((x) => {
               const st = stateOf(x, m.loans);
               return (
                 <li key={x.token} style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: R.button,
@@ -215,7 +226,7 @@ export default function MemberStatus({ id, go }) {
                     <span style={{ color: C.muted }}>Area {x.area}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
                   </span>
                   {st.take ? (
-                    <button type="button" onClick={() => go('cash/loan')} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
+                    <button type="button" onClick={() => go(`loan/${m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
                       background: C.accent, color: C.ink, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Take up</button>
                   ) : (
                     <span style={{ flexShrink: 0, height: 24, borderRadius: R.round, padding: '0 8px', display: 'flex', alignItems: 'center', fontSize: 12,

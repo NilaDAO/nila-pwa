@@ -17,6 +17,7 @@ import ListRow, { ListSection, ScreenHeader } from '../shell/ListRow';
 import MapCard from '../shell/MapCard';
 import { BanknoteIcon, CalendarIcon, CropIcon, InvestIcon, PayOutIcon, PinIcon, RepayIcon, RupeeIcon, TractorIcon, UserPlusIcon } from '../shell/icons';
 import { useKnownMembers, useLeaderTodo, useUnionCash } from './hooks';
+import { ReadyShareRows, useMyShares } from '../loan/MyShares';
 
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
@@ -44,7 +45,7 @@ export function PickMember({ title, onPick, onBack, onScan }) {
 // "Scan an LP code" has no board row (LP scan, P9): it keeps the cash icon.
 const START = [
   ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon]]],
-  ['Crop plan and crop share', [['Share request', 'For a crop plan the member accepted', 'cash/loan', RupeeIcon]]],
+  ['Crop plan and crop share', [['Share request', 'Find her in Members', 'members', RupeeIcon]]],
   // Her invest, repay and withdrawal start from her G2 (22 Oct): these rows open Members to find her.
   ['Cash', [['Invest', 'Find her in Members', 'members', InvestIcon], ['Repay', 'Find her in Members', 'members', RepayIcon],
     ['Pay out investment', 'Find her in Members', 'members', PayOutIcon],
@@ -63,6 +64,7 @@ export default function LeaderTasks({ go }) {
   const offers = useUnionOffers().data || [];
   const borders = useBorderJobs().data || [];
   const lp = useLpStatus().data;
+  const ownReady = (useMyShares().data || []).some((x) => x.ready);
   const [q, setQ] = useState('');
   const now = Date.now() / 1000;
   const items = [...(todo.data || [])];
@@ -99,9 +101,9 @@ export default function LeaderTasks({ go }) {
       {/* L1 'Your own' (notes leader-missing): her member tasks — a leader is also a member. Today the member app's own
           task is the LP's cash offers; her crop plan and shares are on the Crop plan and Assets tabs. */}
       <ListSection title="Your own">
-        {lp?.lp && lp?.trustline
-          ? <ListRow first icon={BanknoteIcon} title="Cash offers" sub="As an LP" onClick={() => go('offers')} />
-          : <li style={{ color: C.muted, padding: '12px 0' }}>Nothing of your own to do.</li>}
+        <ReadyShareRows go={go} />
+        {lp?.lp && lp?.trustline && <ListRow first={!ownReady} icon={BanknoteIcon} title="Cash offers" sub="As an LP" onClick={() => go('offers')} />}
+        {!ownReady && !(lp?.lp && lp?.trustline) && <li style={{ color: C.muted, padding: '12px 0' }}>Nothing of your own to do.</li>}
       </ListSection>
       <h2 style={{ margin: '8px 0 -8px 14px', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Start a task</h2>
       {START.map(([group, rows]) => (

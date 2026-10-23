@@ -7,7 +7,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { getMoveStatus, requestMoveNin } from '../move/api';
 import { useLegacyBalances } from '../move/hooks';
 import { useStellarConfig } from '../stellar/hooks';
-import A1 from './A1';
+import A1, { resetA1Scroll } from './A1';
 import CropPlanFlow from '../plan/CropPlanFlow';
 import LeaderPlans from '../plan/LeaderApprove';
 import { LeaderLoan, MemberScan } from '../loan/LoanScreens';
@@ -19,7 +19,7 @@ import Investment from '../loan/Investment';
 import CashOut from '../loan/CashOut';
 import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
-import { TakeUp, rowOf, useMyShares } from '../loan/MyShares';
+import { ReadyShareRows, TakeUp, rowOf, useMyShares } from '../loan/MyShares';
 import MapStage from './MapStage';
 import MapCard from './MapCard';
 import { SlideBar } from '../plan/PlanResult';
@@ -73,6 +73,7 @@ const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-
 
 function TasksView({ leader, go }) {
   const lp = useLpStatus();
+  const shares = useMyShares().data;
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
   const member = readMember();
@@ -81,6 +82,7 @@ function TasksView({ leader, go }) {
   // A2 (board Tasks): "Cash offers" for an LP, then "To do". DESIGN GAP: the board's to-do rows (use machine hours,
   // plant, invest, register trees, repay) need her plan's task list, not built yet; her crop plan row stands in.
   const isLp = lp.data?.lp && lp.data?.trustline;
+  const ready = (shares || []).some((x) => x.ready);
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: 'Tasks', onBack: () => go('assets'), onSettings: () => go('settings') }}>
@@ -90,7 +92,8 @@ function TasksView({ leader, go }) {
         </ListSection>
       )}
       <ListSection title="To do">
-        <ListRow first icon={CropIcon} title="Your crop plan" sub="Make, check or follow your plan" onClick={() => go('crop')} />
+        <ReadyShareRows go={go} />
+        <ListRow first={!ready} icon={CropIcon} title="Your crop plan" sub="Make, check or follow your plan" onClick={() => go('crop')} />
       </ListSection>
     </MapCard>
   );
@@ -200,8 +203,8 @@ export default function Shell({ leader }) {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} onLand={() => go('land')} moveNote={moveNote}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`cropshare/${t}`)}
-      onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')} onUsdc={() => go('usdc')}
-      onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} />;
+      onMachinery={() => go('machinery')} onMachine={(id) => go(id ? `machine/${id}` : 'machine')} onOffers={() => go('offers')} onUsdc={() => go('usdc')}
+      onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} onRegisterMachine={() => go('cash/machine')} />;
   } else if (view === 'settings') {
     body = leader
       ? <LeaderSettings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onIdLeader={() => go('idleader')} onOffers={() => go('offers')} />
@@ -216,7 +219,7 @@ export default function Shell({ leader }) {
   else if (view === 'crop') body = <CropPlanFlow />;
   else if (view === 'approvals' && leader) body = <LeaderPlans key={readArg() || 'one'} planId={readArg()} onBack={() => go('tasks')} />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
-  else if (view === 'loan') body = <LeaderLoan />;
+  else if (view === 'loan') body = <LeaderLoan key={readArg()} initial={readArg()} />;
   else if (view === 'cash' && leader) body = <CashDesk key={window.location.hash} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
   else if (view === 'usdc' && leader) body = <UsdcAsset onBack={() => go('assets')} />;
@@ -225,8 +228,8 @@ export default function Shell({ leader }) {
   // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.
   else if (view === 'cashout' && leader) body = <CashOut onBack={() => go('assets')} />;
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
-  else if (view === 'machine') body = <MyMachine onBack={() => go('assets')} />;
-  else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go(`cropshare/${readArg()}`)} />;
+  else if (view === 'machine') body = <MyMachine key={readArg()} pick={Number(readArg()) || undefined} onBack={() => go('assets')} />;
+  else if (view === 'share') body = <TakeUp key={readArg()} token={readArg()} leader={leader} onBack={() => go(`cropshare/${readArg()}`)} />;
   // A4 / A4a: her crop share, from its A1 row.
   else if (view === 'cropshare') {
     body = <AssetStep view={view}>{(p) => <CropShare key={readArg()} token={readArg()} onBack={() => go('assets')} onTakeUp={(t) => go(`share/${t}`)} {...p} />}</AssetStep>;
@@ -247,7 +250,7 @@ export default function Shell({ leader }) {
     <MapStage>
       <div style={{ minHeight: '100vh', background: GRADIENT, paddingBottom: TAB_BAR_HEIGHT + 16, position: 'relative', zIndex: 1 }} data-testid="shell">
         {body}
-        <BottomTabBar tabs={tabs} active={active} onSelect={go} />
+        <BottomTabBar tabs={tabs} active={active} onSelect={(v) => { resetA1Scroll(); go(v); }} />
       </div>
     </MapStage>
   );

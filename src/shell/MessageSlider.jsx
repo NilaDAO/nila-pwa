@@ -21,7 +21,7 @@ export function Bar({ pct, label, color = C.accent }) {
   );
 }
 
-function Steps({ items }) {
+export function Steps({ items }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {items.map((t, i) => (

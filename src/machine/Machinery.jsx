@@ -1,35 +1,43 @@
 // A8 machinery voucher, A8a its code, A8b an expired code (boards MemberAssetTractor, MemberAssetTractorScrolled,
-// MemberAssetTractorExpired). Decided 17 Oct (LOAN_RULES §5 "Machinery vouchers (P6)"): whole hours, any
-// machine of her union; the code is a 128-bit secret she shows as QR `nila:voucher:<token>:<code>`; only its
-// sha256 goes on-chain (machinery.open_code, max hours, 48 h); the owner's claim uses the hours.
-// One code per voucher (per loan): a code is made on the voucher with the fewest hours that still cover it.
-// DESIGN GAPs: whole hours instead of tractor-hour factors; "Cancel the open code first" instead of a new
-// code replacing it; assisted mode shows the board's text only (the leader-made code, L9 #tractor, is not
-// built); no "Receive" (vouchers are not sent).
+// MemberAssetTractorExpired). Decided 17 Oct (LOAN_RULES §5 "Machinery vouchers (P6)"), any machine of her union;
+// since 23 Oct in tractor hours (units on-chain: centi tractor hours; an hour of a machine uses its rate ÷ the
+// tractor's). Since 23 Oct ("Voucher spend"): the QR is her signed authorization of machinery.claim for
+// (union, token, up to N units), one use (Soroban nonce), ~48 h (its expiry ledger); nothing goes on-chain until the
+// owner scans it and claims. Kept on this phone to show again; made on the voucher with the fewest hours that cover it.
+// DESIGN GAPs: one code at a time; "Remove" only forgets the code on
+// this phone (a signed code cannot be withdrawn before it expires); in assisted mode the leader drives her phone and she signs here (23 Oct);
+// no "Receive" (vouchers are not sent); no typed fallback (executive decision 23 Oct).
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import BigQr from '../shell/BigQr';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { sv } from '../stellar/soroban';
-import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
-import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
-import { C, R } from '../shell/tokens';
-import { grouped, newCode } from '../loan/CashOut';
-import { useRates, useVouchers } from './hooks';
+import { signVoucherCode } from './voucherCode';
+import { Primary, inr, muted } from '../plan/ui';
+import { C, FONT, R } from '../shell/tokens';
+import { ScreenHeader } from '../shell/ListRow';
+import { Card, CardTitle, KV, NoteBar } from '../loan/AssetParts';
+import { TRACTOR, hoursFor, loadVoucherCode as load, saveVoucherCode as save, th, unitsOf, useMachines, useRates, useVouchers } from './hooks';
 
-const KEY = 'nila.voucher.codes';
-const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
-const save = (m) => { try { localStorage.setItem(KEY, JSON.stringify(m)); } catch { /* private */ } };
-const hex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, '0')).join('');
-const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
-const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
+const TERM = 34_560;                          // ledgers, ~48 h
 const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const hoursLeft = (ts) => Math.max(0, Math.floor((ts - Date.now() / 1000) / 3600));
-const Row = ({ k, v }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 8 }}>
-    <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700 }}>{v}</span>
-  </div>
-);
+
+const icon = (d, color, size = 20) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>;
+const tractor = icon(<path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" />, C.ink, 32);
+const chevron = icon(<path d="m6 9 6 6 6-6" />, C.muted);
+const qr = icon(<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2v2h-2zM18 14h2v2h-2z" />, C.text, 18);
+const info = <span style={{ flexShrink: 0, display: 'flex' }}>{icon(<path d="M12 22a10 10 0 1 0 0-20a10 10 0 0 0 0 20zM12 16v-4M12 8h.01" />, C.muted)}</span>;
+/** A full page (no map card, 23 Oct): the header, then the screen's cards. */
+function Page({ title, onBack, note, children }) {
+  return (
+    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16, marginBottom: note ? 120 : 16 }}>
+      <ScreenHeader title={title} onBack={onBack} />
+      {children}
+      {note && <NoteBar>{note}</NoteBar>}
+    </div>
+  );
+}
 
 /** A8 → A8a / A8b. */
 export default function Machinery({ onBack }) {
@@ -37,153 +45,160 @@ export default function Machinery({ onBack }) {
   const { data: cfg } = useStellarConfig();
   const vouchers = useVouchers(s?.stellarAddress);
   const rates = useRates();
-  const tx = useSorobanTx();
   const [type, setType] = useState();
   const [picking, setPicking] = useState(false);
   const [hours, setHours] = useState(1);
-  const [show, setShow] = useState();        // token whose code is on screen
+  const [typed, setTyped] = useState(null);   // the hours as she types them (one decimal), until she leaves the field
+  const [code, setCode] = useState(load);
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [lost, setLost] = useState();
-  const codes = load();
   const list = vouchers.data || [];
-  const balance = list.reduce((a, v) => a + v.left, 0);
-  const maxOne = Math.max(0, ...list.filter((v) => !v.code?.open).map((v) => v.left));
-  const open = list.find((v) => v.code?.open && codes[v.code.hash]);
-  const expired = list.find((v) => v.code && !v.code.open && codes[v.code.hash]);
-  // An open code whose secret is not on this phone (cleared, another phone): it can still be cancelled.
-  const orphan = list.find((v) => v.code?.open && !codes[v.code.hash]);
-  const rate = rates.data?.find((r) => r.type === type) || rates.data?.[0];
-  const totals = (rates.data || []).map((r) => r.total);
-  const value = totals.length ? (Math.min(...totals) === Math.max(...totals) ? inr(balance * totals[0]) : `${inr(balance * Math.min(...totals))}–${inr(balance * Math.max(...totals))}`) : '';
+  const balance = list.reduce((a, v) => a + v.left, 0);              // units
+  const maxUnits = Math.max(0, ...list.map((v) => v.left));
+  // Her code: used once the voucher's used hours moved since she signed it; expired after its ~48 h.
+  const cv = code && list.find((v) => v.token === code.token);
+  const used = !!code && !!vouchers.data && (!cv || cv.used > code.used);
+  const open = code && !used && code.until > Date.now() / 1000 ? code : null;
+  // Only the machine types the union has registered and confirmed (23 Oct), at that type's rate an hour.
+  const machines = useMachines();
+  const kinds = new Set((machines.data || []).filter((m) => m.confirmed).map((m) => m.machine_type));
+  const avail = (rates.data || []).filter((r) => kinds.has(r.type));
+  const rate = avail.find((r) => r.type === type) || avail[0];
+  // Her tractor hours at the tractor's rate; the hours of the picked machine they pay for, and the units they use.
+  const tractorRate = rates.data?.find((r) => r.type === TRACTOR)?.total || 0;
+  const value = tractorRate ? inr((balance / 100) * tractorRate) : '';
+  const maxOne = rate ? hoursFor(maxUnits, rate.total, tractorRate) : 0;
   const h = Math.min(hours, maxOne);
+  const units = rate ? unitsOf(h, rate.total, tractorRate) : 0;
   const online = typeof navigator === 'undefined' || navigator.onLine !== false;
 
   const make = async () => {
-    const v = list.filter((x) => !x.code?.open && x.left >= h).sort((a, b) => a.left - b.left)[0];
+    const v = list.filter((x) => x.left >= units).sort((a, b) => a.left - b.left)[0];
     if (!v) return;
-    const code = newCode();
-    const hash = hex(await sha(code));
-    save({ ...load(), [hash]: { code, token: v.token, hours: h, type: rate?.type, used: v.used } });   // before the call
-    // Without the code on her phone she could not show it: never open a code whose secret is not kept.
-    if (load()[hash]?.code !== code) { setLost('Your phone cannot keep the code (private mode or no space). Nothing was sent.'); return; }
-    const out = await tx.run({
-      label: `Code for ${h} h`, rows: [['Machine hours', `${h} h`], ['Valid', '48 hours']],
-      contractName: 'machinery', fn: 'open_code',
-      args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.bytes32(v.token), sv.u32(h), sv.bytes32(hash)],
-      invalidate: [['stellar', 'vouchers']],
-    });
-    if (out) setShow(v.token);
+    setBusy(true); setLost(undefined);
+    try {
+      // The compact code (23 Oct): her address, the units, the expiry ledger and her signature only.
+      const { qr: entry, until } = await signVoucherCode({ cfg, signer: s.stellarAddress, signHash: s.signHash, token: v.token, units, ledgers: TERM });
+      // hours: the units she signed for; work: the hours of that machine they pay for.
+      const c = { entry, token: v.token, hours: units, work: h, type: rate?.type, used: v.used, until };
+      save(c);
+      // Without the code on her phone she could not show it again: say so, but show it this once.
+      if (load()?.entry !== entry) setLost('Your phone cannot keep the code (private mode or no space). Show it now.');
+      setCode(c); setShow(true);
+    } catch (e) { setLost(e.message); }
+    setBusy(false);
   };
-  const cancel = (v) => tx.run({
-    label: 'Cancel code', rows: [['Machine hours', `${v.code.max} h`]], contractName: 'machinery', fn: 'cancel_code',
-    args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.bytes32(v.token)], invalidate: [['stellar', 'vouchers']],
-  });
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
+  const remove = () => { save(null); setCode(null); setShow(false); };
 
-  const shown = list.find((v) => v.token === show && v.code && codes[v.code.hash]);
-  if (shown) return <Code v={shown} saved={codes[shown.code.hash]} rate={rates.data?.find((r) => r.type === codes[shown.code.hash].type)} onBack={() => setShow(undefined)} onCancel={() => cancel(shown)} onNew={() => setShow(undefined)} />;
+  if (show && code) return <Code c={code} left={cv?.left ?? 0} live={!!open} used={used} rate={rates.data?.find((r) => r.type === code.type)} onBack={() => setShow(false)} onRemove={remove} />;
 
-  if (picking) {
-    return (
-      <Sheet landName="Machinery" title="For" onBack={() => setPicking(false)}>
-        {(rates.data || []).map((r) => (
-          <Choice key={r.type} on={rate?.type === r.type} sub={`${inr(r.total)} an hour · up to ${maxOne} h`} onClick={() => { setType(r.type); setPicking(false); }}>{r.name}</Choice>
-        ))}
-      </Sheet>
-    );
-  }
-  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
+  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, cursor: 'pointer', flexShrink: 0 };
+  const field = { height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 14 };
+  const second = { flex: 1, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
+  const label = { fontSize: 14, fontWeight: 700, lineHeight: 1.5 };
+  // Board A8 (MemberAssetTractor), full page (23 Oct): no "Receive" (vouchers are not sent).
   return (
-    <Sheet landName="Machinery" title="Voucher · in machine hours" onBack={onBack}>
-      <div style={{ textAlign: 'center', margin: '8px 0 16px' }}>
-        <div style={{ fontSize: 32, fontWeight: 700 }}>{vouchers.isLoading ? '…' : `${balance} h`}</div>
-        {value && <div style={muted}>{value}</div>}
-      </div>
-      {vouchers.isError && <p style={{ color: C.coral }}>Could not read your vouchers. Try again.</p>}
+    <Page title="Machinery" onBack={onBack} note={online ? 'Pays for any machine work. Hours are used when the owner scans.' : 'You are offline. Making a code needs internet.'}>
+      <Card label="Machinery" style={{ gap: 12 }}>
+        <span style={{ alignSelf: 'center', width: 72, height: 72, borderRadius: R.round, background: C.coral, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{tractor}</span>
+        <CardTitle right={<span style={{ fontSize: 16, fontWeight: 700 }}>{vouchers.isLoading ? '…' : `${th(balance)} h`}</span>}>Machinery</CardTitle>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: C.muted, marginTop: -8 }}>
+          <span>Voucher · in tractor hours</span><span>{value}</span>
+        </div>
+        {vouchers.isError && <span style={{ color: C.coral, fontSize: 14 }}>Could not read your vouchers. Try again.</span>}
+      </Card>
       {open && (
-        <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
-          <b>Open code · {rates.data?.find((r) => r.type === codes[open.code.hash].type)?.name || 'Machine'} · {open.code.max} h</b>
-          <div style={muted}>{hoursLeft(open.code.expires)} hours left · not used yet</div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <Primary onClick={() => setShow(open.token)}>Show</Primary>
-            <button type="button" onClick={() => cancel(open)} disabled={!tx.ready} style={{ ...b, width: '100%', fontSize: 14, marginTop: 8 }}>Cancel code</button>
+        <Card label="Open code" style={{ gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ width: 32, height: 32, borderRadius: 8, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{qr}</span>
+            <span style={{ display: 'flex', flexDirection: 'column', fontSize: 14, lineHeight: 1.5 }}>
+              <b>Open code · {rates.data?.find((r) => r.type === open.type)?.name || 'Machine'} · {open.work ?? th(open.hours)} h</b>
+              <span style={{ color: C.muted }}>{hoursLeft(open.until)} hours left · not used yet</span>
+            </span>
           </div>
-        </div>
-      )}
-      {orphan && (
-        <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
-          <b>Open code not on this phone · {orphan.code.max} h</b>
-          <div style={muted}>Made on another phone or cleared here. Cancel it to use these hours again.</div>
-          <button type="button" onClick={() => cancel(orphan)} disabled={!tx.ready} style={{ ...b, width: '100%', fontSize: 14, marginTop: 8 }}>Cancel code</button>
-        </div>
-      )}
-      {lost && <p style={{ color: C.coral }}>{lost}</p>}
-      {!open && expired && <Choice sub={`Was valid until ${when(expired.code.expires)}`} onClick={() => setShow(expired.token)}>Expired code</Choice>}
-      {assisted() ? (
-        <>
-          <h2 style={{ fontSize: 14, fontWeight: 700 }}>Spend machine hours</h2>
-          <p style={muted}>Ask your union leader to spend your machine hours and scan the code she generates.</p>
-        </>
-      ) : balance > 0 && (
-        <>
-          <h2 style={{ fontSize: 14, fontWeight: 700 }}>Spend</h2>
-          <Choice sub={rate ? `${inr(rate.total)} an hour · up to ${maxOne} h` : 'No machine rates set by the union yet'} onClick={() => rates.data?.length && setPicking(true)}>{rate ? `For · ${rate.name}` : 'For'}</Choice>
-          <p style={{ fontWeight: 700, margin: '12px 0 4px' }}>Machine hours</p>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-            <button type="button" aria-label="Less" style={b} onClick={() => setHours(Math.max(1, h - 1))}>−</button>
-            <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700, fontSize: 20 }}>{h} h</span>
-            <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(maxOne, h + 1))}>+</button>
-            <button type="button" style={{ ...b, width: 'auto', padding: '0 14px', fontSize: 14 }} onClick={() => setHours(maxOne)}>Max</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" style={second} onClick={() => setShow(true)}>Show</button>
+            <button type="button" style={second} onClick={remove}>Cancel code</button>
           </div>
-          {rate && <Row k="Uses" v={`${h} h · ${inr(h * rate.total)}`} />}
-          <Row k="Left after" v={`${balance - h} h`} />
-          {open && <p style={muted}>Cancel the open code first.</p>}
-          <Primary disabled={!online || !tx.ready || !rate || h < 1 || !!open} onClick={make}>{!online ? 'Needs internet' : h < 1 ? 'Enter an amount' : `Make code for ${h} h`}</Primary>
-          <p style={muted}>{online ? 'Pays for any machine work. Hours are used when the owner scans.' : 'You are offline. Making a code needs internet.'}</p>
-        </>
+        </Card>
       )}
-      {!vouchers.isLoading && balance === 0 && !open && <p style={muted}>No machine hours yet. They come with a crop share.</p>}
-    </Sheet>
+      {lost && <span style={{ color: C.coral, fontSize: 14 }}>{lost}</span>}
+      {code && !open && !used && (
+        <Card label="Expired code" style={{ gap: 8 }}>
+          <span style={label}>Expired code</span>
+          <span style={{ color: C.muted, fontSize: 14 }}>Was valid until {when(code.until)}</span>
+          <button type="button" style={second} onClick={() => setShow(true)}>Show</button>
+        </Card>
+      )}
+      {balance > 0 && (
+        <Card label="Spend" style={{ gap: 12 }}>
+          <span style={label}>For</span>
+          {rates.data && machines.data && !avail.length && <span style={{ color: C.muted, fontSize: 14 }}>No machines registered in the union yet.</span>}
+          {/* The machine list opens inside the card under the row, as on L13. */}
+          {rate && (
+            <div style={{ background: C.raised, borderRadius: R.button, overflow: 'hidden' }}>
+              <button type="button" aria-expanded={picking} onClick={() => setPicking(!picking)} style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ flexGrow: 1, fontWeight: 700 }}>{rate.name}</span>
+                <span style={{ color: C.muted }}>up to {maxOne} h</span>
+                <span style={{ display: 'flex', transform: picking ? 'rotate(180deg)' : 'none' }}>{chevron}</span>
+              </button>
+              {picking && avail.filter((r) => r.type !== rate.type).map((r) => (
+                <button key={r.type} type="button" onClick={() => { setType(r.type); setPicking(false); }}
+                  style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left', borderTop: `1px solid ${C.ink}`, borderRadius: 0 }}>
+                  <span style={{ flexGrow: 1 }}>{r.name}</span><span style={{ color: C.muted }}>{inr(r.total)} an hour</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <span style={label}>Machine hours</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Half-hour steps; the field takes a tenth of an hour (23 Oct: 0.2 h of a tiller is 0.1 tractor hour). */}
+            <button type="button" aria-label="Less" style={b} onClick={() => { setTyped(null); setHours(Math.max(0, Math.round((h - 0.5) * 10) / 10)); }}>−</button>
+            <label style={{ ...field, flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 8 }}>
+              <input aria-label="Machine hours" inputMode="decimal" value={typed ?? String(h)} onBlur={() => setTyped(null)}
+                onChange={(e) => { const v = e.target.value.replace(',', '.'); if (/^\d*\.?\d?$/.test(v)) { setTyped(v); setHours(Math.min(maxOne, Number(v) || 0)); } }}
+                style={{ flex: 1, minWidth: 0, border: 0, background: 'transparent', color: C.text, fontFamily: 'inherit', fontSize: 16, fontWeight: 700, outline: 'none' }} />
+              <span style={{ color: C.muted }}>h</span>
+            </label>
+            <button type="button" aria-label="More" style={b} onClick={() => { setTyped(null); setHours(Math.min(maxOne, Math.round((h + 0.5) * 10) / 10)); }}>+</button>
+            <button type="button" style={{ ...b, width: 'auto', padding: '0 14px', fontSize: 14 }} onClick={() => { setTyped(null); setHours(maxOne); }}>Max</button>
+          </div>
+          {rate && <KV k="Uses" v={`${th(units)} tractor hours · ${inr(h * rate.total)}`} />}
+          <KV k="Left after" v={`${th(balance - units)} tractor hours`} />
+          {open && <span style={{ color: C.muted, fontSize: 14 }}>Cancel the open code first.</span>}
+          <Primary disabled={!online || busy || !s?.ready || !cfg || !rate || h <= 0 || !!open} onClick={make}>{!online ? 'Needs internet' : h <= 0 ? 'Enter an amount' : `Make code for ${h} h`}</Primary>
+        </Card>
+      )}
+      {!vouchers.isLoading && balance === 0 && !open && <Card label="No hours"><span style={{ color: C.muted, fontSize: 14 }}>No machine hours yet. They come with a crop share.</span></Card>}
+    </Page>
   );
 }
 
-/** A8a (open) / A8b (expired). */
-function Code({ v, saved, rate, onBack, onCancel, onNew }) {
+/** A8a (open) / A8b (expired or used). */
+function Code({ c, left, live, used, rate, onBack, onRemove }) {
   const [img, setImg] = useState();
-  const live = v.code.open;
-  useEffect(() => { if (live) QRCode.toDataURL(`nila:voucher:${v.token}:${saved.code}`, { width: 260, margin: 1 }).then(setImg); }, [live, v.token, saved.code]);
-  const name = `${rate?.name || 'Machine'} · ${v.code.max} h`;
+  useEffect(() => { if (live) QRCode.toDataURL(c.entry, { width: 720, margin: 2, errorCorrectionLevel: 'M' }).then(setImg); }, [live, c.entry]);
+  const name = `${rate?.name || 'Machine'} · ${c.work ?? th(c.hours)} h`;
   if (!live) {
     return (
-      <Sheet landName="Machinery" title={name} onBack={onBack}>
-        <Row k="Status" v={v.used > saved.used ? 'Used' : 'Expired · no hours used'} />
-        <Row k="Was valid until" v={when(v.code.expires)} />
-        <Row k="You still have" v={`${v.left} h`} />
-        <p style={muted}>The machine owner did not scan this code in time. No hours were used.</p>
-        <Primary onClick={onNew}>Make a new code</Primary>
-      </Sheet>
+      <Page title={name} onBack={onBack}><Card label={name} style={{ gap: 12 }}>
+        <KV k="Status" v={used ? 'Used' : 'Expired · no hours used'} />
+        <KV k="Was valid until" v={when(c.until)} />
+        <KV k="You still have" v={`${th(left)} tractor hours`} />
+        {!used && <p style={muted}>The machine owner did not scan this code in time. No hours were used.</p>}
+        <Primary onClick={onRemove}>Make a new code</Primary>
+      </Card></Page>
     );
   }
   return (
-    <Sheet landName="Machinery" title={name} onBack={onBack}>
-      {/* The board's white circle; the square QR sits inside it whole (side ≤ diameter / √2): a clipped
-          corner square cannot be read by a camera. */}
-      {img && (
-        <div style={{ width: 280, height: 280, margin: '0 auto', borderRadius: 9999, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img src={img} alt="Your voucher code" style={{ width: 190, height: 190, display: 'block' }} />
-        </div>
-      )}
-      <p style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>{grouped(saved.code)}</p>
-      {/* The typed fallback is the whole code (the token is needed for the claim). DESIGN GAP: long to type. */}
-      <details style={{ ...muted, marginBottom: 8 }}>
-        <summary>No camera? Type this</summary>
-        <p style={{ fontFamily: 'monospace', fontSize: 12, overflowWrap: 'anywhere' }}>{`nila:voucher:${v.token}:${saved.code}`.replace(/(.{8})(?=.)/g, '$1 ')}</p>
-      </details>
-      <Row k="Paid from" v={`Machinery · ${v.code.max} h`} />
-      {rate && <Row k="Value" v={inr(v.code.max * rate.total)} />}
-      <Row k="Valid until" v={`${when(v.code.expires)} · ${hoursLeft(v.code.expires)} h left`} />
-      <Row k="Left after" v={`${v.left - v.code.max} h`} />
-      <p style={muted}>Show this to the machine owner. Hours are used when they scan it.</p>
-      <button type="button" onClick={onCancel} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Cancel code</button>
-    </Sheet>
+    <Page title={name} onBack={onBack}><Card label={name} style={{ gap: 12 }}>
+      {/* As big as the screen allows (shared BigQr, as her crop share QR): the QR spans the screen's width in the
+          white circle, clipped at the screen's sides. */}
+      <BigQr img={img} alt="Your voucher code" caption="Show this to the machine owner" below={300} />
+      <KV k="Valid until" v={`${when(c.until)} · ${hoursLeft(c.until)} h left`} />
+      <button type="button" onClick={onRemove} style={{ width: '100%', height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text,
+        fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' }}>Remove from this phone</button>
+    </Card></Page>
   );
 }

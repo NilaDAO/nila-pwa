@@ -9,29 +9,34 @@ import QRCode from 'qrcode';
 import CameraView from '../shell/CameraView';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { readContract, sv, tokenHex } from '../stellar/soroban';
+import { readFoodTokens, sv, tokenHex } from '../stellar/soroban';
+import { SkeletonRows } from '../shell/Skeleton';
+import BigQr from '../shell/BigQr';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
-import { C, R } from '../shell/tokens';
-import { NIN, checkRequest, makeRequest } from './request';
+import { Primary, Sheet, inr, muted } from '../plan/ui';
+import { C, FONT, R } from '../shell/tokens';
+import { ScreenHeader } from '../shell/ListRow';
+import { Card, CardTitle, KV } from './AssetParts';
+import { NIN, isLoanRequest, makeRequest } from './request';
 import { checkDeskRequest, isDeskRequest } from './desk';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import PostBring from '../anchor/PostBring';
+import { TRACTOR, hoursFor, th, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
+import ConfirmShare from './ConfirmShare';
 
 const FLAG_DRAWN = 8;
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 
 function Stepper({ label, value, set, step, min = 0, max, fmt }) {
-  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
+  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, flexShrink: 0 };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '8px 0' }}>
-      <span style={{ fontWeight: 700 }}>{label}</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button type="button" aria-label={`Less ${label}`} style={b} onClick={() => set(Math.max(min, +(value - step).toFixed(2)))}>−</button>
-        <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700 }}>{fmt(value)}</span>
-        <button type="button" aria-label={`More ${label}`} style={b} onClick={() => set(Math.min(max, +(value + step).toFixed(2)))}>+</button>
-      </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ flexGrow: 1, color: C.muted, fontSize: 14, lineHeight: 1.5 }}>{label}</span>
+      <button type="button" aria-label={`Less ${label}`} style={b} onClick={() => set(Math.max(min, +(value - step).toFixed(2)))}>−</button>
+      <span style={{ width: 104, height: 44, borderRadius: R.button, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 16, fontWeight: 700 }}>{fmt(value)}</span>
+      <button type="button" aria-label={`More ${label}`} style={b} onClick={() => set(Math.min(max, +(value + step).toFixed(2)))}>+</button>
     </div>
   );
 }
@@ -42,56 +47,104 @@ function planRow(plan, share) {
   return null;
 }
 
-export function LeaderLoan() {
+/** initial: `<plan id>` (a To do row) or `<plan id>_<token id>` (her crop share QR, decimal; her G2 row, hex): opens on
+ *  that plan and share. No member picker (23 Oct): a leader comes here from her QR, a To do row or her G2 only. */
+export function LeaderLoan({ initial }) {
+  const [initPlan, initToken] = String(initial || '').split('_');
   const s = useNilaSigner();
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
   const plans = useQuery({ queryKey: ['oracle', 'approvedPlans'], enabled: !!api, queryFn: () => api.approvedPlans() });
-  const [planId, setPlanId] = useState();
+  const planId = initPlan || undefined;
   const plan = plans.data?.plans?.find((p) => p.id === planId);
   const shares = useQuery({
     queryKey: ['oracle', 'shares', planId], enabled: !!plan && !!cfg,
     queryFn: async () => {
       const { mints } = await api.mintList(planId);
-      return Promise.all(mints.filter((m) => m.token_id).map(async (m) => {
-        const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(tokenHex(m.token_id))]).catch(() => null);
-        const share = (plan.plan.shares || []).find((x) => x.key === m.share) || {};
-        return { ...m, share, ft };
-      }));
+      // Every share's state in one batched read (as useMyShares), not a simulation each.
+      const withId = mints.filter((m) => m.token_id);
+      const fts = withId.length ? await readFoodTokens(cfg, cfg.union, withId.map((m) => tokenHex(m.token_id))).catch(() => ({})) : {};
+      return withId.map((m) => ({ ...m, share: (plan.plan.shares || []).find((x) => x.key === m.share) || {}, ft: fts[tokenHex(m.token_id)] || null }));
     },
   });
   const [pick, setPick] = useState();
   const pickFt = shares.data?.find((x) => x.token_id === pick)?.ft;
   const checks = useUnionChecks(pickFt?.member);
   const [cash, setCash] = useState(0);
-  const [hours, setHours] = useState(0);
+  // Machine hours per machine type (23 Oct): { type: whole hours }, a row for every type the union registered and
+  // confirmed (0 unless the plan sets it) and every type of her plan. The voucher is their value in tractor hours,
+  // held in units (centi tractor hours): Σ hours × the type's rate ÷ the tractor's rate, rounded up.
+  const [mach, setMach] = useState({});
+  const rates = useRates();
+  const machines = useMachines();
+  const rateOf = (t) => rates.data?.find((r) => r.type === Number(t))?.total || 0;
+  const tractorRate = rateOf(TRACTOR);
+  const unionTypes = [...new Set((machines.data || []).filter((m) => m.confirmed).map((m) => m.machine_type))];
+  const types = [...new Set([...Object.keys(mach).map(Number), ...unionTypes])].filter((t) => t > 0).sort((a, b) => a - b);
+  const value = Object.entries(mach).reduce((a, [t, h]) => a + h * rateOf(t), 0);
+  const hours = tractorRate > 0 ? unitsOf(1, value, tractorRate) : 0;   // units
+  // The share is picked before this screen (23 Oct, no list here): the one from her QR or G2, else (a To do row, one
+  // per plan) her first Ready share; with the plan's cash and hours.
+  useEffect(() => {
+    const t = Date.now() / 1000;
+    const isReady = (y) => !!y.ft && !(Number(y.ft.loan?.flags ?? 0) & FLAG_DRAWN) && Number(y.ft.from_date) <= t;
+    const x = !pick && (initToken
+      ? shares.data?.find((y) => y.token_id === initToken || tokenHex(y.token_id) === initToken)
+      : shares.data?.find(isReady));
+    if (!x) return;
+    setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0));
+    const ms = Object.values(planRow(plan, x.share)?.finance?.machines || {}).filter((m) => m.type && m.hours > 0);
+    setMach(Object.fromEntries(ms.map((m) => [m.type, Math.ceil(m.hours)])));
+  }, [shares.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The plan's amounts, within the union's caps once they are read (the steppers start inside the limit).
+  useEffect(() => {
+    if (!checks.data || !pickFt) return;
+    const c = capsFor(checks.data, pickFt);
+    setCash((v) => Math.min(v, c.cash));
+    // Over the union's machine stock (units): the last types give way first.
+    if (!(tractorRate > 0)) return;
+    setMach((m) => {
+      let left = c.hours;
+      return Object.fromEntries(Object.entries(m).map(([t, h]) => {
+        const k = Math.min(h, Math.floor(hoursFor(left, rateOf(t), tractorRate))); left -= unitsOf(k, rateOf(t), tractorRate); return [t, k];
+      }));
+    });
+  }, [checks.data, pickFt, tractorRate]); // eslint-disable-line react-hooks/exhaustive-deps
   const [req, setReq] = useState();
+  const [own, setOwn] = useState(false);
+  const tx = useSorobanTx();
   const [img, setImg] = useState();
   const [error, setError] = useState();
-  // Low error correction and a large image: a phone camera reads it at arm's length (the request is long).
-  useEffect(() => { if (req) QRCode.toDataURL(req.qr, { width: 360, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [req]);
+  // The request is a few characters (23 Oct): a small, coarse QR any phone camera reads.
+  useEffect(() => { if (req) QRCode.toDataURL(req.qr, { width: 720, margin: 2, errorCorrectionLevel: 'M' }).then(setImg); }, [req]);
 
+  // L9 (board LeaderRequestQR): the request QR as big as the screen allows; no 6 numbers (no typed fallback, 22 Oct).
   if (req) {
+    const r = req.request;
+    const mv = value;
     return (
-      <Sheet landName={`Land ${plan.land_id}`} title="Crop share request" onBack={() => setReq(undefined)}>
-        <p style={{ ...muted, textAlign: 'center' }}>{req.request.crop} · {inr(Number(BigInt(req.request.cash) / NIN))} cash + {req.request.hours} machine hours</p>
-        {img && <img src={img} alt="Crop share request QR" style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: 360, aspectRatio: '1', background: '#fff', borderRadius: 12 }} />}
-        <p style={{ textAlign: 'center', fontWeight: 700, letterSpacing: 2 }}>{req.number.slice(0, 3)} {req.number.slice(3)}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Let her scan this with her phone.</p>
-        <p style={muted}>For: Land {plan.land_id} · Valid for: 48 hours</p>
-      </Sheet>
+      <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <ScreenHeader title="Crop share request" onBack={() => setReq(undefined)} />
+        <Card label="Crop share request" style={{ gap: 12 }}>
+          <BigQr img={img} alt="Crop share request QR" caption="Let her scan this with her phone" below={340} />
+          <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>
+            {r.crop} · {inr(Number(BigInt(r.cash) / NIN))} cash{r.hours ? ` + ${inr(mv)} vouchers (${th(r.hours)} tractor h)` : ''}</span>
+          <KV k="Valid for" v="48 hours" />
+        </Card>
+      </div>
     );
   }
+  // The page shows at once (header and card); the card fills as the plan, her share and the union are read.
   if (!plan) {
     return (
-      <Sheet landName="Crop share request" title="Pick a member">
-        {plans.isLoading && <p style={muted}>…</p>}
-        {!plans.isLoading && !plans.data?.plans?.length && <p style={muted}>No approved crop plans yet.</p>}
-        {plans.data?.plans?.map((p) => <Choice key={p.id} sub={`${(p.plan.shares || []).length} crop shares`} onClick={() => setPlanId(p.id)}>Land {p.land_id}</Choice>)}
-      </Sheet>
+      <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <ScreenHeader title="Crop share request" onBack={() => window.history.back()} />
+        <Card label="Crop share request">
+          {plans.isLoading || !plans.data ? <SkeletonRows rows={6} /> : <span style={muted}>This crop plan is not approved. Find her in Members.</span>}
+        </Card>
+      </div>
     );
   }
-  const now = Date.now() / 1000;
   const sel = shares.data?.find((x) => x.token_id === pick);
   const row = sel && planRow(plan, sel.share);
   // The rate fund_core charges (uc.rate_bp). The plan's tree discount (LOAN_RULES §5) is not applied by the
@@ -104,51 +157,81 @@ export function LeaderLoan() {
     setError(undefined);
     try {
       const area = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
-      setReq(await makeRequest({
+      setReq(makeRequest({
         union: cfg.union, member: sel.ft.member, token: tokenHex(sel.token_id), cash: String(BigInt(Math.round(cash)) * NIN / 1n),
         hours: Math.round(hours), crop: row?.name || sel.share.crop, area: `Area ${area}`,
         repay: repay != null ? String(repay) : '',
         due: row?.finance?.due || '',
-      }, s));
+      }));
     } catch (e) { setError(e.message); }
   };
+  // Her own share (a leader is a member too, 23 Oct): no QR; she confirms (N10) and signs draw_loan herself.
+  const mine = !!sel && sel.ft?.member === s?.stellarAddress;
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); window.location.hash = '#/assets'; }} onRetry={() => tx.retry()} />;
+  if (own && sel) {
+    const nm = `${row?.name || sel.crop}`;
+    const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
+    const draw = () => tx.run({
+      label: `Crop share ${nm}`, rows: [['Cash', inr(cash)], ...(hours ? [['Machine vouchers', `${th(hours)} tractor hours`]] : []), ['For', `${nm} · Area ${ar}`]],
+      contractName: 'fund_core', fn: 'draw_loan',
+      args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
+      invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
+    });
+    return <ConfirmShare own cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} />;
+  }
+  // Board LeaderRedeem, without its crop share list (23 Oct: the share comes picked): one card with the share, the
+  // steppers, total / interest / repay and the union checks. No seed row: seed is paid as cash (P5).
+  const name = sel ? `${row?.name || sel.crop} · Area ${Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1}` : '';
+  // Cash is lent from member money only (junior, above its reserve); the plan's cash above that is shown, not lent.
+  const notCovered = sel && checks.data ? Math.max(0, Math.round(sel.share.loan_amount || 0) - caps.cash) : 0;
+  const rows = checkRows(checks.data, cash, hours, caps);
+  const line = { height: 1, background: C.raised };
   return (
-    <Sheet landName={`Land ${plan.land_id}`} title="Pick a crop share" onBack={() => { setPlanId(undefined); setPick(undefined); }}>
-      <p style={{ ...muted, textAlign: 'center' }}>From her plan</p>
-      {shares.isLoading && <p style={muted}>…</p>}
-      {shares.data?.map((x) => {
-        const drawn = x.ft && (Number(x.ft.loan?.flags ?? 0) & FLAG_DRAWN);
-        const ready = !!x.ft && !drawn && Number(x.ft.from_date) <= now;
-        const tag = !x.ft ? 'Not attested yet' : drawn ? 'Financed' : ready ? 'Ready' : `From ${monthYear(Number(x.ft.from_date) * 1000)}`;
-        return (
-          <Choice key={x.token_id} on={pick === x.token_id} sub={`${x.share.zone} · ${tag}`}
-            onClick={() => { if (!ready) return; setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0)); setHours(Math.round(x.share.hours || 0)); }}>
-            {x.crop}
-          </Choice>
-        );
-      })}
-      {sel && (
-        <>
-          {checks.data && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
-          {checks.data && <Stepper label="Machine hours" value={hours} set={setHours} step={1} max={caps.hours} fmt={(h) => `${h} h`} />}
-          {checks.isLoading && <p style={muted}>Checking the union…</p>}
-          {checks.isError && <p style={{ color: C.coral }}>Could not read the union. Try again.</p>}
-          {blocked.map((b) => <p key={b} style={{ color: C.coral }}>{b}</p>)}
-          {checkRows(checks.data, cash, hours, caps).map(([k, v, bad]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '4px 0' }}>
-              <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: bad ? C.coral : C.text }}>{v}</span>
-            </div>
-          ))}
-          {/* L11 #short: the gap goes to the union's LPs as a Bring (P9). */}
-          {checkRows(checks.data, cash, hours, caps)[0]?.[2] && (cfg?.anchor_url
-            ? <PostBring gap={Math.ceil(cash - checks.data.onHand)} />
-            : <p style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</p>)}
-          {rateBp != null && <p style={muted}>Interest {rateBp / 100}% a year{repay != null ? ` · repay about ${inr(repay)} by end of ${monthYear(row.finance.due)}` : ''}</p>}
-          {error && <p style={{ color: C.coral }}>{error}</p>}
-          <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={go}>Show QR to her</Primary>
-        </>
-      )}
-    </Sheet>
+    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <ScreenHeader title={`Land ${plan.land_id}`} onBack={() => window.history.back()} />
+      <Card label="Crop share request">
+        {(shares.isLoading || (sel && !checks.data && !checks.isError)) && <SkeletonRows rows={6} />}
+        {shares.data && !sel && <span style={muted}>No crop share of hers is ready.</span>}
+        {sel && (checks.data || checks.isError) && (
+          <>
+            <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>Ready</span>}>{name}</CardTitle>
+            {checks.isError && <span style={{ color: C.coral }}>Could not read the union. Try again.</span>}
+            {checks.data && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
+            {/* Cash above member money: only a sold batch's prepayment could fund it. DESIGN GAP: no on-chain record of
+                sold-batch prepayments on Stellar yet, so the chip is ₹0. */}
+            {notCovered > 0 && (
+              <>
+                <span style={{ alignSelf: 'flex-start', minHeight: 32, borderRadius: 12, background: C.raised, color: C.muted, padding: '0 12px',
+                  display: 'flex', alignItems: 'center', fontSize: 14, fontWeight: 700 }}>Sold batches · ₹0 prepaid</span>
+                <span style={{ color: C.muted, fontSize: 14, lineHeight: 1.5 }}>Cash above member money ({inr(notCovered)} more in her plan) can only be funded by selling a batch (a buyer's prepayment).</span>
+              </>
+            )}
+            {checks.data && types.map((t) => {
+              const h = mach[t] || 0;
+              const room = tractorRate > 0 ? Math.floor(hoursFor(Math.max(0, caps.hours - hours), rateOf(t), tractorRate)) : 0;
+              return (
+                <Stepper key={t} label={`${typeName(t)}${rateOf(t) ? ` · ${inr(rateOf(t))}/h` : ''}`} value={h}
+                  set={(v) => setMach((m) => ({ ...m, [t]: v }))} step={1} max={h + room} fmt={(v) => `${v} h`} />
+              );
+            })}
+            {hours > 0 && <KV k="Vouchers" v={`≈ ${th(hours)} tractor hours`} />}
+            <div style={line} />
+            <KV k="Total" v={inr(cash + value)} />
+            {rateBp != null && <KV k="Interest" v={`${rateBp / 100}% a year`} />}
+            {repay != null && <KV k="Repay" v={`${inr(repay)} · about end of ${monthYear(row.finance.due)}`} />}
+            <div style={line} />
+            {rows.map(([k, v, bad]) => <KV key={k} k={k} v={v} color={bad ? C.coral : C.text} />)}
+            {blocked.map((b) => <span key={b} style={{ color: C.coral, fontSize: 14 }}>{b}</span>)}
+            {/* L11 #short: the gap goes to the union's LPs as a Bring (P9). */}
+            {rows[0]?.[2] && (cfg?.anchor_url
+              ? <PostBring gap={Math.ceil(cash - checks.data.onHand)} />
+              : <span style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</span>)}
+            {error && <span style={{ color: C.coral }}>{error}</span>}
+            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine ? () => setOwn(true) : go}>{mine ? 'Get cash and vouchers' : 'Show QR to her'}</Primary>
+          </>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -165,19 +248,13 @@ export function MemberScan({ onDone }) {
     setError(undefined);
     try {
       const t = text.trim();
-      setReq(isDeskRequest(t) ? { desk: await checkDeskRequest(t, { cfg, me: s?.stellarAddress }) } : await checkRequest(t, { cfg, me: s?.stellarAddress }));
+      // A crop share request is scanned on her Ready share (23 Oct), which knows the share.
+      if (isLoanRequest(t)) throw new Error('Open your Ready crop share in Assets, then scan this.');
+      setReq({ desk: await checkDeskRequest(t, { cfg, me: s?.stellarAddress }) });
     } catch (e) { setError(e.message); }
   }, [cfg, s]);
 
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); setReq(undefined); onDone?.(); }} onRetry={() => tx.retry()} />;
-  async function confirm() {
-    await tx.run({
-      label: `Crop share ${req.crop}`, rows: [['You get', inr(Number(BigInt(req.cash) / NIN))], ['For', `${req.crop} · ${req.area}`]],
-      contractName: 'fund_core', fn: 'draw_loan',
-      args: [sv.address(req.union), sv.address(req.member), sv.bytes32(req.token), sv.i128(req.cash), sv.u32(req.hours)],
-      invalidate: [['stellar', 'account'], ['stellar', 'investment'], ['oracle', 'shares']],
-    });
-  }
   // Her investment paid over the desk (22 Oct): the leader's signed entry comes in the QR; she submits the claim.
   if (req?.desk) {
     const d = req.desk;
@@ -192,20 +269,6 @@ export function MemberScan({ onDone }) {
         <p style={{ ...muted, textAlign: 'center' }}>Your union investment, in cash at the office</p>
         <p style={{ color: C.gold, textAlign: 'center' }}>Only confirm when your leader is with you and hands you the cash.</p>
         <Primary disabled={!tx.ready} onClick={collect}>Confirm</Primary>
-        <button type="button" onClick={() => setReq(undefined)} style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 }}>Cancel</button>
-      </Sheet>
-    );
-  }
-  if (req) {
-    const cash = Number(BigInt(req.cash) / NIN);
-    return (
-      <Sheet landName="Nila" title="Your union leader asks you to confirm">
-        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>You get {inr(cash)}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Made of {inr(cash)} cash{req.hours ? ` + ${req.hours} machine hours` : ''}</p>
-        <p style={{ textAlign: 'center' }}>For {req.crop} · {req.area}</p>
-        {req.repay && <p style={{ ...muted, textAlign: 'center' }}>Repay {inr(Number(req.repay))} · 3 weeks after harvest</p>}
-        <p style={{ color: C.gold, textAlign: 'center' }}>Only confirm when your leader is with you.</p>
-        <Primary disabled={!tx.ready} onClick={confirm}>Confirm</Primary>
         <button type="button" onClick={() => setReq(undefined)} style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 }}>Cancel</button>
       </Sheet>
     );

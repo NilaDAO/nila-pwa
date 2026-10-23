@@ -1,19 +1,30 @@
-// Her crop shares (A1 group "Crop shares", board MemberAssets-ley3) and, in self mode, taking one up
-// herself (executive decision, 16 Oct: a self-mode member sends her own transactions; the Scan tab and the
-// leader's QR are for assisted mode). She picks cash and machine hours within the union's hard limits,
-// confirms (N10 wording) and signs fund_core.draw_loan; the leader hands over the cash at the office.
-// DESIGN GAP: the take-up screen (her own L11/N10 in one) has no board of its own.
-import { useState } from 'react';
+// Her crop shares (A1 group "Crop shares", board MemberAssets-ley3) and taking one up: she signs
+// fund_core.draw_loan herself; the leader hands over the cash at the office.
+// A member takes a Ready share up at the office (23 Oct): her page is the camera; she scans the leader's L9 QR
+// (L11's signed request), checks it against this share and confirms (N10). First the page shows her share QR
+// (`nila:share:<plan>_<token>:<her G>`): the leader's Members scan opens L11 with this share picked; a tap on it puts
+// the camera in its place (so does the button under it). A leader taking up her own share sets
+// it herself (her own L11/N10 in one). Both full pages, no map card.
+// DESIGN GAP: neither page has a board of its own.
+import { useEffect, useMemo, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig, useStellarTitles } from '../stellar/hooks';
 import { readFoodTokens, sv, tokenHex } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { useCropPlan, useLandTitles, usePlanClient } from '../plan/hooks';
-import { Primary, Sheet, inr, muted } from '../plan/ui';
-import { C, R } from '../shell/tokens';
-import { capsFor, checkRows, useUnionChecks } from './unionChecks';
-import { ChevronIcon, ShareTile } from '../shell/icons';
+import { Primary, inr, muted } from '../plan/ui';
+import ListRow, { ScreenHeader } from '../shell/ListRow';
+import { Card } from './AssetParts';
+import CameraView from '../shell/CameraView';
+import ConfirmShare from './ConfirmShare';
+import { th } from '../machine/hooks';
+import { LeaderLoan } from './LoanScreens';
+import BigQr from '../shell/BigQr';
+import { NIN, readRequest } from './request';
+import { C, FONT } from '../shell/tokens';
+import { ChevronIcon, RupeeIcon, ShareTile } from '../shell/icons';
 
 export const FLAG_DRAWN = 8;
 export const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
@@ -65,74 +76,79 @@ export function shareTag(x) {
   return `From ${new Date(Number(x.ft.from_date) * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
 }
 
-function Stepper({ label, value, set, step, max, fmt }) {
-  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
+function Page({ title, onBack, children }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '8px 0' }}>
-      <span style={{ fontWeight: 700 }}>{label}</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button type="button" aria-label={`Less ${label}`} style={b} onClick={() => set(Math.max(0, value - step))}>−</button>
-        <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700 }}>{fmt(value)}</span>
-        <button type="button" aria-label={`More ${label}`} style={b} onClick={() => set(Math.min(max, value + step))}>+</button>
-      </span>
+    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <ScreenHeader title={title} onBack={onBack} />
+      <Card label={title} style={{ gap: 12 }}>{children}</Card>
     </div>
   );
 }
 
-export function TakeUp({ token, onBack }) {
+/** A member's Ready share: the camera for her leader's QR (L9), then N10 from the signed values. */
+function ShareScan({ x, onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
-  const shares = useMyShares();
-  const checks = useUnionChecks(s?.stellarAddress);
   const tx = useSorobanTx();
-  const x = shares.data?.find((y) => y.token_id === token);
-  const [cash, setCash] = useState();
-  const [hours, setHours] = useState();
-  const [sure, setSure] = useState(false);
-  if (!x) return <Sheet landName="Nila" title="Your crop share" onBack={onBack}><p style={muted}>…</p></Sheet>;
-  const caps = capsFor(checks.data, x.ft);
-  const blocked = checks.data?.blocked || [];
-  const c = cash ?? Math.min(caps.cash, Math.round(x.share.loan_amount || 0));
-  const h = hours ?? Math.min(caps.hours, Math.round(x.share.hours || 0));
-  const rows = checkRows(checks.data, c, h, caps);
-  const over = c > caps.cash || h > caps.hours;
-  const draw = () => tx.run({
-    label: `Crop share ${x.crop}`, rows: [['You get', inr(c)], ['For', `${x.crop} · Area ${x.area}`]],
-    contractName: 'fund_core', fn: 'draw_loan',
-    args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(x.token_id)), sv.i128(BigInt(Math.round(c)) * 10_000_000n), sv.u32(h)],
-    invalidate: [['oracle', 'myShares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
-  });
+  const [req, setReq] = useState();
+  const [error, setError] = useState();
+  const [tries, setTries] = useState(0);
+  const [camera, setCamera] = useState(false);
+  const [img, setImg] = useState();
+  useEffect(() => {
+    if (s?.stellarAddress) QRCode.toDataURL(`nila:share:${x.plan.id}_${x.token_id}:${s.stellarAddress}`, { width: 720, margin: 2 }).then(setImg);
+  }, [s, x]);
+  // The screen stays on while her QR shows (Screen Wake Lock); a web app cannot raise the brightness.
+  useEffect(() => {
+    if (camera || !navigator.wakeLock) return undefined;
+    let lock;
+    navigator.wakeLock.request('screen').then((l) => { lock = l; }).catch(() => {});
+    return () => { lock?.release().catch(() => {}); };
+  }, [camera]);
+  const read = useMemo(() => async (text) => {
+    setError(undefined);
+    try {
+      // The QR holds the amounts only; the share is this one, the member is she (23 Oct).
+      setReq({ ...readRequest(text), union: cfg.union, member: s?.stellarAddress, token: tokenHex(x.token_id) });
+    } catch (e) { setError(e.message); setTries((t) => t + 1); }
+  }, [cfg, s, x.token_id]);
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
-  if (sure) {
-    return (
-      <Sheet landName="Nila" title="Confirm your crop share" onBack={() => setSure(false)}>
-        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>You get {inr(c)}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Made of {inr(c)} cash{h ? ` + ${h} machine hours` : ''}</p>
-        <p style={{ textAlign: 'center' }}>For {x.crop} · Area {x.area}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Repay 3 weeks after harvest</p>
-        <p style={{ color: C.gold, textAlign: 'center' }}>Get the cash from your leader at the union office.</p>
-        <Primary disabled={!tx.ready} onClick={draw}>Confirm</Primary>
-      </Sheet>
-    );
+  const name = rowOf(x)?.name || x.crop.replace(/_/g, ' ');
+  if (req) {
+    const cash = Number(BigInt(req.cash) / NIN);
+    const confirm = () => tx.run({
+      label: `Crop share ${name}`, rows: [['Cash', inr(cash)], ...(req.hours ? [['Machine vouchers', `${th(req.hours)} tractor hours`]] : []), ['For', `${name} · Area ${x.area}`]],
+      contractName: 'fund_core', fn: 'draw_loan',
+      args: [sv.address(req.union), sv.address(req.member), sv.bytes32(req.token), sv.i128(req.cash), sv.u32(req.hours)],
+      invalidate: [['oracle', 'myShares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
+    });
+    return <ConfirmShare cash={cash} hours={req.hours} name={name} area={x.area} ready={tx.ready} onConfirm={confirm} onCancel={() => setReq(undefined)} />;
   }
   return (
-    <Sheet landName="Nila" title={x.crop} onBack={onBack}>
-      <p style={{ ...muted, textAlign: 'center' }}>Area {x.area} · {shareTag(x)}</p>
-      {/* The steppers only once the union's caps are read: before that the cap is 0 and the default would jump. */}
-      {checks.data && <Stepper label="Cash" value={c} set={setCash} step={100} max={caps.cash} fmt={inr} />}
-      {checks.data && <Stepper label="Machine hours" value={h} set={setHours} step={1} max={caps.hours} fmt={(v) => `${v} h`} />}
-      {checks.isLoading && <p style={muted}>Checking the union…</p>}
-      {checks.isError && <p style={{ color: C.coral }}>Could not read the union. Try again.</p>}
-      {blocked.map((b) => <p key={b} style={{ color: C.coral }}>{b.replace(/^She needs/, 'You need').replace(/^She has/, 'You have')}</p>)}
-      {rows.map(([k, v, bad]) => (
-        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '4px 0' }}>
-          <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: bad ? C.coral : C.text }}>{v}</span>
-        </div>
-      ))}
-      {rows[0]?.[2] && <p style={{ ...muted, color: C.coral }}>Not enough cash at the office for this yet. Ask your leader.</p>}
-      <Primary disabled={!checks.data || blocked.length > 0 || (!c && !h) || over} onClick={() => setSure(true)}>Get cash and vouchers</Primary>
-    </Sheet>
+    <Page title={`${name} · Area ${x.area}`} onBack={onBack}>
+      {camera ? <CameraView key={tries} mode="qr" onText={read} /> : (
+        <BigQr img={img} alt="Your crop share QR" caption="Let your leader scan this" onClick={() => setCamera(true)} />
+      )}
+      {camera && <p style={{ ...muted, textAlign: 'center' }}>Scan the QR on your leader's phone.</p>}
+      {!camera && <Primary onClick={() => setCamera(true)}>Scan your union's QR</Primary>}
+      {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
+    </Page>
   );
+}
+
+/** Taking up a Ready share: a member scans her leader's QR (ShareScan); a leader's own share opens L11 on it, where
+ *  she sets the amounts and confirms herself (23 Oct, the same screen as for a member, no QR). */
+export function TakeUp({ token, leader, onBack }) {
+  const shares = useMyShares();
+  const first = useRef();
+  const x = shares.data?.find((y) => y.token_id === token);
+  if (!x) return <Page title="Your crop share" onBack={onBack}><p style={muted}>…</p></Page>;
+  // Drawn already when the page opens (a stale link or the back button): nothing to take up; her share's own page
+  // instead. Only as first read: her own draw on this page keeps its success screen.
+  if (first.current === undefined) first.current = !x.ready;
+  if (first.current) { window.location.hash = `#/cropshare/${x.token_id}`; return null; }
+  if (leader) return <LeaderLoan initial={`${x.plan.id}_${x.token_id}`} />;
+  return <ShareScan x={x} onBack={onBack} />;
 }
 
 export const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
@@ -141,6 +157,15 @@ export const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.row
   .sort((a, b) => (b.sow === x.share.from_date) - (a.sow === x.share.from_date))[0];
 export const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
 export const amount = (kg) => (kg >= 1000 ? `~${Math.round(kg / 100) / 10} t` : `~${Math.round(kg)} kg`);
+
+/** Her Ready crop shares as To do rows (A2, and a leader's "Your own"): each opens its take-up page. */
+export function ReadyShareRows({ go, first = true }) {
+  const ready = (useMyShares().data || []).filter((x) => x.ready);
+  return ready.map((x, i) => (
+    <ListRow key={x.token_id} first={first && i === 0} icon={RupeeIcon} tone="new" title="Get your crop share"
+      sub={`${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area} · at the union office`} onClick={() => go(`share/${x.token_id}`)} />
+  ));
+}
 
 /** The A1 rows (board MemberAssets-ley3, "Crop shares"): her crop's coin, crop, "Area N · season", its state, the
  *  expected harvest and its value on the right, a chevron. Every row opens its crop share: A4 once a loan is drawn on

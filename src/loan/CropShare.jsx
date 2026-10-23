@@ -13,7 +13,7 @@ import { Loading } from '../register/Boot';
 import { areasOf, useFieldRecord } from '../plan/record';
 import { C } from '../shell/tokens';
 import { BanknoteIcon, TractorIcon } from '../shell/icons';
-import { amount, assisted, rowOf, useMyLand, useMyShares } from './MyShares';
+import { amount, rowOf, useMyLand, useMyShares } from './MyShares';
 
 const FLAG_OVERDUE = 1;
 const FLAG_DEFAULTED = 2;
@@ -99,7 +99,8 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   if (!x.drawn) {
     // A4a: not active yet. Cash is the attested cash part (the plan's, before the attestation); machine hours at the plan's rate.
     const cash = x.ft ? num(x.ft.amount) : Number(x.share.loan_amount || 0);
-    const hours = x.ft ? Number(x.ft.hours) : Number(x.share.hours || 0);
+    // Attested hours are voucher units (centi tractor hours, 23 Oct); before the attestation, the plan's machine hours.
+    const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.hours || 0);
     const vouchers = Number(r.finance?.voucher_value || 0);
     const from = x.ft ? new Date(Number(x.ft.from_date) * 1000) : x.share.from_date ? new Date(x.share.from_date) : null;
     return (
@@ -119,14 +120,14 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
           </div>
           {hours > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}>
-              <TractorIcon color={C.gold} /><span style={{ flexGrow: 1, color: C.muted }}>Machine hours · {hours} h</span><b>{vouchers ? inr(vouchers) : '—'}</b>
+              <TractorIcon color={C.gold} /><span style={{ flexGrow: 1, color: C.muted }}>Machine hours · {x.ft ? `${hours.toFixed(1)} tractor h` : `${hours} h`}</span><b>{vouchers ? inr(vouchers) : '—'}</b>
             </div>
           )}
         </div>
         <div style={line} />
         <Row k="Total" v={inr(cash + vouchers)} strong />
-        {/* Self mode: she takes it up herself (16 Oct); not on the board, which only shows when and where. */}
-        {x.ready && !assisted() && <Primary onClick={() => onTakeUp(x.token_id)}>Get cash and vouchers</Primary>}
+        {/* Ready: her scan of the leader's QR (assisted: the leader taps it on her phone), or a leader's own take-up. */}
+        {x.ready && <Primary onClick={() => onTakeUp(x.token_id)}>Get cash and vouchers</Primary>}
       </Sheet>
     );
   }

@@ -14,7 +14,8 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
   // (shell/MapStage) draws this sheet's map, so it is never mounted again between screens.
   const stage = useStage();
   const staged = !!stage && isValidElement(map);
-  useEffect(() => { if (staged && map.props.record) stage.set(map.props); });
+  // A sheet without its record yet clears the stage (23 Oct): the last screen's fields never stay behind it.
+  useEffect(() => { if (staged) stage.set(map.props.record ? map.props : null); });
   const shown = staged ? null : map;
   const x0 = useRef(null);
   const swipe = onSwipe ? {

@@ -24,7 +24,7 @@ export const sv = {
 /** A uint256 token id (decimal string) as 32 bytes, big-endian, hex. */
 export const tokenHex = (decimal) => BigInt(decimal).toString(16).padStart(64, '0');
 
-const server = (cfg) => new rpc.Server(cfg.rpc_url, { allowHttp: cfg.rpc_url?.startsWith('http://') });
+export const server = (cfg) => new rpc.Server(cfg.rpc_url, { allowHttp: cfg.rpc_url?.startsWith('http://') });
 
 /** A read: simulate `fn` on `contract` (any funded account as source; the sponsor is). */
 export async function readContract(cfg, contractName, fn, args = []) {
@@ -114,16 +114,21 @@ export async function invokeContract({ cfg, source, signHash, contractName, fn, 
   const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
   const acct = await s.getAccount(source);
-  // `auth`: entries already signed by another address (base64 XDR; the leader's at the desk, 22 Oct). Her own
-  // authorization is then given as her source account over the same call, and the simulation checks them all.
+  // `auth`: entries already signed by another address (base64 XDR; the leader's at the desk, 22 Oct; hers from her QR,
+  // 23 Oct). Her own part is the source-account entries a first simulation records for the call; the second
+  // (prepare) then checks them all with the given ones.
   const given = (auth || []).map((a) => xdr.SorobanAuthorizationEntry.fromXDR(a, 'base64'));
-  const op = given.length
-    ? Operation.invokeContractFunction({ contract: id, function: fn, args, auth: [
-      new xdr.SorobanAuthorizationEntry({ credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(), rootInvocation: typeof given[0].rootInvocation === 'function' ? given[0].rootInvocation() : given[0].rootInvocation }),
-      ...given] })
-    : new Contract(id).call(fn, ...args);
-  const raw = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
+  // A copy each time: building advances the account's sequence.
+  const build = (op) => new TransactionBuilder(new Account(acct.accountId(), acct.sequenceNumber()), { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
     .addOperation(op).setTimeout(300).build();
+  let op = new Contract(id).call(fn, ...args);
+  if (given.length) {
+    const sim = await s.simulateTransaction(build(op));
+    if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
+    const own = (sim.result?.auth || []).filter((a) => credType(a) === 'sorobanCredentialsSourceAccount');
+    op = Operation.invokeContractFunction({ contract: id, function: fn, args, auth: [...own, ...given] });
+  }
+  const raw = build(op);
   const tx = await s.prepareTransaction(raw);           // simulate + footprint + resource fee + auth
   checkPrepared(raw, tx, source, given);
   tx.addSignature(source, b64(await signHash(tx.hash())));
@@ -164,3 +169,4 @@ export async function signAuthFor({ cfg, source, signer, signHash, contractName,
   if (!signed) throw new Error('This call needs no signature from you.');
   return signed.toXDR('base64');
 }
+
