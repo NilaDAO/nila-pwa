@@ -5,6 +5,8 @@
 import { Account, Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
 
 const API = process.env.REACT_APP_API_BASE_URL;
+// The static demo build (src/demo/shim.js): her own calls return a canned success after a moment (N1 → N2), nothing is sent.
+const DEMO_STATIC = process.env.REACT_APP_DEMO_STATIC === '1';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const b64 = (u8) => btoa(String.fromCharCode(...u8));
 
@@ -110,6 +112,7 @@ export function contractId(cfg, name) {
 }
 
 export async function invokeContract({ cfg, source, signHash, contractName, fn, args, auth, onSent }) {
+  if (DEMO_STATIC) { const hash = '0'.repeat(64); onSent?.(hash); await sleep(1500); return { hash, result: null }; }
   const s = server(cfg);
   const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
@@ -142,6 +145,7 @@ export async function invokeContract({ cfg, source, signHash, contractName, fn, 
  *  with `source` (the member) as the transaction's account, and the entry for `signer` (the leader) is signed with
  *  her Privy wallet, valid for `ledgers` ledgers (~5 s each). Returns the signed entry as base64 XDR. */
 export async function signAuthFor({ cfg, source, signer, signHash, contractName, fn, args, ledgers = 720 }) {
+  if (DEMO_STATIC) return 'AAAAAA==';                   // static demo: a placeholder entry, never submitted
   const s = server(cfg);
   const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
