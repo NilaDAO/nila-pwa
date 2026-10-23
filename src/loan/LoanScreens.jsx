@@ -21,6 +21,7 @@ import { NIN, checkRequest, makeRequest } from './request';
 import { checkDeskRequest, isDeskRequest } from './desk';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import PostBring from '../anchor/PostBring';
+import { typeName, useRates } from '../machine/hooks';
 
 const FLAG_DRAWN = 8;
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -68,7 +69,11 @@ export function LeaderLoan({ initial }) {
   const pickFt = shares.data?.find((x) => x.token_id === pick)?.ft;
   const checks = useUnionChecks(pickFt?.member);
   const [cash, setCash] = useState(0);
-  const [hours, setHours] = useState(0);
+  // Machine hours per machine type, as the plan sets them (23 Oct): { type: whole hours }. The voucher is their sum;
+  // the contract holds hours only, priced at the rate of the machine that does the job.
+  const [mach, setMach] = useState({});
+  const hours = Object.values(mach).reduce((a, b) => a + b, 0);
+  const rates = useRates();
   // The share is picked before this screen (23 Oct, no list here): the one from her QR or G2, else (a To do row, one
   // per plan) her first Ready share; with the plan's cash and hours.
   useEffect(() => {
@@ -77,13 +82,21 @@ export function LeaderLoan({ initial }) {
     const x = !pick && (initToken
       ? shares.data?.find((y) => y.token_id === initToken || tokenHex(y.token_id) === initToken)
       : shares.data?.find(isReady));
-    if (x) { setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0)); setHours(Math.round(x.share.hours || 0)); }
+    if (!x) return;
+    setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0));
+    const ms = Object.values(planRow(plan, x.share)?.finance?.machines || {}).filter((m) => m.type && m.hours > 0);
+    setMach(ms.length ? Object.fromEntries(ms.map((m) => [m.type, Math.ceil(m.hours)])) : x.share.hours > 0 ? { 0: Math.ceil(x.share.hours) } : {});
   }, [shares.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // The plan's amounts, within the union's caps once they are read (the steppers start inside the limit).
   useEffect(() => {
     if (!checks.data || !pickFt) return;
     const c = capsFor(checks.data, pickFt);
-    setCash((v) => Math.min(v, c.cash)); setHours((v) => Math.min(v, c.hours));
+    setCash((v) => Math.min(v, c.cash));
+    // Over the union's machine stock: the last types give way first.
+    setMach((m) => {
+      let left = c.hours;
+      return Object.fromEntries(Object.entries(m).map(([t, h]) => { const k = Math.min(h, left); left -= k; return [t, k]; }));
+    });
   }, [checks.data, pickFt]);
   const [req, setReq] = useState();
   const [img, setImg] = useState();
@@ -136,7 +149,10 @@ export function LeaderLoan({ initial }) {
   // Board LeaderRedeem, without its crop share list (23 Oct: the share comes picked): one card with the share, the
   // steppers, total / interest / repay and the union checks. No seed row: seed is paid as cash (P5).
   const name = sel ? `${row?.name || sel.crop} · Area ${Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1}` : '';
-  const perHour = sel?.share.hours ? Number(row?.finance?.voucher_value || 0) / Number(sel.share.hours) : 0;
+  const rateOf = (t) => rates.data?.find((r) => r.type === Number(t))?.total || 0;
+  const machValue = Object.entries(mach).reduce((a, [t, h]) => a + h * rateOf(t), 0);
+  // Cash is lent from member money only (junior, above its reserve); the plan's cash above that is shown, not lent.
+  const notCovered = sel && checks.data ? Math.max(0, Math.round(sel.share.loan_amount || 0) - caps.cash) : 0;
   const rows = checkRows(checks.data, cash, hours, caps);
   const line = { height: 1, background: C.raised };
   return (
@@ -150,9 +166,13 @@ export function LeaderLoan({ initial }) {
             <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>Ready</span>}>{name}</CardTitle>
             {checks.isError && <span style={{ color: C.coral }}>Could not read the union. Try again.</span>}
             {checks.data && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
-            {checks.data && <Stepper label={perHour ? `Machine · ${inr(perHour)}/h` : 'Machine'} value={hours} set={setHours} step={1} max={caps.hours} fmt={(h) => `${h} h`} />}
+            {notCovered > 0 && <KV k="Not covered by member money" v={inr(notCovered)} color={C.coral} />}
+            {checks.data && Object.entries(mach).map(([t, h]) => (
+              <Stepper key={t} label={Number(t) ? `${typeName(Number(t))}${rateOf(t) ? ` · ${inr(rateOf(t))}/h` : ''}` : 'Machine hours'} value={h}
+                set={(v) => setMach((m) => ({ ...m, [t]: v }))} step={1} max={h + Math.max(0, caps.hours - hours)} fmt={(v) => `${v} h`} />
+            ))}
             <div style={line} />
-            <KV k="Total" v={inr(cash + hours * perHour)} />
+            <KV k="Total" v={inr(cash + machValue)} />
             {rateBp != null && <KV k="Interest" v={`${rateBp / 100}% a year`} />}
             {repay != null && <KV k="Repay" v={`${inr(repay)} · about end of ${monthYear(row.finance.due)}`} />}
             <div style={line} />
