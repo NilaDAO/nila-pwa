@@ -192,7 +192,8 @@ export function readAuthEntry(cfg, b64) {
   const get = (o, k) => (typeof o?.[k] === 'function' ? o[k]() : o?.[k]);
   const e = xdr.SorobanAuthorizationEntry.fromXDR(b64, 'base64');
   const cred = get(e, 'credentials');
-  const addr = get(cred, 'address');
+  // Address credentials as recorded by a simulation (V2 on Protocol 27) or made by authorizeInvocation (V1).
+  const addr = get(cred, 'address') || get(cred, 'addressV2') || get(get(cred, 'addressWithDelegates'), 'addressCredentials');
   const c = get(get(get(e, 'rootInvocation'), 'function'), 'contractFn');
   if (!addr || !c) throw new Error('This code cannot be read.');
   const contract = Address.fromScAddress(get(c, 'contractAddress')).toString();
