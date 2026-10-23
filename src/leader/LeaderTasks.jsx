@@ -45,7 +45,7 @@ export function PickMember({ title, onPick, onBack, onScan }) {
 // "Scan an LP code" has no board row (LP scan, P9): it keeps the cash icon.
 const START = [
   ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon]]],
-  ['Crop plan and crop share', [['Share request', 'For a crop plan the member accepted', 'cash/loan', RupeeIcon]]],
+  ['Crop plan and crop share', [['Share request', 'Find her in Members', 'members', RupeeIcon]]],
   // Her invest, repay and withdrawal start from her G2 (22 Oct): these rows open Members to find her.
   ['Cash', [['Invest', 'Find her in Members', 'members', InvestIcon], ['Repay', 'Find her in Members', 'members', RepayIcon],
     ['Pay out investment', 'Find her in Members', 'members', PayOutIcon],

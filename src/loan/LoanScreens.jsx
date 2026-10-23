@@ -42,14 +42,15 @@ function planRow(plan, share) {
   return null;
 }
 
-/** initial: `<plan id>` (a To do row) or `<plan id>_<token id>` (her crop share QR): opens on that plan and share. */
+/** initial: `<plan id>` (a To do row) or `<plan id>_<token id>` (her crop share QR, decimal; her G2 row, hex): opens on
+ *  that plan and share. No member picker (23 Oct): a leader comes here from her QR, a To do row or her G2 only. */
 export function LeaderLoan({ initial }) {
   const [initPlan, initToken] = String(initial || '').split('_');
   const s = useNilaSigner();
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
   const plans = useQuery({ queryKey: ['oracle', 'approvedPlans'], enabled: !!api, queryFn: () => api.approvedPlans() });
-  const [planId, setPlanId] = useState(initPlan || undefined);
+  const planId = initPlan || undefined;
   const plan = plans.data?.plans?.find((p) => p.id === planId);
   const shares = useQuery({
     queryKey: ['oracle', 'shares', planId], enabled: !!plan && !!cfg,
@@ -69,7 +70,7 @@ export function LeaderLoan({ initial }) {
   const [hours, setHours] = useState(0);
   // Her share from the QR: picked once the shares are read, with the plan's cash and hours (as a tap on it).
   useEffect(() => {
-    const x = initToken && !pick && shares.data?.find((y) => y.token_id === initToken);
+    const x = initToken && !pick && shares.data?.find((y) => y.token_id === initToken || tokenHex(y.token_id) === initToken);
     if (x) { setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0)); setHours(Math.round(x.share.hours || 0)); }
   }, [shares.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [req, setReq] = useState();
@@ -91,10 +92,8 @@ export function LeaderLoan({ initial }) {
   }
   if (!plan) {
     return (
-      <Sheet landName="Crop share request" title="Pick a member">
-        {plans.isLoading && <p style={muted}>…</p>}
-        {!plans.isLoading && !plans.data?.plans?.length && <p style={muted}>No approved crop plans yet.</p>}
-        {plans.data?.plans?.map((p) => <Choice key={p.id} sub={`${(p.plan.shares || []).length} crop shares`} onClick={() => setPlanId(p.id)}>Land {p.land_id}</Choice>)}
+      <Sheet landName="Crop share request" title="Crop share request">
+        <p style={muted}>{plans.isLoading ? '…' : 'This crop plan is not approved. Find her in Members.'}</p>
       </Sheet>
     );
   }
@@ -120,7 +119,7 @@ export function LeaderLoan({ initial }) {
     } catch (e) { setError(e.message); }
   };
   return (
-    <Sheet landName={`Land ${plan.land_id}`} title="Pick a crop share" onBack={() => { setPlanId(undefined); setPick(undefined); }}>
+    <Sheet landName={`Land ${plan.land_id}`} title="Pick a crop share" onBack={() => window.history.back()}>
       <p style={{ ...muted, textAlign: 'center' }}>From her plan</p>
       {shares.isLoading && <p style={muted}>…</p>}
       {shares.data?.map((x) => {

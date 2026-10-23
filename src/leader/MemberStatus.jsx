@@ -215,7 +215,7 @@ export default function MemberStatus({ id, go }) {
                     <span style={{ color: C.muted }}>Area {x.area}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
                   </span>
                   {st.take ? (
-                    <button type="button" onClick={() => go('cash/loan')} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
+                    <button type="button" onClick={() => go(`loan/${m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
                       background: C.accent, color: C.ink, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Take up</button>
                   ) : (
                     <span style={{ flexShrink: 0, height: 24, borderRadius: R.round, padding: '0 8px', display: 'flex', alignItems: 'center', fontSize: 12,

@@ -12,7 +12,6 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { LeaderLoan } from './LoanScreens';
 import { PayOut } from './CashOut';
 import { NIN } from './request';
 import PhotoCount from './PhotoCount';
@@ -155,7 +154,7 @@ function ToMembersFrom({ member }) {
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
 // Her own actions (invest, repay, withdraw) start only from her G2 (executive decision 22 Oct: Members → G2 → action):
 // #/cash/<action>/<her Stellar address>. Without her the leader is sent to Members (G1) to find her.
-const OPEN = { lpscan: 'lpscan', loan: 'loan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw' };
+const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw' };
 const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
 const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/(G[A-Z2-7]{55})/) || [])[1];
 
@@ -171,7 +170,6 @@ export default function CashDesk({ initial }) {
   if (toMembers) return null;
   if (view === 'invest' || view === 'withdraw') return <ToMembersFrom member={member} />;
   if (view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
-  if (view === 'loan') return <LeaderLoan />;
   if (view === 'payout') return <PayOut onBack={back} />;
   if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member || ''} />;
   if (view === 'lpscan') return <ScanLp onBack={back} />;
