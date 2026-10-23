@@ -19,7 +19,7 @@ import Investment from '../loan/Investment';
 import CashOut from '../loan/CashOut';
 import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
-import { TakeUp, rowOf, useMyShares } from '../loan/MyShares';
+import { ReadyShareRows, TakeUp, rowOf, useMyShares } from '../loan/MyShares';
 import MapStage from './MapStage';
 import MapCard from './MapCard';
 import { SlideBar } from '../plan/PlanResult';
@@ -73,6 +73,7 @@ const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-
 
 function TasksView({ leader, go }) {
   const lp = useLpStatus();
+  const shares = useMyShares().data;
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
   const member = readMember();
@@ -81,6 +82,7 @@ function TasksView({ leader, go }) {
   // A2 (board Tasks): "Cash offers" for an LP, then "To do". DESIGN GAP: the board's to-do rows (use machine hours,
   // plant, invest, register trees, repay) need her plan's task list, not built yet; her crop plan row stands in.
   const isLp = lp.data?.lp && lp.data?.trustline;
+  const ready = (shares || []).some((x) => x.ready);
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: 'Tasks', onBack: () => go('assets'), onSettings: () => go('settings') }}>
@@ -90,7 +92,8 @@ function TasksView({ leader, go }) {
         </ListSection>
       )}
       <ListSection title="To do">
-        <ListRow first icon={CropIcon} title="Your crop plan" sub="Make, check or follow your plan" onClick={() => go('crop')} />
+        <ReadyShareRows go={go} />
+        <ListRow first={!ready} icon={CropIcon} title="Your crop plan" sub="Make, check or follow your plan" onClick={() => go('crop')} />
       </ListSection>
     </MapCard>
   );

@@ -15,13 +15,13 @@ import { readFoodTokens, sv, tokenHex } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { useCropPlan, useLandTitles, usePlanClient } from '../plan/hooks';
 import { Primary, inr, muted } from '../plan/ui';
-import { ScreenHeader } from '../shell/ListRow';
+import ListRow, { ScreenHeader } from '../shell/ListRow';
 import { Card } from './AssetParts';
 import CameraView from '../shell/CameraView';
 import { NIN, checkRequest } from './request';
 import { C, FONT, R } from '../shell/tokens';
 import { capsFor, checkRows, useUnionChecks } from './unionChecks';
-import { ChevronIcon, ShareTile } from '../shell/icons';
+import { ChevronIcon, RupeeIcon, ShareTile } from '../shell/icons';
 
 export const FLAG_DRAWN = 8;
 export const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
@@ -217,6 +217,15 @@ export const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.row
   .sort((a, b) => (b.sow === x.share.from_date) - (a.sow === x.share.from_date))[0];
 export const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
 export const amount = (kg) => (kg >= 1000 ? `~${Math.round(kg / 100) / 10} t` : `~${Math.round(kg)} kg`);
+
+/** Her Ready crop shares as To do rows (A2, and a leader's "Your own"): each opens its take-up page. */
+export function ReadyShareRows({ go, first = true }) {
+  const ready = (useMyShares().data || []).filter((x) => x.ready);
+  return ready.map((x, i) => (
+    <ListRow key={x.token_id} first={first && i === 0} icon={RupeeIcon} tone="new" title="Get your crop share"
+      sub={`${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area} · at the union office`} onClick={() => go(`share/${x.token_id}`)} />
+  ));
+}
 
 /** The A1 rows (board MemberAssets-ley3, "Crop shares"): her crop's coin, crop, "Area N · season", its state, the
  *  expected harvest and its value on the right, a chevron. Every row opens its crop share: A4 once a loan is drawn on
