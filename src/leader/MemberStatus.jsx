@@ -73,13 +73,19 @@ export default function MemberStatus({ id, go }) {
   const found = (members.data || []).find((x) => x.route === id);
   // Her crop shares and her loans' due dates are read only here (22 Oct), after the list.
   const shares = useUnionShares(api);
-  const dues = useLoanDues(found?.loans);
+  // Her open loans: the node's list, plus any drawn share it does not hold yet (read from the share on-chain).
+  const loans = useMemo(() => {
+    if (!found) return undefined;
+    const extra = (shares.data?.[found.address]?.shares || []).filter((x) => x.loan && !found.loans.some((l) => l.token === x.token)).map((x) => x.loan);
+    return [...found.loans, ...extra];
+  }, [found, shares.data]);
+  const dues = useLoanDues(loans);
   const m = useMemo(() => {
     if (!found) return found;
     const mine = shares.data?.[found.address] || {};
     return { ...found, plan: mine.plan, shares: mine.shares || [],
-      loans: found.loans.map((l) => ({ ...l, due: dues.data?.[l.token] || 0, ...((mine.shares || []).find((x) => x.token === l.token) ? { crop: mine.shares.find((x) => x.token === l.token).crop } : {}) })) };
-  }, [found, shares.data, dues.data]);
+      loans: loans.map((l) => ({ ...l, due: dues.data?.[l.token] || 0, ...((mine.shares || []).find((x) => x.token === l.token) ? { crop: mine.shares.find((x) => x.token === l.token).crop } : {}) })) };
+  }, [found, loans, shares.data, dues.data]);
   const inv = useInvestment(m?.address);
   const tx = useSorobanTx();
   // Invest / Withdraw run in place (22 Oct): the button row turns into Photo count | Cash teller; Photo count opens the

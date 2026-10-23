@@ -132,10 +132,15 @@ export function useUnionShares(api) {
         const zones = Object.keys(p.plan?.proposal || {}).sort();
         const share = (p.plan.shares || []).find((y) => y.key === x.share) || {};
         const r = rowOf({ ...x, share, plan: p }) || {};
-        const drawn = !!(Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
+        const flags = Number(ft.loan?.flags ?? 0);
+        const drawn = !!(flags & FLAG_DRAWN);
+        // Her loan read from the share itself (23 Oct): a fresh draw is not in the node's loan list until its next sync.
+        const g = ft.loan || {};
+        const loan = drawn && !(flags & FLAG_CLOSED)
+          ? { token: hex, left: n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid), overdue: !!(flags & FLAG_OVERDUE) } : null;
         const m = (by[ft.member] ||= { plan: p, shares: [] });
         m.shares.push({ token: hex, crop: r.name || x.crop.replace(/_/g, ' '), colour: r.colour, area: zones.indexOf(x.zone) + 1,
-          harvest: r.harvest, kg: r.kg, slot: r.slot, from: Number(ft.from_date), drawn, ready: !drawn && Number(ft.from_date) <= now });
+          harvest: r.harvest, kg: r.kg, slot: r.slot, from: Number(ft.from_date), drawn, loan, ready: !drawn && Number(ft.from_date) <= now });
       }
       Object.values(by).forEach((m) => m.shares.sort((a, b) => String(a.harvest || '').localeCompare(String(b.harvest || ''))));
       return by;
