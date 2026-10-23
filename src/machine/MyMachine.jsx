@@ -49,11 +49,11 @@ export function parseVoucherCode(cfg, text) {
   return { entry: text.trim(), member: e.signer, token: Buffer.from(e.native[1]).toString('hex'), signed: Number(e.native[2]) };
 }
 
-export default function MyMachine({ onBack }) {
+export default function MyMachine({ onBack, pick: first }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const me = s?.stellarAddress;
-  const [pick, setPick] = useState();
+  const [pick, setPick] = useState(first);
   const machine = useMyMachine(me, { pick, poll: true });
   const dues = useOwnerDues(me);
   const rates = useRates();

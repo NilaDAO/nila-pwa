@@ -200,7 +200,7 @@ export default function Shell({ leader }) {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
       onHistory={() => go('history')} onWalletQr={() => go('wallet')} onLand={() => go('land')} moveNote={moveNote}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`cropshare/${t}`)}
-      onMachinery={() => go('machinery')} onMachine={() => go('machine')} onOffers={() => go('offers')} onUsdc={() => go('usdc')}
+      onMachinery={() => go('machinery')} onMachine={(id) => go(id ? `machine/${id}` : 'machine')} onOffers={() => go('offers')} onUsdc={() => go('usdc')}
       onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} onRegisterMachine={() => go('cash/machine')} />;
   } else if (view === 'settings') {
     body = leader
@@ -225,7 +225,7 @@ export default function Shell({ leader }) {
   // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.
   else if (view === 'cashout' && leader) body = <CashOut onBack={() => go('assets')} />;
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
-  else if (view === 'machine') body = <MyMachine onBack={() => go('assets')} />;
+  else if (view === 'machine') body = <MyMachine key={readArg()} pick={Number(readArg()) || undefined} onBack={() => go('assets')} />;
   else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go(`cropshare/${readArg()}`)} />;
   // A4 / A4a: her crop share, from its A1 row.
   else if (view === 'cropshare') {

@@ -127,7 +127,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     <section key="confirm-machine" aria-label="Confirm your machine" style={card}>
       <Title Icon={MyMachineTile}>Confirm your machine</Title>
       <span style={{ ...small, color: C.muted }}>{typeName(machine.machine_type)}, registered by your union leader. Members can hire it once you confirm.</span>
-      <button type="button" onClick={onMachine} style={{ height: 44, borderRadius: 12, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>Confirm your machine</button>
+      <button type="button" onClick={() => onMachine(machine.id)} style={{ height: 44, borderRadius: 12, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>Confirm your machine</button>
     </section>
   )] : [];
   const slides = [...confirmSlide, ...leaderSlides, ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans })];
@@ -196,9 +196,11 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           <Row label="Open machinery" icon={<MachineryTile />} title="Machinery" sub={vOpen ? `1 open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
             value={`${vHours} h`} valueSub="" onClick={onMachinery} />
         )}
-        {machine && (
-          <Row label="Open your machine" icon={<MyMachineTile />} title="Your machine" sub={`${typeName(machine.machine_type)} · ${!machine.confirmed ? 'confirm it' : machine.on_hold ? 'on hold' : 'available'}`} onClick={onMachine} />
-        )}
+        {/* One row per machine she owns (23 Oct), named by its type. */}
+        {machine?.all.map((x) => (
+          <Row key={x.id} label={`Open ${typeName(x.machine_type)}`} icon={<MyMachineTile />} title={typeName(x.machine_type)}
+            sub={!x.confirmed ? 'Confirm it' : x.on_hold ? 'On hold' : 'Available'} onClick={() => onMachine(x.id)} />
+        ))}
         {/* A9 (22 Oct): every leader sees the USDC row; it opens only once the anchor marked her identity checked
             (fx_pool.id_checked, K1 #leader from LS) and is locked with a warning until then. A member LP keeps her row
             to the cash offers. */}
