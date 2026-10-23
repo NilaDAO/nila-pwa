@@ -23,6 +23,7 @@ import { checkDeskRequest, isDeskRequest } from './desk';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import PostBring from '../anchor/PostBring';
 import { typeName, useRates } from '../machine/hooks';
+import ConfirmShare from './ConfirmShare';
 
 const FLAG_DRAWN = 8;
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -100,6 +101,8 @@ export function LeaderLoan({ initial }) {
     });
   }, [checks.data, pickFt]);
   const [req, setReq] = useState();
+  const [own, setOwn] = useState(false);
+  const tx = useSorobanTx();
   const [img, setImg] = useState();
   const [error, setError] = useState();
   // The request is a few characters (23 Oct): a small, coarse QR any phone camera reads.
@@ -152,6 +155,20 @@ export function LeaderLoan({ initial }) {
       }));
     } catch (e) { setError(e.message); }
   };
+  // Her own share (a leader is a member too, 23 Oct): no QR; she confirms (N10) and signs draw_loan herself.
+  const mine = !!sel && sel.ft?.member === s?.stellarAddress;
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); window.location.hash = '#/assets'; }} onRetry={() => tx.retry()} />;
+  if (own && sel) {
+    const nm = `${row?.name || sel.crop}`;
+    const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
+    const draw = () => tx.run({
+      label: `Crop share ${nm}`, rows: [['Cash', inr(cash)], ...(hours ? [['Machine vouchers', `${hours} hours`]] : []), ['For', `${nm} · Area ${ar}`]],
+      contractName: 'fund_core', fn: 'draw_loan',
+      args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
+      invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
+    });
+    return <ConfirmShare own cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} />;
+  }
   // Board LeaderRedeem, without its crop share list (23 Oct: the share comes picked): one card with the share, the
   // steppers, total / interest / repay and the union checks. No seed row: seed is paid as cash (P5).
   const name = sel ? `${row?.name || sel.crop} · Area ${Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1}` : '';
@@ -189,7 +206,7 @@ export function LeaderLoan({ initial }) {
               ? <PostBring gap={Math.ceil(cash - checks.data.onHand)} />
               : <span style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</span>)}
             {error && <span style={{ color: C.coral }}>{error}</span>}
-            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={go}>Show QR to her</Primary>
+            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine ? () => setOwn(true) : go}>{mine ? 'Get cash and vouchers' : 'Show QR to her'}</Primary>
           </>
         )}
       </Card>

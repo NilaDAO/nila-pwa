@@ -18,10 +18,11 @@ import { Primary, inr, muted } from '../plan/ui';
 import ListRow, { ScreenHeader } from '../shell/ListRow';
 import { Card } from './AssetParts';
 import CameraView from '../shell/CameraView';
+import ConfirmShare from './ConfirmShare';
+import { LeaderLoan } from './LoanScreens';
 import BigQr from '../shell/BigQr';
 import { NIN, readRequest } from './request';
-import { C, FONT, R } from '../shell/tokens';
-import { capsFor, checkRows, useUnionChecks } from './unionChecks';
+import { C, FONT } from '../shell/tokens';
 import { ChevronIcon, RupeeIcon, ShareTile } from '../shell/icons';
 
 export const FLAG_DRAWN = 8;
@@ -74,20 +75,6 @@ export function shareTag(x) {
   return `From ${new Date(Number(x.ft.from_date) * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
 }
 
-function Stepper({ label, value, set, step, max, fmt }) {
-  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '8px 0' }}>
-      <span style={{ fontWeight: 700 }}>{label}</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button type="button" aria-label={`Less ${label}`} style={b} onClick={() => set(Math.max(0, value - step))}>−</button>
-        <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700 }}>{fmt(value)}</span>
-        <button type="button" aria-label={`More ${label}`} style={b} onClick={() => set(Math.min(max, value + step))}>+</button>
-      </span>
-    </div>
-  );
-}
-
 function Page({ title, onBack, children }) {
   return (
     <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -96,7 +83,6 @@ function Page({ title, onBack, children }) {
     </div>
   );
 }
-const second = { width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 };
 
 /** A member's Ready share: the camera for her leader's QR (L9), then N10 from the signed values. */
 function ShareScan({ x, onBack }) {
@@ -135,30 +121,7 @@ function ShareScan({ x, onBack }) {
       args: [sv.address(req.union), sv.address(req.member), sv.bytes32(req.token), sv.i128(req.cash), sv.u32(req.hours)],
       invalidate: [['oracle', 'myShares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
     });
-    // N10 (board ConfirmLoan): what she receives and accepts, then her signature on draw_loan.
-    const kv = (k, v) => (
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
-        <span style={{ color: C.muted }}>{k}</span><b style={{ textAlign: 'right' }}>{v}</b>
-      </div>
-    );
-    return (
-      <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <ScreenHeader title="Confirm your crop share" onBack={() => setReq(undefined)} />
-        <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Your union leader asks you to confirm</span>
-        <Card label="Your crop share" style={{ gap: 12 }}>
-          {kv('Cash you receive', inr(cash))}
-          {req.hours > 0 && kv('Machine vouchers', `${req.hours} hours`)}
-          {kv('For', `${name} · Area ${x.area}`)}
-          {kv('Repay', '3 weeks after harvest')}
-        </Card>
-        <Card label="Before you confirm" style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01" /></svg>
-          <span style={{ fontSize: 14, lineHeight: 1.5 }}>Only confirm when you have the cash in your hand.</span>
-        </Card>
-        <Primary disabled={!tx.ready} onClick={confirm}>{req.hours > 0 ? 'I received the cash · accept the vouchers' : 'I received the cash'}</Primary>
-        <button type="button" onClick={() => setReq(undefined)} style={{ ...second, marginTop: 0 }}>Cancel</button>
-      </div>
-    );
+    return <ConfirmShare cash={cash} hours={req.hours} name={name} area={x.area} ready={tx.ready} onConfirm={confirm} onCancel={() => setReq(undefined)} />;
   }
   return (
     <Page title={`${name} · Area ${x.area}`} onBack={onBack}>
@@ -172,60 +135,14 @@ function ShareScan({ x, onBack }) {
   );
 }
 
+/** Taking up a Ready share: a member scans her leader's QR (ShareScan); a leader's own share opens L11 on it, where
+ *  she sets the amounts and confirms herself (23 Oct, the same screen as for a member, no QR). */
 export function TakeUp({ token, leader, onBack }) {
-  const s = useNilaSigner();
-  const { data: cfg } = useStellarConfig();
   const shares = useMyShares();
-  const checks = useUnionChecks(s?.stellarAddress);
-  const tx = useSorobanTx();
   const x = shares.data?.find((y) => y.token_id === token);
-  const [cash, setCash] = useState();
-  const [hours, setHours] = useState();
-  const [sure, setSure] = useState(false);
   if (!x) return <Page title="Your crop share" onBack={onBack}><p style={muted}>…</p></Page>;
-  if (!leader) return <ShareScan x={x} onBack={onBack} />;
-  const caps = capsFor(checks.data, x.ft);
-  const blocked = checks.data?.blocked || [];
-  const c = cash ?? Math.min(caps.cash, Math.round(x.share.loan_amount || 0));
-  const h = hours ?? Math.min(caps.hours, Math.round(x.share.hours || 0));
-  const rows = checkRows(checks.data, c, h, caps);
-  const over = c > caps.cash || h > caps.hours;
-  const draw = () => tx.run({
-    label: `Crop share ${x.crop}`, rows: [['You get', inr(c)], ['For', `${x.crop} · Area ${x.area}`]],
-    contractName: 'fund_core', fn: 'draw_loan',
-    args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(x.token_id)), sv.i128(BigInt(Math.round(c)) * 10_000_000n), sv.u32(h)],
-    invalidate: [['oracle', 'myShares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
-  });
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
-  if (sure) {
-    return (
-      <Page title="Confirm your crop share" onBack={() => setSure(false)}>
-        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>You get {inr(c)}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Made of {inr(c)} cash{h ? ` + ${h} machine hours` : ''}</p>
-        <p style={{ textAlign: 'center' }}>For {x.crop} · Area {x.area}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Repay 3 weeks after harvest</p>
-        <p style={{ color: C.gold, textAlign: 'center' }}>Get the cash from your leader at the union office.</p>
-        <Primary disabled={!tx.ready} onClick={draw}>Confirm</Primary>
-      </Page>
-    );
-  }
-  return (
-    <Page title={`${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area}`} onBack={onBack}>
-      {/* The steppers only once the union's caps are read: before that the cap is 0 and the default would jump. */}
-      {checks.data && <Stepper label="Cash" value={c} set={setCash} step={100} max={caps.cash} fmt={inr} />}
-      {checks.data && <Stepper label="Machine hours" value={h} set={setHours} step={1} max={caps.hours} fmt={(v) => `${v} h`} />}
-      {checks.isLoading && <p style={muted}>Checking the union…</p>}
-      {checks.isError && <p style={{ color: C.coral }}>Could not read the union. Try again.</p>}
-      {blocked.map((b) => <p key={b} style={{ color: C.coral }}>{b.replace(/^She needs/, 'You need').replace(/^She has/, 'You have')}</p>)}
-      {rows.map(([k, v, bad]) => (
-        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '4px 0' }}>
-          <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: bad ? C.coral : C.text }}>{v}</span>
-        </div>
-      ))}
-      {rows[0]?.[2] && <p style={{ ...muted, color: C.coral }}>Not enough cash at the office for this yet. Ask your leader.</p>}
-      <Primary disabled={!checks.data || blocked.length > 0 || (!c && !h) || over} onClick={() => setSure(true)}>Get cash and vouchers</Primary>
-    </Page>
-  );
+  if (leader) return <LeaderLoan initial={`${x.plan.id}_${x.token_id}`} />;
+  return <ShareScan x={x} onBack={onBack} />;
 }
 
 export const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
