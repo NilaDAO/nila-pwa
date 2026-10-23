@@ -130,21 +130,34 @@ function ShareScan({ x, onBack }) {
   if (req) {
     const cash = Number(BigInt(req.cash) / NIN);
     const confirm = () => tx.run({
-      label: `Crop share ${name}`, rows: [['You get', inr(cash)], ['For', `${name} · Area ${x.area}`]],
+      label: `Crop share ${name}`, rows: [['Cash', inr(cash)], ...(req.hours ? [['Machine vouchers', `${req.hours} hours`]] : []), ['For', `${name} · Area ${x.area}`]],
       contractName: 'fund_core', fn: 'draw_loan',
       args: [sv.address(req.union), sv.address(req.member), sv.bytes32(req.token), sv.i128(req.cash), sv.u32(req.hours)],
       invalidate: [['oracle', 'myShares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
     });
+    // N10 (board ConfirmLoan): what she receives and accepts, then her signature on draw_loan.
+    const kv = (k, v) => (
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
+        <span style={{ color: C.muted }}>{k}</span><b style={{ textAlign: 'right' }}>{v}</b>
+      </div>
+    );
     return (
-      <Page title="Confirm your crop share" onBack={() => setReq(undefined)}>
-        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>You get {inr(cash)}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Made of {inr(cash)} cash{req.hours ? ` + ${req.hours} machine hours` : ''}</p>
-        <p style={{ textAlign: 'center' }}>For {name} · Area {x.area}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Repay 3 weeks after harvest</p>
-        <p style={{ color: C.gold, textAlign: 'center' }}>Only confirm when your leader is with you.</p>
-        <Primary disabled={!tx.ready} onClick={confirm}>Confirm</Primary>
-        <button type="button" onClick={() => setReq(undefined)} style={second}>Cancel</button>
-      </Page>
+      <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <ScreenHeader title="Confirm your crop share" onBack={() => setReq(undefined)} />
+        <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Your union leader asks you to confirm</span>
+        <Card label="Your crop share" style={{ gap: 12 }}>
+          {kv('Cash you receive', inr(cash))}
+          {req.hours > 0 && kv('Machine vouchers', `${req.hours} hours`)}
+          {kv('For', `${name} · Area ${x.area}`)}
+          {kv('Repay', '3 weeks after harvest')}
+        </Card>
+        <Card label="Before you confirm" style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01" /></svg>
+          <span style={{ fontSize: 14, lineHeight: 1.5 }}>Only confirm when you have the cash in your hand.</span>
+        </Card>
+        <Primary disabled={!tx.ready} onClick={confirm}>{req.hours > 0 ? 'I received the cash · accept the vouchers' : 'I received the cash'}</Primary>
+        <button type="button" onClick={() => setReq(undefined)} style={{ ...second, marginTop: 0 }}>Cancel</button>
+      </div>
     );
   }
   return (
