@@ -118,7 +118,8 @@ export function useUnionShares(api) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
     queryKey: ['stellar', 'unionShares', cfg?.union], enabled: !!api && !!cfg?.contracts?.fund_core,
-    staleTime: 2 * 60_000,
+    // Read again whenever G2 opens (23 Oct): a share she just drew on her own phone must not still offer Take up.
+    staleTime: 2 * 60_000, refetchOnMount: 'always',
     queryFn: async () => {
       const now = Date.now() / 1000;
       const plans = await api.approvedPlans().then((r) => r.plans || []).catch(() => []);

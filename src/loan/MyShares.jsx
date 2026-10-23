@@ -6,7 +6,7 @@
 // the camera in its place (so does the button under it). A leader taking up her own share sets
 // it herself (her own L11/N10 in one). Both full pages, no map card.
 // DESIGN GAP: neither page has a board of its own.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
@@ -140,8 +140,13 @@ function ShareScan({ x, onBack }) {
  *  she sets the amounts and confirms herself (23 Oct, the same screen as for a member, no QR). */
 export function TakeUp({ token, leader, onBack }) {
   const shares = useMyShares();
+  const first = useRef();
   const x = shares.data?.find((y) => y.token_id === token);
   if (!x) return <Page title="Your crop share" onBack={onBack}><p style={muted}>…</p></Page>;
+  // Drawn already when the page opens (a stale link or the back button): nothing to take up; her share's own page
+  // instead. Only as first read: her own draw on this page keeps its success screen.
+  if (first.current === undefined) first.current = !x.ready;
+  if (first.current) { window.location.hash = `#/cropshare/${x.token_id}`; return null; }
   if (leader) return <LeaderLoan initial={`${x.plan.id}_${x.token_id}`} />;
   return <ShareScan x={x} onBack={onBack} />;
 }

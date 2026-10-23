@@ -108,7 +108,9 @@ export default function MemberStatus({ id, go }) {
     (m?.shares || []).filter((x) => x.loan).forEach((x) => x.zones.forEach((z) => { out[z] = { text: x.crop, colour: x.colour }; }));
     return out;
   }, [m]);
-  if (members.isLoading) {
+  // Still loading, or only the list kept on this phone while the fresh one loads (a new member is not in it yet,
+  // 23 Oct): the skeleton, never "not in your union's list".
+  if (members.isLoading || (!found && (members.isFetching || members.isPlaceholderData))) {
     return (
       <MapCard map={<span />} header={{ title: '', onBack: () => go('members'), onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
         <SkeletonRows rows={4} />

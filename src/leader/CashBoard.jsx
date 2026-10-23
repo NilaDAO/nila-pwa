@@ -300,7 +300,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
             <Row k="Total funds" v={book ? inr(book.fundTotal) : '…'} />
             <Row k="Members" v={titles.data ? titles.data.length : '—'} />
             <Row k="Cash working (on loans)" v={book ? inr(book.loans.reduce((t, l) => t + l.outstanding, 0)) : '…'} />
-            <Row k="Vouchers" v={book ? book.loans.reduce((t, l) => t + (l.hours || 0), 0) : '…'} />
+            <Row k="Vouchers" v={book ? `${Math.round(book.loans.reduce((t, l) => t + (l.hours || 0), 0) * 10) / 10} tractor hours` : '…'} />
             <Row k="Rainy day fund" v={inr(cash.rainy)} />
           </div>
           {adjust && <Adjust key={adjust} cash={cash} dir={adjust} onClose={() => setAdjust(null)} />}
