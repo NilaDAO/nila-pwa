@@ -11,6 +11,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readFoodTokens, sv, tokenHex } from '../stellar/soroban';
 import { SkeletonRows } from '../shell/Skeleton';
+import BigQr from '../shell/BigQr';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
@@ -102,17 +103,23 @@ export function LeaderLoan({ initial }) {
   const [img, setImg] = useState();
   const [error, setError] = useState();
   // Low error correction and a large image: a phone camera reads it at arm's length (the request is long).
-  useEffect(() => { if (req) QRCode.toDataURL(req.qr, { width: 360, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [req]);
+  useEffect(() => { if (req) QRCode.toDataURL(req.qr, { width: 720, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [req]);
 
+  // L9 (board LeaderRequestQR): the request QR as big as the screen allows; no 6 numbers (no typed fallback, 22 Oct).
   if (req) {
+    const r = req.request;
+    const mv = Object.entries(mach).reduce((t, [k, h]) => t + h * (rates.data?.find((x) => x.type === Number(k))?.total || 0), 0);
     return (
-      <Sheet landName={`Land ${plan.land_id}`} title="Crop share request" onBack={() => setReq(undefined)}>
-        <p style={{ ...muted, textAlign: 'center' }}>{req.request.crop} · {inr(Number(BigInt(req.request.cash) / NIN))} cash + {req.request.hours} machine hours</p>
-        {img && <img src={img} alt="Crop share request QR" style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: 360, aspectRatio: '1', background: '#fff', borderRadius: 12 }} />}
-        <p style={{ textAlign: 'center', fontWeight: 700, letterSpacing: 2 }}>{req.number.slice(0, 3)} {req.number.slice(3)}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Let her scan this with her phone.</p>
-        <p style={muted}>For: Land {plan.land_id} · Valid for: 48 hours</p>
-      </Sheet>
+      <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <ScreenHeader title="Crop share request" onBack={() => setReq(undefined)} />
+        <Card label="Crop share request" style={{ gap: 12 }}>
+          <BigQr img={img} alt="Crop share request QR" caption="Let her scan this with her phone" below={340} />
+          <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>
+            {r.crop} · {inr(Number(BigInt(r.cash) / NIN))} cash{r.hours ? ` + ${mv ? inr(mv) : `${r.hours} h`} vouchers` : ''}</span>
+          <KV k="For" v={`Land ${plan.land_id} · ${r.area}`} />
+          <KV k="Valid for" v="48 hours" />
+        </Card>
+      </div>
     );
   }
   // The page shows at once (header and card); the card fills as the plan, her share and the union are read.

@@ -18,6 +18,7 @@ import { Primary, inr, muted } from '../plan/ui';
 import ListRow, { ScreenHeader } from '../shell/ListRow';
 import { Card } from './AssetParts';
 import CameraView from '../shell/CameraView';
+import BigQr from '../shell/BigQr';
 import { NIN, checkRequest } from './request';
 import { C, FONT, R } from '../shell/tokens';
 import { capsFor, checkRows, useUnionChecks } from './unionChecks';
@@ -150,22 +151,7 @@ function ShareScan({ x, onBack }) {
   return (
     <Page title={`${name} · Area ${x.area}`} onBack={onBack}>
       {camera ? <CameraView key={tries} mode="qr" onText={read} /> : (
-        // As big as the screen allows (23 Oct): the QR spans the screen's width (its own white margin, 2 modules, is the
-        // quiet zone), inscribed in a white circle that runs off the screen's sides (clipped there). The text sits in the
-        // circle under the QR, clear of its quiet zone; the button under the circle. The whole circle shows where the
-        // screen is tall enough (290 px: header, card padding, button, tab bar).
-        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', height: 'clamp(100vw + 96px, 100dvh - 290px, 100vw * 1.42)', overflow: 'hidden', position: 'relative' }}>
-          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 'calc(100vw * 1.42)', aspectRatio: '1 / 1',
-            borderRadius: R.round, background: '#fff' }} />
-          <button type="button" aria-label="Scan your leader's QR" onClick={() => setCamera(true)} style={{ position: 'absolute', left: 0, top: 'calc(50% - 50vw)',
-            width: '100vw', aspectRatio: '1', padding: 0, border: 0, background: 'none', cursor: 'pointer' }}>
-            {img && <img src={img} alt="Your crop share QR" style={{ display: 'block', width: '100%', aspectRatio: '1' }} />}
-          </button>
-          <div style={{ position: 'absolute', left: '50%', top: 'calc(50% + 50vw + 4px)', transform: 'translateX(-50%)', width: '62vw',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: C.ink, fontSize: 14, lineHeight: 1.4, textAlign: 'center' }}>Let your leader scan this</span>
-          </div>
-        </div>
+        <BigQr img={img} alt="Your crop share QR" caption="Let your leader scan this" onClick={() => setCamera(true)} />
       )}
       {camera && <p style={{ ...muted, textAlign: 'center' }}>Scan the QR on your leader's phone.</p>}
       {!camera && <Primary onClick={() => setCamera(true)}>Scan your union's QR</Primary>}
