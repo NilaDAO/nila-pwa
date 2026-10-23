@@ -149,7 +149,8 @@ const ok = (body) => reply(body, 200, 'application/x-amz-json-1.1');
 async function cognito(op, b) {
   await loaded;
   const users = fx.__users || {};
-  const phone = b.Username || b.AuthParameters?.USERNAME || phoneOf(b.AccessToken) || phoneOf(b.AuthParameters?.REFRESH_TOKEN);
+  const phone = b.Username || b.AuthParameters?.USERNAME || b.ChallengeResponses?.USERNAME || String(b.Session || '').replace(/^demo-/, '')
+    || phoneOf(b.AccessToken) || phoneOf(b.AuthParameters?.REFRESH_TOKEN);
   const u = users[phone];
   if (!u) return fail('UserNotFoundException', 'Only the demo numbers log in here.');
   if (op === 'SignUp') return fail('UsernameExistsException', 'User already exists');
