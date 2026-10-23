@@ -3,7 +3,7 @@
 // A member takes a Ready share up at the office (23 Oct): her page is the camera; she scans the leader's L9 QR
 // (L11's signed request), checks it against this share and confirms (N10). First the page shows her share QR
 // (`nila:share:<plan>_<token>:<her G>`): the leader's Members scan opens L11 with this share picked; a tap on it puts
-// the camera in its place. A leader taking up her own share sets
+// the camera in its place (so does the button under it). A leader taking up her own share sets
 // it herself (her own L11/N10 in one). Both full pages, no map card.
 // DESIGN GAP: neither page has a board of its own.
 import { useEffect, useMemo, useState } from 'react';
@@ -147,9 +147,8 @@ function ShareScan({ x, onBack }) {
           {img && <img src={img} alt="Your crop share QR" style={{ display: 'block', width: '100%', maxWidth: 360, margin: '0 auto', aspectRatio: '1', background: '#fff', borderRadius: 12 }} />}
         </button>
       )}
-      <p style={{ ...muted, textAlign: 'center' }}>{camera
-        ? "Scan the QR on your leader's phone."
-        : 'At the union office, let your leader scan this. Then tap it to scan the QR on your leader\'s phone.'}</p>
+      <p style={{ ...muted, textAlign: 'center' }}>{camera ? "Scan the QR on your leader's phone." : 'Let your leader scan this at the union office.'}</p>
+      {!camera && <Primary onClick={() => setCamera(true)}>Scan your union's QR</Primary>}
       {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
     </Page>
   );
