@@ -4,7 +4,7 @@
 // (union, token, up to N hours), one use (Soroban nonce), ~48 h (its expiry ledger); nothing goes on-chain until the
 // owner scans it and claims. Kept on this phone to show again; made on the voucher with the fewest hours that cover it.
 // DESIGN GAPs: whole hours instead of tractor-hour factors; one code at a time; "Remove" only forgets the code on
-// this phone (a signed code cannot be withdrawn before it expires); assisted mode shows the board's text only;
+// this phone (a signed code cannot be withdrawn before it expires); in assisted mode the leader drives her phone and she signs here (23 Oct);
 // no "Receive" (vouchers are not sent); no typed fallback (executive decision 23 Oct).
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
@@ -16,7 +16,6 @@ import { C, R } from '../shell/tokens';
 import { loadVoucherCode as load, saveVoucherCode as save, useRates, useVouchers } from './hooks';
 
 const TERM = 34_560;                          // ledgers, ~48 h
-const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
 const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const hoursLeft = (ts) => Math.max(0, Math.floor((ts - Date.now() / 1000) / 3600));
 const Row = ({ k, v }) => (
@@ -99,12 +98,7 @@ export default function Machinery({ onBack }) {
       )}
       {lost && <p style={{ color: C.coral }}>{lost}</p>}
       {code && !open && !used && <Choice sub={`Was valid until ${when(code.until)}`} onClick={() => setShow(true)}>Expired code</Choice>}
-      {assisted() ? (
-        <>
-          <h2 style={{ fontSize: 14, fontWeight: 700 }}>Spend machine hours</h2>
-          <p style={muted}>Ask your union leader to spend your machine hours and scan the code she generates.</p>
-        </>
-      ) : balance > 0 && (
+      {balance > 0 && (
         <>
           <h2 style={{ fontSize: 14, fontWeight: 700 }}>Spend</h2>
           <Choice sub={rate ? `${inr(rate.total)} an hour · up to ${maxOne} h` : 'No machine rates set by the union yet'} onClick={() => rates.data?.length && setPicking(true)}>{rate ? `For · ${rate.name}` : 'For'}</Choice>

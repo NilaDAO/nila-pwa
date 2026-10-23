@@ -2,9 +2,7 @@
 // her farm name, settings. Her map with this season's crops; then, from what the app can already read:
 // property and fields (the title's fields), the next crop share; Lending (what she owes, repay date) with Repay (Photo count → the desk)
 // and Mark as default (fund_core.mark_default, once her loan is past due); Invested (fund_core.position) with Invest
-// more (→ the desk); Withdraw: her ready withdrawal paid out (the desk), else a withdrawal started for her (23 Oct: the
-// leader picks the amount, her phone shows it, she confirms and shows her signed QR, the leader scans and submits
-// fund_core.request_unbond_junior; desk.js); Redeem from the plan (her crop shares not drawn yet; Ready → L11); her record.
+// more (→ the desk); Redeem from the plan (her crop shares not drawn yet; Ready → L11); her record.
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import { useMemo, useState } from 'react';
@@ -26,9 +24,7 @@ import { useNilaSigner } from '../wallet/signer';
 import PhotoCount from '../loan/PhotoCount';
 import DeskWithdraw from '../loan/DeskWithdraw';
 import { recordCash } from '../loan/CashDesk';
-import { deskClaim, readUnbond } from '../loan/desk';
-import CameraView from '../shell/CameraView';
-import { Stepper } from '../loan/AssetParts';
+import { deskClaim } from '../loan/desk';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -90,11 +86,8 @@ export default function MemberStatus({ id, go }) {
   // C6 count with her and the action set; a withdrawal then shows the code she scans (her claimable amount).
   const s = useNilaSigner();
   const [act, setAct] = useState();          // 'invest' | 'withdraw': the row shows the count choice
-  const [step, setStep] = useState();        // 'count' (C6) | 'code' (her withdrawal code) | 'scan' (her signed start)
+  const [step, setStep] = useState();        // 'count' (C6) | 'code' (her withdrawal code)
   const [noPhotos, setNoPhotos] = useState(false);
-  const [out, setOut] = useState(100);       // a withdrawal started for her, in rupees
-  const [scanErr, setScanErr] = useState();
-  const [tries, setTries] = useState(0);     // the camera reads once: a new one after a wrong code
   const claim = useQuery({ queryKey: ['stellar', 'deskClaim', found?.address], enabled: act === 'withdraw' && !!cfg && !!found?.address,
     queryFn: () => deskClaim(cfg, found.address) });
   const labels = useMemo(() => {
@@ -123,30 +116,6 @@ export default function MemberStatus({ id, go }) {
     );
   }
   const done = () => { setStep(); setAct(); };
-  const freeNow = inv.data ? Math.max(0, Math.floor(n(inv.data.free) - (BigInt(inv.data.locked) > 0n ? 1 : 0))) : 0;
-  const o = Math.min(out, freeNow);
-  const ask = async () => {
-    setScanErr();
-    try { await api.prepareTask(m.address, 'unbond', o); setStep('scan'); } catch (e) { setScanErr(e.message); }
-  };
-  const onSigned = (text) => {
-    let r;
-    try { r = readUnbond(cfg, text, m.address); } catch (e) { setScanErr(e.message); setTries((t) => t + 1); return; }
-    done();
-    tx.run({ label: `Withdraw ${inr(o)} · ${m.label}`, rows: [['Collect in cash', 'in 14 days']], contractName: 'fund_core',
-      fn: 'request_unbond_junior', args: r.args, auth: [r.entry], invalidate: [['stellar', 'investment'], ['stellar', 'deskClaim']] });
-  };
-  if (step === 'scan' && tx.status === 'idle') {
-    return (
-      <MapCard header={{ title: `Withdraw ${inr(o)}`, onBack: () => setStep(), onSettings: () => go('settings') }}
-        style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
-        <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <CameraView key={tries} mode="qr" onText={onSigned} title="Scan her code" hint="On her phone: Union investment → Withdraw → Confirm." />
-          {scanErr && <span style={{ color: C.coral, fontWeight: 700 }}>{scanErr}</span>}
-        </div>
-      </MapCard>
-    );
-  }
   if (step === 'code') return <DeskWithdraw member={m.address} auto onBack={done} />;
   if (step === 'count') {
     const pay = act === 'withdraw';
@@ -213,15 +182,8 @@ export default function MemberStatus({ id, go }) {
               <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
               {invested > 0 && <button type="button" style={btn()} onClick={() => setAct('withdraw')}>Withdraw</button>}
             </div>
-          ) : act === 'withdraw' && claim.isSuccess && claim.data?.pendingFrom ? (
-            <span style={{ color: C.muted }}>Her withdrawal is ready from about {new Date(claim.data.pendingFrom * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.</span>
           ) : act === 'withdraw' && claim.isSuccess && !(claim.data?.shares > 0n) ? (
-            <>
-              <span style={{ color: C.muted }}>She can withdraw {freeNow.toLocaleString('en-IN')} nIN. She collects it in cash 14 days after she confirms.</span>
-              <Stepper value={o} set={setOut} step={25} min={0} max={freeNow} unit="₹" label="Rupees to withdraw" />
-              <button type="button" style={{ ...btn(o >= 1 && !!api), flex: 'none', width: '100%' }} disabled={o < 1 || !api} onClick={ask}>Ask her to confirm</button>
-              {scanErr && <span style={{ color: C.coral }}>{scanErr}</span>}
-            </>
+            <span style={{ color: C.muted }}>She has no withdrawal to collect. She asks for one on her phone (Union investment → Withdraw).</span>
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" style={btn(act === 'invest' || claim.isSuccess)} disabled={act === 'withdraw' && !claim.isSuccess}
