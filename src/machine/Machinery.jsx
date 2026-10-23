@@ -9,6 +9,7 @@
 // no "Receive" (vouchers are not sent); no typed fallback (executive decision 23 Oct).
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import BigQr from '../shell/BigQr';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { signVoucherCode } from './voucherCode';
@@ -177,7 +178,7 @@ export default function Machinery({ onBack }) {
 /** A8a (open) / A8b (expired or used). */
 function Code({ c, left, live, used, rate, onBack, onRemove }) {
   const [img, setImg] = useState();
-  useEffect(() => { if (live) QRCode.toDataURL(c.entry, { width: 400, margin: 2, errorCorrectionLevel: 'M' }).then(setImg); }, [live, c.entry]);
+  useEffect(() => { if (live) QRCode.toDataURL(c.entry, { width: 720, margin: 2, errorCorrectionLevel: 'M' }).then(setImg); }, [live, c.entry]);
   const name = `${rate?.name || 'Machine'} · ${c.work ?? th(c.hours)} h`;
   if (!live) {
     return (
@@ -192,13 +193,9 @@ function Code({ c, left, live, used, rate, onBack, onRemove }) {
   }
   return (
     <Page title={name} onBack={onBack}><Card label={name} style={{ gap: 12 }}>
-      {/* The board's white circle; the square QR sits inside it whole (side ≤ diameter / √2): a clipped
-          corner square cannot be read by a camera. */}
-      {img && (
-        <div style={{ width: 280, height: 280, margin: '0 auto', borderRadius: 9999, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img src={img} alt="Your voucher code" style={{ width: 190, height: 190, display: 'block' }} />
-        </div>
-      )}
+      {/* As big as the screen allows (shared BigQr, as her crop share QR): the QR spans the screen's width in the
+          white circle, clipped at the screen's sides. */}
+      <BigQr img={img} alt="Your voucher code" caption="Show this to the machine owner" below={420} />
       <KV k="Paid from" v={`Machinery · up to ${th(c.hours)} tractor hours`} />
       {rate && c.work != null && <KV k="Value" v={`up to ${inr(c.work * rate.total)}`} />}
       <KV k="Valid until" v={`${when(c.until)} · ${hoursLeft(c.until)} h left`} />
