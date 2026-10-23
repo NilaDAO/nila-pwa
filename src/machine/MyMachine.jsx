@@ -1,7 +1,7 @@
 // A13 my machine (board MemberMachine), the owner's side of a voucher (executive decision, 17 Oct):
 // - after the leader registered it (L13), she confirms it (machinery.confirm_machine);
-// - she scans a member's voucher code (A8a, `nila:voucher:<token>:<code>`), enters the hours worked and
-//   claims (machinery.claim): the prepaid part (diesel + the driver share) reaches her wallet in nIN at once,
+// - she scans a member's voucher code (A8a: the member's signed authorization of machinery.claim for up to N hours,
+//   23 Oct), enters the hours worked and claims (machinery.claim, with that authorization): the prepaid part (diesel + the driver share) reaches her wallet in nIN at once,
 //   the rest is pending until the member repays (fund_core.pay_voucher inside the claim);
 // - what members repaid for her collects into her balance; "Collect" moves it to her wallet (collect_dues);
 // - on hold / available (machinery.set_hold) with a reason.
@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { readContract, sv } from '../stellar/soroban';
+import { readAuthEntry, readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
@@ -19,20 +19,19 @@ import CameraView from '../shell/CameraView';
 import { HOLD_REASONS, saveJob, typeName, useMyMachine, useOwnerDues, useRates } from './hooks';
 
 const LABELS = ['Front left', 'Front', 'Front right', 'Left', null, 'Right', 'Back left', 'Back', 'Back right'];
-const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
-const hex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, '0')).join('');
 const Row = ({ k, sub, v }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 8 }}>
     <span><b>{k}</b>{sub && <div style={muted}>{sub}</div>}</span><span style={{ fontWeight: 700 }}>{v}</span>
   </div>
 );
 
-/** Parse a scanned voucher code. Throws a plain reason. */
-export function parseVoucherCode(text) {
-  // As scanned, or typed from A8a's text form (any case, spaces and dashes allowed).
-  const m = /^nila:voucher:([0-9a-f]{64}):([a-z2-7]{26})$/i.exec((text || '').trim().replace(/[\s-]+/g, ''));
-  if (!m) throw new Error('This is not a Nila voucher code.');
-  return { token: m[1].toLowerCase(), code: m[2].toUpperCase() };
+/** A scanned voucher code: her signed claim authorization of (union, token, max hours). Throws a plain reason. */
+export function parseVoucherCode(cfg, text) {
+  let e;
+  try { e = readAuthEntry(cfg, (text || '').trim()); } catch { throw new Error('This is not a Nila voucher code.'); }
+  if (e.contractName !== 'machinery' || e.fn !== 'claim' || e.native.length !== 3) throw new Error('This is not a Nila voucher code.');
+  if (String(e.native[0]) !== cfg.union) throw new Error('This code is for another union.');
+  return { entry: text.trim(), member: e.signer, token: Buffer.from(e.native[1]).toString('hex'), signed: Number(e.native[2]) };
 }
 
 export default function MyMachine({ onBack }) {
@@ -121,28 +120,25 @@ function Claim({ machine, rate, onBack }) {
   const [scan, setScan] = useState();
   const [error, setError] = useState();
   const [hours, setHours] = useState(1);
-  const [typing, setTyping] = useState(false);
-  const [typed, setTyped] = useState('');
+  const [tries, setTries] = useState(0);     // the camera reads once: a new one after a wrong code
   const read = async (text) => {
     setError(undefined);
     try {
-      const { token, code } = parseVoucherCode(text);
-      const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(token)]);
-      if (!v || v.void || !v.code_hash) throw new Error('This code is not open any more.');
-      if (hex(await sha(code)) !== Buffer.from(v.code_hash).toString('hex')) throw new Error('This code is not open any more.');
-      if (Number(v.code_expires) <= Date.now() / 1000) throw new Error('This code has expired. Ask her to make a new one.');
+      const c = parseVoucherCode(cfg, text);
+      const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(c.token)]);
+      if (!v || v.void || v.member !== c.member) throw new Error('This voucher is not open any more.');
       if (v.member === s.stellarAddress) throw new Error('You cannot claim your own voucher.');
-      const max = Math.min(Number(v.code_max), Number(v.hours) - Number(v.used), machine.hours_per_week - machine.usedThisWeek);
-      setScan({ token, code, max });
+      const max = Math.min(c.signed, Number(v.hours) - Number(v.used), machine.hours_per_week - machine.usedThisWeek);
+      setScan({ ...c, max });
       setHours(Math.min(1, max));
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(e.message); setTries((t) => t + 1); }
   };
   const claim = async () => {
     const out = await tx.run({
       label: `Claim ${hours} h`, rows: [['Hours worked', `${hours} h`], ['Machine', typeName(machine.machine_type)]],
       contractName: 'machinery', fn: 'claim',
-      args: [sv.address(s.stellarAddress), sv.u64(machine.id), sv.address(cfg.union), sv.bytes32(scan.token), sv.bytes(new TextEncoder().encode(scan.code)), sv.u32(hours)],
-      invalidate: [['stellar', 'machine'], ['stellar', 'dues'], ['stellar', 'account']],
+      args: [sv.address(s.stellarAddress), sv.u64(machine.id), sv.address(cfg.union), sv.bytes32(scan.token), sv.u32(scan.signed), sv.u32(hours)],
+      auth: [scan.entry], invalidate: [['stellar', 'machine'], ['stellar', 'dues'], ['stellar', 'account']],
     });
     // claim returns (prepay, pending) in nIN; a retry that found the sent call carries no result: 0 then.
     const [prepay, pending] = Array.isArray(out?.result) ? out.result.map((x) => Number(BigInt(x)) / 1e7) : [0, 0];
@@ -158,22 +154,16 @@ function Claim({ machine, rate, onBack }) {
           <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700, fontSize: 20 }}>{hours} h</span>
           <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(scan.max, hours + 1))}>+</button>
         </div>
-        <p style={muted}>Up to {scan.max} h on this code{rate ? ` · ${inr(rate.total)} an hour, part paid now in nIN, the rest when she repays` : ''}.</p>
+        <p style={muted}>Up to {scan.max} h now on this code{rate ? ` · ${inr(rate.total)} an hour, part paid now in nIN, the rest when she repays` : ''}.</p>
         <Primary disabled={!tx.ready || scan.max < 1} onClick={claim}>Claim {hours} h</Primary>
       </Sheet>
     );
   }
   return (
     <Sheet landName="Nila" title="Scan her code" onBack={onBack}>
-      {!typing ? <CameraView mode="qr" onText={read} /> : (
-        <>
-          <textarea aria-label="The code" value={typed} onChange={(e) => setTyped(e.target.value)} style={{ width: '100%', minHeight: 90, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box' }} />
-          <Primary disabled={!typed.trim()} onClick={() => read(typed)}>Check the code</Primary>
-        </>
-      )}
+      <CameraView key={tries} mode="qr" onText={read} />
       <p style={{ ...muted, textAlign: 'center' }}>Scan the code on her phone after the work.</p>
       {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
-      <button type="button" onClick={() => setTyping((t) => !t)} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>{typing ? 'Use the camera' : 'Type the code instead'}</button>
     </Sheet>
   );
 }

@@ -1,27 +1,21 @@
 // A8 machinery voucher, A8a its code, A8b an expired code (boards MemberAssetTractor, MemberAssetTractorScrolled,
 // MemberAssetTractorExpired). Decided 17 Oct (LOAN_RULES §5 "Machinery vouchers (P6)"): whole hours, any
-// machine of her union; the code is a 128-bit secret she shows as QR `nila:voucher:<token>:<code>`; only its
-// sha256 goes on-chain (machinery.open_code, max hours, 48 h); the owner's claim uses the hours.
-// One code per voucher (per loan): a code is made on the voucher with the fewest hours that still cover it.
-// DESIGN GAPs: whole hours instead of tractor-hour factors; "Cancel the open code first" instead of a new
-// code replacing it; assisted mode shows the board's text only (the leader-made code, L9 #tractor, is not
-// built); no "Receive" (vouchers are not sent).
+// machine of her union. Since 23 Oct ("Voucher spend"): the QR is her signed authorization of machinery.claim for
+// (union, token, up to N hours), one use (Soroban nonce), ~48 h (its expiry ledger); nothing goes on-chain until the
+// owner scans it and claims. Kept on this phone to show again; made on the voucher with the fewest hours that cover it.
+// DESIGN GAPs: whole hours instead of tractor-hour factors; one code at a time; "Remove" only forgets the code on
+// this phone (a signed code cannot be withdrawn before it expires); assisted mode shows the board's text only;
+// no "Receive" (vouchers are not sent); no typed fallback (executive decision 23 Oct).
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { sv } from '../stellar/soroban';
-import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
+import { signInvocation, sv } from '../stellar/soroban';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { grouped, newCode } from '../loan/CashOut';
-import { useRates, useVouchers } from './hooks';
+import { loadVoucherCode as load, saveVoucherCode as save, useRates, useVouchers } from './hooks';
 
-const KEY = 'nila.voucher.codes';
-const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
-const save = (m) => { try { localStorage.setItem(KEY, JSON.stringify(m)); } catch { /* private */ } };
-const hex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, '0')).join('');
-const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+const TERM = 34_560;                          // ledgers, ~48 h
 const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
 const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const hoursLeft = (ts) => Math.max(0, Math.floor((ts - Date.now() / 1000) / 3600));
@@ -37,20 +31,20 @@ export default function Machinery({ onBack }) {
   const { data: cfg } = useStellarConfig();
   const vouchers = useVouchers(s?.stellarAddress);
   const rates = useRates();
-  const tx = useSorobanTx();
   const [type, setType] = useState();
   const [picking, setPicking] = useState(false);
   const [hours, setHours] = useState(1);
-  const [show, setShow] = useState();        // token whose code is on screen
+  const [code, setCode] = useState(load);
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [lost, setLost] = useState();
-  const codes = load();
   const list = vouchers.data || [];
   const balance = list.reduce((a, v) => a + v.left, 0);
-  const maxOne = Math.max(0, ...list.filter((v) => !v.code?.open).map((v) => v.left));
-  const open = list.find((v) => v.code?.open && codes[v.code.hash]);
-  const expired = list.find((v) => v.code && !v.code.open && codes[v.code.hash]);
-  // An open code whose secret is not on this phone (cleared, another phone): it can still be cancelled.
-  const orphan = list.find((v) => v.code?.open && !codes[v.code.hash]);
+  const maxOne = Math.max(0, ...list.map((v) => v.left));
+  // Her code: used once the voucher's used hours moved since she signed it; expired after its ~48 h.
+  const cv = code && list.find((v) => v.token === code.token);
+  const used = !!code && !!vouchers.data && (!cv || cv.used > code.used);
+  const open = code && !used && code.until > Date.now() / 1000 ? code : null;
   const rate = rates.data?.find((r) => r.type === type) || rates.data?.[0];
   const totals = (rates.data || []).map((r) => r.total);
   const value = totals.length ? (Math.min(...totals) === Math.max(...totals) ? inr(balance * totals[0]) : `${inr(balance * Math.min(...totals))}–${inr(balance * Math.max(...totals))}`) : '';
@@ -58,29 +52,23 @@ export default function Machinery({ onBack }) {
   const online = typeof navigator === 'undefined' || navigator.onLine !== false;
 
   const make = async () => {
-    const v = list.filter((x) => !x.code?.open && x.left >= h).sort((a, b) => a.left - b.left)[0];
+    const v = list.filter((x) => x.left >= h).sort((a, b) => a.left - b.left)[0];
     if (!v) return;
-    const code = newCode();
-    const hash = hex(await sha(code));
-    save({ ...load(), [hash]: { code, token: v.token, hours: h, type: rate?.type, used: v.used } });   // before the call
-    // Without the code on her phone she could not show it: never open a code whose secret is not kept.
-    if (load()[hash]?.code !== code) { setLost('Your phone cannot keep the code (private mode or no space). Nothing was sent.'); return; }
-    const out = await tx.run({
-      label: `Code for ${h} h`, rows: [['Machine hours', `${h} h`], ['Valid', '48 hours']],
-      contractName: 'machinery', fn: 'open_code',
-      args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.bytes32(v.token), sv.u32(h), sv.bytes32(hash)],
-      invalidate: [['stellar', 'vouchers']],
-    });
-    if (out) setShow(v.token);
+    setBusy(true); setLost(undefined);
+    try {
+      const { entry, until } = await signInvocation({ cfg, signer: s.stellarAddress, signHash: s.signHash, contractName: 'machinery', fn: 'claim',
+        args: [sv.address(cfg.union), sv.bytes32(v.token), sv.u32(h)], ledgers: TERM });
+      const c = { entry, token: v.token, hours: h, type: rate?.type, used: v.used, until };
+      save(c);
+      // Without the code on her phone she could not show it again: say so, but show it this once.
+      if (load()?.entry !== entry) setLost('Your phone cannot keep the code (private mode or no space). Show it now.');
+      setCode(c); setShow(true);
+    } catch (e) { setLost(e.message); }
+    setBusy(false);
   };
-  const cancel = (v) => tx.run({
-    label: 'Cancel code', rows: [['Machine hours', `${v.code.max} h`]], contractName: 'machinery', fn: 'cancel_code',
-    args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.bytes32(v.token)], invalidate: [['stellar', 'vouchers']],
-  });
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
+  const remove = () => { save(null); setCode(null); setShow(false); };
 
-  const shown = list.find((v) => v.token === show && v.code && codes[v.code.hash]);
-  if (shown) return <Code v={shown} saved={codes[shown.code.hash]} rate={rates.data?.find((r) => r.type === codes[shown.code.hash].type)} onBack={() => setShow(undefined)} onCancel={() => cancel(shown)} onNew={() => setShow(undefined)} />;
+  if (show && code) return <Code c={code} left={cv?.left ?? 0} live={!!open} used={used} rate={rates.data?.find((r) => r.type === code.type)} onBack={() => setShow(false)} onRemove={remove} />;
 
   if (picking) {
     return (
@@ -101,23 +89,16 @@ export default function Machinery({ onBack }) {
       {vouchers.isError && <p style={{ color: C.coral }}>Could not read your vouchers. Try again.</p>}
       {open && (
         <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
-          <b>Open code · {rates.data?.find((r) => r.type === codes[open.code.hash].type)?.name || 'Machine'} · {open.code.max} h</b>
-          <div style={muted}>{hoursLeft(open.code.expires)} hours left · not used yet</div>
+          <b>Open code · {rates.data?.find((r) => r.type === open.type)?.name || 'Machine'} · {open.hours} h</b>
+          <div style={muted}>{hoursLeft(open.until)} hours left · not used yet</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <Primary onClick={() => setShow(open.token)}>Show</Primary>
-            <button type="button" onClick={() => cancel(open)} disabled={!tx.ready} style={{ ...b, width: '100%', fontSize: 14, marginTop: 8 }}>Cancel code</button>
+            <Primary onClick={() => setShow(true)}>Show</Primary>
+            <button type="button" onClick={remove} style={{ ...b, width: '100%', fontSize: 14, marginTop: 8 }}>Remove</button>
           </div>
         </div>
       )}
-      {orphan && (
-        <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
-          <b>Open code not on this phone · {orphan.code.max} h</b>
-          <div style={muted}>Made on another phone or cleared here. Cancel it to use these hours again.</div>
-          <button type="button" onClick={() => cancel(orphan)} disabled={!tx.ready} style={{ ...b, width: '100%', fontSize: 14, marginTop: 8 }}>Cancel code</button>
-        </div>
-      )}
       {lost && <p style={{ color: C.coral }}>{lost}</p>}
-      {!open && expired && <Choice sub={`Was valid until ${when(expired.code.expires)}`} onClick={() => setShow(expired.token)}>Expired code</Choice>}
+      {code && !open && !used && <Choice sub={`Was valid until ${when(code.until)}`} onClick={() => setShow(true)}>Expired code</Choice>}
       {assisted() ? (
         <>
           <h2 style={{ fontSize: 14, fontWeight: 700 }}>Spend machine hours</h2>
@@ -136,8 +117,8 @@ export default function Machinery({ onBack }) {
           </div>
           {rate && <Row k="Uses" v={`${h} h · ${inr(h * rate.total)}`} />}
           <Row k="Left after" v={`${balance - h} h`} />
-          {open && <p style={muted}>Cancel the open code first.</p>}
-          <Primary disabled={!online || !tx.ready || !rate || h < 1 || !!open} onClick={make}>{!online ? 'Needs internet' : h < 1 ? 'Enter an amount' : `Make code for ${h} h`}</Primary>
+          {open && <p style={muted}>Remove the open code first.</p>}
+          <Primary disabled={!online || busy || !s?.ready || !cfg || !rate || h < 1 || !!open} onClick={make}>{!online ? 'Needs internet' : h < 1 ? 'Enter an amount' : `Make code for ${h} h`}</Primary>
           <p style={muted}>{online ? 'Pays for any machine work. Hours are used when the owner scans.' : 'You are offline. Making a code needs internet.'}</p>
         </>
       )}
@@ -146,20 +127,19 @@ export default function Machinery({ onBack }) {
   );
 }
 
-/** A8a (open) / A8b (expired). */
-function Code({ v, saved, rate, onBack, onCancel, onNew }) {
+/** A8a (open) / A8b (expired or used). */
+function Code({ c, left, live, used, rate, onBack, onRemove }) {
   const [img, setImg] = useState();
-  const live = v.code.open;
-  useEffect(() => { if (live) QRCode.toDataURL(`nila:voucher:${v.token}:${saved.code}`, { width: 260, margin: 1 }).then(setImg); }, [live, v.token, saved.code]);
-  const name = `${rate?.name || 'Machine'} · ${v.code.max} h`;
+  useEffect(() => { if (live) QRCode.toDataURL(c.entry, { width: 400, margin: 1, errorCorrectionLevel: 'L' }).then(setImg); }, [live, c.entry]);
+  const name = `${rate?.name || 'Machine'} · ${c.hours} h`;
   if (!live) {
     return (
       <Sheet landName="Machinery" title={name} onBack={onBack}>
-        <Row k="Status" v={v.used > saved.used ? 'Used' : 'Expired · no hours used'} />
-        <Row k="Was valid until" v={when(v.code.expires)} />
-        <Row k="You still have" v={`${v.left} h`} />
-        <p style={muted}>The machine owner did not scan this code in time. No hours were used.</p>
-        <Primary onClick={onNew}>Make a new code</Primary>
+        <Row k="Status" v={used ? 'Used' : 'Expired · no hours used'} />
+        <Row k="Was valid until" v={when(c.until)} />
+        <Row k="You still have" v={`${left} h`} />
+        {!used && <p style={muted}>The machine owner did not scan this code in time. No hours were used.</p>}
+        <Primary onClick={onRemove}>Make a new code</Primary>
       </Sheet>
     );
   }
@@ -172,18 +152,12 @@ function Code({ v, saved, rate, onBack, onCancel, onNew }) {
           <img src={img} alt="Your voucher code" style={{ width: 190, height: 190, display: 'block' }} />
         </div>
       )}
-      <p style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>{grouped(saved.code)}</p>
-      {/* The typed fallback is the whole code (the token is needed for the claim). DESIGN GAP: long to type. */}
-      <details style={{ ...muted, marginBottom: 8 }}>
-        <summary>No camera? Type this</summary>
-        <p style={{ fontFamily: 'monospace', fontSize: 12, overflowWrap: 'anywhere' }}>{`nila:voucher:${v.token}:${saved.code}`.replace(/(.{8})(?=.)/g, '$1 ')}</p>
-      </details>
-      <Row k="Paid from" v={`Machinery · ${v.code.max} h`} />
-      {rate && <Row k="Value" v={inr(v.code.max * rate.total)} />}
-      <Row k="Valid until" v={`${when(v.code.expires)} · ${hoursLeft(v.code.expires)} h left`} />
-      <Row k="Left after" v={`${v.left - v.code.max} h`} />
+      <Row k="Paid from" v={`Machinery · up to ${c.hours} h`} />
+      {rate && <Row k="Value" v={`up to ${inr(c.hours * rate.total)}`} />}
+      <Row k="Valid until" v={`${when(c.until)} · ${hoursLeft(c.until)} h left`} />
+      <Row k="Left after" v={`${left - c.hours} h or more`} />
       <p style={muted}>Show this to the machine owner. Hours are used when they scan it.</p>
-      <button type="button" onClick={onCancel} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Cancel code</button>
+      <button type="button" onClick={onRemove} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Remove from this phone</button>
     </Sheet>
   );
 }

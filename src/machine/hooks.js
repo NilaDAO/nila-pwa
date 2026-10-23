@@ -45,6 +45,11 @@ export function useRates() {
   });
 }
 
+// Her voucher code (A8a, 23 Oct): { entry, token, hours, type, used, until }, the one signed code on this phone.
+const CODE_KEY = 'nila.voucher.signed';
+export const loadVoucherCode = () => { try { return JSON.parse(localStorage.getItem(CODE_KEY)) || null; } catch { return null; } };
+export const saveVoucherCode = (c) => { try { if (c) localStorage.setItem(CODE_KEY, JSON.stringify(c)); else localStorage.removeItem(CODE_KEY); } catch { /* private */ } };
+
 /** Her vouchers: one per loan with hours (fund_core.loans_of → machinery.voucher). Left = hours − used. */
 export function useVouchers(member) {
   const { data: cfg } = useStellarConfig();
@@ -56,12 +61,9 @@ export function useVouchers(member) {
         const token = hexOf(id);
         const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null);
         if (!v || v.void) return null;
-        const now = Date.now() / 1000;
-        const open = v.code_hash && Number(v.code_expires) > now;
-        return { token, hours: Number(v.hours), used: Number(v.used), left: Number(v.hours) - Number(v.used),
-          code: v.code_hash ? { hash: hexOf(v.code_hash), max: Number(v.code_max), expires: Number(v.code_expires), open } : null };
+        return { token, hours: Number(v.hours), used: Number(v.used), left: Number(v.hours) - Number(v.used) };
       }));
-      return rows.filter((r) => r && (r.left > 0 || r.code));
+      return rows.filter(Boolean);
     },
   });
 }

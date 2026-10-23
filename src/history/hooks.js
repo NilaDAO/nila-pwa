@@ -63,7 +63,7 @@ const rupees = (v) => `₹${(Number(v) / U).toLocaleString('en-IN', { maximumFra
 function amountFromArgs(fn, a) {
   try {
     if (fn === 'cash_scan_mint') return rupees(a[6]);                      // (leader, union, purpose, member, amount, …)
-    if (fn === 'claim') return `+${Number(a[7])} h`;                         // (owner, machine, union, token, code, hours)
+    if (fn === 'claim') return `+${Number(a[7])} h`;                         // (owner, machine, union, token, max_hours, hours)
     if (fn === 'draw_loan' && Number(a[6])) return `+${Number(a[6])} h`;     // (union, member, token, cash, hours)
     if (fn === 'repay_loan') return `−${rupees(a[4])}`;                      // (union, token, amount)
   } catch { /* an argument the app does not know: no amount */ }

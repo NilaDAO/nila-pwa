@@ -11,7 +11,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { useTitleCount } from '../register/titles';
 import { useInvestment } from '../stellar/hooks';
 import { ShareRows, useMyShares } from '../loan/MyShares';
-import { typeName, useMyMachine, useVouchers } from '../machine/hooks';
+import { loadVoucherCode, typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
 import { UnionRows, useLeaderSlides } from '../leader/UnionCards';
@@ -102,7 +102,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const invested = inv.data ? Number(inv.data.invested) / 1e7 : undefined;
   const vouchers = useVouchers(s?.stellarAddress);
   const vHours = (vouchers.data || []).reduce((a, v) => a + v.left, 0);
-  const vOpen = (vouchers.data || []).find((v) => v.code?.open);
+  // Her voucher code is kept on her phone (A8a, 23 Oct): open while unused and not expired.
+  const vCode = loadVoucherCode();
+  const vOpen = vCode && vCode.until > Date.now() / 1000 && (vouchers.data || []).some((v) => v.token === vCode.token && v.used === vCode.used) ? vCode : null;
   const machine = useMyMachine(s?.stellarAddress).data;
   const lp = useLpStatus().data;
   // A leader's USDC in rupees at fx_pool's current rate (22 Oct); an expired rate leaves it out of the total.
@@ -183,7 +185,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         {/* Her own crop shares, also for a leader (a leader is also a member; A1L 'Yours'). */}
         <ShareRows onOpen={onShare} />
         {vouchers.data?.length > 0 && (
-          <Row label="Open machinery" icon={<MachineryTile />} title="Machinery" sub={vOpen ? `1 open code · ${Math.max(0, Math.floor((vOpen.code.expires - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
+          <Row label="Open machinery" icon={<MachineryTile />} title="Machinery" sub={vOpen ? `1 open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
             value={`${vHours} h`} valueSub="" onClick={onMachinery} />
         )}
         {machine && (
