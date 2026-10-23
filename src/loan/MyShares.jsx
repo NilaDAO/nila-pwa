@@ -19,7 +19,7 @@ import ListRow, { ScreenHeader } from '../shell/ListRow';
 import { Card } from './AssetParts';
 import CameraView from '../shell/CameraView';
 import BigQr from '../shell/BigQr';
-import { NIN, checkRequest } from './request';
+import { NIN, readRequest } from './request';
 import { C, FONT, R } from '../shell/tokens';
 import { capsFor, checkRows, useUnionChecks } from './unionChecks';
 import { ChevronIcon, RupeeIcon, ShareTile } from '../shell/icons';
@@ -121,9 +121,8 @@ function ShareScan({ x, onBack }) {
   const read = useMemo(() => async (text) => {
     setError(undefined);
     try {
-      const r = await checkRequest(text.trim(), { cfg, me: s?.stellarAddress });
-      if (r.token !== tokenHex(x.token_id)) throw new Error('This code is for another crop share.');
-      setReq(r);
+      // The QR holds the amounts only; the share is this one, the member is she (23 Oct).
+      setReq({ ...readRequest(text), union: cfg.union, member: s?.stellarAddress, token: tokenHex(x.token_id) });
     } catch (e) { setError(e.message); setTries((t) => t + 1); }
   }, [cfg, s, x.token_id]);
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
@@ -141,7 +140,7 @@ function ShareScan({ x, onBack }) {
         <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>You get {inr(cash)}</p>
         <p style={{ ...muted, textAlign: 'center' }}>Made of {inr(cash)} cash{req.hours ? ` + ${req.hours} machine hours` : ''}</p>
         <p style={{ textAlign: 'center' }}>For {name} · Area {x.area}</p>
-        {req.repay && <p style={{ ...muted, textAlign: 'center' }}>Repay {inr(Number(req.repay))} · 3 weeks after harvest</p>}
+        <p style={{ ...muted, textAlign: 'center' }}>Repay 3 weeks after harvest</p>
         <p style={{ color: C.gold, textAlign: 'center' }}>Only confirm when your leader is with you.</p>
         <Primary disabled={!tx.ready} onClick={confirm}>Confirm</Primary>
         <button type="button" onClick={() => setReq(undefined)} style={second}>Cancel</button>

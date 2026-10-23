@@ -18,7 +18,7 @@ import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
 import { Card, CardTitle, KV } from './AssetParts';
-import { NIN, checkRequest, makeRequest } from './request';
+import { NIN, isLoanRequest, makeRequest } from './request';
 import { checkDeskRequest, isDeskRequest } from './desk';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import PostBring from '../anchor/PostBring';
@@ -102,8 +102,8 @@ export function LeaderLoan({ initial }) {
   const [req, setReq] = useState();
   const [img, setImg] = useState();
   const [error, setError] = useState();
-  // Low error correction and a large image: a phone camera reads it at arm's length (the request is long).
-  useEffect(() => { if (req) QRCode.toDataURL(req.qr, { width: 720, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [req]);
+  // The request is a few characters (23 Oct): a small, coarse QR any phone camera reads.
+  useEffect(() => { if (req) QRCode.toDataURL(req.qr, { width: 720, margin: 2, errorCorrectionLevel: 'M' }).then(setImg); }, [req]);
 
   // L9 (board LeaderRequestQR): the request QR as big as the screen allows; no 6 numbers (no typed fallback, 22 Oct).
   if (req) {
@@ -116,7 +116,6 @@ export function LeaderLoan({ initial }) {
           <BigQr img={img} alt="Crop share request QR" caption="Let her scan this with her phone" below={340} />
           <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>
             {r.crop} · {inr(Number(BigInt(r.cash) / NIN))} cash{r.hours ? ` + ${mv ? inr(mv) : `${r.hours} h`} vouchers` : ''}</span>
-          <KV k="For" v={`Land ${plan.land_id} · ${r.area}`} />
           <KV k="Valid for" v="48 hours" />
         </Card>
       </div>
@@ -145,12 +144,12 @@ export function LeaderLoan({ initial }) {
     setError(undefined);
     try {
       const area = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
-      setReq(await makeRequest({
+      setReq(makeRequest({
         union: cfg.union, member: sel.ft.member, token: tokenHex(sel.token_id), cash: String(BigInt(Math.round(cash)) * NIN / 1n),
         hours: Math.round(hours), crop: row?.name || sel.share.crop, area: `Area ${area}`,
         repay: repay != null ? String(repay) : '',
         due: row?.finance?.due || '',
-      }, s));
+      }));
     } catch (e) { setError(e.message); }
   };
   // Board LeaderRedeem, without its crop share list (23 Oct: the share comes picked): one card with the share, the
@@ -211,19 +210,13 @@ export function MemberScan({ onDone }) {
     setError(undefined);
     try {
       const t = text.trim();
-      setReq(isDeskRequest(t) ? { desk: await checkDeskRequest(t, { cfg, me: s?.stellarAddress }) } : await checkRequest(t, { cfg, me: s?.stellarAddress }));
+      // A crop share request is scanned on her Ready share (23 Oct), which knows the share.
+      if (isLoanRequest(t)) throw new Error('Open your Ready crop share in Assets, then scan this.');
+      setReq({ desk: await checkDeskRequest(t, { cfg, me: s?.stellarAddress }) });
     } catch (e) { setError(e.message); }
   }, [cfg, s]);
 
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); setReq(undefined); onDone?.(); }} onRetry={() => tx.retry()} />;
-  async function confirm() {
-    await tx.run({
-      label: `Crop share ${req.crop}`, rows: [['You get', inr(Number(BigInt(req.cash) / NIN))], ['For', `${req.crop} · ${req.area}`]],
-      contractName: 'fund_core', fn: 'draw_loan',
-      args: [sv.address(req.union), sv.address(req.member), sv.bytes32(req.token), sv.i128(req.cash), sv.u32(req.hours)],
-      invalidate: [['stellar', 'account'], ['stellar', 'investment'], ['oracle', 'shares']],
-    });
-  }
   // Her investment paid over the desk (22 Oct): the leader's signed entry comes in the QR; she submits the claim.
   if (req?.desk) {
     const d = req.desk;
@@ -238,20 +231,6 @@ export function MemberScan({ onDone }) {
         <p style={{ ...muted, textAlign: 'center' }}>Your union investment, in cash at the office</p>
         <p style={{ color: C.gold, textAlign: 'center' }}>Only confirm when your leader is with you and hands you the cash.</p>
         <Primary disabled={!tx.ready} onClick={collect}>Confirm</Primary>
-        <button type="button" onClick={() => setReq(undefined)} style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 }}>Cancel</button>
-      </Sheet>
-    );
-  }
-  if (req) {
-    const cash = Number(BigInt(req.cash) / NIN);
-    return (
-      <Sheet landName="Nila" title="Your union leader asks you to confirm">
-        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>You get {inr(cash)}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Made of {inr(cash)} cash{req.hours ? ` + ${req.hours} machine hours` : ''}</p>
-        <p style={{ textAlign: 'center' }}>For {req.crop} · {req.area}</p>
-        {req.repay && <p style={{ ...muted, textAlign: 'center' }}>Repay {inr(Number(req.repay))} · 3 weeks after harvest</p>}
-        <p style={{ color: C.gold, textAlign: 'center' }}>Only confirm when your leader is with you.</p>
-        <Primary disabled={!tx.ready} onClick={confirm}>Confirm</Primary>
         <button type="button" onClick={() => setReq(undefined)} style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 }}>Cancel</button>
       </Sheet>
     );
