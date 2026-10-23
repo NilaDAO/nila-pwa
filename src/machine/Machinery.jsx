@@ -197,7 +197,8 @@ function Code({ c, left, live, used, rate, onBack, onRemove }) {
           white circle, clipped at the screen's sides. */}
       <BigQr img={img} alt="Your voucher code" caption="Show this to the machine owner" below={300} />
       <KV k="Valid until" v={`${when(c.until)} · ${hoursLeft(c.until)} h left`} />
-      <button type="button" onClick={onRemove} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Remove from this phone</button>
+      <button type="button" onClick={onRemove} style={{ width: '100%', height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text,
+        fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' }}>Remove from this phone</button>
     </Card></Page>
   );
 }

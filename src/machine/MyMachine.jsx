@@ -9,6 +9,7 @@
 // no indexer yet); photos are shown as the 8 positions, not the images; the hold switch sits here, not in
 // Settings (A11 #machine); a "Collect" button the board does not have; the claim screen has no board.
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, server, sv } from '../stellar/soroban';
@@ -19,7 +20,7 @@ import { C, FONT, R } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
 import { Card, CardTitle, KV } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
-import { HOLD_REASONS, TRACTOR, centi, hoursFor, saveJob, th, typeName, unitsOf, useMyMachine, useOwnerDues, useRates } from './hooks';
+import { HOLD_REASONS, PARTS, TRACTOR, centi, hoursFor, saveJob, th, typeName, unitsOf, useMyMachine, useOwnerDues, useRates } from './hooks';
 
 const svgT = (size, color) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" /></svg>;
 const tractor = svgT(32, C.ink);
@@ -167,6 +168,36 @@ export default function MyMachine({ onBack, pick: first }) {
   );
 }
 
+/** The cost list for the hours worked (23 Oct): each part of the rate × hours; a check on what is paid now at the
+ *  job (diesel and the driver's prepaid share, machinery.prepay_per_hour); no icon on what is paid when she repays. */
+function Costs({ parts, hours, driverBp }) {
+  const now = { diesel: parts.diesel, driver: (parts.driver * driverBp) / 10_000 };
+  const rows = PARTS.filter(([k]) => parts[k] > 0).map(([k, name]) => [name, parts[k] * hours, (now[k] || 0) * hours]);
+  const paidNow = rows.reduce((a, r) => a + r[2], 0);
+  const total = rows.reduce((a, r) => a + r[1], 0);
+  // A blank of the check's width keeps the names in line on the rows without an icon.
+  const check = (on) => (
+    <span aria-label={on ? 'Paid now' : undefined} style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center',
+      justifyContent: 'center', background: on ? C.accent : 'transparent' }}>
+      {on && <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}
+    </span>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14, lineHeight: 1.5 }}>
+      {rows.map(([name, all, pre]) => (
+        <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {check(pre > 0)}
+          <span style={{ flexGrow: 1, color: C.muted }}>{name}{pre > 0 && pre < all ? ` · ${inr(pre)} now` : ''}</span>
+          <b>{inr(all)}</b>
+        </div>
+      ))}
+      <div style={{ height: 1, background: C.raised }} />
+      <KV k="Paid now" v={inr(paidNow)} />
+      <KV k="When she repays" v={inr(total - paidNow)} />
+    </div>
+  );
+}
+
 /** Scan her code → hours worked → machinery.claim. */
 function Claim({ machine, rate, tractor, onBack }) {
   const s = useNilaSigner();
@@ -176,6 +207,9 @@ function Claim({ machine, rate, tractor, onBack }) {
   const [error, setError] = useState();
   const [hours, setHours] = useState(1);
   const [tries, setTries] = useState(0);     // the camera reads once: a new one after a wrong code
+  // The share of the driver paid at the job (machinery.prepay_share, basis points); diesel is always paid at the job.
+  const share = useQuery({ queryKey: ['stellar', 'prepayShare', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 300_000,
+    queryFn: () => readContract(cfg, 'machinery', 'prepay_share', [sv.address(cfg.union)]) });
   const read = async (text) => {
     setError(undefined);
     try {
@@ -188,7 +222,7 @@ function Claim({ machine, rate, tractor, onBack }) {
       // To a tenth of an hour (23 Oct: the contract counts hundredths of an hour worked).
       const max = Math.floor(Math.min(rate && tractor ? hoursFor(units, rate.total, tractor) : 0, machine.hours_per_week - machine.usedThisWeek) * 10) / 10;
       setScan({ ...c, max });
-      setHours(Math.min(1, max));
+      setHours(max);   // her code's maximum on this machine; the owner can lower it (23 Oct)
     } catch (e) { setError(e.message); setTries((t) => t + 1); }
   };
   const claim = async () => {
@@ -214,7 +248,8 @@ function Claim({ machine, rate, tractor, onBack }) {
           <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700, fontSize: 20 }}>{hours} h</span>
           <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(scan.max, Math.round((hours + 0.5) * 10) / 10))}>+</button>
         </div>
-        <p style={muted}>Up to {scan.max} h now on this code{rate ? ` · ${inr(rate.total)} an hour, part paid now in nIN, the rest when she repays` : ''}.</p>
+        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>Up to {scan.max} h on her code</p>
+        {rate && <Costs parts={rate.parts} hours={hours} driverBp={Number(share.data ?? 0)} />}
         <Primary disabled={!tx.ready || scan.max <= 0 || hours <= 0} onClick={claim}>Claim {hours} h</Primary>
       </Page>
     );
