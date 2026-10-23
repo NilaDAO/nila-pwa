@@ -195,7 +195,7 @@ function Code({ c, left, live, used, rate, onBack, onRemove }) {
     <Page title={name} onBack={onBack}><Card label={name} style={{ gap: 12 }}>
       {/* As big as the screen allows (shared BigQr, as her crop share QR): the QR spans the screen's width in the
           white circle, clipped at the screen's sides. */}
-      <BigQr img={img} alt="Your voucher code" caption="Show this to the machine owner" below={420} />
+      <BigQr img={img} alt="Your voucher code" caption="Show this to the machine owner" below={300} />
       <KV k="Valid until" v={`${when(c.until)} · ${hoursLeft(c.until)} h left`} />
       <button type="button" onClick={onRemove} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Remove from this phone</button>
     </Card></Page>
