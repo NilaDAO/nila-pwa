@@ -29,10 +29,13 @@ const MAX_TYPES = 16;
 export const TRACTOR = 1;
 /** Units (centi tractor hours) as tractor hours with one decimal. */
 export const th = (u) => (Math.round(Number(u || 0) / 10) / 10).toFixed(1);
-/** Units that `hours` of a machine at `rate` (₹ an hour) use against a tractor at `tractor` (as the contract, rounded up). */
-export const unitsOf = (hours, rate, tractor) => (tractor > 0 ? Math.ceil(Math.round((hours * rate * 100) / tractor * 1e6) / 1e6) : 0);
-/** Whole hours of a machine at `rate` that `units` pay for. */
-export const hoursFor = (units, rate, tractor) => (rate > 0 ? Math.floor(Math.round((units * tractor) / (100 * rate) * 1e6) / 1e6) : 0);
+/** Hours worked as the contract takes them: hundredths of an hour (23 Oct). */
+export const centi = (hours) => Math.round(Number(hours || 0) * 100);
+/** Units that `hours` of a machine at `rate` (₹ an hour) use against a tractor at `tractor` (as the contract:
+ *  ceil(hundredths worked × rate ÷ tractor rate)). */
+export const unitsOf = (hours, rate, tractor) => (tractor > 0 ? Math.ceil(Math.round((centi(hours) * rate) / tractor * 1e6) / 1e6) : 0);
+/** Hours of a machine at `rate` that `units` pay for, down to a tenth of an hour. */
+export const hoursFor = (units, rate, tractor) => (rate > 0 ? Math.floor(Math.round((units * tractor) / (10 * rate) * 1e6) / 1e6) / 10 : 0);
 const MAX_MACHINES = 500;
 
 /** The union's rate table: [{type, name, parts (₹ an hour), total}] (machinery.rate, set by the union account). */
@@ -108,7 +111,7 @@ export function useMyMachine(owner, { pick, poll } = {}) {
     queryKey: ['stellar', 'machine', mine?.id, 'week'], enabled: !!mine && !!cfg, staleTime: 30_000,
     queryFn: () => readContract(cfg, 'machinery', 'hours_this_week', [sv.u64(mine.id)]),
   });
-  return { ...machines, data: machines.data && (mine ? { ...mine, usedThisWeek: Number(week.data ?? 0), all } : null) };
+  return { ...machines, data: machines.data && (mine ? { ...mine, usedThisWeek: Number(week.data ?? 0) / 100, all } : null) };
 }
 
 // The owner's jobs, kept on her phone from her claim results (no indexer yet, 17 Oct): the pending part

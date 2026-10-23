@@ -106,7 +106,7 @@ export function LeaderLoan({ initial }) {
     setMach((m) => {
       let left = c.hours;
       return Object.fromEntries(Object.entries(m).map(([t, h]) => {
-        const k = Math.min(h, hoursFor(left, rateOf(t), tractorRate)); left -= unitsOf(k, rateOf(t), tractorRate); return [t, k];
+        const k = Math.min(h, Math.floor(hoursFor(left, rateOf(t), tractorRate))); left -= unitsOf(k, rateOf(t), tractorRate); return [t, k];
       }));
     });
   }, [checks.data, pickFt, tractorRate]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -208,7 +208,7 @@ export function LeaderLoan({ initial }) {
             )}
             {checks.data && types.map((t) => {
               const h = mach[t] || 0;
-              const room = tractorRate > 0 ? hoursFor(Math.max(0, caps.hours - hours), rateOf(t), tractorRate) : 0;
+              const room = tractorRate > 0 ? Math.floor(hoursFor(Math.max(0, caps.hours - hours), rateOf(t), tractorRate)) : 0;
               return (
                 <Stepper key={t} label={`${typeName(t)}${rateOf(t) ? ` · ${inr(rateOf(t))}/h` : ''}`} value={h}
                   set={(v) => setMach((m) => ({ ...m, [t]: v }))} step={1} max={h + room} fmt={(v) => `${v} h`} />

@@ -15,7 +15,7 @@ import { signInvocation, sv } from '../stellar/soroban';
 import { Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
-import { Card, CardTitle, KV } from '../loan/AssetParts';
+import { Card, CardTitle, KV, NoteBar } from '../loan/AssetParts';
 import { TRACTOR, hoursFor, loadVoucherCode as load, saveVoucherCode as save, th, unitsOf, useMachines, useRates, useVouchers } from './hooks';
 
 const TERM = 34_560;                          // ledgers, ~48 h
@@ -28,11 +28,12 @@ const chevron = icon(<path d="m6 9 6 6 6-6" />, C.muted);
 const qr = icon(<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2v2h-2zM18 14h2v2h-2z" />, C.text, 18);
 const info = <span style={{ flexShrink: 0, display: 'flex' }}>{icon(<path d="M12 22a10 10 0 1 0 0-20a10 10 0 0 0 0 20zM12 16v-4M12 8h.01" />, C.muted)}</span>;
 /** A full page (no map card, 23 Oct): the header, then the screen's cards. */
-function Page({ title, onBack, children }) {
+function Page({ title, onBack, note, children }) {
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16, marginBottom: note ? 120 : 16 }}>
       <ScreenHeader title={title} onBack={onBack} />
       {children}
+      {note && <NoteBar>{note}</NoteBar>}
     </div>
   );
 }
@@ -46,6 +47,7 @@ export default function Machinery({ onBack }) {
   const [type, setType] = useState();
   const [picking, setPicking] = useState(false);
   const [hours, setHours] = useState(1);
+  const [typed, setTyped] = useState(null);   // the hours as she types them (one decimal), until she leaves the field
   const [code, setCode] = useState(load);
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -96,7 +98,7 @@ export default function Machinery({ onBack }) {
   const label = { fontSize: 14, fontWeight: 700, lineHeight: 1.5 };
   // Board A8 (MemberAssetTractor), full page (23 Oct): no "Receive" (vouchers are not sent).
   return (
-    <Page title="Machinery" onBack={onBack}>
+    <Page title="Machinery" onBack={onBack} note={online ? 'Pays for any machine work. Hours are used when the owner scans.' : 'You are offline. Making a code needs internet.'}>
       <Card label="Machinery" style={{ gap: 12 }}>
         <span style={{ alignSelf: 'center', width: 72, height: 72, borderRadius: R.round, background: C.coral, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{tractor}</span>
         <CardTitle right={<span style={{ fontSize: 16, fontWeight: 700 }}>{vouchers.isLoading ? '…' : `${th(balance)} h`}</span>}>Machinery</CardTitle>
@@ -150,26 +152,24 @@ export default function Machinery({ onBack }) {
           )}
           <span style={label}>Machine hours</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button type="button" aria-label="Less" style={b} onClick={() => setHours(Math.max(1, h - 1))}>−</button>
+            {/* Half-hour steps; the field takes a tenth of an hour (23 Oct: 0.2 h of a tiller is 0.1 tractor hour). */}
+            <button type="button" aria-label="Less" style={b} onClick={() => { setTyped(null); setHours(Math.max(0, Math.round((h - 0.5) * 10) / 10)); }}>−</button>
             <label style={{ ...field, flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 8 }}>
-              <input aria-label="Machine hours" inputMode="numeric" value={h} onChange={(e) => setHours(Math.max(0, Math.min(maxOne, Number(e.target.value.replace(/\D/g, '')) || 0)))}
+              <input aria-label="Machine hours" inputMode="decimal" value={typed ?? String(h)} onBlur={() => setTyped(null)}
+                onChange={(e) => { const v = e.target.value.replace(',', '.'); if (/^\d*\.?\d?$/.test(v)) { setTyped(v); setHours(Math.min(maxOne, Number(v) || 0)); } }}
                 style={{ flex: 1, minWidth: 0, border: 0, background: 'transparent', color: C.text, fontFamily: 'inherit', fontSize: 16, fontWeight: 700, outline: 'none' }} />
               <span style={{ color: C.muted }}>h</span>
             </label>
-            <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(maxOne, h + 1))}>+</button>
-            <button type="button" style={{ ...b, width: 'auto', padding: '0 14px', fontSize: 14 }} onClick={() => setHours(maxOne)}>Max</button>
+            <button type="button" aria-label="More" style={b} onClick={() => { setTyped(null); setHours(Math.min(maxOne, Math.round((h + 0.5) * 10) / 10)); }}>+</button>
+            <button type="button" style={{ ...b, width: 'auto', padding: '0 14px', fontSize: 14 }} onClick={() => { setTyped(null); setHours(maxOne); }}>Max</button>
           </div>
           {rate && <KV k="Uses" v={`${th(units)} tractor hours · ${inr(h * rate.total)}`} />}
           <KV k="Left after" v={`${th(balance - units)} tractor hours`} />
           {open && <span style={{ color: C.muted, fontSize: 14 }}>Cancel the open code first.</span>}
-          <Primary disabled={!online || busy || !s?.ready || !cfg || !rate || h < 1 || !!open} onClick={make}>{!online ? 'Needs internet' : h < 1 ? 'Enter an amount' : `Make code for ${h} h`}</Primary>
+          <Primary disabled={!online || busy || !s?.ready || !cfg || !rate || h <= 0 || !!open} onClick={make}>{!online ? 'Needs internet' : h <= 0 ? 'Enter an amount' : `Make code for ${h} h`}</Primary>
         </Card>
       )}
       {!vouchers.isLoading && balance === 0 && !open && <Card label="No hours"><span style={{ color: C.muted, fontSize: 14 }}>No machine hours yet. They come with a crop share.</span></Card>}
-      <Card label="How it works" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        {info}
-        <span style={{ color: C.muted, fontSize: 14, lineHeight: 1.5 }}>{online ? 'Pays for any machine work. Hours are used when the owner scans.' : 'You are offline. Making a code needs internet.'}</span>
-      </Card>
     </Page>
   );
 }

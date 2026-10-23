@@ -18,7 +18,7 @@ import { C, FONT, R } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
 import { Card, CardTitle, KV } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
-import { HOLD_REASONS, TRACTOR, hoursFor, saveJob, th, typeName, unitsOf, useMyMachine, useOwnerDues, useRates } from './hooks';
+import { HOLD_REASONS, TRACTOR, centi, hoursFor, saveJob, th, typeName, unitsOf, useMyMachine, useOwnerDues, useRates } from './hooks';
 
 const svgT = (size, color) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" /></svg>;
 const tractor = svgT(32, C.ink);
@@ -181,7 +181,8 @@ function Claim({ machine, rate, tractor, onBack }) {
       if (v.member === s.stellarAddress) throw new Error('You cannot claim your own voucher.');
       // Her code and her voucher are in units (tractor hours); this machine's hours use its rate ÷ the tractor's.
       const units = Math.min(c.signed, Number(v.hours) - Number(v.used));
-      const max = Math.min(rate && tractor ? hoursFor(units, rate.total, tractor) : 0, machine.hours_per_week - machine.usedThisWeek);
+      // To a tenth of an hour (23 Oct: the contract counts hundredths of an hour worked).
+      const max = Math.floor(Math.min(rate && tractor ? hoursFor(units, rate.total, tractor) : 0, machine.hours_per_week - machine.usedThisWeek) * 10) / 10;
       setScan({ ...c, max });
       setHours(Math.min(1, max));
     } catch (e) { setError(e.message); setTries((t) => t + 1); }
@@ -191,7 +192,7 @@ function Claim({ machine, rate, tractor, onBack }) {
       label: `Claim ${hours} h`, rows: [['Hours worked', `${hours} h`], ['Machine', typeName(machine.machine_type)],
         ...(rate && tractor ? [['Uses', `${th(unitsOf(hours, rate.total, tractor))} tractor hours`]] : [])],
       contractName: 'machinery', fn: 'claim',
-      args: [sv.address(s.stellarAddress), sv.u64(machine.id), sv.address(cfg.union), sv.bytes32(scan.token), sv.u32(scan.signed), sv.u32(hours)],
+      args: [sv.address(s.stellarAddress), sv.u64(machine.id), sv.address(cfg.union), sv.bytes32(scan.token), sv.u32(scan.signed), sv.u32(centi(hours))],
       auth: [scan.entry], invalidate: [['stellar', 'machine'], ['stellar', 'dues'], ['stellar', 'account']],
     });
     // claim returns (prepay, pending) in nIN; a retry that found the sent call carries no result: 0 then.
@@ -204,12 +205,13 @@ function Claim({ machine, rate, tractor, onBack }) {
     return (
       <Page title="Hours worked" onBack={() => setScan(undefined)}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, margin: '12px 0' }}>
-          <button type="button" aria-label="Less" style={b} onClick={() => setHours(Math.max(1, hours - 1))}>−</button>
+          {/* Half-hour steps, down to a tenth of an hour at the ends. */}
+          <button type="button" aria-label="Less" style={b} onClick={() => setHours(Math.max(Math.min(0.1, scan.max), Math.round((hours - 0.5) * 10) / 10))}>−</button>
           <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700, fontSize: 20 }}>{hours} h</span>
-          <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(scan.max, hours + 1))}>+</button>
+          <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(scan.max, Math.round((hours + 0.5) * 10) / 10))}>+</button>
         </div>
         <p style={muted}>Up to {scan.max} h now on this code{rate ? ` · ${inr(rate.total)} an hour, part paid now in nIN, the rest when she repays` : ''}.</p>
-        <Primary disabled={!tx.ready || scan.max < 1} onClick={claim}>Claim {hours} h</Primary>
+        <Primary disabled={!tx.ready || scan.max <= 0 || hours <= 0} onClick={claim}>Claim {hours} h</Primary>
       </Page>
     );
   }
