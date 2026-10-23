@@ -1,6 +1,7 @@
 // P6 machinery vouchers (executive decision, 17 Oct; LOAN_RULES §5 "Machinery vouchers (P6)"), read from the
 // Stellar machinery contract (the design's Polygon voucher contract is replaced by C5; query keys moved
-// to `stellar`). Whole hours: any machine uses one voucher hour per hour worked, priced at its type's rate.
+// to `stellar`). Vouchers in tractor hours (executive decision 23 Oct): held on-chain in hundredths (units); an hour
+// of a machine uses its rate ÷ the tractor's (type 1) rate, rounded up to a unit, as machinery.claim counts it.
 // The contract has no list views: machine types are found by reading rate(union, 1..16), machines by
 // reading machine(1..) until the first empty id, her vouchers through fund_core.loans_of.
 import { useQuery } from '@tanstack/react-query';
@@ -24,6 +25,14 @@ export const PARTS = [['diesel', 'Diesel'], ['driver', 'Driver'], ['maintenance'
   ['insurance', 'Insurance'], ['depreciation', 'Depreciation'], ['margin', 'Margin']];
 export const HOLD_REASONS = { 1: 'In repair', 2: 'Driver not available', 3: 'Other' };
 const MAX_TYPES = 16;
+/** The machine type whose hour is the voucher's unit. */
+export const TRACTOR = 1;
+/** Units (centi tractor hours) as tractor hours with one decimal. */
+export const th = (u) => (Math.round(Number(u || 0) / 10) / 10).toFixed(1);
+/** Units that `hours` of a machine at `rate` (₹ an hour) use against a tractor at `tractor` (as the contract, rounded up). */
+export const unitsOf = (hours, rate, tractor) => (tractor > 0 ? Math.ceil(Math.round((hours * rate * 100) / tractor * 1e6) / 1e6) : 0);
+/** Whole hours of a machine at `rate` that `units` pay for. */
+export const hoursFor = (units, rate, tractor) => (rate > 0 ? Math.floor(Math.round((units * tractor) / (100 * rate) * 1e6) / 1e6) : 0);
 const MAX_MACHINES = 500;
 
 /** The union's rate table: [{type, name, parts (₹ an hour), total}] (machinery.rate, set by the union account). */
@@ -50,7 +59,7 @@ const CODE_KEY = 'nila.voucher.signed';
 export const loadVoucherCode = () => { try { return JSON.parse(localStorage.getItem(CODE_KEY)) || null; } catch { return null; } };
 export const saveVoucherCode = (c) => { try { if (c) localStorage.setItem(CODE_KEY, JSON.stringify(c)); else localStorage.removeItem(CODE_KEY); } catch { /* private */ } };
 
-/** Her vouchers: one per loan with hours (fund_core.loans_of → machinery.voucher). Left = hours − used. */
+/** Her vouchers: one per loan with hours (fund_core.loans_of → machinery.voucher), in units. Left = hours − used. */
 export function useVouchers(member) {
   const { data: cfg } = useStellarConfig();
   return useQuery({

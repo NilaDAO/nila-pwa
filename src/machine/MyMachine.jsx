@@ -1,7 +1,7 @@
 // A13 my machine (board MemberMachine), the owner's side of a voucher (executive decision, 17 Oct):
 // - after the leader registered it (L13), she confirms it (machinery.confirm_machine);
-// - she scans a member's voucher code (A8a: the member's signed authorization of machinery.claim for up to N hours,
-//   23 Oct), enters the hours worked and claims (machinery.claim, with that authorization): the prepaid part (diesel + the driver share) reaches her wallet in nIN at once,
+// - she scans a member's voucher code (A8a: the member's signed authorization of machinery.claim for up to N units,
+//   centi tractor hours, 23 Oct), enters the whole hours her machine worked and claims (machinery.claim, with that authorization): the prepaid part (diesel + the driver share) reaches her wallet in nIN at once,
 //   the rest is pending until the member repays (fund_core.pay_voucher inside the claim);
 // - what members repaid for her collects into her balance; "Collect" moves it to her wallet (collect_dues);
 // - on hold / available (machinery.set_hold) with a reason.
@@ -18,7 +18,7 @@ import { C, FONT, R } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
 import { Card, CardTitle, KV } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
-import { HOLD_REASONS, saveJob, typeName, useMyMachine, useOwnerDues, useRates } from './hooks';
+import { HOLD_REASONS, TRACTOR, hoursFor, saveJob, th, typeName, unitsOf, useMyMachine, useOwnerDues, useRates } from './hooks';
 
 const svgT = (size, color) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" /></svg>;
 const tractor = svgT(32, C.ink);
@@ -68,7 +68,7 @@ export default function MyMachine({ onBack, pick: first }) {
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   if (machine.isLoading) return <Page title="Your machine" onBack={onBack}><p style={muted}>…</p></Page>;
   if (!m) return <Page title="Your machine" onBack={onBack}><p style={muted}>No machine registered for you. Your union leader registers it at your farm.</p></Page>;
-  if (claiming) return <Claim machine={m} rate={rate} onBack={() => setClaiming(false)} />;
+  if (claiming) return <Claim machine={m} rate={rate} tractor={rates.data?.find((r) => r.type === TRACTOR)?.total || 0} onBack={() => setClaiming(false)} />;
 
   if (!m.confirmed) {
     // A full page as L13 (23 Oct): what was registered for her, her duties, one button.
@@ -164,7 +164,7 @@ export default function MyMachine({ onBack, pick: first }) {
 }
 
 /** Scan her code → hours worked → machinery.claim. */
-function Claim({ machine, rate, onBack }) {
+function Claim({ machine, rate, tractor, onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
@@ -179,14 +179,17 @@ function Claim({ machine, rate, onBack }) {
       const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(c.token)]);
       if (!v || v.void || v.member !== c.member) throw new Error('This voucher is not open any more.');
       if (v.member === s.stellarAddress) throw new Error('You cannot claim your own voucher.');
-      const max = Math.min(c.signed, Number(v.hours) - Number(v.used), machine.hours_per_week - machine.usedThisWeek);
+      // Her code and her voucher are in units (tractor hours); this machine's hours use its rate ÷ the tractor's.
+      const units = Math.min(c.signed, Number(v.hours) - Number(v.used));
+      const max = Math.min(rate && tractor ? hoursFor(units, rate.total, tractor) : 0, machine.hours_per_week - machine.usedThisWeek);
       setScan({ ...c, max });
       setHours(Math.min(1, max));
     } catch (e) { setError(e.message); setTries((t) => t + 1); }
   };
   const claim = async () => {
     const out = await tx.run({
-      label: `Claim ${hours} h`, rows: [['Hours worked', `${hours} h`], ['Machine', typeName(machine.machine_type)]],
+      label: `Claim ${hours} h`, rows: [['Hours worked', `${hours} h`], ['Machine', typeName(machine.machine_type)],
+        ...(rate && tractor ? [['Uses', `${th(unitsOf(hours, rate.total, tractor))} tractor hours`]] : [])],
       contractName: 'machinery', fn: 'claim',
       args: [sv.address(s.stellarAddress), sv.u64(machine.id), sv.address(cfg.union), sv.bytes32(scan.token), sv.u32(scan.signed), sv.u32(hours)],
       auth: [scan.entry], invalidate: [['stellar', 'machine'], ['stellar', 'dues'], ['stellar', 'account']],

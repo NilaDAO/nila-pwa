@@ -1,9 +1,11 @@
 // N10 (board ConfirmLoan): what she receives and accepts, then her own signature on fund_core.draw_loan. From her
 // Ready share after the leader's QR, or a leader's own share from L11 (`own`: no "asks you to confirm" line).
+// `hours`: voucher units (centi tractor hours).
 import { Primary, inr } from '../plan/ui';
 import { C, FONT } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
 import { Card } from './AssetParts';
+import { th } from '../machine/hooks';
 
 const kv = (k, v) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
@@ -19,7 +21,7 @@ export default function ConfirmShare({ cash, hours, name, area, own, ready, onCo
       {!own && <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Your union leader asks you to confirm</span>}
       <Card label="Your crop share" style={{ gap: 12 }}>
         {kv('Cash you receive', inr(cash))}
-        {hours > 0 && kv('Machine vouchers', `${hours} hours`)}
+        {hours > 0 && kv('Machine vouchers', `${th(hours)} tractor hours`)}
         {kv('For', `${name} · Area ${area}`)}
         {kv('Repay', '3 weeks after harvest')}
       </Card>

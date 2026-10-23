@@ -19,6 +19,7 @@ import ListRow, { ScreenHeader } from '../shell/ListRow';
 import { Card } from './AssetParts';
 import CameraView from '../shell/CameraView';
 import ConfirmShare from './ConfirmShare';
+import { th } from '../machine/hooks';
 import { LeaderLoan } from './LoanScreens';
 import BigQr from '../shell/BigQr';
 import { NIN, readRequest } from './request';
@@ -116,7 +117,7 @@ function ShareScan({ x, onBack }) {
   if (req) {
     const cash = Number(BigInt(req.cash) / NIN);
     const confirm = () => tx.run({
-      label: `Crop share ${name}`, rows: [['Cash', inr(cash)], ...(req.hours ? [['Machine vouchers', `${req.hours} hours`]] : []), ['For', `${name} · Area ${x.area}`]],
+      label: `Crop share ${name}`, rows: [['Cash', inr(cash)], ...(req.hours ? [['Machine vouchers', `${th(req.hours)} tractor hours`]] : []), ['For', `${name} · Area ${x.area}`]],
       contractName: 'fund_core', fn: 'draw_loan',
       args: [sv.address(req.union), sv.address(req.member), sv.bytes32(req.token), sv.i128(req.cash), sv.u32(req.hours)],
       invalidate: [['oracle', 'myShares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],

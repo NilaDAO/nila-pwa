@@ -99,7 +99,8 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   if (!x.drawn) {
     // A4a: not active yet. Cash is the attested cash part (the plan's, before the attestation); machine hours at the plan's rate.
     const cash = x.ft ? num(x.ft.amount) : Number(x.share.loan_amount || 0);
-    const hours = x.ft ? Number(x.ft.hours) : Number(x.share.hours || 0);
+    // Attested hours are voucher units (centi tractor hours, 23 Oct); before the attestation, the plan's machine hours.
+    const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.hours || 0);
     const vouchers = Number(r.finance?.voucher_value || 0);
     const from = x.ft ? new Date(Number(x.ft.from_date) * 1000) : x.share.from_date ? new Date(x.share.from_date) : null;
     return (
@@ -119,7 +120,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
           </div>
           {hours > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}>
-              <TractorIcon color={C.gold} /><span style={{ flexGrow: 1, color: C.muted }}>Machine hours · {hours} h</span><b>{vouchers ? inr(vouchers) : '—'}</b>
+              <TractorIcon color={C.gold} /><span style={{ flexGrow: 1, color: C.muted }}>Machine hours · {x.ft ? `${hours.toFixed(1)} tractor h` : `${hours} h`}</span><b>{vouchers ? inr(vouchers) : '—'}</b>
             </div>
           )}
         </div>

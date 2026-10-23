@@ -12,7 +12,7 @@ import { useTitleCount } from '../register/titles';
 import { useInvestment } from '../stellar/hooks';
 import { ShareRows, rowOf, useMyShares } from '../loan/MyShares';
 import { tokenHex } from '../stellar/soroban';
-import { loadVoucherCode, typeName, useMyMachine, useVouchers } from '../machine/hooks';
+import { loadVoucherCode, th, typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
 import { UnionRows, useLeaderSlides } from '../leader/UnionCards';
@@ -215,7 +215,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
               return (
                 <Row key={v.token} label={`Open machine voucher ${x ? x.crop : ''}`} icon={<MachineryTile />} title={x ? `${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area}` : 'Machinery'}
                   sub={open ? `Open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
-                  value={`${v.left} h`} valueSub="" onClick={onMachinery} />
+                  value={`${th(v.left)} h`} valueSub="" onClick={onMachinery} />
               );
             })}
           </>

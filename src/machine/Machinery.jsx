@@ -1,9 +1,10 @@
 // A8 machinery voucher, A8a its code, A8b an expired code (boards MemberAssetTractor, MemberAssetTractorScrolled,
-// MemberAssetTractorExpired). Decided 17 Oct (LOAN_RULES §5 "Machinery vouchers (P6)"): whole hours, any
-// machine of her union. Since 23 Oct ("Voucher spend"): the QR is her signed authorization of machinery.claim for
-// (union, token, up to N hours), one use (Soroban nonce), ~48 h (its expiry ledger); nothing goes on-chain until the
+// MemberAssetTractorExpired). Decided 17 Oct (LOAN_RULES §5 "Machinery vouchers (P6)"), any machine of her union;
+// since 23 Oct in tractor hours (units on-chain: centi tractor hours; an hour of a machine uses its rate ÷ the
+// tractor's). Since 23 Oct ("Voucher spend"): the QR is her signed authorization of machinery.claim for
+// (union, token, up to N units), one use (Soroban nonce), ~48 h (its expiry ledger); nothing goes on-chain until the
 // owner scans it and claims. Kept on this phone to show again; made on the voucher with the fewest hours that cover it.
-// DESIGN GAPs: whole hours instead of tractor-hour factors; one code at a time; "Remove" only forgets the code on
+// DESIGN GAPs: one code at a time; "Remove" only forgets the code on
 // this phone (a signed code cannot be withdrawn before it expires); in assisted mode the leader drives her phone and she signs here (23 Oct);
 // no "Receive" (vouchers are not sent); no typed fallback (executive decision 23 Oct).
 import { useEffect, useState } from 'react';
@@ -15,7 +16,7 @@ import { Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
 import { Card, CardTitle, KV } from '../loan/AssetParts';
-import { loadVoucherCode as load, saveVoucherCode as save, useRates, useVouchers } from './hooks';
+import { TRACTOR, hoursFor, loadVoucherCode as load, saveVoucherCode as save, th, unitsOf, useMachines, useRates, useVouchers } from './hooks';
 
 const TERM = 34_560;                          // ledgers, ~48 h
 const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -50,26 +51,34 @@ export default function Machinery({ onBack }) {
   const [busy, setBusy] = useState(false);
   const [lost, setLost] = useState();
   const list = vouchers.data || [];
-  const balance = list.reduce((a, v) => a + v.left, 0);
-  const maxOne = Math.max(0, ...list.map((v) => v.left));
+  const balance = list.reduce((a, v) => a + v.left, 0);              // units
+  const maxUnits = Math.max(0, ...list.map((v) => v.left));
   // Her code: used once the voucher's used hours moved since she signed it; expired after its ~48 h.
   const cv = code && list.find((v) => v.token === code.token);
   const used = !!code && !!vouchers.data && (!cv || cv.used > code.used);
   const open = code && !used && code.until > Date.now() / 1000 ? code : null;
-  const rate = rates.data?.find((r) => r.type === type) || rates.data?.[0];
-  const totals = (rates.data || []).map((r) => r.total);
-  const value = totals.length ? (Math.min(...totals) === Math.max(...totals) ? inr(balance * totals[0]) : `${inr(balance * Math.min(...totals))}–${inr(balance * Math.max(...totals))}`) : '';
+  // Only the machine types the union has registered and confirmed (23 Oct), at that type's rate an hour.
+  const machines = useMachines();
+  const kinds = new Set((machines.data || []).filter((m) => m.confirmed).map((m) => m.machine_type));
+  const avail = (rates.data || []).filter((r) => kinds.has(r.type));
+  const rate = avail.find((r) => r.type === type) || avail[0];
+  // Her tractor hours at the tractor's rate; the hours of the picked machine they pay for, and the units they use.
+  const tractorRate = rates.data?.find((r) => r.type === TRACTOR)?.total || 0;
+  const value = tractorRate ? inr((balance / 100) * tractorRate) : '';
+  const maxOne = rate ? hoursFor(maxUnits, rate.total, tractorRate) : 0;
   const h = Math.min(hours, maxOne);
+  const units = rate ? unitsOf(h, rate.total, tractorRate) : 0;
   const online = typeof navigator === 'undefined' || navigator.onLine !== false;
 
   const make = async () => {
-    const v = list.filter((x) => x.left >= h).sort((a, b) => a.left - b.left)[0];
+    const v = list.filter((x) => x.left >= units).sort((a, b) => a.left - b.left)[0];
     if (!v) return;
     setBusy(true); setLost(undefined);
     try {
       const { entry, until } = await signInvocation({ cfg, signer: s.stellarAddress, signHash: s.signHash, contractName: 'machinery', fn: 'claim',
-        args: [sv.address(cfg.union), sv.bytes32(v.token), sv.u32(h)], ledgers: TERM });
-      const c = { entry, token: v.token, hours: h, type: rate?.type, used: v.used, until };
+        args: [sv.address(cfg.union), sv.bytes32(v.token), sv.u32(units)], ledgers: TERM });
+      // hours: the units she signed for; work: the hours of that machine they pay for.
+      const c = { entry, token: v.token, hours: units, work: h, type: rate?.type, used: v.used, until };
       save(c);
       // Without the code on her phone she could not show it again: say so, but show it this once.
       if (load()?.entry !== entry) setLost('Your phone cannot keep the code (private mode or no space). Show it now.');
@@ -90,9 +99,9 @@ export default function Machinery({ onBack }) {
     <Page title="Machinery" onBack={onBack}>
       <Card label="Machinery" style={{ gap: 12 }}>
         <span style={{ alignSelf: 'center', width: 72, height: 72, borderRadius: R.round, background: C.coral, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{tractor}</span>
-        <CardTitle right={<span style={{ fontSize: 16, fontWeight: 700 }}>{vouchers.isLoading ? '…' : `${balance} h`}</span>}>Machinery</CardTitle>
+        <CardTitle right={<span style={{ fontSize: 16, fontWeight: 700 }}>{vouchers.isLoading ? '…' : `${th(balance)} h`}</span>}>Machinery</CardTitle>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: C.muted, marginTop: -8 }}>
-          <span>Voucher · in machine hours</span><span>{value}</span>
+          <span>Voucher · in tractor hours</span><span>{value}</span>
         </div>
         {vouchers.isError && <span style={{ color: C.coral, fontSize: 14 }}>Could not read your vouchers. Try again.</span>}
       </Card>
@@ -101,7 +110,7 @@ export default function Machinery({ onBack }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ width: 32, height: 32, borderRadius: 8, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{qr}</span>
             <span style={{ display: 'flex', flexDirection: 'column', fontSize: 14, lineHeight: 1.5 }}>
-              <b>Open code · {rates.data?.find((r) => r.type === open.type)?.name || 'Machine'} · {open.hours} h</b>
+              <b>Open code · {rates.data?.find((r) => r.type === open.type)?.name || 'Machine'} · {open.work ?? th(open.hours)} h</b>
               <span style={{ color: C.muted }}>{hoursLeft(open.until)} hours left · not used yet</span>
             </span>
           </div>
@@ -122,7 +131,7 @@ export default function Machinery({ onBack }) {
       {balance > 0 && (
         <Card label="Spend" style={{ gap: 12 }}>
           <span style={label}>For</span>
-          {!rates.data?.length && <span style={{ color: C.muted, fontSize: 14 }}>No machine rates set by the union yet.</span>}
+          {rates.data && machines.data && !avail.length && <span style={{ color: C.muted, fontSize: 14 }}>No machines registered in the union yet.</span>}
           {/* The machine list opens inside the card under the row, as on L13. */}
           {rate && (
             <div style={{ background: C.raised, borderRadius: R.button, overflow: 'hidden' }}>
@@ -131,7 +140,7 @@ export default function Machinery({ onBack }) {
                 <span style={{ color: C.muted }}>up to {maxOne} h</span>
                 <span style={{ display: 'flex', transform: picking ? 'rotate(180deg)' : 'none' }}>{chevron}</span>
               </button>
-              {picking && (rates.data || []).filter((r) => r.type !== rate.type).map((r) => (
+              {picking && avail.filter((r) => r.type !== rate.type).map((r) => (
                 <button key={r.type} type="button" onClick={() => { setType(r.type); setPicking(false); }}
                   style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left', borderTop: `1px solid ${C.ink}`, borderRadius: 0 }}>
                   <span style={{ flexGrow: 1 }}>{r.name}</span><span style={{ color: C.muted }}>{inr(r.total)} an hour</span>
@@ -150,8 +159,8 @@ export default function Machinery({ onBack }) {
             <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(maxOne, h + 1))}>+</button>
             <button type="button" style={{ ...b, width: 'auto', padding: '0 14px', fontSize: 14 }} onClick={() => setHours(maxOne)}>Max</button>
           </div>
-          {rate && <KV k="Uses" v={`${h} h · ${inr(h * rate.total)}`} />}
-          <KV k="Left after" v={`${balance - h} h`} />
+          {rate && <KV k="Uses" v={`${th(units)} tractor hours · ${inr(h * rate.total)}`} />}
+          <KV k="Left after" v={`${th(balance - units)} tractor hours`} />
           {open && <span style={{ color: C.muted, fontSize: 14 }}>Cancel the open code first.</span>}
           <Primary disabled={!online || busy || !s?.ready || !cfg || !rate || h < 1 || !!open} onClick={make}>{!online ? 'Needs internet' : h < 1 ? 'Enter an amount' : `Make code for ${h} h`}</Primary>
         </Card>
@@ -169,13 +178,13 @@ export default function Machinery({ onBack }) {
 function Code({ c, left, live, used, rate, onBack, onRemove }) {
   const [img, setImg] = useState();
   useEffect(() => { if (live) QRCode.toDataURL(c.entry, { width: 400, margin: 1, errorCorrectionLevel: 'L' }).then(setImg); }, [live, c.entry]);
-  const name = `${rate?.name || 'Machine'} · ${c.hours} h`;
+  const name = `${rate?.name || 'Machine'} · ${c.work ?? th(c.hours)} h`;
   if (!live) {
     return (
       <Page title={name} onBack={onBack}><Card label={name} style={{ gap: 12 }}>
         <KV k="Status" v={used ? 'Used' : 'Expired · no hours used'} />
         <KV k="Was valid until" v={when(c.until)} />
-        <KV k="You still have" v={`${left} h`} />
+        <KV k="You still have" v={`${th(left)} tractor hours`} />
         {!used && <p style={muted}>The machine owner did not scan this code in time. No hours were used.</p>}
         <Primary onClick={onRemove}>Make a new code</Primary>
       </Card></Page>
@@ -190,10 +199,10 @@ function Code({ c, left, live, used, rate, onBack, onRemove }) {
           <img src={img} alt="Your voucher code" style={{ width: 190, height: 190, display: 'block' }} />
         </div>
       )}
-      <KV k="Paid from" v={`Machinery · up to ${c.hours} h`} />
-      {rate && <KV k="Value" v={`up to ${inr(c.hours * rate.total)}`} />}
+      <KV k="Paid from" v={`Machinery · up to ${th(c.hours)} tractor hours`} />
+      {rate && c.work != null && <KV k="Value" v={`up to ${inr(c.work * rate.total)}`} />}
       <KV k="Valid until" v={`${when(c.until)} · ${hoursLeft(c.until)} h left`} />
-      <KV k="Left after" v={`${left - c.hours} h or more`} />
+      <KV k="Left after" v={`${th(left - c.hours)} tractor hours or more`} />
       <p style={muted}>Show this to the machine owner. Hours are used when they scan it.</p>
       <button type="button" onClick={onRemove} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Remove from this phone</button>
     </Card></Page>

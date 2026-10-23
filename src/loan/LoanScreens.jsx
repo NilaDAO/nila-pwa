@@ -22,7 +22,7 @@ import { NIN, isLoanRequest, makeRequest } from './request';
 import { checkDeskRequest, isDeskRequest } from './desk';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import PostBring from '../anchor/PostBring';
-import { typeName, useRates } from '../machine/hooks';
+import { TRACTOR, hoursFor, th, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
 import ConfirmShare from './ConfirmShare';
 
 const FLAG_DRAWN = 8;
@@ -71,11 +71,18 @@ export function LeaderLoan({ initial }) {
   const pickFt = shares.data?.find((x) => x.token_id === pick)?.ft;
   const checks = useUnionChecks(pickFt?.member);
   const [cash, setCash] = useState(0);
-  // Machine hours per machine type, as the plan sets them (23 Oct): { type: whole hours }. The voucher is their sum;
-  // the contract holds hours only, priced at the rate of the machine that does the job.
+  // Machine hours per machine type (23 Oct): { type: whole hours }, a row for every type the union registered and
+  // confirmed (0 unless the plan sets it) and every type of her plan. The voucher is their value in tractor hours,
+  // held in units (centi tractor hours): Σ hours × the type's rate ÷ the tractor's rate, rounded up.
   const [mach, setMach] = useState({});
-  const hours = Object.values(mach).reduce((a, b) => a + b, 0);
   const rates = useRates();
+  const machines = useMachines();
+  const rateOf = (t) => rates.data?.find((r) => r.type === Number(t))?.total || 0;
+  const tractorRate = rateOf(TRACTOR);
+  const unionTypes = [...new Set((machines.data || []).filter((m) => m.confirmed).map((m) => m.machine_type))];
+  const types = [...new Set([...Object.keys(mach).map(Number), ...unionTypes])].filter((t) => t > 0).sort((a, b) => a - b);
+  const value = Object.entries(mach).reduce((a, [t, h]) => a + h * rateOf(t), 0);
+  const hours = tractorRate > 0 ? unitsOf(1, value, tractorRate) : 0;   // units
   // The share is picked before this screen (23 Oct, no list here): the one from her QR or G2, else (a To do row, one
   // per plan) her first Ready share; with the plan's cash and hours.
   useEffect(() => {
@@ -87,19 +94,22 @@ export function LeaderLoan({ initial }) {
     if (!x) return;
     setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0));
     const ms = Object.values(planRow(plan, x.share)?.finance?.machines || {}).filter((m) => m.type && m.hours > 0);
-    setMach(ms.length ? Object.fromEntries(ms.map((m) => [m.type, Math.ceil(m.hours)])) : x.share.hours > 0 ? { 0: Math.ceil(x.share.hours) } : {});
+    setMach(Object.fromEntries(ms.map((m) => [m.type, Math.ceil(m.hours)])));
   }, [shares.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // The plan's amounts, within the union's caps once they are read (the steppers start inside the limit).
   useEffect(() => {
     if (!checks.data || !pickFt) return;
     const c = capsFor(checks.data, pickFt);
     setCash((v) => Math.min(v, c.cash));
-    // Over the union's machine stock: the last types give way first.
+    // Over the union's machine stock (units): the last types give way first.
+    if (!(tractorRate > 0)) return;
     setMach((m) => {
       let left = c.hours;
-      return Object.fromEntries(Object.entries(m).map(([t, h]) => { const k = Math.min(h, left); left -= k; return [t, k]; }));
+      return Object.fromEntries(Object.entries(m).map(([t, h]) => {
+        const k = Math.min(h, hoursFor(left, rateOf(t), tractorRate)); left -= unitsOf(k, rateOf(t), tractorRate); return [t, k];
+      }));
     });
-  }, [checks.data, pickFt]);
+  }, [checks.data, pickFt, tractorRate]); // eslint-disable-line react-hooks/exhaustive-deps
   const [req, setReq] = useState();
   const [own, setOwn] = useState(false);
   const tx = useSorobanTx();
@@ -111,14 +121,14 @@ export function LeaderLoan({ initial }) {
   // L9 (board LeaderRequestQR): the request QR as big as the screen allows; no 6 numbers (no typed fallback, 22 Oct).
   if (req) {
     const r = req.request;
-    const mv = Object.entries(mach).reduce((t, [k, h]) => t + h * (rates.data?.find((x) => x.type === Number(k))?.total || 0), 0);
+    const mv = value;
     return (
       <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
         <ScreenHeader title="Crop share request" onBack={() => setReq(undefined)} />
         <Card label="Crop share request" style={{ gap: 12 }}>
           <BigQr img={img} alt="Crop share request QR" caption="Let her scan this with her phone" below={340} />
           <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>
-            {r.crop} · {inr(Number(BigInt(r.cash) / NIN))} cash{r.hours ? ` + ${mv ? inr(mv) : `${r.hours} h`} vouchers` : ''}</span>
+            {r.crop} · {inr(Number(BigInt(r.cash) / NIN))} cash{r.hours ? ` + ${inr(mv)} vouchers (${th(r.hours)} tractor h)` : ''}</span>
           <KV k="Valid for" v="48 hours" />
         </Card>
       </div>
@@ -162,7 +172,7 @@ export function LeaderLoan({ initial }) {
     const nm = `${row?.name || sel.crop}`;
     const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
     const draw = () => tx.run({
-      label: `Crop share ${nm}`, rows: [['Cash', inr(cash)], ...(hours ? [['Machine vouchers', `${hours} hours`]] : []), ['For', `${nm} · Area ${ar}`]],
+      label: `Crop share ${nm}`, rows: [['Cash', inr(cash)], ...(hours ? [['Machine vouchers', `${th(hours)} tractor hours`]] : []), ['For', `${nm} · Area ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan',
       args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
       invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
@@ -172,8 +182,6 @@ export function LeaderLoan({ initial }) {
   // Board LeaderRedeem, without its crop share list (23 Oct: the share comes picked): one card with the share, the
   // steppers, total / interest / repay and the union checks. No seed row: seed is paid as cash (P5).
   const name = sel ? `${row?.name || sel.crop} · Area ${Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1}` : '';
-  const rateOf = (t) => rates.data?.find((r) => r.type === Number(t))?.total || 0;
-  const machValue = Object.entries(mach).reduce((a, [t, h]) => a + h * rateOf(t), 0);
   // Cash is lent from member money only (junior, above its reserve); the plan's cash above that is shown, not lent.
   const notCovered = sel && checks.data ? Math.max(0, Math.round(sel.share.loan_amount || 0) - caps.cash) : 0;
   const rows = checkRows(checks.data, cash, hours, caps);
@@ -189,13 +197,26 @@ export function LeaderLoan({ initial }) {
             <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>Ready</span>}>{name}</CardTitle>
             {checks.isError && <span style={{ color: C.coral }}>Could not read the union. Try again.</span>}
             {checks.data && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
-            {notCovered > 0 && <KV k="Not covered by member money" v={inr(notCovered)} color={C.coral} />}
-            {checks.data && Object.entries(mach).map(([t, h]) => (
-              <Stepper key={t} label={Number(t) ? `${typeName(Number(t))}${rateOf(t) ? ` · ${inr(rateOf(t))}/h` : ''}` : 'Machine hours'} value={h}
-                set={(v) => setMach((m) => ({ ...m, [t]: v }))} step={1} max={h + Math.max(0, caps.hours - hours)} fmt={(v) => `${v} h`} />
-            ))}
+            {/* Cash above member money: only a sold batch's prepayment could fund it. DESIGN GAP: no on-chain record of
+                sold-batch prepayments on Stellar yet, so the chip is ₹0. */}
+            {notCovered > 0 && (
+              <>
+                <span style={{ alignSelf: 'flex-start', minHeight: 32, borderRadius: 12, background: C.raised, color: C.muted, padding: '0 12px',
+                  display: 'flex', alignItems: 'center', fontSize: 14, fontWeight: 700 }}>Sold batches · ₹0 prepaid</span>
+                <span style={{ color: C.muted, fontSize: 14, lineHeight: 1.5 }}>Cash above member money ({inr(notCovered)} more in her plan) can only be funded by selling a batch (a buyer's prepayment).</span>
+              </>
+            )}
+            {checks.data && types.map((t) => {
+              const h = mach[t] || 0;
+              const room = tractorRate > 0 ? hoursFor(Math.max(0, caps.hours - hours), rateOf(t), tractorRate) : 0;
+              return (
+                <Stepper key={t} label={`${typeName(t)}${rateOf(t) ? ` · ${inr(rateOf(t))}/h` : ''}`} value={h}
+                  set={(v) => setMach((m) => ({ ...m, [t]: v }))} step={1} max={h + room} fmt={(v) => `${v} h`} />
+              );
+            })}
+            {hours > 0 && <KV k="Vouchers" v={`≈ ${th(hours)} tractor hours`} />}
             <div style={line} />
-            <KV k="Total" v={inr(cash + machValue)} />
+            <KV k="Total" v={inr(cash + value)} />
             {rateBp != null && <KV k="Interest" v={`${rateBp / 100}% a year`} />}
             {repay != null && <KV k="Repay" v={`${inr(repay)} · about end of ${monthYear(row.finance.due)}`} />}
             <div style={line} />

@@ -33,7 +33,7 @@ export function useUnionChecks(member) {
         readContract(cfg, 'fund_core', 'senior_earmark', u),
         readContract(cfg, 'fund_core', 'union_treasury', u),
         readContract(cfg, 'fx_pool', 'cash_at_hand', u).catch(() => 0n),
-        cfg.contracts.machinery ? readContract(cfg, 'machinery', 'max_prepay_per_hour', u).catch(() => 0n) : 0n,
+        cfg.contracts.machinery ? readContract(cfg, 'machinery', 'prepay_per_tractor_hour', u).catch(() => 0n) : 0n,
         readContract(cfg, 'fund_core', 'on_hold', u),
         readContract(cfg, 'fund_core', 'position', um),
         readContract(cfg, 'fund_core', 'loans_of', um),
@@ -55,7 +55,8 @@ export function useUnionChecks(member) {
         // Whole rupees: the request is in whole rupees.
         cashCap: Math.max(0, Math.floor(Math.min(maxLoan, num(lendable)))),
         // No machine rate set for the union → no machine hours can be granted yet.
-        hoursCap: ph > 0 ? Math.max(0, Math.floor(seniorFree / ph)) : 0,
+        // In units (centi tractor hours, 23 Oct): the senior money free for the prepay of tractor hours.
+        hoursCap: ph > 0 ? Math.max(0, Math.floor((seniorFree * 100) / ph)) : 0,
         enforceToken: !!uc.enforce_token_amount,
         onHand: num(atHand) + num(treasury),
         rateBp: Number(uc.rate_bp),
@@ -84,7 +85,7 @@ export function checkRows(c, cash, hours, caps = capsFor(c)) {
   const short = cash - c.onHand;
   return [
     ['Cash on hand', short > 0 ? `₹${Math.round(c.onHand).toLocaleString('en-IN')} · ₹${Math.round(short).toLocaleString('en-IN')} short` : `₹${Math.round(c.onHand).toLocaleString('en-IN')} · enough`, short > 0],
-    ['Seed and machine stock', hours <= caps.hours ? 'Enough' : `${caps.hours} h at most`, hours > caps.hours],
+    ['Seed and machine stock', hours <= caps.hours ? 'Enough' : `${(Math.floor(caps.hours / 10) / 10).toFixed(1)} tractor h at most`, hours > caps.hours],
     ['Loan limit of the union', cash <= caps.cash ? 'Within' : `₹${Math.round(caps.cash).toLocaleString('en-IN')} at most`, cash > caps.cash],
   ];
 }
