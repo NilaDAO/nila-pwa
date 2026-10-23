@@ -38,6 +38,7 @@ const Paid = ({ k, sub, v, color = C.text }) => (
     <b style={{ color, whiteSpace: 'nowrap' }}>{v}</b>
   </div>
 );
+const WALK = ['Front', 'Front right', 'Right', 'Back right', 'Back', 'Back left', 'Left', 'Front left'];   // machines/photos.py LABELS
 const LABELS = ['Front left', 'Front', 'Front right', 'Left', null, 'Right', 'Back left', 'Back', 'Back right'];
 
 /** A scanned voucher code: her signed claim authorization of (union, token, max hours). Throws a plain reason. */
@@ -102,6 +103,9 @@ export default function MyMachine({ onBack, pick: first }) {
   }
   const left = Math.max(0, m.hours_per_week - m.usedThisWeek);
   const d = dues.data;
+  // The registered photos, public by their on-chain hash (node GET /machines/photos, 23 Oct); n in walk order.
+  const ph = m.photos_hash ? Buffer.from(m.photos_hash).toString('hex') : '';
+  const photo = (l) => (ph && cfg ? `${process.env.REACT_APP_API_BASE_URL}/machines/photos/${cfg.union}/${ph}/${WALK.indexOf(l) + 1}` : '');
   // A13 as the board (MemberMachine): a full page of cards, not a map card (23 Oct); no weekly hours shown.
   const sec = { height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' };
   return (
@@ -126,7 +130,7 @@ export default function MyMachine({ onBack, pick: first }) {
         <CardTitle>Photos</CardTitle>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           {LABELS.map((l, i) => (l
-            ? <div key={i} style={{ aspectRatio: '1.1', background: C.raised, borderRadius: R.button, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 14, fontSize: 12, fontWeight: 700, color: C.muted }}>{l}</div>
+            ? <div key={i} style={{ aspectRatio: '1.1', background: photo(l) ? `linear-gradient(transparent 55%, rgba(18,18,18,.7)), center / cover url(${photo(l)})` : C.raised, borderRadius: R.button, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 14, fontSize: 12, fontWeight: 700, color: photo(l) ? C.text : C.muted }}>{l}</div>
             : <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ width: 40, height: 40, borderRadius: R.round, background: C.gold, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{tractorSmall}</span></div>))}
         </div>
         <span style={muted}>Take new photos every 3 months.</span>
