@@ -12,7 +12,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv, tokenHex } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
+import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { NIN, checkRequest, makeRequest } from './request';
 import { checkDeskRequest, isDeskRequest } from './desk';
@@ -68,9 +68,14 @@ export function LeaderLoan({ initial }) {
   const checks = useUnionChecks(pickFt?.member);
   const [cash, setCash] = useState(0);
   const [hours, setHours] = useState(0);
-  // Her share from the QR: picked once the shares are read, with the plan's cash and hours (as a tap on it).
+  // The share is picked before this screen (23 Oct, no list here): the one from her QR or G2, else (a To do row, one
+  // per plan) her first Ready share; with the plan's cash and hours.
   useEffect(() => {
-    const x = initToken && !pick && shares.data?.find((y) => y.token_id === initToken || tokenHex(y.token_id) === initToken);
+    const t = Date.now() / 1000;
+    const isReady = (y) => !!y.ft && !(Number(y.ft.loan?.flags ?? 0) & FLAG_DRAWN) && Number(y.ft.from_date) <= t;
+    const x = !pick && (initToken
+      ? shares.data?.find((y) => y.token_id === initToken || tokenHex(y.token_id) === initToken)
+      : shares.data?.find(isReady));
     if (x) { setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0)); setHours(Math.round(x.share.hours || 0)); }
   }, [shares.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [req, setReq] = useState();
@@ -97,7 +102,6 @@ export function LeaderLoan({ initial }) {
       </Sheet>
     );
   }
-  const now = Date.now() / 1000;
   const sel = shares.data?.find((x) => x.token_id === pick);
   const row = sel && planRow(plan, sel.share);
   // The rate fund_core charges (uc.rate_bp). The plan's tree discount (LOAN_RULES §5) is not applied by the
@@ -119,20 +123,10 @@ export function LeaderLoan({ initial }) {
     } catch (e) { setError(e.message); }
   };
   return (
-    <Sheet landName={`Land ${plan.land_id}`} title="Pick a crop share" onBack={() => window.history.back()}>
-      <p style={{ ...muted, textAlign: 'center' }}>From her plan</p>
+    <Sheet landName={`Land ${plan.land_id}`} title={sel ? `${row?.name || sel.crop} · Area ${Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1}` : 'Crop share request'}
+      onBack={() => window.history.back()}>
       {shares.isLoading && <p style={muted}>…</p>}
-      {shares.data?.map((x) => {
-        const drawn = x.ft && (Number(x.ft.loan?.flags ?? 0) & FLAG_DRAWN);
-        const ready = !!x.ft && !drawn && Number(x.ft.from_date) <= now;
-        const tag = !x.ft ? 'Not attested yet' : drawn ? 'Financed' : ready ? 'Ready' : `From ${monthYear(Number(x.ft.from_date) * 1000)}`;
-        return (
-          <Choice key={x.token_id} on={pick === x.token_id} sub={`${x.share.zone} · ${tag}`}
-            onClick={() => { if (!ready) return; setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0)); setHours(Math.round(x.share.hours || 0)); }}>
-            {x.crop}
-          </Choice>
-        );
-      })}
+      {shares.data && !sel && <p style={muted}>No crop share of hers is ready.</p>}
       {sel && (
         <>
           {checks.data && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
