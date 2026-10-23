@@ -14,7 +14,9 @@ import { useStellarConfig } from '../stellar/hooks';
 import { readAuthEntry, readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
-import { C, R } from '../shell/tokens';
+import { C, FONT, R } from '../shell/tokens';
+import { ScreenHeader } from '../shell/ListRow';
+import { Card, CardTitle, KV } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
 import { HOLD_REASONS, saveJob, typeName, useMyMachine, useOwnerDues, useRates } from './hooks';
 
@@ -55,12 +57,25 @@ export default function MyMachine({ onBack }) {
   if (claiming) return <Claim machine={m} rate={rate} onBack={() => setClaiming(false)} />;
 
   if (!m.confirmed) {
+    // A full page as L13 (23 Oct): what was registered for her, her duties, one button.
+    const check = <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>;
     return (
-      <Sheet landName="Nila" title={typeName(m.machine_type)} onBack={onBack}>
-        <p style={muted}>Your union leader registered this machine for you: {m.hours_per_week} h a week{rate ? ` · ${inr(rate.total)} an hour` : ''}.</p>
-        <p style={muted}>You drive it, keep it working and pay the repairs, and put it on hold when it cannot work.</p>
-        <Primary disabled={!tx.ready} onClick={() => call('Confirm your machine', 'confirm_machine', [sv.address(me), sv.u64(m.id)], [['Machine', typeName(m.machine_type)]])}>Confirm my machine</Primary>
-      </Sheet>
+      <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <ScreenHeader title="Confirm your machine" onBack={onBack} />
+        <Card label="Your machine" style={{ gap: 12 }}>
+          <CardTitle>{typeName(m.machine_type)}</CardTitle>
+          <span style={muted}>Your union leader registered it for you. Members can hire it with their machine hours once you confirm.</span>
+          <KV k="Hours a week" v={`${m.hours_per_week} h`} />
+          {rate && <KV k="You get an hour" v={inr(rate.total)} />}
+        </Card>
+        <Card label="Your duties" style={{ gap: 12 }}>
+          <CardTitle>Your duties</CardTitle>
+          {['Drive the machine.', 'Keep it working and pay the repairs.', 'Put it on hold when it cannot work.'].map((t) => (
+            <span key={t} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, lineHeight: 1.5 }}>{check}{t}</span>
+          ))}
+          <Primary disabled={!tx.ready} onClick={() => call('Confirm your machine', 'confirm_machine', [sv.address(me), sv.u64(m.id)], [['Machine', typeName(m.machine_type)]])}>Confirm my machine</Primary>
+        </Card>
+      </div>
     );
   }
   if (holding) {

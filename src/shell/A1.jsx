@@ -19,7 +19,7 @@ import { C, FONT, R, SHADOW } from './tokens';
 import { CashTile, ChevronIcon, HistoryIcon, InvestedTile, LandIcon, MachineryTile, MyMachineTile, NinTile, QrIcon, RefreshIcon, TreasuryTile, UsdcTile } from './icons';
 import RoundButton, { SettingsButton } from './RoundButton';
 import { StickyTop } from './ListRow';
-import MessageSlider, { memberSlides } from './MessageSlider';
+import MessageSlider, { Title, card, memberSlides, small } from './MessageSlider';
 import { Sheet } from '../plan/ui';
 import { useStage } from './stageCtx';
 import { homeTop, useHomeMap } from './MapStage';
@@ -122,7 +122,15 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   });
   // One slider for member and leader (22 Oct): the leader's cash and LP cards first, then her own.
   const leaderSlides = useLeaderSlides({ on: !!leader, onSettle, onScanLp, onMachine: onRegisterMachine });
-  const slides = [...leaderSlides, ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans })];
+  // Her machine waits for her confirmation (23 Oct): first in the slider, straight to Your machine.
+  const confirmSlide = machine && !machine.confirmed ? [(
+    <section key="confirm-machine" aria-label="Confirm your machine" style={card}>
+      <Title Icon={MyMachineTile}>Confirm your machine</Title>
+      <span style={{ ...small, color: C.muted }}>{typeName(machine.machine_type)}, registered by your union leader. Members can hire it once you confirm.</span>
+      <button type="button" onClick={onMachine} style={{ height: 44, borderRadius: 12, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>Confirm your machine</button>
+    </section>
+  )] : [];
+  const slides = [...confirmSlide, ...leaderSlides, ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans })];
 
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell A1 is a card over the map of her
   // land (drag line, rounded top), opening high with a strip of map; History, All tasks and Settings are the card's

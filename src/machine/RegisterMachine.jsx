@@ -56,6 +56,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   const [error, setError] = useState();
   const [busy, setBusy] = useState(false);
   const [shooting, setShooting] = useState();
+  const [to, setTo] = useState();
   const rate = useMemo(() => rates.data?.find((r) => r.type === type) || rates.data?.[0], [rates.data, type]);
   const taken = WALK.filter((l) => photos[l]).length;
 
@@ -66,6 +67,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   };
   // The owner is the last step (executive decision 22 Oct): her wallet QR is scanned at the end and registers at once.
   const register = async (own) => {
+    setTo(own);
     setError(undefined); setBusy(true);
     try {
       if (!isG(own)) throw new Error('That QR is not a member wallet. Scan her wallet QR.');
@@ -79,8 +81,8 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
       });
     } catch (e) { setBusy(false); setError(e.message); }
   };
-  // Registered: straight back to the Assets screen (executive decision 23 Oct), no success page.
-  useEffect(() => { if (tx.status === 'success') { tx.reset(); window.location.hash = '#/assets'; } }, [tx.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Registered: straight back to Assets (executive decision 23 Oct), no success page; registered to herself → Your machine to confirm it.
+  useEffect(() => { if (tx.status === 'success') { tx.reset(); window.location.hash = to === s?.stellarAddress ? '#/machine' : '#/assets'; } }, [tx.status]); // eslint-disable-line react-hooks/exhaustive-deps
   // A full page on the gradient, not a map card (executive decision 22 Oct): header, then the board's cards.
   const page = (title, back, body) => (
     <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
