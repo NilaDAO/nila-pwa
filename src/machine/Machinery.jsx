@@ -11,18 +11,30 @@ import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { signInvocation, sv } from '../stellar/soroban';
-import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
-import { C, R } from '../shell/tokens';
+import { Primary, inr, muted } from '../plan/ui';
+import { C, FONT, R } from '../shell/tokens';
+import { ScreenHeader } from '../shell/ListRow';
+import { Card, CardTitle, KV } from '../loan/AssetParts';
 import { loadVoucherCode as load, saveVoucherCode as save, useRates, useVouchers } from './hooks';
 
 const TERM = 34_560;                          // ledgers, ~48 h
 const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const hoursLeft = (ts) => Math.max(0, Math.floor((ts - Date.now() / 1000) / 3600));
-const Row = ({ k, v }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 8 }}>
-    <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700 }}>{v}</span>
-  </div>
-);
+
+const icon = (d, color, size = 20) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>;
+const tractor = icon(<path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" />, C.ink, 32);
+const chevron = icon(<path d="m6 9 6 6 6-6" />, C.muted);
+const qr = icon(<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2v2h-2zM18 14h2v2h-2z" />, C.text, 18);
+const info = <span style={{ flexShrink: 0, display: 'flex' }}>{icon(<path d="M12 22a10 10 0 1 0 0-20a10 10 0 0 0 0 20zM12 16v-4M12 8h.01" />, C.muted)}</span>;
+/** A full page (no map card, 23 Oct): the header, then the screen's cards. */
+function Page({ title, onBack, children }) {
+  return (
+    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <ScreenHeader title={title} onBack={onBack} />
+      {children}
+    </div>
+  );
+}
 
 /** A8 → A8a / A8b. */
 export default function Machinery({ onBack }) {
@@ -69,55 +81,87 @@ export default function Machinery({ onBack }) {
 
   if (show && code) return <Code c={code} left={cv?.left ?? 0} live={!!open} used={used} rate={rates.data?.find((r) => r.type === code.type)} onBack={() => setShow(false)} onRemove={remove} />;
 
-  if (picking) {
-    return (
-      <Sheet landName="Machinery" title="For" onBack={() => setPicking(false)}>
-        {(rates.data || []).map((r) => (
-          <Choice key={r.type} on={rate?.type === r.type} sub={`${inr(r.total)} an hour · up to ${maxOne} h`} onClick={() => { setType(r.type); setPicking(false); }}>{r.name}</Choice>
-        ))}
-      </Sheet>
-    );
-  }
-  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
+  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, cursor: 'pointer', flexShrink: 0 };
+  const field = { height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 14 };
+  const second = { flex: 1, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
+  const label = { fontSize: 14, fontWeight: 700, lineHeight: 1.5 };
+  // Board A8 (MemberAssetTractor), full page (23 Oct): no "Receive" (vouchers are not sent).
   return (
-    <Sheet landName="Machinery" title="Voucher · in machine hours" onBack={onBack}>
-      <div style={{ textAlign: 'center', margin: '8px 0 16px' }}>
-        <div style={{ fontSize: 32, fontWeight: 700 }}>{vouchers.isLoading ? '…' : `${balance} h`}</div>
-        {value && <div style={muted}>{value}</div>}
-      </div>
-      {vouchers.isError && <p style={{ color: C.coral }}>Could not read your vouchers. Try again.</p>}
-      {open && (
-        <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
-          <b>Open code · {rates.data?.find((r) => r.type === open.type)?.name || 'Machine'} · {open.hours} h</b>
-          <div style={muted}>{hoursLeft(open.until)} hours left · not used yet</div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <Primary onClick={() => setShow(true)}>Show</Primary>
-            <button type="button" onClick={remove} style={{ ...b, width: '100%', fontSize: 14, marginTop: 8 }}>Remove</button>
-          </div>
+    <Page title="Machinery" onBack={onBack}>
+      <Card label="Machinery" style={{ gap: 12 }}>
+        <span style={{ alignSelf: 'center', width: 72, height: 72, borderRadius: R.round, background: C.coral, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{tractor}</span>
+        <CardTitle right={<span style={{ fontSize: 16, fontWeight: 700 }}>{vouchers.isLoading ? '…' : `${balance} h`}</span>}>Machinery</CardTitle>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: C.muted, marginTop: -8 }}>
+          <span>Voucher · in machine hours</span><span>{value}</span>
         </div>
+        {vouchers.isError && <span style={{ color: C.coral, fontSize: 14 }}>Could not read your vouchers. Try again.</span>}
+      </Card>
+      {open && (
+        <Card label="Open code" style={{ gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ width: 32, height: 32, borderRadius: 8, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{qr}</span>
+            <span style={{ display: 'flex', flexDirection: 'column', fontSize: 14, lineHeight: 1.5 }}>
+              <b>Open code · {rates.data?.find((r) => r.type === open.type)?.name || 'Machine'} · {open.hours} h</b>
+              <span style={{ color: C.muted }}>{hoursLeft(open.until)} hours left · not used yet</span>
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" style={second} onClick={() => setShow(true)}>Show</button>
+            <button type="button" style={second} onClick={remove}>Cancel code</button>
+          </div>
+        </Card>
       )}
-      {lost && <p style={{ color: C.coral }}>{lost}</p>}
-      {code && !open && !used && <Choice sub={`Was valid until ${when(code.until)}`} onClick={() => setShow(true)}>Expired code</Choice>}
+      {lost && <span style={{ color: C.coral, fontSize: 14 }}>{lost}</span>}
+      {code && !open && !used && (
+        <Card label="Expired code" style={{ gap: 8 }}>
+          <span style={label}>Expired code</span>
+          <span style={{ color: C.muted, fontSize: 14 }}>Was valid until {when(code.until)}</span>
+          <button type="button" style={second} onClick={() => setShow(true)}>Show</button>
+        </Card>
+      )}
       {balance > 0 && (
-        <>
-          <h2 style={{ fontSize: 14, fontWeight: 700 }}>Spend</h2>
-          <Choice sub={rate ? `${inr(rate.total)} an hour · up to ${maxOne} h` : 'No machine rates set by the union yet'} onClick={() => rates.data?.length && setPicking(true)}>{rate ? `For · ${rate.name}` : 'For'}</Choice>
-          <p style={{ fontWeight: 700, margin: '12px 0 4px' }}>Machine hours</p>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+        <Card label="Spend" style={{ gap: 12 }}>
+          <span style={label}>For</span>
+          {!rates.data?.length && <span style={{ color: C.muted, fontSize: 14 }}>No machine rates set by the union yet.</span>}
+          {/* The machine list opens inside the card under the row, as on L13. */}
+          {rate && (
+            <div style={{ background: C.raised, borderRadius: R.button, overflow: 'hidden' }}>
+              <button type="button" aria-expanded={picking} onClick={() => setPicking(!picking)} style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ flexGrow: 1, fontWeight: 700 }}>{rate.name}</span>
+                <span style={{ color: C.muted }}>up to {maxOne} h</span>
+                <span style={{ display: 'flex', transform: picking ? 'rotate(180deg)' : 'none' }}>{chevron}</span>
+              </button>
+              {picking && (rates.data || []).filter((r) => r.type !== rate.type).map((r) => (
+                <button key={r.type} type="button" onClick={() => { setType(r.type); setPicking(false); }}
+                  style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left', borderTop: `1px solid ${C.ink}`, borderRadius: 0 }}>
+                  <span style={{ flexGrow: 1 }}>{r.name}</span><span style={{ color: C.muted }}>{inr(r.total)} an hour</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <span style={label}>Machine hours</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button type="button" aria-label="Less" style={b} onClick={() => setHours(Math.max(1, h - 1))}>−</button>
-            <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700, fontSize: 20 }}>{h} h</span>
+            <label style={{ ...field, flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 8 }}>
+              <input aria-label="Machine hours" inputMode="numeric" value={h} onChange={(e) => setHours(Math.max(0, Math.min(maxOne, Number(e.target.value.replace(/\D/g, '')) || 0)))}
+                style={{ flex: 1, minWidth: 0, border: 0, background: 'transparent', color: C.text, fontFamily: 'inherit', fontSize: 16, fontWeight: 700, outline: 'none' }} />
+              <span style={{ color: C.muted }}>h</span>
+            </label>
             <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(maxOne, h + 1))}>+</button>
             <button type="button" style={{ ...b, width: 'auto', padding: '0 14px', fontSize: 14 }} onClick={() => setHours(maxOne)}>Max</button>
           </div>
-          {rate && <Row k="Uses" v={`${h} h · ${inr(h * rate.total)}`} />}
-          <Row k="Left after" v={`${balance - h} h`} />
-          {open && <p style={muted}>Remove the open code first.</p>}
+          {rate && <KV k="Uses" v={`${h} h · ${inr(h * rate.total)}`} />}
+          <KV k="Left after" v={`${balance - h} h`} />
+          {open && <span style={{ color: C.muted, fontSize: 14 }}>Cancel the open code first.</span>}
           <Primary disabled={!online || busy || !s?.ready || !cfg || !rate || h < 1 || !!open} onClick={make}>{!online ? 'Needs internet' : h < 1 ? 'Enter an amount' : `Make code for ${h} h`}</Primary>
-          <p style={muted}>{online ? 'Pays for any machine work. Hours are used when the owner scans.' : 'You are offline. Making a code needs internet.'}</p>
-        </>
+        </Card>
       )}
-      {!vouchers.isLoading && balance === 0 && !open && <p style={muted}>No machine hours yet. They come with a crop share.</p>}
-    </Sheet>
+      {!vouchers.isLoading && balance === 0 && !open && <Card label="No hours"><span style={{ color: C.muted, fontSize: 14 }}>No machine hours yet. They come with a crop share.</span></Card>}
+      <Card label="How it works" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {info}
+        <span style={{ color: C.muted, fontSize: 14, lineHeight: 1.5 }}>{online ? 'Pays for any machine work. Hours are used when the owner scans.' : 'You are offline. Making a code needs internet.'}</span>
+      </Card>
+    </Page>
   );
 }
 
@@ -128,17 +172,17 @@ function Code({ c, left, live, used, rate, onBack, onRemove }) {
   const name = `${rate?.name || 'Machine'} · ${c.hours} h`;
   if (!live) {
     return (
-      <Sheet landName="Machinery" title={name} onBack={onBack}>
-        <Row k="Status" v={used ? 'Used' : 'Expired · no hours used'} />
-        <Row k="Was valid until" v={when(c.until)} />
-        <Row k="You still have" v={`${left} h`} />
+      <Page title={name} onBack={onBack}><Card label={name} style={{ gap: 12 }}>
+        <KV k="Status" v={used ? 'Used' : 'Expired · no hours used'} />
+        <KV k="Was valid until" v={when(c.until)} />
+        <KV k="You still have" v={`${left} h`} />
         {!used && <p style={muted}>The machine owner did not scan this code in time. No hours were used.</p>}
         <Primary onClick={onRemove}>Make a new code</Primary>
-      </Sheet>
+      </Card></Page>
     );
   }
   return (
-    <Sheet landName="Machinery" title={name} onBack={onBack}>
+    <Page title={name} onBack={onBack}><Card label={name} style={{ gap: 12 }}>
       {/* The board's white circle; the square QR sits inside it whole (side ≤ diameter / √2): a clipped
           corner square cannot be read by a camera. */}
       {img && (
@@ -146,12 +190,12 @@ function Code({ c, left, live, used, rate, onBack, onRemove }) {
           <img src={img} alt="Your voucher code" style={{ width: 190, height: 190, display: 'block' }} />
         </div>
       )}
-      <Row k="Paid from" v={`Machinery · up to ${c.hours} h`} />
-      {rate && <Row k="Value" v={`up to ${inr(c.hours * rate.total)}`} />}
-      <Row k="Valid until" v={`${when(c.until)} · ${hoursLeft(c.until)} h left`} />
-      <Row k="Left after" v={`${left - c.hours} h or more`} />
+      <KV k="Paid from" v={`Machinery · up to ${c.hours} h`} />
+      {rate && <KV k="Value" v={`up to ${inr(c.hours * rate.total)}`} />}
+      <KV k="Valid until" v={`${when(c.until)} · ${hoursLeft(c.until)} h left`} />
+      <KV k="Left after" v={`${left - c.hours} h or more`} />
       <p style={muted}>Show this to the machine owner. Hours are used when they scan it.</p>
       <button type="button" onClick={onRemove} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Remove from this phone</button>
-    </Sheet>
+    </Card></Page>
   );
 }

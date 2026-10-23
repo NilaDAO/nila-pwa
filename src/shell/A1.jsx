@@ -10,7 +10,8 @@ import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useTitleCount } from '../register/titles';
 import { useInvestment } from '../stellar/hooks';
-import { ShareRows, useMyShares } from '../loan/MyShares';
+import { ShareRows, rowOf, useMyShares } from '../loan/MyShares';
+import { tokenHex } from '../stellar/soroban';
 import { loadVoucherCode, typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
@@ -101,7 +102,6 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const inv = useInvestment(s?.stellarAddress);
   const invested = inv.data ? Number(inv.data.invested) / 1e7 : undefined;
   const vouchers = useVouchers(s?.stellarAddress);
-  const vHours = (vouchers.data || []).reduce((a, v) => a + v.left, 0);
   // Her voucher code is kept on her phone (A8a, 23 Oct): open while unused and not expired.
   const vCode = loadVoucherCode();
   const vOpen = vCode && vCode.until > Date.now() / 1000 && (vouchers.data || []).some((v) => v.token === vCode.token && v.used === vCode.used) ? vCode : null;
@@ -190,10 +190,6 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           <Row label="Open nIN invested" icon={<InvestedTile />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}
             value={Math.floor(invested)} valueSub={inr(invested)} onClick={onInvested} />
         )}
-        {vouchers.data?.length > 0 && (
-          <Row label="Open machinery" icon={<MachineryTile />} title="Machinery" sub={vOpen ? `1 open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
-            value={`${vHours} h`} valueSub="" onClick={onMachinery} />
-        )}
         {/* One row per machine she owns (23 Oct), named by its type. */}
         {machine?.all.map((x) => (
           <Row key={x.id} label={`Open ${typeName(x.machine_type)}`} icon={<MyMachineTile />} title={typeName(x.machine_type)}
@@ -208,6 +204,21 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
             : <Row label="USDC, identity check needed" icon={<UsdcTile />} title="USDC" warn="Identity check (KYC) needed" />
         ) : lp?.trustline && (
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="For cash offers as an LP" value={lp.usdc.toFixed(2)} valueSub="" onClick={onOffers} />
+        )}
+        {/* Machine vouchers under their own label (23 Oct): one row per crop share that carries hours, its hours left. */}
+        {vouchers.data?.length > 0 && (
+          <>
+            <span style={label}>Machine vouchers</span>
+            {vouchers.data.map((v) => {
+              const x = shares.find((y) => tokenHex(y.token_id) === v.token);
+              const open = vOpen?.token === v.token;
+              return (
+                <Row key={v.token} label={`Open machine voucher ${x ? x.crop : ''}`} icon={<MachineryTile />} title={x ? `${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area}` : 'Machinery'}
+                  sub={open ? `Open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
+                  value={`${v.left} h`} valueSub="" onClick={onMachinery} />
+              );
+            })}
+          </>
         )}
         {/* Her crop shares last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}
         <ShareRows onOpen={onShare} />
