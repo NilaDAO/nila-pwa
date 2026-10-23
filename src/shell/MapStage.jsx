@@ -17,7 +17,7 @@ import { rowOf, useMyLand, useMyShares } from '../loan/MyShares';
 
 export { useStage } from './stageCtx';
 
-const same = (a, b) => !!a && !!b && a.record === b.record && a.selected === b.selected && a.onSelect === b.onSelect
+const same = (a, b) => (a === b) || (!!a && !!b && a.record === b.record && a.selected === b.selected && a.onSelect === b.onSelect
   && a.fitBottom === b.fitBottom && JSON.stringify(a.labels || {}) === JSON.stringify(b.labels || {});
 
 export default function MapStage({ children }) {

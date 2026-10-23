@@ -110,7 +110,7 @@ export default function MemberStatus({ id, go }) {
   }, [m]);
   if (members.isLoading) {
     return (
-      <MapCard header={{ title: '', onBack: () => go('members'), onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+      <MapCard map={<span />} header={{ title: '', onBack: () => go('members'), onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
         <SkeletonRows rows={4} />
       </MapCard>
     );
@@ -118,7 +118,7 @@ export default function MemberStatus({ id, go }) {
   const back = () => go('members');
   if (!m) {
     return (
-      <MapCard header={{ title: 'Member', onBack: back, onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+      <MapCard map={<span />} header={{ title: 'Member', onBack: back, onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
         <p style={{ color: C.muted, padding: '0 14px' }}>This member is not in your union's list.</p>
       </MapCard>
     );
@@ -150,7 +150,8 @@ export default function MemberStatus({ id, go }) {
     contractName: 'fund_core', fn: 'mark_default', args: [sv.address(cfg.union), sv.bytes32(dueLoan.token)],
     invalidate: [['stellar', 'unionMembers'], ['stellar', 'unionShares'], ['stellar', 'loans']],
   });
-  const map = m.record ? <AreaMap record={m.record} labels={labels} /> : null;
+  // Her fields only (23 Oct): until her record is in, no map at all, never the leader's own fields.
+  const map = m.record ? <AreaMap record={m.record} labels={labels} /> : <span />;
   return (
     <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings') }}
       style={{ fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5 }}>
