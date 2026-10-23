@@ -11,7 +11,8 @@
 import { useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { readAuthEntry, readContract, sv } from '../stellar/soroban';
+import { readContract, server, sv } from '../stellar/soroban';
+import { matchToken, readVoucherCode, voucherEntry } from './voucherCode';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
@@ -41,13 +42,16 @@ const Paid = ({ k, sub, v, color = C.text }) => (
 const WALK = ['Front', 'Front right', 'Right', 'Back right', 'Back', 'Back left', 'Left', 'Front left'];   // machines/photos.py LABELS
 const LABELS = ['Front left', 'Front', 'Front right', 'Left', null, 'Right', 'Back left', 'Back', 'Back right'];
 
-/** A scanned voucher code: her signed claim authorization of (union, token, max hours). Throws a plain reason. */
-export function parseVoucherCode(cfg, text) {
-  let e;
-  try { e = readAuthEntry(cfg, (text || '').trim()); } catch { throw new Error('This is not a Nila voucher code.'); }
-  if (e.contractName !== 'machinery' || e.fn !== 'claim' || e.native.length !== 3) throw new Error('This is not a Nila voucher code.');
-  if (String(e.native[0]) !== cfg.union) throw new Error('This code is for another union.');
-  return { entry: text.trim(), member: e.signer, token: Buffer.from(e.native[1]).toString('hex'), signed: Number(e.native[2]) };
+/** A scanned voucher code (compact, 23 Oct): her address, units, expiry and signature; the share is found among her
+ *  vouchers by the signature, and the full authorization entry is rebuilt. Throws a plain reason. */
+export async function parseVoucherCode(cfg, text) {
+  const c = readVoucherCode(text);
+  const latest = (await server(cfg).getLatestLedger()).sequence;
+  if (c.exp <= latest) throw new Error('This code has expired. Ask her to make a new one.');
+  const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(c.member)]).catch(() => []);
+  const token = matchToken(cfg, c, (ids || []).map((id) => Buffer.from(id).toString('hex')));
+  if (!token) throw new Error('No voucher of hers matches this code.');
+  return { entry: voucherEntry(cfg, c, token), member: c.member, token, signed: c.units };
 }
 
 export default function MyMachine({ onBack, pick: first }) {
@@ -175,7 +179,7 @@ function Claim({ machine, rate, tractor, onBack }) {
   const read = async (text) => {
     setError(undefined);
     try {
-      const c = parseVoucherCode(cfg, text);
+      const c = await parseVoucherCode(cfg, text);
       const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(c.token)]);
       if (!v || v.void || v.member !== c.member) throw new Error('This voucher is not open any more.');
       if (v.member === s.stellarAddress) throw new Error('You cannot claim your own voucher.');

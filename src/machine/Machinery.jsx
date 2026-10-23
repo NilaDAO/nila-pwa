@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { signInvocation, sv } from '../stellar/soroban';
+import { signVoucherCode } from './voucherCode';
 import { Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
@@ -77,8 +77,8 @@ export default function Machinery({ onBack }) {
     if (!v) return;
     setBusy(true); setLost(undefined);
     try {
-      const { entry, until } = await signInvocation({ cfg, signer: s.stellarAddress, signHash: s.signHash, contractName: 'machinery', fn: 'claim',
-        args: [sv.address(cfg.union), sv.bytes32(v.token), sv.u32(units)], ledgers: TERM });
+      // The compact code (23 Oct): her address, the units, the expiry ledger and her signature only.
+      const { qr: entry, until } = await signVoucherCode({ cfg, signer: s.stellarAddress, signHash: s.signHash, token: v.token, units, ledgers: TERM });
       // hours: the units she signed for; work: the hours of that machine they pay for.
       const c = { entry, token: v.token, hours: units, work: h, type: rate?.type, used: v.used, until };
       save(c);
@@ -177,7 +177,7 @@ export default function Machinery({ onBack }) {
 /** A8a (open) / A8b (expired or used). */
 function Code({ c, left, live, used, rate, onBack, onRemove }) {
   const [img, setImg] = useState();
-  useEffect(() => { if (live) QRCode.toDataURL(c.entry, { width: 400, margin: 1, errorCorrectionLevel: 'L' }).then(setImg); }, [live, c.entry]);
+  useEffect(() => { if (live) QRCode.toDataURL(c.entry, { width: 400, margin: 2, errorCorrectionLevel: 'M' }).then(setImg); }, [live, c.entry]);
   const name = `${rate?.name || 'Machine'} · ${c.work ?? th(c.hours)} h`;
   if (!live) {
     return (
