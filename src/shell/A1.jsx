@@ -10,8 +10,7 @@ import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useTitleCount } from '../register/titles';
 import { useInvestment } from '../stellar/hooks';
-import { ShareRows, rowOf, useMyShares } from '../loan/MyShares';
-import { tokenHex } from '../stellar/soroban';
+import { ShareRows, useMyShares } from '../loan/MyShares';
 import { loadVoucherCode, th, typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
@@ -205,19 +204,14 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         ) : lp?.trustline && (
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="For cash offers as an LP" value={lp.usdc.toFixed(2)} valueSub="" onClick={onOffers} />
         )}
-        {/* Vouchers under their own label (any voucher kind; machine hours today) (23 Oct): one row per crop share that carries hours, its hours left. */}
+        {/* Vouchers under their own label (any voucher kind; machine hours today, 23 Oct): one row for her machine
+            vouchers, all her crop shares' hours left together, in tractor hours; no crop named. */}
         {vouchers.data?.length > 0 && (
           <>
             <span style={label}>Vouchers</span>
-            {vouchers.data.map((v) => {
-              const x = shares.find((y) => tokenHex(y.token_id) === v.token);
-              const open = vOpen?.token === v.token;
-              return (
-                <Row key={v.token} label={`Open machine voucher ${x ? x.crop : ''}`} icon={<MachineryTile />} title={x ? `${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area}` : 'Machinery'}
-                  sub={open ? `Open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'Voucher · in machine hours'}
-                  value={`${th(v.left)} h`} valueSub="" onClick={onMachinery} />
-              );
-            })}
+            <Row label="Open machine vouchers" icon={<MachineryTile />} title="Machine vouchers"
+              sub={vOpen ? `Open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'In tractor hours'}
+              value={`${th(vouchers.data.reduce((a, v) => a + v.left, 0))} h`} valueSub="" onClick={onMachinery} />
           </>
         )}
         {/* Her crop shares last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}
