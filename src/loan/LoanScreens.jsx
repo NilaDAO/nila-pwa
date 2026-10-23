@@ -9,7 +9,8 @@ import QRCode from 'qrcode';
 import CameraView from '../shell/CameraView';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { readContract, sv, tokenHex } from '../stellar/soroban';
+import { readFoodTokens, sv, tokenHex } from '../stellar/soroban';
+import { SkeletonRows } from '../shell/Skeleton';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
@@ -57,11 +58,10 @@ export function LeaderLoan({ initial }) {
     queryKey: ['oracle', 'shares', planId], enabled: !!plan && !!cfg,
     queryFn: async () => {
       const { mints } = await api.mintList(planId);
-      return Promise.all(mints.filter((m) => m.token_id).map(async (m) => {
-        const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(tokenHex(m.token_id))]).catch(() => null);
-        const share = (plan.plan.shares || []).find((x) => x.key === m.share) || {};
-        return { ...m, share, ft };
-      }));
+      // Every share's state in one batched read (as useMyShares), not a simulation each.
+      const withId = mints.filter((m) => m.token_id);
+      const fts = withId.length ? await readFoodTokens(cfg, cfg.union, withId.map((m) => tokenHex(m.token_id))).catch(() => ({})) : {};
+      return withId.map((m) => ({ ...m, share: (plan.plan.shares || []).find((x) => x.key === m.share) || {}, ft: fts[tokenHex(m.token_id)] || null }));
     },
   });
   const [pick, setPick] = useState();
@@ -79,6 +79,12 @@ export function LeaderLoan({ initial }) {
       : shares.data?.find(isReady));
     if (x) { setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0)); setHours(Math.round(x.share.hours || 0)); }
   }, [shares.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The plan's amounts, within the union's caps once they are read (the steppers start inside the limit).
+  useEffect(() => {
+    if (!checks.data || !pickFt) return;
+    const c = capsFor(checks.data, pickFt);
+    setCash((v) => Math.min(v, c.cash)); setHours((v) => Math.min(v, c.hours));
+  }, [checks.data, pickFt]);
   const [req, setReq] = useState();
   const [img, setImg] = useState();
   const [error, setError] = useState();
@@ -96,11 +102,15 @@ export function LeaderLoan({ initial }) {
       </Sheet>
     );
   }
+  // The page shows at once (header and card); the card fills as the plan, her share and the union are read.
   if (!plan) {
     return (
-      <Sheet landName="Crop share request" title="Crop share request">
-        <p style={muted}>{plans.isLoading ? '…' : 'This crop plan is not approved. Find her in Members.'}</p>
-      </Sheet>
+      <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <ScreenHeader title="Crop share request" onBack={() => window.history.back()} />
+        <Card label="Crop share request">
+          {plans.isLoading || !plans.data ? <SkeletonRows rows={6} /> : <span style={muted}>This crop plan is not approved. Find her in Members.</span>}
+        </Card>
+      </div>
     );
   }
   const sel = shares.data?.find((x) => x.token_id === pick);
@@ -133,12 +143,11 @@ export function LeaderLoan({ initial }) {
     <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
       <ScreenHeader title={`Land ${plan.land_id}`} onBack={() => window.history.back()} />
       <Card label="Crop share request">
-        {shares.isLoading && <span style={muted}>…</span>}
+        {(shares.isLoading || (sel && !checks.data && !checks.isError)) && <SkeletonRows rows={6} />}
         {shares.data && !sel && <span style={muted}>No crop share of hers is ready.</span>}
-        {sel && (
+        {sel && (checks.data || checks.isError) && (
           <>
             <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>Ready</span>}>{name}</CardTitle>
-            {checks.isLoading && <span style={muted}>Checking the union…</span>}
             {checks.isError && <span style={{ color: C.coral }}>Could not read the union. Try again.</span>}
             {checks.data && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
             {checks.data && <Stepper label={perHour ? `Machine · ${inr(perHour)}/h` : 'Machine'} value={hours} set={setHours} step={1} max={caps.hours} fmt={(h) => `${h} h`} />}
