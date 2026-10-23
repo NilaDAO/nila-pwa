@@ -13,7 +13,9 @@ import { readContract, sv, tokenHex } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
-import { C, R } from '../shell/tokens';
+import { C, FONT, R } from '../shell/tokens';
+import { ScreenHeader } from '../shell/ListRow';
+import { Card, CardTitle, KV } from './AssetParts';
 import { NIN, checkRequest, makeRequest } from './request';
 import { checkDeskRequest, isDeskRequest } from './desk';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
@@ -23,15 +25,14 @@ const FLAG_DRAWN = 8;
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 
 function Stepper({ label, value, set, step, min = 0, max, fmt }) {
-  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
+  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, flexShrink: 0 };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '8px 0' }}>
-      <span style={{ fontWeight: 700 }}>{label}</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button type="button" aria-label={`Less ${label}`} style={b} onClick={() => set(Math.max(min, +(value - step).toFixed(2)))}>−</button>
-        <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700 }}>{fmt(value)}</span>
-        <button type="button" aria-label={`More ${label}`} style={b} onClick={() => set(Math.min(max, +(value + step).toFixed(2)))}>+</button>
-      </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ flexGrow: 1, color: C.muted, fontSize: 14, lineHeight: 1.5 }}>{label}</span>
+      <button type="button" aria-label={`Less ${label}`} style={b} onClick={() => set(Math.max(min, +(value - step).toFixed(2)))}>−</button>
+      <span style={{ width: 104, height: 44, borderRadius: R.button, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 16, fontWeight: 700 }}>{fmt(value)}</span>
+      <button type="button" aria-label={`More ${label}`} style={b} onClick={() => set(Math.min(max, +(value + step).toFixed(2)))}>+</button>
     </div>
   );
 }
@@ -122,33 +123,42 @@ export function LeaderLoan({ initial }) {
       }, s));
     } catch (e) { setError(e.message); }
   };
+  // Board LeaderRedeem, without its crop share list (23 Oct: the share comes picked): one card with the share, the
+  // steppers, total / interest / repay and the union checks. No seed row: seed is paid as cash (P5).
+  const name = sel ? `${row?.name || sel.crop} · Area ${Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1}` : '';
+  const perHour = sel?.share.hours ? Number(row?.finance?.voucher_value || 0) / Number(sel.share.hours) : 0;
+  const rows = checkRows(checks.data, cash, hours, caps);
+  const line = { height: 1, background: C.raised };
   return (
-    <Sheet landName={`Land ${plan.land_id}`} title={sel ? `${row?.name || sel.crop} · Area ${Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1}` : 'Crop share request'}
-      onBack={() => window.history.back()}>
-      {shares.isLoading && <p style={muted}>…</p>}
-      {shares.data && !sel && <p style={muted}>No crop share of hers is ready.</p>}
-      {sel && (
-        <>
-          {checks.data && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
-          {checks.data && <Stepper label="Machine hours" value={hours} set={setHours} step={1} max={caps.hours} fmt={(h) => `${h} h`} />}
-          {checks.isLoading && <p style={muted}>Checking the union…</p>}
-          {checks.isError && <p style={{ color: C.coral }}>Could not read the union. Try again.</p>}
-          {blocked.map((b) => <p key={b} style={{ color: C.coral }}>{b}</p>)}
-          {checkRows(checks.data, cash, hours, caps).map(([k, v, bad]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '4px 0' }}>
-              <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, color: bad ? C.coral : C.text }}>{v}</span>
-            </div>
-          ))}
-          {/* L11 #short: the gap goes to the union's LPs as a Bring (P9). */}
-          {checkRows(checks.data, cash, hours, caps)[0]?.[2] && (cfg?.anchor_url
-            ? <PostBring gap={Math.ceil(cash - checks.data.onHand)} />
-            : <p style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</p>)}
-          {rateBp != null && <p style={muted}>Interest {rateBp / 100}% a year{repay != null ? ` · repay about ${inr(repay)} by end of ${monthYear(row.finance.due)}` : ''}</p>}
-          {error && <p style={{ color: C.coral }}>{error}</p>}
-          <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={go}>Show QR to her</Primary>
-        </>
-      )}
-    </Sheet>
+    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <ScreenHeader title={`Land ${plan.land_id}`} onBack={() => window.history.back()} />
+      <Card label="Crop share request">
+        {shares.isLoading && <span style={muted}>…</span>}
+        {shares.data && !sel && <span style={muted}>No crop share of hers is ready.</span>}
+        {sel && (
+          <>
+            <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>Ready</span>}>{name}</CardTitle>
+            {checks.isLoading && <span style={muted}>Checking the union…</span>}
+            {checks.isError && <span style={{ color: C.coral }}>Could not read the union. Try again.</span>}
+            {checks.data && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
+            {checks.data && <Stepper label={perHour ? `Machine · ${inr(perHour)}/h` : 'Machine'} value={hours} set={setHours} step={1} max={caps.hours} fmt={(h) => `${h} h`} />}
+            <div style={line} />
+            <KV k="Total" v={inr(cash + hours * perHour)} />
+            {rateBp != null && <KV k="Interest" v={`${rateBp / 100}% a year`} />}
+            {repay != null && <KV k="Repay" v={`${inr(repay)} · about end of ${monthYear(row.finance.due)}`} />}
+            <div style={line} />
+            {rows.map(([k, v, bad]) => <KV key={k} k={k} v={v} color={bad ? C.coral : C.text} />)}
+            {blocked.map((b) => <span key={b} style={{ color: C.coral, fontSize: 14 }}>{b}</span>)}
+            {/* L11 #short: the gap goes to the union's LPs as a Bring (P9). */}
+            {rows[0]?.[2] && (cfg?.anchor_url
+              ? <PostBring gap={Math.ceil(cash - checks.data.onHand)} />
+              : <span style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</span>)}
+            {error && <span style={{ color: C.coral }}>{error}</span>}
+            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={go}>Show QR to her</Primary>
+          </>
+        )}
+      </Card>
+    </div>
   );
 }
 
