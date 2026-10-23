@@ -205,10 +205,10 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         ) : lp?.trustline && (
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="For cash offers as an LP" value={lp.usdc.toFixed(2)} valueSub="" onClick={onOffers} />
         )}
-        {/* Machine vouchers under their own label (23 Oct): one row per crop share that carries hours, its hours left. */}
+        {/* Vouchers under their own label (any voucher kind; machine hours today) (23 Oct): one row per crop share that carries hours, its hours left. */}
         {vouchers.data?.length > 0 && (
           <>
-            <span style={label}>Machine vouchers</span>
+            <span style={label}>Vouchers</span>
             {vouchers.data.map((v) => {
               const x = shares.find((y) => tokenHex(y.token_id) === v.token);
               const open = vOpen?.token === v.token;
