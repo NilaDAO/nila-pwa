@@ -196,11 +196,7 @@ function Code({ c, left, live, used, rate, onBack, onRemove }) {
       {/* As big as the screen allows (shared BigQr, as her crop share QR): the QR spans the screen's width in the
           white circle, clipped at the screen's sides. */}
       <BigQr img={img} alt="Your voucher code" caption="Show this to the machine owner" below={420} />
-      <KV k="Paid from" v={`Machinery · up to ${th(c.hours)} tractor hours`} />
-      {rate && c.work != null && <KV k="Value" v={`up to ${inr(c.work * rate.total)}`} />}
       <KV k="Valid until" v={`${when(c.until)} · ${hoursLeft(c.until)} h left`} />
-      <KV k="Left after" v={`${th(left - c.hours)} tractor hours or more`} />
-      <p style={muted}>Show this to the machine owner. Hours are used when they scan it.</p>
       <button type="button" onClick={onRemove} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Remove from this phone</button>
     </Card></Page>
   );
