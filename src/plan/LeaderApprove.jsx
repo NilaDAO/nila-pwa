@@ -10,6 +10,7 @@ import { ScreenHeader } from '../shell/ListRow';
 import { useApprovePlan, usePendingApprovals, usePlanClient, useTitleName } from './hooks';
 import { useQuery } from '@tanstack/react-query';
 import { useMintCropShares } from './mint';
+import { TxScreens } from '../stellar/TxStatus';
 import { inr, muted } from './ui';
 import { Loading } from '../register/Boot';
 
@@ -100,6 +101,18 @@ function L12({ plan, onDone, approvedAlready = false }) {
       await mint.run(plan.id);
     } catch (e) { setError(e.message); setBusy(false); }
   };
+  // After Approve the crop shares are made as an N1 → N2/N3 sequence, then back to Assets (executive decision 23 Oct;
+  // DESIGN GAP: no N board of its own for this).
+  const when = useRef(new Date());
+  const seq = { busy: 'pending', done: 'success', failed: 'failed', partial: 'failed' }[mint.status];
+  if (approved && seq) {
+    if (seq !== 'success') when.current = new Date();
+    const toAssets = () => { window.location.hash = '#/assets'; };
+    const tx = { status: seq, label: 'Making her crop shares', when: when.current,
+      rows: [['Crop shares', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Land', farm || `Land ${plan.land_id}`]],
+      reason: (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
+    return <TxScreens tx={tx} network="Polygon" onClose={toAssets} onRetry={() => mint.run(plan.id)} />;
+  }
   const acceptedAt = Math.max(0, ...Object.values(plan.accepted || {}).map((a) => a.ts || 0));
   const lastDue = all.map((r) => r.finance.due).filter(Boolean).sort().pop();
   const acres = seasons[0] ? seasons[0].rows.reduce((a, r) => a + r.acres, 0) : 0;
@@ -159,7 +172,6 @@ function L12({ plan, onDone, approvedAlready = false }) {
               {(mint.status === 'failed' || mint.status === 'partial') && (
                 <button type="button" onClick={() => mint.run(plan.id)} style={{ ...btn, background: C.accent, color: C.ink }}>Try again</button>
               )}
-              {mint.status !== 'busy' && <button type="button" onClick={onDone} style={{ ...btn, background: C.raised, color: C.text }}>Back to tasks</button>}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
