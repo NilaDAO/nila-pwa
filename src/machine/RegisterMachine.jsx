@@ -6,7 +6,7 @@
 // DESIGN GAPs: the owner is her wallet QR, scanned as the last step (no member names on the node; 22 Oct);
 // "Show QR to <owner>" becomes "Ask her to confirm in Your machine" (her app finds the machine itself);
 // the price rows show the union's rate parts as set on-chain (read-only).
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
@@ -79,6 +79,8 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
       });
     } catch (e) { setBusy(false); setError(e.message); }
   };
+  // Registered: straight back to the Assets screen (executive decision 23 Oct), no success page.
+  useEffect(() => { if (tx.status === 'success') { tx.reset(); window.location.hash = '#/assets'; } }, [tx.status]); // eslint-disable-line react-hooks/exhaustive-deps
   // A full page on the gradient, not a map card (executive decision 22 Oct): header, then the board's cards.
   const page = (title, back, body) => (
     <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -86,14 +88,6 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
       {body}
     </div>
   );
-  if (tx.status === 'success') {
-    return page('Registered', () => { tx.reset(); onBack(); }, (
-      <Card label="Registered">
-        <span style={muted}>Ask her to open Your machine in her app and confirm it. Members can use it once she confirms.</span>
-        <Primary onClick={() => { tx.reset(); onBack(); }}>Done</Primary>
-      </Card>
-    ));
-  }
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   if (scanning) {
     return page('Register a machine', () => setScanning(false), (
