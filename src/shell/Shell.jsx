@@ -216,7 +216,7 @@ export default function Shell({ leader }) {
   else if (view === 'crop') body = <CropPlanFlow />;
   else if (view === 'approvals' && leader) body = <LeaderPlans key={readArg() || 'one'} planId={readArg()} onBack={() => go('tasks')} />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
-  else if (view === 'loan') body = <LeaderLoan />;
+  else if (view === 'loan') body = <LeaderLoan key={readArg()} initial={readArg()} />;
   else if (view === 'cash' && leader) body = <CashDesk key={window.location.hash} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
   else if (view === 'usdc' && leader) body = <UsdcAsset onBack={() => go('assets')} />;
@@ -226,7 +226,7 @@ export default function Shell({ leader }) {
   else if (view === 'cashout' && leader) body = <CashOut onBack={() => go('assets')} />;
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
   else if (view === 'machine') body = <MyMachine key={readArg()} pick={Number(readArg()) || undefined} onBack={() => go('assets')} />;
-  else if (view === 'share') body = <TakeUp token={readArg()} onBack={() => go(`cropshare/${readArg()}`)} />;
+  else if (view === 'share') body = <TakeUp key={readArg()} token={readArg()} leader={leader} onBack={() => go(`cropshare/${readArg()}`)} />;
   // A4 / A4a: her crop share, from its A1 row.
   else if (view === 'cropshare') {
     body = <AssetStep view={view}>{(p) => <CropShare key={readArg()} token={readArg()} onBack={() => go('assets')} onTakeUp={(t) => go(`share/${t}`)} {...p} />}</AssetStep>;

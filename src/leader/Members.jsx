@@ -55,6 +55,9 @@ export default function Members({ go }) {
   const left = list.length - n;
   const onQr = (text) => {
     setScan(false);
+    // Her crop share QR (her Ready share, 23 Oct): straight to L11 with that share picked.
+    const share = /^nila:share:(\w+):/.exec(String(text || '').trim());
+    if (share) { go(`loan/${share[1]}`); return; }
     const g = addressFromQr(text);
     const m = g && all.find((x) => x.address === g);
     if (m) pick(m.key); else setMsg('Not a member of your union.');

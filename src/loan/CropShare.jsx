@@ -13,7 +13,7 @@ import { Loading } from '../register/Boot';
 import { areasOf, useFieldRecord } from '../plan/record';
 import { C } from '../shell/tokens';
 import { BanknoteIcon, TractorIcon } from '../shell/icons';
-import { amount, assisted, rowOf, useMyLand, useMyShares } from './MyShares';
+import { amount, rowOf, useMyLand, useMyShares } from './MyShares';
 
 const FLAG_OVERDUE = 1;
 const FLAG_DEFAULTED = 2;
@@ -125,8 +125,8 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
         </div>
         <div style={line} />
         <Row k="Total" v={inr(cash + vouchers)} strong />
-        {/* Self mode: she takes it up herself (16 Oct); not on the board, which only shows when and where. */}
-        {x.ready && !assisted() && <Primary onClick={() => onTakeUp(x.token_id)}>Get cash and vouchers</Primary>}
+        {/* Ready: her scan of the leader's QR (assisted: the leader taps it on her phone), or a leader's own take-up. */}
+        {x.ready && <Primary onClick={() => onTakeUp(x.token_id)}>Get cash and vouchers</Primary>}
       </Sheet>
     );
   }

@@ -42,12 +42,14 @@ function planRow(plan, share) {
   return null;
 }
 
-export function LeaderLoan() {
+/** initial: `<plan id>` (a To do row) or `<plan id>_<token id>` (her crop share QR): opens on that plan and share. */
+export function LeaderLoan({ initial }) {
+  const [initPlan, initToken] = String(initial || '').split('_');
   const s = useNilaSigner();
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
   const plans = useQuery({ queryKey: ['oracle', 'approvedPlans'], enabled: !!api, queryFn: () => api.approvedPlans() });
-  const [planId, setPlanId] = useState();
+  const [planId, setPlanId] = useState(initPlan || undefined);
   const plan = plans.data?.plans?.find((p) => p.id === planId);
   const shares = useQuery({
     queryKey: ['oracle', 'shares', planId], enabled: !!plan && !!cfg,
@@ -65,6 +67,11 @@ export function LeaderLoan() {
   const checks = useUnionChecks(pickFt?.member);
   const [cash, setCash] = useState(0);
   const [hours, setHours] = useState(0);
+  // Her share from the QR: picked once the shares are read, with the plan's cash and hours (as a tap on it).
+  useEffect(() => {
+    const x = initToken && !pick && shares.data?.find((y) => y.token_id === initToken);
+    if (x) { setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0)); setHours(Math.round(x.share.hours || 0)); }
+  }, [shares.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [req, setReq] = useState();
   const [img, setImg] = useState();
   const [error, setError] = useState();

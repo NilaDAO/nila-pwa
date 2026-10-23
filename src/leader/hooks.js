@@ -135,7 +135,7 @@ export function useLeaderTodo(api, cash) {
           const ft = await readContract(cfg, 'fund_core', 'food_token', [u, sv.bytes32(hex)]).catch(() => null);
           if (ft && Number(ft.from_date) <= now && !(Number(ft.loan?.flags ?? 0) & 8)) { ready += 1; amount += n(ft.amount); }
         }
-        if (ready) out.push({ key: `share-${p.id}`, title: 'Crop share request', amount, who: `Land ${p.land_id}`, to: 'cash/loan' });
+        if (ready) out.push({ key: `share-${p.id}`, title: 'Crop share request', amount, who: `Land ${p.land_id}`, to: `loan/${p.id}` });
       }
       const { loans } = await api.unionLoans().catch(() => ({ loans: [] }));
       for (const l of loans) {
