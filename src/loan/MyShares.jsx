@@ -151,8 +151,9 @@ function ShareScan({ x, onBack }) {
     <Page title={`${name} · Area ${x.area}`} onBack={onBack}>
       {camera ? <CameraView key={tries} mode="qr" onText={read} /> : (
         // As big as the screen allows (23 Oct): the QR spans the screen's width (its own white margin is the quiet
-        // zone), inscribed in a white circle that runs off the screen's sides (clipped there).
-        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', height: 'calc(100vw * 1.2)', overflow: 'hidden', position: 'relative' }}>
+        // zone), inscribed in a white circle that runs off the screen's sides (clipped there); its height is the whole
+        // circle where the screen is tall enough with the text and button still in view (320 px: header, text, button, tab bar).
+        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', height: 'clamp(100vw, 100dvh - 320px, 100vw * 1.42)', overflow: 'hidden', position: 'relative' }}>
           <button type="button" aria-label="Scan your leader's QR" onClick={() => setCamera(true)} style={{ position: 'absolute', left: '50%', top: '50%',
             transform: 'translate(-50%, -50%)', width: 'calc(100vw * 1.42)', aspectRatio: '1 / 1', padding: 0, border: 0, borderRadius: R.round,
             background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
