@@ -139,7 +139,7 @@ export function useUnionShares(api) {
         const loan = drawn && !(flags & FLAG_CLOSED)
           ? { token: hex, left: n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid), overdue: !!(flags & FLAG_OVERDUE) } : null;
         const m = (by[ft.member] ||= { plan: p, shares: [] });
-        m.shares.push({ token: hex, crop: r.name || x.crop.replace(/_/g, ' '), colour: r.colour, area: zones.indexOf(x.zone) + 1,
+        m.shares.push({ token: hex, crop: r.name || x.crop.replace(/_/g, ' '), colour: r.colour, area: zones.indexOf(x.zone) + 1, zones: x.zones || share.zones || [x.zone],
           harvest: r.harvest, kg: r.kg, slot: r.slot, from: Number(ft.from_date), drawn, loan, ready: !drawn && Number(ft.from_date) <= now });
       }
       Object.values(by).forEach((m) => m.shares.sort((a, b) => String(a.harvest || '').localeCompare(String(b.harvest || ''))));

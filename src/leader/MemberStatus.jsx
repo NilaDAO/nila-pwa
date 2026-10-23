@@ -98,12 +98,14 @@ export default function MemberStatus({ id, go }) {
     queryFn: () => deskClaim(cfg, found.address) });
   const labels = useMemo(() => {
     // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
+    // A financed share grows too (23 Oct): its draw is the start, whatever the plan's sowing date says.
     const seasons = m?.plan?.plan?.seasons || [];
     const today = new Date();
     const out = {};
     seasons.forEach((_, i) => Object.entries(rowsInSeason(seasons, i)).forEach(([z, r]) => {
       if (r.sow && new Date(r.sow) <= today && (!r.harvest || new Date(r.harvest) >= today)) out[z] = { text: r.name, colour: r.colour };
     }));
+    (m?.shares || []).filter((x) => x.loan).forEach((x) => x.zones.forEach((z) => { out[z] = { text: x.crop, colour: x.colour }; }));
     return out;
   }, [m]);
   if (members.isLoading) {
@@ -210,7 +212,7 @@ export default function MemberStatus({ id, go }) {
       {m.shares.length > 0 && (
         <Section title="Crop shares">
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[...m.shares].sort((a, b) => b.from - a.from).map((x) => {
+            {[...m.shares].sort((a, b) => a.from - b.from).map((x) => {
               const st = stateOf(x, m.loans);
               return (
                 <li key={x.token} style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: R.button,
