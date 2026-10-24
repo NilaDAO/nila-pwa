@@ -18,6 +18,8 @@ import PhotoCount from './PhotoCount';
 import RegisterMachine from '../machine/RegisterMachine';
 import { ScanLp } from '../anchor/LeaderLp';
 import CashBoard from '../leader/CashBoard';
+import CameraView from '../shell/CameraView';
+import { addressFromQr } from '../leader/unionMembers';
 import { Secondary } from './AssetParts';
 
 const PURPOSE = { invest: 0, repay: 1 };
@@ -53,7 +55,7 @@ function Amount({ value, set, max = 10000 }) {
   );
 }
 
-function Scan({ purpose, onBack, initialMember = '' }) {
+function Scan({ purpose, onBack, initialMember = '', initialToken }) {
   const fixed = isG(initialMember);
   const s = useNilaSigner();
   const api = usePlanClient();
@@ -103,8 +105,12 @@ function Scan({ purpose, onBack, initialMember = '' }) {
     const voucher = l.vb ? BigInt(l.vb.senior_out) + (l.vb.dues || []).reduce((t, d) => t + BigInt(d.amount), 0n) : 0n;
     return Math.ceil(Number(cash + voucher) / Number(NIN));
   };
-  // From her G2 with one open loan: that loan is picked for her.
-  useEffect(() => { if (fixed && !token && loans.data?.length === 1) { setToken(loans.data[0].token); setAmount(Math.min(10000, owed(loans.data[0]))); } }, [loans.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // From her G2 with one open loan, or her crop share QR (24 Oct): that loan is picked for her.
+  useEffect(() => {
+    if (!fixed || token || !loans.data) return;
+    const l = loans.data.find((x) => x.token === initialToken) || (loans.data.length === 1 ? loans.data[0] : null);
+    if (l) { setToken(l.token); setAmount(Math.min(10000, owed(l))); }
+  }, [loans.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const sel = loans.data?.find((l) => l.token === token);
   const who = purpose === 'repay' ? sel?.loan?.borrower : member.trim();
   const record = async ({ total, s3Keys }) => {
@@ -145,6 +151,27 @@ function Scan({ purpose, onBack, initialMember = '' }) {
   );
 }
 
+/** A task from the Tasks tab (24 Oct, as Pay out cash): the leader scans her QR first. Her wallet QR gives her
+ *  account; her crop share QR (`nila:share:<plan>_<token>:<her G>`) gives her account and that share. */
+function ScanHer({ title, note, shareOnly, onFound, onBack }) {
+  const [error, setError] = useState();
+  const read = (text) => {
+    const t = String(text || '').trim();
+    const share = /^nila:share:(\w+?)_(\w+):(G[A-Z2-7]{55})$/.exec(t);
+    if (share) { onFound({ who: share[3], plan: share[1], token: share[2] }); return; }
+    if (shareOnly) { setError('Scan her crop share QR (her Ready crop share in Assets).'); return; }
+    const g = addressFromQr(t);
+    if (g) onFound({ who: g }); else setError('This is not a member\'s QR.');
+  };
+  return (
+    <Sheet landName="Cash" title={title} onBack={onBack}>
+      <CameraView mode="qr" onText={read} />
+      <p style={muted}>{note}</p>
+      {error && <p style={{ color: C.coral }}>{error}</p>}
+    </Sheet>
+  );
+}
+
 // An old #/cash/invest|withdraw/<her> link: her G2 does these in place now.
 function ToMembersFrom({ member }) {
   useEffect(() => { window.location.replace(`#/members/${member}`); }, [member]);
@@ -152,9 +179,9 @@ function ToMembersFrom({ member }) {
 }
 
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
-// Her own actions (invest, repay, withdraw) start only from her G2 (executive decision 22 Oct: Members → G2 → action):
-// #/cash/<action>/<her Stellar address>. Without her the leader is sent to Members (G1) to find her.
-const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw' };
+// Her own actions start from her QR (executive decision 24 Oct, as Pay out cash): a task without her scans her wallet or
+// crop share QR first, then the count. From her G2 they come as #/cash/<action>/<her Stellar address>.
+const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw', share: 'share' };
 const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
 const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/(G[A-Z2-7]{55})/) || [])[1];
 
@@ -165,9 +192,19 @@ export default function CashDesk({ initial }) {
     if (MEMBER_ACTIONS.includes(view)) { window.history.back(); return; }   // back to her G2
     setView(undefined); setMember(undefined);
   }, [view]);
-  const toMembers = MEMBER_ACTIONS.includes(view) && !member;
-  useEffect(() => { if (toMembers) window.location.replace('#/members'); }, [toMembers]);
-  if (toMembers) return null;
+  // From the Tasks tab (24 Oct): no member yet, so the leader scans her QR first, then counts (as Pay out cash).
+  const [found, setFound] = useState();
+  const toTasks = () => window.location.replace('#/tasks');
+  if (!member && !found && (view === 'invest' || view === 'repay')) {
+    return <ScanHer title={view === 'invest' ? 'Invest' : 'Repay'} onBack={toTasks} onFound={setFound}
+      note={view === 'invest' ? 'Scan her wallet QR, then count the cash she brings.' : 'Scan her wallet QR or the crop share QR of the loan, then count the cash she brings.'} />;
+  }
+  if (!member && view === 'share') {
+    return <ScanHer title="Crop share loan" shareOnly onBack={toTasks} note="Scan her crop share QR (her Ready crop share in Assets)."
+      onFound={(f) => window.location.replace(`#/loan/${f.plan}_${f.token}`)} />;
+  }
+  if (found) return <Scan purpose={view} onBack={toTasks} initialMember={found.who} initialToken={found.token && tokenHex(found.token)} />;
+  if (!member && view === 'withdraw') return <PayOut onBack={toTasks} />;
   if (view === 'invest' || view === 'withdraw') return <ToMembersFrom member={member} />;
   if (view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
   if (view === 'payout') return <PayOut onBack={back} />;
