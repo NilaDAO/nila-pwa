@@ -74,7 +74,8 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   const record = field.data?.record;
   const x = shares.data?.find((y) => y.token_id === token);
   const s = useNilaSigner();
-  const [repayQr, setRepayQr] = useState(false);
+  // #/cropshare/<token>/qr (A1's repay card, step 2): open on the QR.
+  const [repayQr, setRepayQr] = useState(() => /\/qr$/.test(window.location.hash));
   const [img, setImg] = useState();
   useEffect(() => {
     if (repayQr && x?.plan?.id && s?.stellarAddress) QRCode.toDataURL(`nila:share:${x.plan.id}_${x.token_id}:${s.stellarAddress}`, { width: 720, margin: 2 }).then(setImg);

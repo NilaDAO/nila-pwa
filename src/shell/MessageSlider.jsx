@@ -25,11 +25,11 @@ export function Steps({ items }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {items.map((t, i) => (
-        <div key={t} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', ...small }}>
+        <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', ...small }}>
           <span aria-hidden="true" style={{ width: 32, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
             <span style={{ width: 24, height: 24, borderRadius: R.round, background: C.raised, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
           </span>
-          <span style={{ paddingTop: 1 }}>{t}</span>
+          <span style={{ paddingTop: 1, flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>{t}</span>
         </div>
       ))}
     </div>
@@ -40,8 +40,12 @@ export const Title = ({ Icon, children }) => (
   <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}><Icon /><span style={head}>{children}</span></div>
 );
 
-/** The member's cards. position: fund_core.position (7 decimals) or undefined; loans: her drawn, open loans. */
-export function memberSlides({ position, positionKnown, loans = [], now = Date.now() / 1000 }) {
+const qrBtn = { height: 40, borderRadius: 12, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: 'inherit',
+  fontSize: 14, cursor: 'pointer', alignSelf: 'flex-start', padding: '0 16px' };
+
+/** The member's cards. position: fund_core.position (7 decimals) or undefined; loans: the drawn, open loans;
+ *  onRepayQr(token): that crop share's QR for the leader's Repay scan (24 Oct). */
+export function memberSlides({ position, positionKnown, loans = [], now = Date.now() / 1000, onRepayQr }) {
   const out = [];
   for (const l of loans) {
     const total = l.principal + l.interest;
@@ -55,7 +59,12 @@ export function memberSlides({ position, positionKnown, loans = [], now = Date.n
           <span style={{ ...small, color: C.muted, textAlign: 'right' }}>left{l.due ? ` · due end of ${new Date(l.due * 1000).toLocaleDateString('en-GB', { month: 'short' })}` : ''}</span>
         </div>
         <Bar pct={total ? (100 * l.paid) / total : 0} label={`${Math.round(total ? (100 * l.paid) / total : 0)}% repaid`} />
-        <Steps items={['Go to your union office with the cash.', 'Give it to your union leader and show your QR code.', 'The leader scans it. The amount left updates here.']} />
+        <Steps items={['Go to your union office with the cash.', (
+          <>
+            <span>Give it to your union leader and show your QR code.</span>
+            {onRepayQr && <button type="button" style={qrBtn} onClick={() => onRepayQr(l.id)}>Show your QR</button>}
+          </>
+        ), 'The leader scans it. The amount left updates here.']} />
       </section>,
     );
   }
