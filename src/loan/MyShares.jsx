@@ -16,12 +16,11 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { useCropPlan, useLandTitles, usePlanClient } from '../plan/hooks';
 import { Primary, inr, muted } from '../plan/ui';
 import ListRow from '../shell/ListRow';
-import { Card } from './AssetParts';
+import { Card, QrCircle } from './AssetParts';
 import CameraView from '../shell/CameraView';
 import ConfirmShare from './ConfirmShare';
 import { th } from '../machine/hooks';
 import { LeaderLoan } from './LoanScreens';
-import BigQr from '../shell/BigQr';
 import { NIN, readRequest } from './request';
 import { C, FONT } from '../shell/tokens';
 import { ChevronIcon, RupeeIcon, ShareTile } from '../shell/icons';
@@ -128,9 +127,11 @@ function ShareScan({ x, onBack }) {
   return (
     <Page title={`${name} · Area ${x.area}`} onBack={onBack}>
       {camera ? <CameraView key={tries} mode="qr" onText={read} /> : (
-        <BigQr img={img} alt="Your crop share QR" caption="Let your leader scan this" onClick={() => setCamera(true)} />
+        <button type="button" aria-label="Your crop share QR" onClick={() => setCamera(true)} style={{ padding: 0, border: 0, background: 'none', cursor: 'pointer' }}>
+          <QrCircle img={img} alt="Your crop share QR" />
+        </button>
       )}
-      {camera && <p style={{ ...muted, textAlign: 'center' }}>Scan the QR on your leader's phone.</p>}
+      <p style={{ ...muted, textAlign: 'center', margin: 0 }}>{camera ? "Scan the QR on your leader's phone." : 'Let your leader scan this'}</p>
       {!camera && <Primary onClick={() => setCamera(true)}>Scan your union's QR</Primary>}
       {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
     </Page>

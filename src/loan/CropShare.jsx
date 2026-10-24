@@ -13,7 +13,8 @@ import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { useNilaSigner } from '../wallet/signer';
-import BigQr from '../shell/BigQr';
+import DeskCard from '../shell/DeskCard';
+import { QrCircle } from './AssetParts';
 import AreaMap from '../plan/AreaMap';
 import { Loading } from '../register/Boot';
 import { areasOf, useFieldRecord } from '../plan/record';
@@ -164,10 +165,10 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   const open = !(Number(l.flags ?? 0) & FLAG_CLOSED);
   if (repayQr) {
     return (
-      <Sheet title={`${name} · Area ${x.area}`} onBack={() => setRepayQr(false)}>
-        <BigQr img={img} alt="Your crop share QR" caption="Let your leader scan this to repay" />
-        <p style={{ ...muted, textAlign: 'center' }}>Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment.</p>
-      </Sheet>
+      <DeskCard title={`${name} · Area ${x.area}`} onBack={() => setRepayQr(false)}>
+        <QrCircle img={img} alt="Your crop share QR" />
+        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment.</p>
+      </DeskCard>
     );
   }
   const left = num(l.principal) - num(l.principal_paid);
