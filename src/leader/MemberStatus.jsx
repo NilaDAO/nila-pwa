@@ -76,8 +76,10 @@ export default function MemberStatus({ id, go }) {
   // Her open loans: the node's list, plus any drawn share it does not hold yet (read from the share on-chain).
   const loans = useMemo(() => {
     if (!found) return undefined;
-    const extra = (shares.data?.[found.address]?.shares || []).filter((x) => x.loan && !found.loans.some((l) => l.token === x.token)).map((x) => x.loan);
-    return [...found.loans, ...extra];
+    // What is left and overdue come from her shares on-chain where read (the node's list carries the cash drawn only).
+    const chain = Object.fromEntries((shares.data?.[found.address]?.shares || []).filter((x) => x.loan).map((x) => [x.token, x.loan]));
+    const extra = Object.values(chain).filter((x) => !found.loans.some((l) => l.token === x.token));
+    return [...found.loans.map((l) => (chain[l.token] ? { ...l, ...chain[l.token] } : l)), ...extra];
   }, [found, shares.data]);
   const dues = useLoanDues(loans);
   const m = useMemo(() => {

@@ -72,7 +72,7 @@ export function useUnionMembers(api) {
         const list = finish(await Promise.all(node.members.map(async (r) => {
           const m = { key: r.key || r.address, address: r.address || '', name: r.name || '', phone: r.phone || '', lands: new Set(), places: [],
             note: r.note || '', job: r.job, nextHarvest: r.next_harvest || null, shareCounts: r.shares || {},
-            loans: (r.loans || []).map((l) => ({ token: String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'), left: Number(l.left || 0), overdue: !!l.overdue, due: Number(l.due || 0) })) };
+            loans: (r.loans || []).map((l) => ({ token: String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'), left: Number(l.left ?? l.cash ?? 0), overdue: !!l.overdue, due: Number(l.due || 0) })) };
           await Promise.all((r.titles || []).map(async (t) => {
             m.lands.add(t.title_id);
             const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
