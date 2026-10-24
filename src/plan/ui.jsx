@@ -1,6 +1,6 @@
 // Shared crop-plan layout: the header band (map in P4c) and the bottom sheet of the CP boards.
 import { cloneElement, isValidElement, useEffect, useLayoutEffect, useRef } from 'react';
-import { useStage } from '../shell/stageCtx';
+import { SheetLowCtx, useStage } from '../shell/stageCtx';
 import { C, FONT, GRADIENT, R } from '../shell/tokens';
 import useSheetDrag from '../shell/useSheetDrag';
 import { SettingsButton } from '../shell/RoundButton';
@@ -101,7 +101,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
             {headRow}
             <div style={staged ? { opacity: drag.low ? 0 : 1, visibility: drag.low ? 'hidden' : 'visible', transition: drag.low ? 'none' : 'opacity 200ms' } : undefined}>
               {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
-              {children}
+              <SheetLowCtx.Provider value={staged && drag.low}>{children}</SheetLowCtx.Provider>
             </div>
           </section>
         </div>
@@ -134,7 +134,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         {/* Lowered (map-central): the body fades out, so under the tab bar only the card's gradient shows. */}
         <div style={staged ? { opacity: drag.low ? 0 : 1, visibility: drag.low ? 'hidden' : 'visible', transition: drag.low ? 'none' : 'opacity 200ms' } : undefined}>
           {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
-          {children}
+          <SheetLowCtx.Provider value={staged && drag.low}>{children}</SheetLowCtx.Provider>
         </div>
       </div>
     </div>

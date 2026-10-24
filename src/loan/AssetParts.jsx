@@ -2,7 +2,8 @@
 // the screen frame on the gradient with the fixed header, the cards, the info rows, the amount stepper with its typed
 // field and Max, the secondary button and the info note fixed above the tab bar.
 import { createPortal } from 'react-dom';
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
+import { SheetLowCtx } from '../shell/stageCtx';
 import { C, FONT, R, SHADOW, TAB_BAR_HEIGHT } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
 
@@ -86,9 +87,12 @@ export function Secondary({ children, disabled, onClick, icon }) {
 export function NoteBar({ children }) {
   // Into the body (24 Oct): inside a map card (a moved, transformed sheet) a fixed note would follow the card instead
   // of sitting above the tab bar.
+  // A lowered card takes its note down with it (24 Oct): it slides under the tab bar.
+  const low = useContext(SheetLowCtx);
   return createPortal(
     <div role="note" style={{ position: 'fixed', left: 8, right: 8, bottom: TAB_BAR_HEIGHT - 24, zIndex: 5, background: C.ink, borderRadius: '24px 24px 0 0',
-      padding: '14px 16px 38px', boxSizing: 'border-box', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      padding: '14px 16px 38px', boxSizing: 'border-box', display: 'flex', gap: 12, alignItems: 'flex-start',
+      transform: low ? 'translateY(calc(100% + 24px))' : 'none', transition: 'transform 250ms ease' }}>
       <div style={{ width: 32, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
       </div>

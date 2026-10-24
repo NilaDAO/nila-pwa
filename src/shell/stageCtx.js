@@ -5,3 +5,6 @@ import { createContext, useContext } from 'react';
 export const StageCtx = createContext(null);
 /** The stage's setter ({ set(props) }), or null outside the map-central shell. */
 export const useStage = () => useContext(StageCtx);
+
+/** Whether the open sheet is lowered (24 Oct): a fixed info note (NoteBar) goes down with the card. */
+export const SheetLowCtx = createContext(false);
