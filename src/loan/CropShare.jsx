@@ -5,9 +5,15 @@
 //    Only a 'from' date; the share is active once she collects ('Active when you collect').
 //  - A4, active (a loan drawn on it): status and harvest, then field notes.
 // Seed is paid as cash (LOAN_RULES P5), so A4a has no separate seed row: the cash includes it.
+// While a loan on it is open, A4 shows the share's QR again for the leader's Repay scan (24 Oct, the same
+// `nila:share:<plan>_<token>:<her G>` as on a Ready share): the scan picks this loan.
 // Field notes are 'later' in the design (open-assets/2–4, Q27: no store and no member version of L7 yet): the list
 // is empty and the Add a note buttons are shown disabled.
+import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
+import { useNilaSigner } from '../wallet/signer';
+import BigQr from '../shell/BigQr';
 import AreaMap from '../plan/AreaMap';
 import { Loading } from '../register/Boot';
 import { areasOf, useFieldRecord } from '../plan/record';
@@ -66,6 +72,12 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   const field = useFieldRecord(land.landId, land.evm, land.stellarTitle ? land.stellarTitle.record_hash || '' : undefined);
   const record = field.data?.record;
   const x = shares.data?.find((y) => y.token_id === token);
+  const s = useNilaSigner();
+  const [repayQr, setRepayQr] = useState(false);
+  const [img, setImg] = useState();
+  useEffect(() => {
+    if (repayQr && x?.plan?.id && s?.stellarAddress) QRCode.toDataURL(`nila:share:${x.plan.id}_${x.token_id}:${s.stellarAddress}`, { width: 720, margin: 2 }).then(setImg);
+  }, [repayQr, x?.plan?.id, x?.token_id, s?.stellarAddress]);
   // S1 until her shares and her field record are both in (21 Oct): the card never shows before its map.
   if ((!x && (shares.isLoading || !shares.data)) || (x && !record && !field.error)) return <Loading />;
   if (!x) {
@@ -149,6 +161,15 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
 
   // A4: active. The loan on it: the cash part handed out, what is left to repay, due 3 weeks after harvest.
   const l = x.ft.loan || {};
+  const open = !(Number(l.flags ?? 0) & FLAG_CLOSED);
+  if (repayQr) {
+    return (
+      <Sheet title={`${name} · Area ${x.area}`} onBack={() => setRepayQr(false)}>
+        <BigQr img={img} alt="Your crop share QR" caption="Let your leader scan this to repay" />
+        <p style={{ ...muted, textAlign: 'center' }}>Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment.</p>
+      </Sheet>
+    );
+  }
   const left = num(l.principal) - num(l.principal_paid);
   const harvest = r.harvest ? new Date(r.harvest) : null;
   const sugarcane = /sugarcane/.test(x.crop);
@@ -162,6 +183,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
         <Row k="Harvest" v={fodder ? 'Regular cuts' : partOfMonth(harvest)} strong />
         {num(l.principal) > 0 && <Row k="Loan" v={`${inr(num(l.principal))}${left > 0 ? ` · ${inr(left)} to repay` : ''}`} strong />}
       </div>
+      {open && <Primary onClick={() => setRepayQr(true)}>Repay at the office</Primary>}
       <div style={line} />
       <h2 style={{ fontSize: 16, fontWeight: 700, margin: '12px 0 0' }}>Field notes</h2>
       <p style={{ ...muted, margin: '0 0 12px' }}>Your notes help your leader plan the harvest.</p>
