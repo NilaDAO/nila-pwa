@@ -27,7 +27,7 @@ export function useLeaderMap(filter = 'members', fitBottom = 170, on = true) {
   const members = useUnionMembers(api);
   const shares = useUnionShares(api);
   const machines = useMachines({ on: on && filter === 'assets' });
-  const all = members.data || [];
+  const all = useMemo(() => members.data || [], [members.data]);
   const loans = useMemo(() => (filter === 'cash' ? all.flatMap((m) => m.loans.filter((l) => !l.due)) : []), [filter, all]);
   const dues = useLoanDues(loans);
   const me = s?.stellarAddress;
