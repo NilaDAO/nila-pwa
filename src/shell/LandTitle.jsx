@@ -8,6 +8,7 @@ import { useStellarTitles } from '../stellar/hooks';
 import { useLandTitles, useTitleName } from '../plan/hooks';
 import { useFieldRecord } from '../plan/record';
 import AreaMap from '../plan/AreaMap';
+import { fieldsMap, useTitleFields } from '../plan/titleFields';
 import { Sheet } from '../plan/ui';
 import { Loading } from '../register/Boot';
 import { C, R } from './tokens';
@@ -17,16 +18,6 @@ const h2 = { fontSize: 16, fontWeight: 700, lineHeight: 1.3, margin: 0 };
 const muted = { color: C.muted, fontSize: 14, lineHeight: 1.5, margin: 0 };
 const btn = { width: '100%', height: 44, border: 0, borderRadius: R.button, fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
-
-/** Every field her title lists, as areas, when it lists more fields than the record has areas (executive decision 21 Oct,
- *  map-central trial): the land title shows the whole land; otherwise her areas. */
-export function fieldsOrAreas(record) {
-  const fields = record?.meta?.geometry?.field_features?.features || [];
-  if (!record || fields.length <= (record.zones || []).length) return { record, labels: undefined };
-  const zones = fields.map((f, i) => ({ zone_id: `f${i}`, geometry: f.geometry }));
-  const labels = Object.fromEntries(fields.map((f, i) => [`f${i}`, { text: f.properties?.name || `Field ${i + 1}` }]));
-  return { record: { ...record, zones }, labels };
-}
 
 /** bar / onSwipe (map-central trial): the ‹ asset › bar on top of the card, and a swipe on the card that steps it. */
 export default function LandTitle({ onBack, bar, onSwipe }) {
@@ -40,7 +31,9 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
   const field = useFieldRecord(landId, s?.evmAddress, stellarTitle ? stellarTitle.record_hash || '' : undefined);
   const record = field.data?.record;
   const farm = useTitleName(landId, onPolygon, stellarTitle);
-  const shape = useMemo(() => fieldsOrAreas(record), [record]);
+  // The title's fields (24 Oct): from the land title NFT's metadata, else the record's fields or areas.
+  const tf = useTitleFields(landId, onPolygon, stellarTitle, record);
+  const shape = useMemo(() => fieldsMap(tf), [tf]);
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
   if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched) || field.isLoading) return <Loading />;
   const map = shape.record ? <AreaMap record={shape.record} labels={shape.labels}

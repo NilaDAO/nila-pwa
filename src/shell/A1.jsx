@@ -10,7 +10,7 @@ import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useTitleCount } from '../register/titles';
 import { useInvestment } from '../stellar/hooks';
-import { ShareRows, useMyShares } from '../loan/MyShares';
+import { ShareRows, useMyLand, useMyShares } from '../loan/MyShares';
 import { loadVoucherCode, th, typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
@@ -23,7 +23,7 @@ import MessageSlider, { Title, card, memberSlides, small } from './MessageSlider
 import { Sheet } from '../plan/ui';
 import { useStage } from './stageCtx';
 import { homeTop, useHomeMap } from './MapStage';
-import { fieldsOrAreas } from './LandTitle';
+import { fieldsMap, useTitleFields } from '../plan/titleFields';
 import AreaMap from '../plan/AreaMap';
 import { useLeaderMap } from '../leader/unionMap';
 import { MEMBER_TODO_ROWS, useLeaderTaskCount } from './taskCount';
@@ -150,10 +150,12 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(arm); window.removeEventListener('scroll', on); };
   }, [stage]);
   const home = useHomeMap(onShare, window.innerHeight - top + 32);
-  // A member's Assets tab shows her land as on her land title (A5, 24 Oct): her fields, no crop labels; a tap opens A5.
-  // Trees, water and other improvements are not on the map yet: their hooks (useWaterSources, useImprovements) are
-  // not built (design gap).
-  const titleShape = useMemo(() => fieldsOrAreas(home.record), [home.record]);
+  // A member's Assets tab shows her land as on her land title (A5, 24 Oct): the title's fields from the NFT's metadata
+  // (else the record's), no crop labels; a tap opens A5. Trees, water and other improvements are not on the map yet:
+  // their hooks (useWaterSources, useImprovements) are not built (design gap).
+  const land = useMyLand();
+  const tf = useTitleFields(land.landId, land.onPolygon, land.stellarTitle, home.record);
+  const titleShape = useMemo(() => fieldsMap(tf), [tf]);
   const titleMap = titleShape.record ? <AreaMap record={titleShape.record} labels={titleShape.labels} onSelect={(z) => z && onLand()}
     fitBottom={window.innerHeight - top + 32} /> : null;
   // The leader's Assets tab (map-centred lane, 23 Oct): the union map filtered to its assets (machines, Ready shares).

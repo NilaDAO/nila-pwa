@@ -14,6 +14,7 @@ import { readContract, readFoodTokens, sv } from '../stellar/soroban';
 import { borderClient } from '../border/api';
 import { keypadClient } from '../keypad/api';
 import { fromNodeCached } from '../plan/record';
+import { recordFields, shapeToFields } from '../plan/titleFields';
 import { useNilaSigner } from '../wallet/signer';
 import { rowOf } from '../loan/MyShares';
 
@@ -33,6 +34,10 @@ const square = ({ lat, lng }) => {
 const outline = (record) => record?.meta?.geometry?.out
   || { type: 'MultiPolygon', coordinates: (record?.zones || []).flatMap((z) => (z.geometry?.type === 'Polygon' ? [z.geometry.coordinates]
     : z.geometry?.type === 'MultiPolygon' ? z.geometry.coordinates : [])) };
+
+// Her land as on her title (24 Oct, the leader's Assets map): the title's fields from its metadata (the node's `shape`),
+// else the record's fields or areas.
+const addFields = (m, tf) => { if (tf?.fields?.length) m.fields.push(...tf.fields); };
 
 // The list as it was last seen, kept on the phone per account and union (22 Oct): G1 shows it at once on the next open
 // and refreshes it in the background. Only the list fields are kept (no field records), so it stays small.
@@ -82,13 +87,14 @@ export function useUnionMembers(api) {
       else if (Array.isArray(node?.members) && node.etag) keepNodeList(acct, cfg.union, { etag: node.etag, body: node });
       if (Array.isArray(node?.members)) {
         const list = finish(await Promise.all(node.members.map(async (r) => {
-          const m = { key: r.key || r.address, address: r.address || '', name: r.name || '', phone: r.phone || '', lands: new Set(), places: [],
+          const m = { key: r.key || r.address, address: r.address || '', name: r.name || '', phone: r.phone || '', lands: new Set(), places: [], fields: [],
             note: r.note || '', job: r.job, nextHarvest: r.next_harvest || null, shareCounts: r.shares || {},
             loans: (r.loans || []).map((l) => ({ token: String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'), left: Number(l.left ?? l.cash ?? 0), overdue: !!l.overdue, due: Number(l.due || 0) })) };
           await Promise.all((r.titles || []).map(async (t) => {
             m.lands.add(t.title_id);
             const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
             if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
+            addFields(m, shapeToFields(t.shape) || recordFields(record));
           }));
           return m;
         })));
@@ -97,7 +103,7 @@ export function useUnionMembers(api) {
       }
       const by = new Map();
       const get = (key) => {
-        if (!by.has(key)) by.set(key, { key, address: key.startsWith('G') ? key : '', name: '', phone: '', lands: new Set(), loans: [], places: [], note: '' });
+        if (!by.has(key)) by.set(key, { key, address: key.startsWith('G') ? key : '', name: '', phone: '', lands: new Set(), loans: [], places: [], fields: [], note: '' });
         return by.get(key);
       };
       const border = borderClient(s);
@@ -114,6 +120,7 @@ export function useUnionMembers(api) {
           const m = get(t.holder); m.lands.add(t.title_id); m.name = m.name || t.farm || '';
           const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
           if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
+          addFields(m, shapeToFields(t.shape) || recordFields(record));
         })),
         Promise.all(jobs.map(async (j) => {
           if (!j.member) return;

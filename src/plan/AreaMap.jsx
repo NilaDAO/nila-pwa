@@ -109,7 +109,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
         if (pick) poly.addListener('click', pick(z.zone_id));
         drawn.current.push(poly);
       });
-      if (k && g.marker?.AdvancedMarkerElement) {
+      if (k && !lab.hide && g.marker?.AdvancedMarkerElement) {   // hide: a shape with no chip (a member's further fields)
         const mk = new g.marker.AdvancedMarkerElement({ map: m, position: { lat: sy / k, lng: sx / k }, gmpClickable: !!pick,
           title: lab.text, content: chip(lab, selected === z.zone_id, faded, !!pick) });
         if (pick) mk.addListener('click', pick(z.zone_id));
@@ -167,7 +167,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
       const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, opacity: faded ? 0.3 : 1, fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
       layer.addTo(group);
       if (onSelect) layer.on('click', () => onSelect(selected === z.zone_id ? null : z.zone_id));
-      layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
+      if (!lab.hide) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
     });
     const out = record?.meta?.geometry?.out;
     if (out) L.geoJSON(out, { interactive: false, style: { color: '#F1F5F9', weight: 1.5, dashArray: '6 4', fill: false } }).addTo(map);

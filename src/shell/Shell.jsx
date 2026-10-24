@@ -1,7 +1,7 @@
 // The new app shell (P1): the bottom tab bar instead of the cards. Shown in Stellar mode (a moved wallet)
 // and to leaders who chose "New Nila". Today's cards stay for Polygon wallets (StellarGate).
 // Tabs are kept in the URL hash (#/assets …) so the phone's back button works.
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { getMoveStatus, requestMoveNin } from '../move/api';
@@ -262,7 +262,9 @@ export default function Shell({ leader }) {
     // The map stage lies under the shell (map-central trial): a map sheet makes the shell see-through while it is open.
     <MapStage>
       <div style={{ minHeight: '100vh', background: GRADIENT, paddingBottom: TAB_BAR_HEIGHT + 16, position: 'relative', zIndex: 1 }} data-testid="shell">
-        {body}
+        {/* One card per screen (24 Oct): a new screen gets a fresh card, so a header button (Tasks, Settings, History)
+            opens it raised; only a bottom-bar tab keeps a lowered card down (keepLowOnTab). */}
+        <Fragment key={view}>{body}</Fragment>
         <BottomTabBar tabs={tabs} active={active} onSelect={(v) => { keepLowOnTab(); resetA1Scroll(); go(v); }} />
       </div>
     </MapStage>

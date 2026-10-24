@@ -3,7 +3,8 @@
 // the map naming the filter and its count. A tap on the leader's own property opens her own Crop plan; on any other
 // member's property, that member's G2.
 //  - members: all members' properties, name labels (the default);
-//  - assets: where the union's assets stand: machines (their owners' properties) and crop shares Ready to take up;
+//  - assets: every member's land as on her land title (24 Oct): the title's fields (NFT metadata, else the record's),
+//    no crop labels; a property with a crop share Ready to take up in accent, a machine owner with her machines;
 //  - cash: properties with an active loan, by repayment (due within 14 days gold, overdue coral);
 //  - harvests: properties with a harvest in the next 60 days, by weeks to harvest.
 // (Crop plan keeps the leader's own property, CropPlanFlow.)
@@ -41,14 +42,15 @@ export function useLeaderMap(filter = 'members', fitBottom = 170, on = true) {
     const now = Date.now() / 1000;
     const label = {};
     for (const m of all) {
-      if (!m.places.length) continue;
+      if (!m.places.length && !m.fields?.length) continue;
       const mine = shares.data?.[m.address]?.shares || [];
       if (filter === 'members') label[m.key] = { text: m.label };
       else if (filter === 'assets') {
         const owned = (machines.data || []).filter((x) => x.confirmed && x.owner === m.address);
         const ready = mine.filter((x) => x.ready).length || Number(m.shareCounts?.ready || 0);
-        if (owned.length) label[m.key] = { text: m.label, sub: owned.map((x) => typeName(x.machine_type)).join(', '), colour: C.text };
-        if (ready) label[m.key] = { text: m.label, sub: `${owned.length ? `${owned.length} machine${owned.length === 1 ? '' : 's'} · ` : ''}${ready} Ready`, colour: C.accent };
+        label[m.key] = ready ? { text: m.label, sub: `${owned.length ? `${owned.length} machine${owned.length === 1 ? '' : 's'} · ` : ''}${ready} Ready`, colour: C.accent }
+          : owned.length ? { text: m.label, sub: owned.map((x) => typeName(x.machine_type)).join(', '), colour: C.text }
+            : { text: m.label };
       } else if (filter === 'cash') {
         const open = [...m.loans, ...mine.filter((x) => x.loan && !m.loans.some((l) => l.token === x.token)).map((x) => x.loan)];
         if (!open.length) continue;
@@ -66,12 +68,21 @@ export function useLeaderMap(filter = 'members', fitBottom = 170, on = true) {
       }
     }
     const shown = all.filter((m) => label[m.key]);
-    const zones = shown.flatMap((m) => m.places.map((p) => ({ zone_id: m.key, geometry: p.geometry })))
+    // Assets: each title field its own shape (`<key>#<n>`); the member's label on her first field only.
+    const byFields = filter === 'assets';
+    const zones = shown.flatMap((m) => (byFields && m.fields?.length
+      ? m.fields.map((f, i) => {
+        const id = `${m.key}#${i}`;
+        if (i) label[id] = { ...label[m.key], text: undefined, sub: undefined, hide: true };
+        else label[id] = label[m.key];
+        return { zone_id: id, geometry: f.geometry };
+      })
+      : m.places.map((p) => ({ zone_id: m.key, geometry: p.geometry }))))
       .filter((z, i, a) => a.findIndex((y) => y.zone_id === z.zone_id) === i);
     const count = shown.length;
     const chip = `${FILTER_NAMES[filter] || filter} · ${count}`;
     // No property to show: the map stays clear (the chip still says 0).
-    const map = <AreaMap record={zones.length ? { zones } : null} labels={label} onSelect={(z) => z && pick(z)} fitSide={90} fitBottom={fitBottom} chip={chip} />;
+    const map = <AreaMap record={zones.length ? { zones } : null} labels={label} onSelect={(z) => z && pick(String(z).split('#')[0])} fitSide={90} fitBottom={fitBottom} chip={chip} />;
     return { map, count, loading: !members.data };
   }, [all, filter, shares.data, machines.data, dues.data, pick, fitBottom, members.data]);
 }
