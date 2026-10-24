@@ -1,5 +1,5 @@
 // G1 (board LeaderGrowers): the leader's Members tab, a map card. The header is A1L's (History, All tasks, Settings);
-// the card: "N growers", Add a member (→ L14), search with a scan button (her wallet QR, A1a → her row), and one
+// the card: "N members" (land title holders, 24 Oct) and "Joining · K" (onboarding), Add a member (→ L14), search with a scan button (her wallet QR, A1a → her row), and one
 // row per grower: her name and a summary (coral when a loan is overdue); a row, or her property on the map, opens G2
 // (#/members/<id>). No crop shares here (22 Oct): they belong under batches (the Harvests tab, later).
 // Data: src/leader/unionMembers.js.
@@ -40,7 +40,13 @@ export default function Members({ go }) {
   // No S1 here (22 Oct): the card shows at once; grey rows until the first list, the phone's copy meanwhile.
   const waiting = !members.data;
   const needle = q.trim().toLowerCase();
-  const list = needle ? all.filter((m) => [m.label, m.name, m.phone, m.address, ...m.lands.map(String)].some((v) => String(v || '').toLowerCase().includes(needle))) : all;
+  // A member holds a land title (24 Oct); people still onboarding (keypad link, fields sent, title on its way) are
+  // listed under "Joining"; anyone else (no title and no onboarding, e.g. a test borrower) is not listed.
+  const match = (m) => !needle || [m.label, m.name, m.phone, m.address, ...m.lands.map(String)].some((v) => String(v || '').toLowerCase().includes(needle));
+  const joiningOf = (m) => !m.lands.length && (!!m.note || !!m.job || String(m.key).startsWith('keypad:'));
+  const membersAll = all.filter((m) => m.lands.length);
+  const list = membersAll.filter(match);
+  const joining = all.filter(joiningOf).filter(match);
   const left = list.length - n;
   const onQr = (text) => {
     setScan(false);
@@ -48,7 +54,7 @@ export default function Members({ go }) {
     const share = /^nila:share:(\w+):/.exec(String(text || '').trim());
     if (share) { go(`loan/${share[1]}`); return; }
     const g = addressFromQr(text);
-    const m = g && all.find((x) => x.address === g);
+    const m = g && membersAll.find((x) => x.address === g);
     if (m) pick(m.key); else setMsg('Not a member of your union.');
   };
   const head = (
@@ -61,12 +67,11 @@ export default function Members({ go }) {
   const field = { height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 14 };
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text }} head={head} map={map}>
-      <section aria-label="Growers" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: '14px 22px 22px',
+      <section aria-label="Members" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: '14px 22px 22px',
         display: 'flex', flexDirection: 'column', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 8 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Growers: everyone on the union's lists, onboarding included; members: those holding a land title (23 Oct). */}
-            {waiting ? 'Growers' : `${list.length} grower${list.length === 1 ? '' : 's'} · ${list.filter((m) => m.lands.length).length} member${list.filter((m) => m.lands.length).length === 1 ? '' : 's'}`}
+            {waiting ? 'Members' : `${membersAll.length} member${membersAll.length === 1 ? '' : 's'}`}
             {members.isFetching && !waiting && <UpdatingDot />}
           </h2>
           <button type="button" onClick={() => go('tasks/member')} style={{ ...field, height: 36, borderRadius: R.round, fontWeight: 700,
@@ -102,6 +107,17 @@ export default function Members({ go }) {
           <button type="button" onClick={() => setN(n + MORE)} style={{ ...field, fontWeight: 700, cursor: 'pointer' }}>
             Show {Math.min(MORE, left)} more of {left}
           </button>
+        )}
+        {joining.length > 0 && (
+          <>
+            <span style={{ color: C.muted, fontWeight: 700, paddingTop: 4 }}>Joining · {joining.length}</span>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
+              {joining.map((m, i) => (
+                <ListRow key={m.key} first={i === 0} title={m.label} sub={<span style={{ color: C.muted }}>{m.note || 'App link sent'}</span>}
+                  onClick={() => pick(m.key)} />
+              ))}
+            </ul>
+          </>
         )}
       </section>
     </MapCard>

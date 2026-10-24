@@ -41,6 +41,13 @@ const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'no
 function readKept(acct, union) {
   try { const v = JSON.parse(localStorage.getItem(cacheKey(acct, union)) || 'null'); return Array.isArray(v) ? v : undefined; } catch { return undefined; }
 }
+const nodeKey = (acct, union) => `nila.members.node.${union}.${acct}`;
+function readNodeList(acct, union) {
+  try { return JSON.parse(localStorage.getItem(nodeKey(acct, union)) || 'null') || undefined; } catch { return undefined; }
+}
+function keepNodeList(acct, union, v) {
+  try { localStorage.setItem(nodeKey(acct, union), JSON.stringify(v)); } catch { /* full or private mode */ }
+}
 function keep(acct, union, list) {
   try { localStorage.setItem(cacheKey(acct, union), JSON.stringify(list.map((m) => Object.fromEntries(KEEP.map((k) => [k, m[k]]))))); } catch { /* full or private mode */ }
 }
@@ -67,7 +74,12 @@ export function useUnionMembers(api) {
     queryFn: async () => {
       // The node's compact members list (map-centred lane, 23 Oct): one row per member; the property outlines from the
       // records kept on this phone. Until the node has it (404), the list is built from the lists below.
-      const node = await api.unionMembers().catch(() => null);
+      // ETag (24 Oct): the last list from the node and its tag are kept on this phone; an unchanged list comes back as
+      // 304 and the kept one is used.
+      const kept = readNodeList(acct, cfg.union);
+      let node = await api.unionMembers(kept?.etag).catch(() => null);
+      if (node?.notModified) node = kept?.body || null;
+      else if (Array.isArray(node?.members) && node.etag) keepNodeList(acct, cfg.union, { etag: node.etag, body: node });
       if (Array.isArray(node?.members)) {
         const list = finish(await Promise.all(node.members.map(async (r) => {
           const m = { key: r.key || r.address, address: r.address || '', name: r.name || '', phone: r.phone || '', lands: new Set(), places: [],

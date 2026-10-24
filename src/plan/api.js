@@ -14,17 +14,22 @@ export async function signStellarMessage(signHash, message) {
 
 /** A signed fetch to the node, for /plan and the other signed APIs (border O16 …). */
 export function signedCall({ stellarAddress, signHash }) {
-  return async function call(method, path, body) {
+  // opts.etag: sent as If-None-Match; a 304 returns { notModified: true } and the reply's ETag is kept in out.etag.
+  return async function call(method, path, body, opts = {}) {
     const raw = body === undefined ? '' : JSON.stringify(body);
     const ts = Math.floor(Date.now() / 1000);
     const msg = `nila-plan\n${method} ${path.split('?')[0]}\n${ts}\n${hex(await sha256(enc.encode(raw)))}`;
     const sig = await signStellarMessage(signHash, msg);
     const r = await fetch(`${API}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json', 'X-Nila-Account': stellarAddress, 'X-Nila-Ts': String(ts), 'X-Nila-Sig': sig },
+      headers: { 'Content-Type': 'application/json', 'X-Nila-Account': stellarAddress, 'X-Nila-Ts': String(ts), 'X-Nila-Sig': sig,
+        ...(opts.etag ? { 'If-None-Match': opts.etag } : {}) },
       body: body === undefined ? undefined : raw,
+      ...(opts.etag ? { cache: 'no-store' } : {}),
     });
+    if (r.status === 304) return { notModified: true };
     const out = await r.json().catch(() => ({}));
+    if (r.headers.get('ETag')) Object.defineProperty(out, 'etag', { value: r.headers.get('ETag'), enumerable: false });
     if (!r.ok) {
       const e = new Error(out.detail || `${path}: ${r.status}`);
       e.status = r.status;
@@ -55,7 +60,8 @@ export function planClient(signer) {
     unionLoans: () => call('GET', '/stellar/union/loans'),
     unionTitles: () => call('GET', '/stellar/union/titles'),
     // The compact members list (map-centred lane, 23 Oct): one row per member; 404 until the node has it.
-    unionMembers: () => call('GET', '/stellar/union/members'),
+    // With the ETag of the list kept on the phone: { notModified: true } when the node's list has not changed (24 Oct).
+    unionMembers: (etag) => call('GET', '/stellar/union/members', undefined, { etag }),
     unionSearch: (window) => call('POST', '/stellar/union/search', { window }),
   };
 }
