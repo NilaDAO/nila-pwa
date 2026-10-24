@@ -3,7 +3,7 @@
 // machine hours only; her tokens from her approved plan's mint list, read with fund_core.food_token.
 // DESIGN GAPs: no member names on the node ("Land N", "Your union leader"); the union checks on L11 (cash
 // on hand, stock, union limit) are not shown yet; "Type the code" is a text box for the whole code.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import CameraView from '../shell/CameraView';
@@ -21,7 +21,6 @@ import AreaMap from '../plan/AreaMap';
 import { useUnionMembers } from '../leader/unionMembers';
 import { Card, CardTitle, KV } from './AssetParts';
 import { NIN, isLoanRequest, makeRequest } from './request';
-import { checkDeskRequest, isDeskRequest } from './desk';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import PostBring from '../anchor/PostBring';
 import { TRACTOR, hoursFor, th, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
@@ -238,55 +237,18 @@ export function LeaderLoan({ initial }) {
   );
 }
 
-/** A1b (Scan) → N10 (Confirm) → N1/N2/N3. */
-export function MemberScan({ onDone }) {
-  const s = useNilaSigner();
-  const { data: cfg } = useStellarConfig();
-  const tx = useSorobanTx();
-  const [req, setReq] = useState();
+/** A1b (Scan): a QR from her leader. A crop share request is scanned on her Ready share (23 Oct); her withdrawals
+ *  are her own QR that the leader scans (24 Oct). So this only says where to go. */
+export function MemberScan() {
   const [error, setError] = useState();
-  const [typed, setTyped] = useState('');
-  const [typing, setTyping] = useState(false);
-  const read = useMemo(() => async (text) => {
-    setError(undefined);
-    try {
-      const t = text.trim();
-      // A crop share request is scanned on her Ready share (23 Oct), which knows the share.
-      if (isLoanRequest(t)) throw new Error('Open your Ready crop share in Assets, then scan this.');
-      setReq({ desk: await checkDeskRequest(t, { cfg, me: s?.stellarAddress }) });
-    } catch (e) { setError(e.message); }
-  }, [cfg, s]);
-
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); setReq(undefined); onDone?.(); }} onRetry={() => tx.retry()} />;
-  // Her investment paid over the desk (22 Oct): the leader's signed entry comes in the QR; she submits the claim.
-  if (req?.desk) {
-    const d = req.desk;
-    const collect = () => tx.run({
-      label: `Collect ${inr(Math.floor(d.inr))}`, rows: [['You collect', `${inr(Math.floor(d.inr))} in cash`], ['Where', 'Union office']],
-      contractName: 'fund_core', fn: 'claim_junior_cash', args: [sv.address(d.union), sv.address(d.member), sv.address(d.leader), sv.i128(0n)],
-      auth: d.auth, invalidate: [['stellar', 'investment'], ['stellar', 'fund']],
-    });
-    return (
-      <Sheet landName="Nila" title="Your union leader asks you to confirm">
-        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>You collect {inr(Math.floor(d.inr))}</p>
-        <p style={{ ...muted, textAlign: 'center' }}>Your union investment, in cash at the office</p>
-        <p style={{ color: C.gold, textAlign: 'center' }}>Only confirm when your leader is with you and hands you the cash.</p>
-        <Primary disabled={!tx.ready} onClick={collect}>Confirm</Primary>
-        <button type="button" onClick={() => setReq(undefined)} style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, marginTop: 8 }}>Cancel</button>
-      </Sheet>
-    );
-  }
+  const read = (text) => setError(isLoanRequest(text.trim())
+    ? 'Open your Ready crop share in Assets, then scan this.'
+    : 'This QR is not for this screen. To collect cash, open Union investment or nIN and tap Collect.');
   return (
     <Sheet landName="Nila" title="Scan">
-      {!typing ? <CameraView mode="qr" onText={read} /> : (
-        <>
-          <textarea aria-label="The code" value={typed} onChange={(e) => setTyped(e.target.value)} style={{ width: '100%', minHeight: 90, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box' }} />
-          <Primary disabled={!typed.trim()} onClick={() => read(typed)}>Check the code</Primary>
-        </>
-      )}
-      <p style={{ ...muted, textAlign: 'center' }}>Scan the QR on your leader's phone. You see what your leader prepared and press Confirm.</p>
+      <CameraView mode="qr" onText={read} />
+      <p style={{ ...muted, textAlign: 'center' }}>Scan the QR on your leader's phone.</p>
       {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
-      <button type="button" onClick={() => setTyping((t) => !t)} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>{typing ? 'Use the camera' : 'Type the code instead'}</button>
     </Sheet>
   );
 }

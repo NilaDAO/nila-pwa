@@ -2,9 +2,10 @@
 // locked (what she owes); Invest = bring cash to the office (A7b #invest: her wallet QR for the leader, who counts the
 // cash on C6 and records it with fx_pool.cash_scan_mint); a leader invests her own cash with Photo count (Cash → Invest,
 // L5 → C6). Withdraw = fund_core.request_unbond_junior (an amount of her free part, as shares), claimable 14 days later
-// (the contract; the spec's "3 weeks" is replaced, 16 Oct). A member collects it in cash at the office (22 Oct, desk only:
-// fund_core.claim_junior_cash, the leader's "Pay out investment" task, she confirms by scanning the leader's code); a
-// leader claims her own to her wallet with claim_junior. Assisted mode: both cards are messages. An Invest | Withdraw segmented control (component book) at the top of
+// (the contract; 14 days confirmed 24 Oct). A member collects it in cash at the office (24 Oct, LOAN_RULES "Two
+// withdrawals"): Collect shows her signed QR for fund_core.claim_junior_cash (deskCode.js); the leader hands over the
+// cash, scans it (Tasks → Pay out cash), checks the 14 days and submits. Starting the withdrawal is hers: on her own
+// phone, the leader driving it in assisted mode. A leader claims her own to her wallet with claim_junior. An Invest | Withdraw segmented control (component book) at the top of
 // the card shows one of the two at a time (22 Oct).
 // DESIGN GAPs: no union name, no rate arrow and so no "In a year" line (Q5); no "Your loan · Fully backed" row (the tree
 // discount is not in Nov 7, LOAN_RULES); no leader name ("Rosalie"); Cash teller is shown as soon.
@@ -21,6 +22,8 @@ import { Loading } from '../register/Boot';
 import { assisted } from './MyShares';
 import Segmented from '../shell/Segmented';
 import { AssetScreen, Card, KV, Line, MarkCircle, QrCircle, Secondary, Stepper } from './AssetParts';
+import { DeskQr } from './CashOut';
+import { signDeskCode } from './deskCode';
 
 const RAY = 10n ** 27n;
 const n = (v) => Number(BigInt(v ?? 0)) / 1e7;
@@ -56,7 +59,7 @@ function BringCash({ amount, after, address, onBack }) {
   );
 }
 
-export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
+export default function Investment({ onBack, leader, onPhotoCount }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const inv = useInvestment(s?.stellarAddress);
@@ -67,6 +70,8 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
   const [out, setOut] = useState(100);
   const [showQr, setShowQr] = useState(false);
   const [pick, setPick] = useState();
+  const [desk, setDesk] = useState();      // her signed QR on screen: { qr, until }
+  const [error, setError] = useState();
   const p = inv.data;
   const now = Date.now() / 1000;
   const claimAt = p?.request_ts ? Number(p.request_ts) + DAYS_14 : 0;
@@ -102,6 +107,14 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
   const toCollect = n(((BigInt(p?.claimable_shares ?? 0) + (claimAt && claimAt <= now ? BigInt(p?.pending_shares ?? 0) : 0n)) * index) / RAY);
   // A withdrawal on its way or ready opens on Withdraw; otherwise Invest.
   const mode = pick ?? (pending || canClaim ? 'withdraw' : 'invest');
+  const collect = async () => {
+    setError(undefined);
+    try { setDesk(await signDeskCode({ cfg, signer: s.stellarAddress, signHash: s.signHash, kind: 'W' })); } catch (e) { setError(e.message); }
+  };
+  if (desk) {
+    return <DeskQr title="Your withdrawal" qr={desk.qr} until={desk.until} onBack={() => setDesk(undefined)}
+      rows={[['You get', canClaim ? `${inr(Math.floor(toCollect))} in cash` : 'your withdrawal in cash'], ['Ready', canClaim ? 'now' : `from about ${dateOf(claimAt)}`]]} />;
+  }
   if (showQr) return <BringCash amount={bring} after={invested + bring} address={s?.stellarAddress} onBack={() => setShowQr(false)} />;
   return (
     <AssetScreen title="Union investment" onBack={onBack} note={NOTE}>
@@ -151,8 +164,9 @@ export default function Investment({ onBack, leader, onPhotoCount, onScan }) {
         ) : canClaim ? (
           <>
             <KV k="Ready to collect" v={`${inr(Math.floor(toCollect))} in cash`} color={C.accent} />
-            <p style={muted}>Collect it at the union office: your leader shows a code, you scan it and confirm.</p>
-            {onScan && <Secondary onClick={onScan}>Scan your leader's code</Secondary>}
+            <p style={muted}>Collect it in cash at the union office: your leader scans your QR once you have the cash.</p>
+            <Secondary disabled={!s?.ready} onClick={collect}>Collect</Secondary>
+            {error && <p style={{ ...muted, color: C.coral }}>{error}</p>}
           </>
         ) : pending ? (
           <p style={muted}>{leader ? `Your withdrawal is on its way: it arrives in your wallet by about ${dateOf(claimAt)}.`

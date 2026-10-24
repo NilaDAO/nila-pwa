@@ -48,8 +48,8 @@ const START = [
   ['Crop plan and crop share', [['Share request', 'Find her in Members', 'members', RupeeIcon]]],
   // Her invest, repay and withdrawal start from her G2 (22 Oct): these rows open Members to find her.
   ['Cash', [['Invest', 'Find her in Members', 'members', InvestIcon], ['Repay', 'Find her in Members', 'members', RepayIcon],
-    ['Pay out investment', 'Find her in Members', 'members', PayOutIcon],
-    ['Pay out a cash-out', 'A leader\'s code: pay cash, burn the nIN', 'cash/payout', PayOutIcon], ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
+    // One task for both withdrawals (24 Oct): her signed QR, investment or nIN; the app tells them apart.
+    ['Pay out cash', 'Hand over the cash, then scan her QR', 'cash/payout', PayOutIcon], ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
   ['Vouchers', [['Register a machine', 'Her own machine, photos and price', 'cash/machine', TractorIcon]]],
 ];
 
