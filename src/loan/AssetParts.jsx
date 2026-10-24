@@ -4,17 +4,18 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
 import { C, FONT, R, SHADOW, TAB_BAR_HEIGHT } from '../shell/tokens';
-import { ScreenHeader } from '../shell/ListRow';
+import MapCard from '../shell/MapCard';
 
 const settings = () => { window.location.hash = '#/settings'; };
 
+/** An asset screen as a map card on the shared map (24 Oct, map-centred lane: Union investment, withdraw, cash-out),
+ *  her property behind it; outside the map-central shell MapCard draws the header on the gradient as before. */
 export function AssetScreen({ title = '', onBack, note, children }) {
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
-      <ScreenHeader title={title} onBack={onBack} onSettings={settings} />
+    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text }} header={{ title, onBack, onSettings: settings }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: note ? 120 : 16 }}>{children}</div>
       {note && <NoteBar>{note}</NoteBar>}
-    </div>
+    </MapCard>
   );
 }
 
