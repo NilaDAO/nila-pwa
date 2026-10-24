@@ -15,7 +15,7 @@ import { readFoodTokens, sv, tokenHex } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { useCropPlan, useLandTitles, usePlanClient } from '../plan/hooks';
 import { Primary, inr, muted } from '../plan/ui';
-import ListRow, { ScreenHeader } from '../shell/ListRow';
+import ListRow from '../shell/ListRow';
 import { Card } from './AssetParts';
 import CameraView from '../shell/CameraView';
 import ConfirmShare from './ConfirmShare';
@@ -25,6 +25,7 @@ import BigQr from '../shell/BigQr';
 import { NIN, readRequest } from './request';
 import { C, FONT } from '../shell/tokens';
 import { ChevronIcon, RupeeIcon, ShareTile } from '../shell/icons';
+import MapCard from '../shell/MapCard';
 
 export const FLAG_DRAWN = 8;
 export const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
@@ -76,12 +77,12 @@ export function shareTag(x) {
   return `From ${new Date(Number(x.ft.from_date) * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
 }
 
+/** A map card on her own property (map-centred lane, 23 Oct): the header, then the body in one card. */
 function Page({ title, onBack, children }) {
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <ScreenHeader title={title} onBack={onBack} />
+    <MapCard header={{ title, onBack }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
       <Card label={title} style={{ gap: 12 }}>{children}</Card>
-    </div>
+    </MapCard>
   );
 }
 

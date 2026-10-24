@@ -16,7 +16,9 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
-import { ScreenHeader } from '../shell/ListRow';
+import MapCard from '../shell/MapCard';
+import AreaMap from '../plan/AreaMap';
+import { useUnionMembers } from '../leader/unionMembers';
 import { Card, CardTitle, KV } from './AssetParts';
 import { NIN, isLoanRequest, makeRequest } from './request';
 import { checkDeskRequest, isDeskRequest } from './desk';
@@ -53,10 +55,14 @@ export function LeaderLoan({ initial }) {
   const [initPlan, initToken] = String(initial || '').split('_');
   const s = useNilaSigner();
   const api = usePlanClient();
+  // Her property behind L11 / L9 (map-centred lane, 23 Oct): from the union list (records kept on the leader's phone).
+  const unionList = useUnionMembers(api);
   const { data: cfg } = useStellarConfig();
   const plans = useQuery({ queryKey: ['oracle', 'approvedPlans'], enabled: !!api, queryFn: () => api.approvedPlans() });
   const planId = initPlan || undefined;
   const plan = plans.data?.plans?.find((p) => p.id === planId);
+  const holder = unionList.data?.find((m) => m.lands.includes(Number(plan?.land_id)));
+  const memberMap = holder?.record ? <AreaMap record={holder.record} /> : <span />;
   const shares = useQuery({
     queryKey: ['oracle', 'shares', planId], enabled: !!plan && !!cfg,
     queryFn: async () => {
@@ -123,26 +129,24 @@ export function LeaderLoan({ initial }) {
     const r = req.request;
     const mv = value;
     return (
-      <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <ScreenHeader title="Crop share request" onBack={() => setReq(undefined)} />
+      <MapCard map={memberMap} header={{ title: 'Crop share request', onBack: () => setReq(undefined) }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
         <Card label="Crop share request" style={{ gap: 12 }}>
           <BigQr img={img} alt="Crop share request QR" caption="Let her scan this with her phone" below={340} />
           <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>
             {r.crop} · {inr(Number(BigInt(r.cash) / NIN))} cash{r.hours ? ` + ${inr(mv)} vouchers (${th(r.hours)} tractor h)` : ''}</span>
           <KV k="Valid for" v="48 hours" />
         </Card>
-      </div>
+      </MapCard>
     );
   }
   // The page shows at once (header and card); the card fills as the plan, her share and the union are read.
   if (!plan) {
     return (
-      <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <ScreenHeader title="Crop share request" onBack={() => window.history.back()} />
+      <MapCard map={<span />} header={{ title: 'Crop share request', onBack: () => window.history.back() }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
         <Card label="Crop share request">
           {plans.isLoading || !plans.data ? <SkeletonRows rows={6} /> : <span style={muted}>This crop plan is not approved. Find her in Members.</span>}
         </Card>
-      </div>
+      </MapCard>
     );
   }
   const sel = shares.data?.find((x) => x.token_id === pick);
@@ -177,7 +181,7 @@ export function LeaderLoan({ initial }) {
       args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
       invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
     });
-    return <ConfirmShare own cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} />;
+    return <ConfirmShare own cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
   }
   // Board LeaderRedeem, without its crop share list (23 Oct: the share comes picked): one card with the share, the
   // steppers, total / interest / repay and the union checks. No seed row: seed is paid as cash (P5).
@@ -187,8 +191,7 @@ export function LeaderLoan({ initial }) {
   const rows = checkRows(checks.data, cash, hours, caps);
   const line = { height: 1, background: C.raised };
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <ScreenHeader title={`Land ${plan.land_id}`} onBack={() => window.history.back()} />
+    <MapCard map={memberMap} header={{ title: `Land ${plan.land_id}`, onBack: () => window.history.back() }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
       <Card label="Crop share request">
         {(shares.isLoading || (sel && !checks.data && !checks.isError)) && <SkeletonRows rows={6} />}
         {shares.data && !sel && <span style={muted}>No crop share of hers is ready.</span>}
@@ -231,7 +234,7 @@ export function LeaderLoan({ initial }) {
           </>
         )}
       </Card>
-    </div>
+    </MapCard>
   );
 }
 

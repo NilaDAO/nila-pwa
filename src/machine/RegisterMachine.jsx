@@ -14,10 +14,10 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
-import { ScreenHeader } from '../shell/ListRow';
 import { Card, CardTitle } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
 import { PARTS, useRates } from './hooks';
+import MapCard from '../shell/MapCard';
 
 // Walk order (machines/photos.py LABELS): Front first, then round. Grid: 3×3 with the machine in the middle.
 const WALK = ['Front', 'Front right', 'Right', 'Back right', 'Back', 'Back left', 'Left', 'Front left'];
@@ -83,12 +83,12 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   };
   // Registered: straight back to Assets (executive decision 23 Oct), no success page; registered to herself → Your machine to confirm it.
   useEffect(() => { if (tx.status === 'success') { tx.reset(); window.location.hash = to === s?.stellarAddress ? '#/machine' : '#/assets'; } }, [tx.status]); // eslint-disable-line react-hooks/exhaustive-deps
-  // A full page on the gradient, not a map card (executive decision 22 Oct): header, then the board's cards.
+  // A map card on the leader's own property (map-centred lane, 23 Oct; was a full page, 22 Oct): header, then the
+  // board's cards.
   const page = (title, back, body) => (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <ScreenHeader title={title} onBack={back} />
+    <MapCard header={{ title, onBack: back }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
       {body}
-    </div>
+    </MapCard>
   );
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   if (scanning) {

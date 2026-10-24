@@ -15,9 +15,9 @@ import { useStellarConfig } from '../stellar/hooks';
 import { signVoucherCode } from './voucherCode';
 import { Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
-import { ScreenHeader } from '../shell/ListRow';
 import { Card, CardTitle, KV, NoteBar } from '../loan/AssetParts';
 import { TRACTOR, hoursFor, loadVoucherCode as load, saveVoucherCode as save, th, unitsOf, useMachines, useRates, useVouchers } from './hooks';
+import MapCard from '../shell/MapCard';
 
 const TERM = 34_560;                          // ledgers, ~48 h
 const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -28,14 +28,13 @@ const tractor = icon(<path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 
 const chevron = icon(<path d="m6 9 6 6 6-6" />, C.muted);
 const qr = icon(<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2v2h-2zM18 14h2v2h-2z" />, C.text, 18);
 const info = <span style={{ flexShrink: 0, display: 'flex' }}>{icon(<path d="M12 22a10 10 0 1 0 0-20a10 10 0 0 0 0 20zM12 16v-4M12 8h.01" />, C.muted)}</span>;
-/** A full page (no map card, 23 Oct): the header, then the screen's cards. */
+/** A map card on her own property (map-centred lane, 23 Oct): the header, then the screen's cards. */
 function Page({ title, onBack, note, children }) {
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16, marginBottom: note ? 120 : 16 }}>
-      <ScreenHeader title={title} onBack={onBack} />
+    <MapCard header={{ title, onBack }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16, marginBottom: note ? 120 : 16 }}>
       {children}
       {note && <NoteBar>{note}</NoteBar>}
-    </div>
+    </MapCard>
   );
 }
 

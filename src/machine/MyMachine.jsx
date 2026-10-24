@@ -17,21 +17,21 @@ import { matchToken, readVoucherCode, voucherEntry } from './voucherCode';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
-import { ScreenHeader } from '../shell/ListRow';
 import { Card, CardTitle, KV } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
 import { HOLD_REASONS, PARTS, TRACTOR, centi, hoursFor, saveJob, th, typeName, unitsOf, useMyMachine, useOwnerDues, useRates } from './hooks';
+import MapCard from '../shell/MapCard';
 
 const svgT = (size, color) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" /></svg>;
 const tractor = svgT(32, C.ink);
 const tractorSmall = svgT(20, C.ink);
-/** A full page (no map card, 23 Oct): the header, then the body in one card (or as given with `bare`). */
+/** A map card on her own property (map-centred lane, 23 Oct): the header, then the body in one card (or as given
+ *  with `bare`). */
 function Page({ title, onBack, bare, children }) {
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <ScreenHeader title={title} onBack={onBack} />
+    <MapCard header={{ title, onBack }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
       {bare ? children : <Card label={title} style={{ gap: 12 }}>{children}</Card>}
-    </div>
+    </MapCard>
   );
 }
 const Paid = ({ k, sub, v, color = C.text }) => (
@@ -79,8 +79,7 @@ export default function MyMachine({ onBack, pick: first }) {
     // A full page as L13 (23 Oct): what was registered for her, her duties, one button.
     const check = <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>;
     return (
-      <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <ScreenHeader title="Confirm your machine" onBack={onBack} />
+      <MapCard header={{ title: 'Confirm your machine', onBack }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
         <Card label="Your machine" style={{ gap: 12 }}>
           <CardTitle>{typeName(m.machine_type)}</CardTitle>
           <span style={muted}>Your union leader registered it for you. Members can hire it with their machine hours once you confirm.</span>
@@ -94,7 +93,7 @@ export default function MyMachine({ onBack, pick: first }) {
           ))}
           <Primary disabled={!tx.ready} onClick={() => call('Confirm your machine', 'confirm_machine', [sv.address(me), sv.u64(m.id)], [['Machine', typeName(m.machine_type)]])}>Confirm my machine</Primary>
         </Card>
-      </div>
+      </MapCard>
     );
   }
   if (holding) {

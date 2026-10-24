@@ -3,9 +3,9 @@
 // `hours`: voucher units (centi tractor hours).
 import { Primary, inr } from '../plan/ui';
 import { C, FONT } from '../shell/tokens';
-import { ScreenHeader } from '../shell/ListRow';
 import { Card } from './AssetParts';
 import { th } from '../machine/hooks';
+import MapCard from '../shell/MapCard';
 
 const kv = (k, v) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
@@ -14,10 +14,10 @@ const kv = (k, v) => (
 );
 const second = { width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700 };
 
-export default function ConfirmShare({ cash, hours, name, area, own, ready, onConfirm, onCancel }) {
+// A map card (map-centred lane, 23 Oct): `map` the property behind it (her own by default).
+export default function ConfirmShare({ cash, hours, name, area, own, ready, onConfirm, onCancel, map }) {
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <ScreenHeader title="Confirm your crop share" onBack={onCancel} />
+    <MapCard map={map} header={{ title: 'Confirm your crop share', onBack: onCancel }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
       {!own && <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Your union leader asks you to confirm</span>}
       <Card label="Your crop share" style={{ gap: 12 }}>
         {kv('Cash you receive', inr(cash))}
@@ -31,6 +31,6 @@ export default function ConfirmShare({ cash, hours, name, area, own, ready, onCo
       </Card>
       <Primary disabled={!ready} onClick={onConfirm}>{hours > 0 ? 'I received the cash · accept the vouchers' : 'I received the cash'}</Primary>
       <button type="button" onClick={onCancel} style={second}>Cancel</button>
-    </div>
+    </MapCard>
   );
 }
