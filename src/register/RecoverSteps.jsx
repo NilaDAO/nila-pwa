@@ -6,7 +6,7 @@
 // R5–R8 and R14 are always skipped. When her union is on the phone, R9 is not shown but its record is written again
 // (Init 'union', the leader checked on the Polygon RolesRegistry), so a leader opens the leader start. Then the app:
 // StellarGate decides member, leader or the move (M1 for a Polygon wallet).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
 import { useIsLeader } from '../hooks/useLoadFunds.ts';
 import { ModeStep, NotifyStep, UNIONS_ONE, UnionStep, readUnion, saveUnionRecord, unionByPolygon } from './Registration';
@@ -24,6 +24,10 @@ const notifyAllowed = () => {
 export default function RecoverSteps({ evm, onDone }) {
   const { data: cfg } = useStellarConfig();
   const { isLeader } = useIsLeader({ address: evm });
+  // isLeader answers undefined until its roles contract is loaded; the no-screen restore asks at once, so it reads the
+  // current function through a ref and asks again until there is an answer (else a leader was saved as a member).
+  const isLeaderRef = useRef(isLeader);
+  isLeaderRef.current = isLeader;
   const [stored] = useState(() => unionByPolygon(readUnion(evm)?.polygon));
   const [rep, setRep] = useState(stored?.rep);
   // Her union is known from her land title (24 Oct): the union minted it, so a title holder skips R9 and her union is
@@ -57,7 +61,13 @@ export default function RecoverSteps({ evm, onDone }) {
   useEffect(() => {
     if (step !== 'restore') return;
     let live = true;
-    saveUnionRecord(isLeader, restoreUnion, evm).finally(() => { if (live) { setRep(restoreUnion?.rep); after('union'); } });
+    (async () => {
+      for (let i = 0; i < 16 && live; i++) {
+        const leader = await saveUnionRecord((u, a) => isLeaderRef.current(u, a), restoreUnion, evm);
+        if (leader !== undefined) break;
+        await new Promise((ok) => setTimeout(ok, 500));
+      }
+    })().finally(() => { if (live) { setRep(restoreUnion?.rep); after('union'); } });
     return () => { live = false; };
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
