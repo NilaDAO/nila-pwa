@@ -1,6 +1,7 @@
 // The parts of the asset detail screens (boards MemberAssetNin A7, MemberAssetTractorScrolled-h3n0 A7b, StNinWithdraw A3):
 // the screen frame on the gradient with the fixed header, the cards, the info rows, the amount stepper with its typed
 // field and Max, the secondary button and the info note fixed above the tab bar.
+import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
 import { C, FONT, R, SHADOW, TAB_BAR_HEIGHT } from '../shell/tokens';
 import { ScreenHeader } from '../shell/ListRow';
@@ -82,14 +83,16 @@ export function Secondary({ children, disabled, onClick, icon }) {
 
 /** The info note fixed above the tab bar (boards A1a, A7, A3). */
 export function NoteBar({ children }) {
-  return (
+  // Into the body (24 Oct): inside a map card (a moved, transformed sheet) a fixed note would follow the card instead
+  // of sitting above the tab bar.
+  return createPortal(
     <div role="note" style={{ position: 'fixed', left: 8, right: 8, bottom: TAB_BAR_HEIGHT - 24, zIndex: 5, background: C.ink, borderRadius: '24px 24px 0 0',
       padding: '14px 16px 38px', boxSizing: 'border-box', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
       <div style={{ width: 32, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
       </div>
       <div style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>{children}</div>
-    </div>
+    </div>, document.body
   );
 }
 

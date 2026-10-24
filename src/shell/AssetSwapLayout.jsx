@@ -3,8 +3,7 @@
 // the shared Segmented switch at its top and the chosen form, then the info note.
 import MapCard from './MapCard';
 import Segmented from './Segmented';
-import { KV } from '../loan/AssetParts';
-import { Notice } from '../plan/ui';
+import { KV, NoteBar } from '../loan/AssetParts';
 import { C, FONT, R, SHADOW, TAB_BAR_HEIGHT } from './tokens';
 
 export const assetCard = { background: C.ink, borderRadius: 24, boxShadow: SHADOW, padding: 22, boxSizing: 'border-box' };
@@ -59,11 +58,9 @@ export default function AssetSwapLayout({ onBack, icon, name, sub, amount, value
         </section>
       )}
       {after}
-      {note && (
-        <section style={{ ...assetCard, paddingTop: 10, paddingBottom: 10 }}>
-          <Notice kind="info">{note}</Notice>
-        </section>
-      )}
+      {/* The info note at the bottom of the screen, grey icon, as on every asset screen (NoteBar, 24 Oct); room for it. */}
+      {note && <div aria-hidden="true" style={{ height: 96 }} />}
+      {note && <NoteBar>{note}</NoteBar>}
     </MapCard>
   );
 }
