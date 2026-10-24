@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { sv } from '../stellar/soroban';
+import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Primary, inr, muted } from '../plan/ui';
@@ -71,6 +71,11 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
     setError(undefined); setBusy(true);
     try {
       if (!isG(own)) throw new Error('That QR is not a member wallet. Scan the owner\'s wallet QR.');
+      // A machine owner is paid in nIN (prepay and dues), so the owner needs the anchor's identity check first (K1,
+      // executive decision 24 Oct), a union machine's leader included.
+      if (!(await readContract(cfg, 'fx_pool', 'id_checked', [sv.address(own)]).catch(() => false))) {
+        throw new Error('The owner\'s identity is not checked yet. A machine owner does the identity check (KYC) first; then register the machine.');
+      }
       const { photos_hash: ph } = await api.machinePhotos(WALK.map((l) => ({ content_type: photos[l].content_type, data_b64: photos[l].data_b64 })));
       setBusy(false);
       await tx.run({
