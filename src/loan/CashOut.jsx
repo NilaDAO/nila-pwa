@@ -8,6 +8,7 @@
 // DESIGN GAPs: "Union office · <leader>" and "Paid by" without a name (no leader name on Stellar); no board for "Get
 // your nIN back" or for the list of her open codes (shown on A7 under the cash-out card); #paid's time is when her
 // app saw it paid, not the pay_out ledger time.
+import DeskCard from '../shell/DeskCard';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
@@ -15,7 +16,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, server, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
-import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
+import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C } from '../shell/tokens';
 import { Loading } from '../register/Boot';
 import CameraView from '../shell/CameraView';
@@ -262,20 +263,20 @@ export function PayOut({ onBack, initial, onInvest }) {
   if (!cfg) return <Loading />;
   if (got) {
     return (
-      <Sheet landName="Cash" title="Pay out cash" onBack={() => setGot(undefined)}>
+      <DeskCard title="Pay out cash" onBack={() => setGot(undefined)}>
         <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>{got.old ? 'A cash-out code' : `${inr(got.inr)} in cash`}</p>
         {!got.old && <p style={{ ...muted, textAlign: 'center' }}>{got.kind === 'W' ? 'Her union investment' : 'Her nIN, burned when you record it'}</p>}
         <p style={{ color: C.gold, textAlign: 'center' }}>Record it only once you have handed her the cash.</p>
         <Primary disabled={!tx.ready} onClick={pay}>Cash handed over</Primary>
         {got.kind === 'W' && onInvest && <Secondary onClick={() => onInvest(got.member)}>She came to invest instead</Secondary>}
-      </Sheet>
+      </DeskCard>
     );
   }
   return (
-    <Sheet landName="Cash" title="Pay out cash" onBack={onBack}>
+    <DeskCard title="Pay out cash" onBack={onBack}>
       <CameraView mode="qr" onText={read} />
       <p style={muted}>Hand over the cash, then scan the QR on her phone.</p>
       {error && <p style={{ color: C.coral }}>{error}</p>}
-    </Sheet>
+    </DeskCard>
   );
 }

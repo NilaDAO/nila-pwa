@@ -3,6 +3,7 @@
 // leader records the cash with fx_pool.cash_scan_mint (leader signs; the node sponsors the fee, 16 Oct).
 // The cash is counted on C6 (photo count, /inr/scan-bulk); the receipt hash (scan_hash) is sha256 of the
 // stored photo keys. DESIGN GAP: no N11 board (the tx screens N1/N2 show the result).
+import DeskCard from '../shell/DeskCard';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
@@ -10,7 +11,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv, tokenHex } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
+import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { PayOut } from './CashOut';
 import { deskClaim } from './desk';
@@ -126,7 +127,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
       onBack={() => setCounting(false)} onDone={(c) => { setCounting(false); record(c); }} />;
   }
   return (
-    <Sheet landName="Cash" title={purpose === 'invest' ? 'Invest' : 'Repay'} onBack={onBack}>
+    <DeskCard title={purpose === 'invest' ? 'Invest' : 'Repay'} onBack={onBack}>
       {fixed ? <p style={muted}>For {member.slice(0, 4)}…{member.slice(-4)}</p> : (
         <>
           <p style={muted}>{purpose === 'invest' ? 'Her wallet (scan her wallet QR, or paste it)' : 'Her wallet (optional: only her loans)'}</p>
@@ -149,7 +150,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
       {noPhotos && <p style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</p>}
       <Primary disabled={!amount || !isG(who) || !tx.ready} onClick={() => { setNoPhotos(false); setCounting(true); }}>Photo count</Primary>
       <Secondary disabled>Cash teller · soon</Secondary>
-    </Sheet>
+    </DeskCard>
   );
 }
 
@@ -166,11 +167,11 @@ function ScanHer({ title, note, shareOnly, onFound, onBack }) {
     if (g) onFound({ who: g }); else setError('This is not a member\'s QR.');
   };
   return (
-    <Sheet landName="Cash" title={title} onBack={onBack}>
+    <DeskCard title={title} onBack={onBack}>
       <CameraView mode="qr" onText={read} />
       <p style={muted}>{note}</p>
       {error && <p style={{ color: C.coral }}>{error}</p>}
-    </Sheet>
+    </DeskCard>
   );
 }
 
@@ -218,21 +219,21 @@ function ScanAny({ onBack }) {
   if (lane?.kind === 'repay') return <Scan purpose="repay" onBack={onBack} initialMember={lane.who} initialToken={lane.token} />;
   if (lane?.kind === 'ready') {
     return (
-      <Sheet landName="Cash" title="Her withdrawal is ready" onBack={() => setLane(undefined)}>
+      <DeskCard title="Her withdrawal is ready" onBack={() => setLane(undefined)}>
         <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>{inr(Math.floor(lane.inr))} to collect</p>
         <p style={muted}>To pay it out, she opens her wallet QR again: it carries her signature now. Hand over the cash, then scan it.</p>
         <Primary onClick={() => setLane(undefined)}>Scan again</Primary>
         <Secondary onClick={() => invest(lane.who)}>She came to invest instead</Secondary>
-      </Sheet>
+      </DeskCard>
     );
   }
   return (
-    <Sheet landName="Cash" title="Scan her QR" onBack={onBack}>
+    <DeskCard title="Scan her QR" onBack={onBack}>
       <CameraView mode="qr" onText={read} />
       <p style={muted}>Her wallet QR: invest, or her withdrawal once it is ready. Her crop share QR: use it, or repay its loan.</p>
       {busy && <p style={muted}>…</p>}
       {error && <p style={{ color: C.coral }}>{error}</p>}
-    </Sheet>
+    </DeskCard>
   );
 }
 

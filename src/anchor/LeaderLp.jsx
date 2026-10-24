@@ -5,6 +5,7 @@
 // On a Bring the leader counts the LP's rupees with the C6 photo count (P10) before confirming.
 // DESIGN GAP: LP names ("LP Suresh K.") are shown as short wallet addresses. Her code is signed by her Stellar
 // key (offer id + time, 10 min): the scan checks it is the LP who accepted (the offer id alone is public).
+import DeskCard from '../shell/DeskCard';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
@@ -13,7 +14,7 @@ import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import CameraView from '../shell/CameraView';
 import PhotoCount from '../loan/PhotoCount';
-import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
+import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { Keypair } from '@stellar/stellar-sdk';
 import { CODE_TTL, U, codeHash, useOfferQuote, useUnionOffers, usdcOf } from './hooks';
@@ -81,7 +82,7 @@ export function LetCollect({ onBack }) {
   if (t) return <TxScreens tx={t} onClose={() => t.reset()} onRetry={() => t.retry()} />;
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
   return (
-    <Sheet landName="Cash" title="Cash for your LPs to collect" onBack={onBack}>
+    <DeskCard title="Cash for your LPs to collect" onBack={onBack}>
       <p style={{ ...muted, textAlign: 'center' }}>Cash at the office: {hand.data != null ? inr(Number(BigInt(hand.data) / BigInt(U))) : '…'}{promised ? ` · ${inr(promised)} offered already` : ''}</p>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, margin: '12px 0' }}>
         <button type="button" aria-label="Less" style={b} onClick={() => setAmount(Math.max(0, a - 100))}>−</button>
@@ -100,7 +101,7 @@ export function LetCollect({ onBack }) {
         label: `Cancel the offer of ${inr(o.inr)}`, rows: [['Offer', `${o.kind === BRING ? 'Bring' : 'Collect'} ${inr(o.inr)}`]],
         contractName: 'fx_pool', fn: 'cancel_offer', args: [sv.address(s.stellarAddress), sv.u64(o.id)], invalidate: [['stellar', 'offers']],
       })} />
-    </Sheet>
+    </DeskCard>
   );
 }
 
@@ -141,7 +142,7 @@ export function ScanLp({ onBack }) {
   const ok = o.data && Number(o.data.state) === 1 && o.data.union === cfg.union && live && mine.data === true;
   const why = !o.data ? '' : !live ? 'expired' : ['not accepted by an LP yet', '', 'done already', 'cancelled', 'expired'][Number(o.data.state)] || 'not open';
   return (
-    <Sheet landName="Cash" title="Scan an LP code" onBack={onBack}>
+    <DeskCard title="Scan an LP code" onBack={onBack}>
       {id == null && !typing && <CameraView mode="qr" onText={read} />}
       {id == null && typing && (
         <>
@@ -177,6 +178,6 @@ export function ScanLp({ onBack }) {
           {kind === BRING && counted != null && counted < inrAmt && <button type="button" onClick={() => setCounting(true)} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Count again</button>}
         </>
       )}
-    </Sheet>
+    </DeskCard>
   );
 }
