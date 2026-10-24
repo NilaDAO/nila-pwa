@@ -54,6 +54,8 @@ export function planClient(signer) {
     // P10 / O15: the union's loan list (the async list) and C2's event search, one window per tap.
     unionLoans: () => call('GET', '/stellar/union/loans'),
     unionTitles: () => call('GET', '/stellar/union/titles'),
+    // The compact members list (map-centred lane, 23 Oct): one row per member; 404 until the node has it.
+    unionMembers: () => call('GET', '/stellar/union/members'),
     unionSearch: (window) => call('POST', '/stellar/union/search', { window }),
   };
 }

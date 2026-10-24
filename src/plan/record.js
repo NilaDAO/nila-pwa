@@ -23,6 +23,35 @@ export async function fromNode(hash) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
+// Field records kept on the leader's phone (map-centred lane, 23 Oct): a record never changes for its hash, so each
+// is fetched once and kept in IndexedDB, keyed by the hash (full outlines, no simplification). Any IndexedDB failure
+// (private mode, no space) falls back to the node.
+const IDB = { db: 'nila-records', store: 'records' };
+function idb() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') { reject(new Error('no IndexedDB')); return; }
+    const req = indexedDB.open(IDB.db, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB.store);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+const idbGet = (db, k) => new Promise((resolve) => {
+  try { const r = db.transaction(IDB.store).objectStore(IDB.store).get(k); r.onsuccess = () => resolve(r.result); r.onerror = () => resolve(undefined); } catch { resolve(undefined); }
+});
+const idbPut = (db, k, v) => { try { db.transaction(IDB.store, 'readwrite').objectStore(IDB.store).put(v, k); } catch { /* full */ } };
+let dbp;
+/** fromNode, kept on this phone by record hash. */
+export async function fromNodeCached(hash) {
+  const k = String(hash).toLowerCase();
+  const db = await (dbp ||= idb().catch(() => null));
+  const kept = db ? await idbGet(db, k) : undefined;
+  if (kept) return kept;
+  const rec = await fromNode(hash);
+  if (db) idbPut(db, k, rec);
+  return rec;
+}
+
 /** { hash, record } once published; { hash: null } while the oracle is still making it (CP1).
  *  stellarHash: for a title that exists on Stellar only (the demo, 21 Oct) the record hash comes from the Stellar title
  *  (node GET /stellar/titles) instead of Polygon; '' / null while it is being made. */

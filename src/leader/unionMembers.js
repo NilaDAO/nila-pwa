@@ -13,7 +13,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { readContract, readFoodTokens, sv } from '../stellar/soroban';
 import { borderClient } from '../border/api';
 import { keypadClient } from '../keypad/api';
-import { fromNode } from '../plan/record';
+import { fromNodeCached } from '../plan/record';
 import { useNilaSigner } from '../wallet/signer';
 import { rowOf } from '../loan/MyShares';
 
@@ -45,6 +45,14 @@ function keep(acct, union, list) {
   try { localStorage.setItem(cacheKey(acct, union), JSON.stringify(list.map((m) => Object.fromEntries(KEEP.map((k) => [k, m[k]]))))); } catch { /* full or private mode */ }
 }
 
+/** Her land titles in order, the route id (#/members/<id>: her title id, else her account, else her keypad id) and
+ *  the row's label; overdue members first. */
+const finish = (members) => members.map((m) => {
+  const lands = [...m.lands].sort((a, b) => a - b);
+  const route = m.titleId || lands[0] || m.address || `k${m.key.replace(/^keypad:/, '')}`;
+  return { ...m, lands, route: String(route), label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.address ? short(m.address) : m.phone || 'New member') };
+}).sort((a, b) => b.loans.some((x) => x.overdue) - a.loans.some((x) => x.overdue) || a.label.localeCompare(b.label));
+
 /** G1's list (22 Oct, lean): the union's titles, keypad members, open border jobs and the loan list, with each loan's
  *  state from one batched read of its crop share (the loan sits inside it). Crop shares per member are read only on
  *  G2 (useMemberShares), so G1 waits on no mint list and no per-token read. */
@@ -57,6 +65,24 @@ export function useUnionMembers(api) {
     staleTime: 2 * 60_000,
     placeholderData: () => (cfg?.union && acct ? readKept(acct, cfg.union) : undefined),
     queryFn: async () => {
+      // The node's compact members list (map-centred lane, 23 Oct): one row per member; the property outlines from the
+      // records kept on this phone. Until the node has it (404), the list is built from the lists below.
+      const node = await api.unionMembers().catch(() => null);
+      if (Array.isArray(node?.members)) {
+        const list = finish(await Promise.all(node.members.map(async (r) => {
+          const m = { key: r.key || r.address, address: r.address || '', name: r.name || '', phone: r.phone || '', lands: new Set(), places: [],
+            note: r.note || '', job: r.job, nextHarvest: r.next_harvest || null, shareCounts: r.shares || {},
+            loans: (r.loans || []).map((l) => ({ token: String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'), left: Number(l.left || 0), overdue: !!l.overdue, due: Number(l.due || 0) })) };
+          await Promise.all((r.titles || []).map(async (t) => {
+            m.lands.add(t.title_id);
+            const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
+            if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
+          }));
+          return m;
+        })));
+        if (acct) keep(acct, cfg.union, list);
+        return list;
+      }
       const by = new Map();
       const get = (key) => {
         if (!by.has(key)) by.set(key, { key, address: key.startsWith('G') ? key : '', name: '', phone: '', lands: new Set(), loans: [], places: [], note: '' });
@@ -74,7 +100,7 @@ export function useUnionMembers(api) {
         // Titles: the membership, and each property on the map from its field record.
         Promise.all(titles.map(async (t) => {
           const m = get(t.holder); m.lands.add(t.title_id); m.name = m.name || t.farm || '';
-          const record = t.record_hash ? await fromNode(t.record_hash).catch(() => null) : null;
+          const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
           if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
         })),
         Promise.all(jobs.map(async (j) => {
@@ -100,12 +126,7 @@ export function useUnionMembers(api) {
         const left = n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid);
         get(l.borrower).loans.push({ token: hexes[i], left, overdue: !!(Number(g.flags ?? 0) & FLAG_OVERDUE) });
       });
-      const list = [...by.values()].map((m) => {
-        const lands = [...m.lands].sort((a, b) => a - b);
-        // The route id (#/members/<id>): her title id, else her account, else her keypad id.
-        const route = m.titleId || lands[0] || m.address || `k${m.key.replace(/^keypad:/, '')}`;
-        return { ...m, lands, route: String(route), label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.address ? short(m.address) : m.phone || 'New member') };
-      }).sort((a, b) => b.loans.some((x) => x.overdue) - a.loans.some((x) => x.overdue) || a.label.localeCompare(b.label));
+      const list = finish([...by.values()]);
       if (acct) keep(acct, cfg.union, list);
       return list;
     },
