@@ -15,7 +15,7 @@ import { memberName } from '../border/LeaderBorder';
 import { C, FONT } from '../shell/tokens';
 import ListRow, { ListSection, ScreenHeader } from '../shell/ListRow';
 import MapCard from '../shell/MapCard';
-import { BanknoteIcon, CalendarIcon, CropIcon, InvestIcon, PayOutIcon, PinIcon, RepayIcon, RupeeIcon, TractorIcon, UserPlusIcon } from '../shell/icons';
+import { BanknoteIcon, CalendarIcon, CropIcon, PayOutIcon, PinIcon, RepayIcon, RupeeIcon, TractorIcon, UserPlusIcon } from '../shell/icons';
 import { useKnownMembers, useLeaderTodo, useUnionCash } from './hooks';
 import { ReadyShareRows, useMyShares } from '../loan/MyShares';
 
@@ -45,11 +45,10 @@ export function PickMember({ title, onPick, onBack, onScan }) {
 // "Scan an LP code" has no board row (LP scan, P9): it keeps the cash icon.
 const START = [
   ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon]]],
-  // Each member task scans her QR first (24 Oct, as Pay out cash); her G2 in Members stays a second way in.
-  ['Crop plan and crop share', [['Use a crop share', 'Scan her crop share QR', 'cash/share', RupeeIcon]]],
-  ['Cash', [['Invest', 'Scan her wallet QR, then count', 'cash/invest', InvestIcon], ['Repay', 'Scan her QR, then count', 'cash/repay', RepayIcon],
-    // One task for both withdrawals (24 Oct): her signed QR, investment or nIN; the app tells them apart.
-    ['Pay out cash', 'Hand over the cash, then scan her QR', 'cash/payout', PayOutIcon], ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
+  // One scan for her (executive decision 24 Oct): the QR says which kind, the chain picks invest, withdraw, use or
+  // repay. Her G2 in Members stays a second way in.
+  ['Cash', [['Scan her QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
+    ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
   ['Vouchers', [['Register a machine', 'Her own machine, photos and price', 'cash/machine', TractorIcon]]],
 ];
 

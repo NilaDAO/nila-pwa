@@ -13,6 +13,8 @@ import { usePlanClient } from '../plan/hooks';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { PayOut } from './CashOut';
+import { deskClaim } from './desk';
+import { FLAG_DRAWN } from './MyShares';
 import { NIN } from './request';
 import PhotoCount from './PhotoCount';
 import RegisterMachine from '../machine/RegisterMachine';
@@ -172,6 +174,68 @@ function ScanHer({ title, note, shareOnly, onFound, onBack }) {
   );
 }
 
+const FLAG_CLOSED = 4;
+const dayOf = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+/** Tasks → Scan her QR (executive decision 24 Oct): one scanner; the QR says which kind, the chain picks the lane.
+ *  Her address (wallet QR): a withdrawal ready (14 days passed) → pay it out (her wallet QR then carries her signature,
+ *  NILA:W), else invest. Her crop share QR: an open loan on it → repay, no loan and its season started → use it (L11).
+ *  A machine owner's signed nIN QR (NILA:N) → pay out. */
+function ScanAny({ onBack }) {
+  const { data: cfg } = useStellarConfig();
+  const [lane, setLane] = useState();
+  const [error, setError] = useState();
+  const [busy, setBusy] = useState(false);
+  const read = async (text) => {
+    const t = String(text || '').trim();
+    setError(undefined);
+    if (/^NILA:[WN]:/i.test(t) || /^nila:cash:/i.test(t)) { setLane({ kind: 'payout', text: t }); return; }
+    setBusy(true);
+    try {
+      const share = /^nila:share:(\w+?)_(\w+):(G[A-Z2-7]{55})$/.exec(t);
+      if (share) {
+        const hex = tokenHex(share[2]);
+        const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(hex)]).catch(() => null);
+        if (!ft || ft.member !== share[3]) throw new Error('This crop share is not hers in your union.');
+        const flags = Number(ft.loan?.flags ?? 0);
+        if (flags & FLAG_DRAWN) {
+          if (flags & FLAG_CLOSED) throw new Error('The loan on this crop share is repaid.');
+          setLane({ kind: 'repay', who: share[3], token: hex });
+        } else if (Number(ft.from_date) * 1000 <= Date.now()) {
+          window.location.replace(`#/loan/${share[1]}_${share[2]}`);
+        } else throw new Error(`This crop share can be used from ${dayOf(Number(ft.from_date))}.`);
+        return;
+      }
+      const g = addressFromQr(t);
+      if (!g) throw new Error("This is not a member's QR.");
+      const claim = await deskClaim(cfg, g);
+      setLane(claim.shares > 0n ? { kind: 'ready', who: g, inr: claim.inr } : { kind: 'invest', who: g });
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const invest = (who) => setLane({ kind: 'invest', who });
+  if (lane?.kind === 'payout') return <PayOut onBack={onBack} initial={lane.text} onInvest={invest} />;
+  if (lane?.kind === 'invest') return <Scan purpose="invest" onBack={onBack} initialMember={lane.who} />;
+  if (lane?.kind === 'repay') return <Scan purpose="repay" onBack={onBack} initialMember={lane.who} initialToken={lane.token} />;
+  if (lane?.kind === 'ready') {
+    return (
+      <Sheet landName="Cash" title="Her withdrawal is ready" onBack={() => setLane(undefined)}>
+        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>{inr(Math.floor(lane.inr))} to collect</p>
+        <p style={muted}>To pay it out, she opens her wallet QR again: it carries her signature now. Hand over the cash, then scan it.</p>
+        <Primary onClick={() => setLane(undefined)}>Scan again</Primary>
+        <Secondary onClick={() => invest(lane.who)}>She came to invest instead</Secondary>
+      </Sheet>
+    );
+  }
+  return (
+    <Sheet landName="Cash" title="Scan her QR" onBack={onBack}>
+      <CameraView mode="qr" onText={read} />
+      <p style={muted}>Her wallet QR: invest, or her withdrawal once it is ready. Her crop share QR: use it, or repay its loan.</p>
+      {busy && <p style={muted}>…</p>}
+      {error && <p style={{ color: C.coral }}>{error}</p>}
+    </Sheet>
+  );
+}
+
 // An old #/cash/invest|withdraw/<her> link: her G2 does these in place now.
 function ToMembersFrom({ member }) {
   useEffect(() => { window.location.replace(`#/members/${member}`); }, [member]);
@@ -181,7 +245,7 @@ function ToMembersFrom({ member }) {
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
 // Her own actions start from her QR (executive decision 24 Oct, as Pay out cash): a task without her scans her wallet or
 // crop share QR first, then the count. From her G2 they come as #/cash/<action>/<her Stellar address>.
-const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw', share: 'share' };
+const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw', share: 'share', scan: 'scan' };
 const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
 const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/(G[A-Z2-7]{55})/) || [])[1];
 
@@ -195,6 +259,7 @@ export default function CashDesk({ initial }) {
   // From the Tasks tab (24 Oct): no member yet, so the leader scans her QR first, then counts (as Pay out cash).
   const [found, setFound] = useState();
   const toTasks = () => window.location.replace('#/tasks');
+  if (view === 'scan') return <ScanAny onBack={toTasks} />;
   if (!member && !found && (view === 'invest' || view === 'repay')) {
     return <ScanHer title={view === 'invest' ? 'Invest' : 'Repay'} onBack={toTasks} onFound={setFound}
       note={view === 'invest' ? 'Scan her wallet QR, then count the cash she brings.' : 'Scan her wallet QR or the crop share QR of the loan, then count the cash she brings.'} />;

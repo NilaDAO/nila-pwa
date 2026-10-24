@@ -218,12 +218,14 @@ export default function CashOut({ onBack }) {
  *  cash. NILA:W (her investment): the app checks the 14 days have passed and submits fund_core.claim_junior_cash;
  *  NILA:N (her nIN): fx_pool.cash_out_signed. A leader's code from before 24 Oct still pays with fx_pool.pay_out.
  *  The leader submits; the node sponsors the fee. */
-export function PayOut({ onBack }) {
+export function PayOut({ onBack, initial, onInvest }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
   const [got, setGot] = useState();        // { kind, member, inr, entry } | { old: code }
   const [error, setError] = useState();
+  // From the one scan (24 Oct): the QR is read already; check it here as if scanned on this screen.
+  useEffect(() => { if (initial && cfg) read(initial); }, [cfg]); // eslint-disable-line react-hooks/exhaustive-deps
   const read = async (text) => {
     setError(undefined);
     try {
@@ -265,6 +267,7 @@ export function PayOut({ onBack }) {
         {!got.old && <p style={{ ...muted, textAlign: 'center' }}>{got.kind === 'W' ? 'Her union investment' : 'Her nIN, burned when you record it'}</p>}
         <p style={{ color: C.gold, textAlign: 'center' }}>Record it only once you have handed her the cash.</p>
         <Primary disabled={!tx.ready} onClick={pay}>Cash handed over</Primary>
+        {got.kind === 'W' && onInvest && <Secondary onClick={() => onInvest(got.member)}>She came to invest instead</Secondary>}
       </Sheet>
     );
   }

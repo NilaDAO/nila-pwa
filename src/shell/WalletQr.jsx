@@ -1,20 +1,32 @@
 // A1a (board MemberWalletQR): her Stellar wallet as a QR in a white circle, for the leader to scan (invest, cash),
-// the short address with Copy, and the info note above the tab bar.
+// the short address with Copy, and the info note above the tab bar. While her investment withdrawal is ready (14 days
+// passed; executive decision 24 Oct) the QR carries her signed collect (NILA:W, deskCode.js), so the leader's one scan
+// pays it out; a leader's own withdrawal goes to her wallet (A3), so hers stays the plain address.
 import MapCard from './MapCard';
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
+import { useStellarConfig } from '../stellar/hooks';
+import { deskClaim } from '../loan/desk';
+import { signDeskCode } from '../loan/deskCode';
 import { C, FONT, R, TAB_BAR_HEIGHT } from './tokens';
 
 const SHADOW = 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px';
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
 
-export default function WalletQr({ onBack }) {
+export default function WalletQr({ onBack, leader }) {
   const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
   const addr = s?.stellarAddress;
   const [img, setImg] = useState();
   const [copied, setCopied] = useState(false);
-  useEffect(() => { if (addr) QRCode.toDataURL(addr, { width: 400, margin: 0 }).then(setImg); }, [addr]);
+  const claim = useQuery({ queryKey: ['stellar', 'deskClaim', addr], enabled: !!cfg && !!addr && !leader, queryFn: () => deskClaim(cfg, addr) });
+  const ready = claim.data?.shares > 0n;
+  const signed = useQuery({ queryKey: ['stellar', 'deskCode', addr, ready], enabled: ready && !!s?.ready,
+    queryFn: () => signDeskCode({ cfg, signer: addr, signHash: s.signHash, kind: 'W' }), staleTime: 3_600_000 });
+  const text = ready ? signed.data?.qr : addr;
+  useEffect(() => { if (text) QRCode.toDataURL(text, { width: 400, margin: 0, errorCorrectionLevel: 'L' }).then(setImg); }, [text]);
   const copy = async () => {
     try { await navigator.clipboard.writeText(addr); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* no clipboard */ }
   };
@@ -26,6 +38,11 @@ export default function WalletQr({ onBack }) {
         <div style={{ width: '100%', aspectRatio: '1', borderRadius: 9999, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {img && <img src={img} alt="Wallet address QR code" style={{ width: '62%', height: '62%', imageRendering: 'pixelated' }} />}
         </div>
+        {ready && signed.data && (
+          <p style={{ margin: 0, color: C.gold, textAlign: 'center', fontSize: 14, lineHeight: 1.5 }}>
+            Your withdrawal is ready. Let your leader scan this only after you have received the cash.
+          </p>
+        )}
         <button type="button" onClick={copy} disabled={!addr} style={{ width: '100%', height: 44, border: 0, borderRadius: R.button, background: C.raised, color: C.text,
           fontFamily: 'inherit', fontSize: 14, fontWeight: 700, padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
           <span style={{ fontWeight: 400, color: C.muted }}>{short(addr)}</span>

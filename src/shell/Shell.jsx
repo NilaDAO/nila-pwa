@@ -233,7 +233,7 @@ export default function Shell({ leader }) {
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
   else if (view === 'loan') body = <LeaderLoan key={readArg()} initial={readArg()} />;
   else if (view === 'cash' && leader) body = <CashDesk key={window.location.hash} initial={readArg()} />;
-  else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} />;
+  else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} leader={leader} />;
   else if (view === 'usdc' && leader) body = <UsdcAsset onBack={() => go('assets')} />;
   else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
   else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go(`cash/invest/${s?.stellarAddress}`)} />;
