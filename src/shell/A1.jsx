@@ -5,7 +5,7 @@
 // vouchers, A8) and Your machine (owner, A13). P9 adds USDC for an LP (lp-open/2: her USDC row). P10 (A1L): for a
 // leader, the cash and LP slides and the Union rows (treasury, cash). P11: a member with no land title registers
 // first (src/register/Registration.jsx, from the Shell), so A1 always shows her title row.
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useTitleCount } from '../register/titles';
@@ -23,6 +23,8 @@ import MessageSlider, { Title, card, memberSlides, small } from './MessageSlider
 import { Sheet } from '../plan/ui';
 import { useStage } from './stageCtx';
 import { homeTop, useHomeMap } from './MapStage';
+import { fieldsOrAreas } from './LandTitle';
+import AreaMap from '../plan/AreaMap';
 import { useLeaderMap } from '../leader/unionMap';
 import { MEMBER_TODO_ROWS, useLeaderTaskCount } from './taskCount';
 
@@ -148,6 +150,12 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(arm); window.removeEventListener('scroll', on); };
   }, [stage]);
   const home = useHomeMap(onShare, window.innerHeight - top + 32);
+  // A member's Assets tab shows her land as on her land title (A5, 24 Oct): her fields, no crop labels; a tap opens A5.
+  // Trees, water and other improvements are not on the map yet: their hooks (useWaterSources, useImprovements) are
+  // not built (design gap).
+  const titleShape = useMemo(() => fieldsOrAreas(home.record), [home.record]);
+  const titleMap = titleShape.record ? <AreaMap record={titleShape.record} labels={titleShape.labels} onSelect={(z) => z && onLand()}
+    fitBottom={window.innerHeight - top + 32} /> : null;
   // The leader's Assets tab (map-centred lane, 23 Oct): the union map filtered to its assets (machines, Ready shares).
   const union = useLeaderMap('assets', window.innerHeight - top + 32, !!leader);
   const buttons = (
@@ -225,7 +233,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   );
   if (stage) {
     // Her map comes with the card; before her record is read the card stands on the map stage alone.
-    return <Sheet map={(leader ? union.map : home.map) || <span />} head={buttons} top={top} startLow={memory.low} onLowered={(v) => { memory.low = v; }}>{content}</Sheet>;
+    return <Sheet map={(leader ? union.map : titleMap) || <span />} head={buttons} top={top} startLow={memory.low} onLowered={(v) => { memory.low = v; }}>{content}</Sheet>;
   }
   return (
     <div style={{ fontFamily: FONT, color: C.text, padding: '8px 8px 0' }}>

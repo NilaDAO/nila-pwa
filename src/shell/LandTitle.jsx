@@ -20,7 +20,7 @@ const btn = { width: '100%', height: 44, border: 0, borderRadius: R.button, font
 
 /** Every field her title lists, as areas, when it lists more fields than the record has areas (executive decision 21 Oct,
  *  map-central trial): the land title shows the whole land; otherwise her areas. */
-function fieldsOrAreas(record) {
+export function fieldsOrAreas(record) {
   const fields = record?.meta?.geometry?.field_features?.features || [];
   if (!record || fields.length <= (record.zones || []).length) return { record, labels: undefined };
   const zones = fields.map((f, i) => ({ zone_id: `f${i}`, geometry: f.geometry }));
