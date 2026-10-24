@@ -6,6 +6,12 @@ import { useEffect, useRef, useState } from 'react';
 const EASE = 'cubic-bezier(0.2,0.8,0.2,1)';
 const KEEP = 72;   // px of the card that stay on screen when lowered
 
+// The bottom bar is the map's navigation while the card is down (24 Oct): a tab tapped with the card lowered opens
+// the next screen lowered too, so only the map's filter and focus change.
+let lastLow = false;
+let tabLow = false;
+export const keepLowOnTab = () => { tabLow = lastLow; };
+
 /** resetKey: when it changes the card comes back up (CP10: a picked area). startLow: the card opens lowered (A1 coming
  *  back to the state it was left in, map-central trial). */
 export default function useSheetDrag(onLowered, resetKey, startLow) {
@@ -35,6 +41,7 @@ export default function useSheetDrag(onLowered, resetKey, startLow) {
     // Lowering starts from the top of the page, so the card's floor is measured where it will rest.
     if (v && window.scrollY > 0) window.scrollTo(0, 0);
     if (v) loweredAt.current = Date.now();
+    lastLow = v;
     setOff(v ? maxOff() : 0); onLowered?.(v); tell(v);
   };
   // Any scroll while the card is down brings it back up with its content (map-central trial, 22 Oct): a lowered card
@@ -70,7 +77,9 @@ export default function useSheetDrag(onLowered, resetKey, startLow) {
   useEffect(() => { setOff(0); onLowered?.(false); }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => tell(false), []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!startLow) return undefined;
+    const start = startLow || tabLow;
+    tabLow = false;
+    if (!start) { lastLow = false; return undefined; }
     const t = setTimeout(() => setLow(true), 80);   // once the card is laid out, so its floor is measured right
     return () => clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
