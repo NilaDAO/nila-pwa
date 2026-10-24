@@ -233,12 +233,12 @@ export function PayOut({ onBack, initial, onInvest }) {
       const t = (text || '').trim();
       if (/^nila:cash:/i.test(t)) { setGot({ old: cleanCode(t) }); return; }
       const c = readDeskCode(cfg, t);
-      if ((await server(cfg).getLatestLedger()).sequence >= c.exp) throw new Error('This QR has expired. She makes a new one.');
+      if ((await server(cfg).getLatestLedger()).sequence >= c.exp) throw new Error('This QR has expired. The member makes a new one.');
       if (c.kind === 'W') {
         const claim = await deskClaim(cfg, c.member);
         if (claim.shares <= 0n) {
-          throw new Error(claim.pendingFrom ? `Her withdrawal is ready from about ${day(claim.pendingFrom)}. Do not pay it yet.`
-            : 'She has no withdrawal to collect. She asks for one on her phone (Union investment → Withdraw).');
+          throw new Error(claim.pendingFrom ? `The withdrawal is ready from about ${day(claim.pendingFrom)}. Do not pay it yet.`
+            : 'No withdrawal to collect. The member asks for one on their phone (Union investment → Withdraw).');
         }
         setGot({ ...c, inr: Math.floor(claim.inr) });
       } else setGot({ ...c, inr: Number(c.amount / NIN) });
@@ -265,10 +265,10 @@ export function PayOut({ onBack, initial, onInvest }) {
     return (
       <DeskCard title="Pay out cash" onBack={() => setGot(undefined)}>
         <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>{got.old ? 'A cash-out code' : `${inr(got.inr)} in cash`}</p>
-        {!got.old && <p style={{ ...muted, textAlign: 'center' }}>{got.kind === 'W' ? 'Her union investment' : 'Her nIN, burned when you record it'}</p>}
-        <p style={{ color: C.gold, textAlign: 'center' }}>Record it only once you have handed her the cash.</p>
+        {!got.old && <p style={{ ...muted, textAlign: 'center' }}>{got.kind === 'W' ? 'Their union investment' : 'Their nIN, burned when you record it'}</p>}
+        <p style={{ color: C.gold, textAlign: 'center' }}>Record it only once you have handed over the cash.</p>
         <Primary disabled={!tx.ready} onClick={pay}>Cash handed over</Primary>
-        {got.kind === 'W' && onInvest && <Secondary onClick={() => onInvest(got.member)}>She came to invest instead</Secondary>}
+        {got.kind === 'W' && onInvest && <Secondary onClick={() => onInvest(got.member)}>Invest instead</Secondary>}
       </DeskCard>
     );
   }

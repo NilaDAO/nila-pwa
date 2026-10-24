@@ -46,7 +46,7 @@ function BringCash({ amount, after, address, onBack }) {
   const [img, setImg] = useState();
   useEffect(() => { if (address) QRCode.toDataURL(address, { width: 400, margin: 0 }).then(setImg); }, [address]);
   return (
-    <AssetScreen title={`${inr(amount)} to invest`} onBack={onBack} note="Bring the cash to your leader. When she scans this and counts it, your investment goes up.">
+    <AssetScreen title={`${inr(amount)} to invest`} onBack={onBack} note="Bring the cash to your leader. When your leader scans this and counts it, your investment goes up.">
       <Card label="Your wallet QR code">
         <QrCircle img={img} alt="Your wallet address QR code" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -137,7 +137,7 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
       {mode === 'invest' && <Card label="Invest">
         <Segmented label="Invest or withdraw" options={SWITCH} value={mode} onChange={setPick} />
         {helped ? (
-          <p style={{ ...muted, textAlign: 'center', padding: '12px 0' }}>Bring cash to your leader at the union office. She adds it to your union investment.</p>
+          <p style={{ ...muted, textAlign: 'center', padding: '12px 0' }}>Bring cash to your leader at the union office. Your leader adds it to your union investment.</p>
         ) : (
           <>
             <p style={muted}>Bring cash to the office</p>

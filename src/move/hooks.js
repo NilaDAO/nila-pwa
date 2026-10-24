@@ -69,7 +69,7 @@ export function useMoveWallet(loans) {
       }
       if (step < 2) {
         // Her loans, checked again right before anything moves (an M4 retry skips the start screen).
-        if (!loans?.known || loans.open.length > 0) throw new Error('her Polygon loans are not checked, or one is open');
+        if (!loans?.known || loans.open.length > 0) throw new Error('the Polygon loans are not checked, or one is open');
         // Her Polygon nIN is not moved by the app (22 Oct, LOAN_RULES "The move's nIN"): an operator pays the few
         // wallets that hold it in cash at the office, so no move request is sent.
         step = 2; save({ step });

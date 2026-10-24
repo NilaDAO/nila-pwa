@@ -23,7 +23,7 @@ function voucherKinds(rows) {
   return parts.length ? parts.join(' · ') : 'None';
 }
 
-const REASONS = ['Crops do not fit her land', 'Amounts too high', 'Wrong areas', 'Other'];
+const REASONS = ['Crops do not fit the land', 'Amounts too high', 'Wrong areas', 'Other'];
 const STELLAR_ONLY = 900000;   // demo Stellar-only titles (900043, 900050 …) have no Polygon tokenURI
 const card = { flexShrink: 0, background: C.ink, borderRadius: 24, boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px',
   padding: 22, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 16 };
@@ -52,7 +52,7 @@ function DenyDialog({ onClose, onDeny, busy }) {
         borderRadius: 24, boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '14px 22px 22px', boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column', gap: 16, fontFamily: FONT, color: C.text }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <span id="deny-title" style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Deny her plan</span>
+          <span id="deny-title" style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Deny the plan</span>
           <button type="button" aria-label="Close" onClick={onClose} style={{ width: 40, height: 40, margin: '-2px -8px -2px 0', border: 0, borderRadius: 9999, background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}>
             <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
           </button>
@@ -65,7 +65,7 @@ function DenyDialog({ onClose, onDeny, busy }) {
               ...(why === r ? { color: C.text, boxShadow: `inset 0 0 0 2px ${C.accent}` } : { color: C.muted }) }}>{r}</button>
           ))}
         </div>
-        <input type="text" aria-label="Note for her" placeholder="Note for her (optional)" value={note} onChange={(e) => setNote(e.target.value)}
+        <input type="text" aria-label="Note for the member" placeholder="Note for the member (optional)" value={note} onChange={(e) => setNote(e.target.value)}
           style={{ height: 44, width: '100%', border: 0, borderRadius: 12, background: C.raised, padding: '0 14px', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 16, color: C.text, outline: 'none' }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <button type="button" disabled={!why || busy} onClick={() => onDeny(why, note)}
@@ -108,7 +108,7 @@ function L12({ plan, onDone, approvedAlready = false }) {
   if (approved && seq) {
     if (seq !== 'success') when.current = new Date();
     const toAssets = () => { window.location.hash = '#/assets'; };
-    const tx = { status: seq, label: 'Making her crop shares', when: when.current,
+    const tx = { status: seq, label: 'Making the crop shares', when: when.current,
       rows: [['Crop shares', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Land', farm || `Land ${plan.land_id}`]],
       reason: (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
     return <TxScreens tx={tx} network="Polygon" onClose={toAssets} onRetry={() => mint.run(plan.id)} />;
@@ -121,7 +121,7 @@ function L12({ plan, onDone, approvedAlready = false }) {
       {/* The header stays at the top while the cards scroll (board: header fixed, column scrolls under it). */}
       <ScreenHeader title={farm || `Land ${plan.land_id}`} onBack={onDone} onSettings={() => { window.location.hash = '#/settings'; }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 24 }}>
-        <section aria-label="Her plan" style={card}>
+        <section aria-label="The plan" style={card}>
           <Rows>
             <Row k="Accepted" v={acceptedAt ? new Date(acceptedAt * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
             {seasons.length > 0 && lastDue && <Row k="Plan year" v={`${monthYear(seasons[0].start)} to ${monthYear(lastDue)}`} />}
@@ -158,16 +158,16 @@ function L12({ plan, onDone, approvedAlready = false }) {
             // DESIGN GAP: no board for the union making her crop shares after Approve; a status line and the result.
             <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <span style={{ fontSize: 14, fontWeight: 700 }}>
-                {mint.status === 'busy' ? `Making her crop shares${mint.total ? ` · ${mint.done} of ${mint.total}` : '…'}`
-                  : mint.status === 'done' ? 'Her crop shares are made and sent to her wallet'
+                {mint.status === 'busy' ? `Making the crop shares${mint.total ? ` · ${mint.done} of ${mint.total}` : '…'}`
+                  : mint.status === 'done' ? 'The crop shares are made and sent to the member\'s wallet'
                     : mint.status === 'partial' ? `${mint.done} of ${mint.total} crop shares made`
-                      : mint.status === 'failed' ? 'Her crop shares were not made'
+                      : mint.status === 'failed' ? 'The crop shares were not made'
                         : mint.status === 'waiting' ? `Approved · ${mint.done || 0} of ${mint.total || 0} crop shares made` : 'Approved'}
               </span>
               {mint.refused?.map((r) => <span key={r.share || r.token_id} style={{ ...muted, margin: 0 }}>{r.crop || 'Crop share'}: {r.error}</span>)}
               {mint.status === 'failed' && mint.error && !mint.refused?.length && <span style={{ ...muted, margin: 0 }}>{mint.error}</span>}
               {(mint.status === 'idle' || mint.status === 'waiting') && (
-                <button type="button" onClick={() => mint.run(plan.id)} style={{ ...btn, background: C.accent, color: C.ink }}>Make her crop shares</button>
+                <button type="button" onClick={() => mint.run(plan.id)} style={{ ...btn, background: C.accent, color: C.ink }}>Make the crop shares</button>
               )}
               {(mint.status === 'failed' || mint.status === 'partial') && (
                 <button type="button" onClick={() => mint.run(plan.id)} style={{ ...btn, background: C.accent, color: C.ink }}>Try again</button>

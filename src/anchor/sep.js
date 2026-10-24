@@ -36,7 +36,7 @@ export async function sep10(info, account, signHash, passphrase) {
   const webAuthDomain = new URL(info.WEB_AUTH_ENDPOINT).host;
   // Throws unless it is a real challenge from the anchor's signing key, for her account and this home domain.
   const { clientAccountID } = WebAuth.readChallengeTx(c.transaction, info.SIGNING_KEY, passphrase, info.homeDomain, webAuthDomain);
-  if (clientAccountID !== account) throw new Error('the SEP-10 challenge is not for her account');
+  if (clientAccountID !== account) throw new Error('the SEP-10 challenge is not for your account');
   const tx = TransactionBuilder.fromXDR(c.transaction, passphrase);
   tx.addSignature(account, b64(await signHash(tx.hash())));
   const { token } = await json(await fetch(info.WEB_AUTH_ENDPOINT, {

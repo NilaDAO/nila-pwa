@@ -51,7 +51,7 @@ function checkAccountTx(tx, cfg, me) {
     && ops[2].line.getCode() === code && ops[2].line.getIssuer() === issuer
     && ops[3].type === 'endSponsoringFutureReserves' && ops[3].source === me
     && (!cfg.sponsor || tx.source === cfg.sponsor);
-  if (!ok) throw new Error('the node sent a transaction that is not her sponsored account');
+  if (!ok) throw new Error('the node sent a transaction that is not your sponsored account');
 }
 
 const hasNin = (account, cfg) => {
@@ -71,7 +71,7 @@ async function addNinTrustline(cfg, me, signHash) {
     && ops[1].type === 'changeTrust' && ops[1].source === me && ops[1].line instanceof Asset
     && ops[1].line.getCode() === code && ops[1].line.getIssuer() === issuer
     && ops[2].type === 'endSponsoringFutureReserves' && ops[2].source === me;
-  if (!ok) throw new Error('the node sent a transaction that is not her nIN trustline');
+  if (!ok) throw new Error('the node sent a transaction that is not your nIN trustline');
   tx.addSignature(me, btoa(String.fromCharCode(...(await signHash(tx.hash())))));
   const { hash } = await submitNinTrustline(tx.toXDR());
   for (let i = 0; i < 30; i++) {

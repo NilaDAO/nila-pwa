@@ -106,7 +106,7 @@ function Check({ job, n, onDone, onBack }) {
   // no board for this case), her point stays, the leader tries again.
   if (shapes.length === 0 && f.error) {
     return (
-      <ErrorFull title={`Field ${n}: the shapes could not be drawn`} text="Her point stays where she put it. Try again in a moment."
+      <ErrorFull title={`Field ${n}: the shapes could not be drawn`} text="The member's point stays where it was put. Try again in a moment."
         rows={[['Reason', /satellite|ndvi|earth engine|gee|tile/i.test(f.error) ? 'Satellite data did not load' : 'The drawing did not finish']]}
         primary={retry.isPending ? 'Trying again…' : 'Try again'} busy={retry.isPending} onPrimary={() => retry.mutate({ field: n }, { onSuccess: onDone })}
         secondary="Back to all fields" onSecondary={onBack} />
@@ -167,7 +167,7 @@ function Done({ job, onField, onBack }) {
         <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
           onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} />
       ))}
-      {st === 'minting' && <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Minting the land title. She gets a notification when it is ready.</p>}
+      {st === 'minting' && <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Minting the land title. The member gets a notification when it is ready.</p>}
       {st === 'minted' && <p role="status" style={{ margin: 0, fontSize: 14, color: C.accent, fontWeight: 700 }}>Land title minted.</p>}
       {(st === 'failed' || mint.error) && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{mint.error?.message || job.mint?.error || 'The mint failed.'}</p>}
       {!st && !job.farm && (
@@ -178,7 +178,7 @@ function Done({ job, onField, onBack }) {
       )}
       {!st && !job.polygon && (
         // A keypad member (O17, F14) has no wallet yet: her server wallet is a later keypad step, so no mint now.
-        <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Her wallet is not made yet (keypad phone). The land title can be minted once it is.</p>
+        <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>The member's wallet is not made yet (keypad phone). The land title can be minted once it is.</p>
       )}
       {!st && <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim()) || !job.polygon} style={{ ...btn(true), flex: 'none' }}
         onClick={() => mint.mutate(job.farm ? {} : { farm: farm.trim() })}>Mint land title</button>}
@@ -198,7 +198,7 @@ export default function LeaderBorder({ id, field, go }) {
     return <div style={{ padding: 16, fontFamily: FONT, color: q.error ? C.coral : C.muted }}>{q.error ? q.error.message : '…'}</div>;
   }
   if (job.status === 'failed') {
-    return <div style={{ padding: 16, fontFamily: FONT, color: C.coral }}>{job.mint?.error || 'The shapes could not be drawn.'} She sends her field location again. <button type="button" onClick={toTasks} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700 }}>Back to tasks</button></div>;
+    return <div style={{ padding: 16, fontFamily: FONT, color: C.coral }}>{job.mint?.error || 'The shapes could not be drawn.'} The member sends the field location again. <button type="button" onClick={toTasks} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700 }}>Back to tasks</button></div>;
   }
   if (job.status === 'drawing') return <Fetch job={job} onBack={toTasks} />;
   if (field && !['minting', 'minted'].includes(job.status)) return <Check key={`${field}:${job.updated}`} job={job} n={Number(field)} onDone={toPlan} onBack={toPlan} />;

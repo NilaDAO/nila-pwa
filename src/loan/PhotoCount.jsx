@@ -47,7 +47,7 @@ export default function PhotoCount({ name, target, verb, onDone, onBack }) {
         <div style={muted}>Total scanned</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span style={{ fontSize: 32, fontWeight: 700 }} data-testid="total-scanned">{inr(total)}</span>
-          <span style={muted}>{target ? (verb === 'Invest' ? 'she brought' : `of ${inr(target)}`) : ''}</span>
+          <span style={muted}>{target ? (verb === 'Invest' ? 'brought' : `of ${inr(target)}`) : ''}</span>
         </div>
         {target > 0 && <div style={{ height: 6, borderRadius: 3, background: C.raised, margin: '10px 0' }}><div style={{ width: `${Math.min(100, (total / target) * 100)}%`, height: 6, borderRadius: 3, background: C.accent }} /></div>}
         {list.map((r) => (
@@ -63,7 +63,7 @@ export default function PhotoCount({ name, target, verb, onDone, onBack }) {
         {state === 'counting' && <p style={{ ...muted, textAlign: 'center' }}>Counting…</p>}
         {state === 'error' && <p style={{ ...muted, color: C.coral, textAlign: 'center' }}>No cash detected — try again</p>}
         {target > 0 && total > 0 && (
-          <p style={muted}>{left <= 0 ? '✓ Full amount counted.' : `ⓘ ${inr(left)} still to count.${verb === 'Repay' ? ' She can also repay part now.' : ''}`}</p>
+          <p style={muted}>{left <= 0 ? '✓ Full amount counted.' : `ⓘ ${inr(left)} still to count.${verb === 'Repay' ? ' The member can also repay part now.' : ''}`}</p>
         )}
         <Primary disabled={!total} onClick={() => onDone({ total, s3Keys: groups.map((g) => g.s3Key).filter(Boolean) })}>{verb} {inr(total)}</Primary>
       </div>

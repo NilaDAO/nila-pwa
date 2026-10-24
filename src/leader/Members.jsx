@@ -82,7 +82,7 @@ export default function Members({ go }) {
         <div style={{ display: 'flex', gap: 8 }}>
           <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setN(PAGE); setMsg(''); }} placeholder="Search a member"
             aria-label="Search a member" style={{ ...field, flexGrow: 1, minWidth: 0, padding: '0 14px', outline: 'none', boxSizing: 'border-box' }} />
-          <button type="button" aria-label="Scan her wallet QR" onClick={() => { setScan(!scan); setMsg(''); }}
+          <button type="button" aria-label="Scan a wallet QR" onClick={() => { setScan(!scan); setMsg(''); }}
             style={{ ...field, width: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <ScanIcon color={C.text} />
           </button>

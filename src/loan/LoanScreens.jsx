@@ -130,7 +130,7 @@ export function LeaderLoan({ initial }) {
     return (
       <MapCard map={memberMap} header={{ title: 'Crop share request', onBack: () => setReq(undefined) }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
         <Card label="Crop share request" style={{ gap: 12 }}>
-          <BigQr img={img} alt="Crop share request QR" caption="Let her scan this with her phone" below={340} />
+          <BigQr img={img} alt="Crop share request QR" caption="Let the member scan this with their phone" below={340} />
           <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>
             {r.crop} · {inr(Number(BigInt(r.cash) / NIN))} cash{r.hours ? ` + ${inr(mv)} vouchers (${th(r.hours)} tractor h)` : ''}</span>
           <KV k="Valid for" v="48 hours" />
@@ -205,7 +205,7 @@ export function LeaderLoan({ initial }) {
               <>
                 <span style={{ alignSelf: 'flex-start', minHeight: 32, borderRadius: 12, background: C.raised, color: C.muted, padding: '0 12px',
                   display: 'flex', alignItems: 'center', fontSize: 14, fontWeight: 700 }}>Sold batches · ₹0 prepaid</span>
-                <span style={{ color: C.muted, fontSize: 14, lineHeight: 1.5 }}>Cash above member money ({inr(notCovered)} more in her plan) can only be funded by selling a batch (a buyer's prepayment).</span>
+                <span style={{ color: C.muted, fontSize: 14, lineHeight: 1.5 }}>Cash above member money ({inr(notCovered)} more in the plan) can only be funded by selling a batch (a buyer's prepayment).</span>
               </>
             )}
             {checks.data && types.map((t) => {
@@ -229,7 +229,7 @@ export function LeaderLoan({ initial }) {
               ? <PostBring gap={Math.ceil(cash - checks.data.onHand)} />
               : <span style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</span>)}
             {error && <span style={{ color: C.coral }}>{error}</span>}
-            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine ? () => setOwn(true) : go}>{mine ? 'Get cash and vouchers' : 'Show QR to her'}</Primary>
+            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine ? () => setOwn(true) : go}>{mine ? 'Get cash and vouchers' : 'Show QR to the member'}</Primary>
           </>
         )}
       </Card>

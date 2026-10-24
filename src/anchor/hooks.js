@@ -110,7 +110,7 @@ export function useUsdcTrustline() {
         && ops[1].type === 'changeTrust' && ops[1].source === me && ops[1].line instanceof Asset
         && ops[1].line.getCode() === code && ops[1].line.getIssuer() === issuer
         && ops[2].type === 'endSponsoringFutureReserves' && ops[2].source === me;
-      if (!ok) throw new Error('the node sent a transaction that is not her USDC trustline');
+      if (!ok) throw new Error('the node sent a transaction that is not your USDC trustline');
       tx.addSignature(me, btoa(String.fromCharCode(...(await s.signHash(tx.hash())))));
       await post('/stellar/usdc-trustline/submit', { xdr: tx.toXDR() });
       for (let i = 0; i < 30; i++) {

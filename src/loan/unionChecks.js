@@ -48,8 +48,8 @@ export function useUnionChecks(member) {
       const ph = num(perHour);
       const blocked = [];
       if (Number(hold) > 0) blocked.push('Lending is on hold in the union.');
-      if (BigInt(pos?.invested ?? 0) + GATE_ROUNDING < BigInt(uc.gate ?? 0)) blocked.push(`She needs ₹${Math.round(num(uc.gate)).toLocaleString('en-IN')} invested in the union first.`);
-      if ((loans?.length ?? 0) >= MAX_LOANS_PER_MEMBER) blocked.push('She has too many open crop shares.');
+      if (BigInt(pos?.invested ?? 0) + GATE_ROUNDING < BigInt(uc.gate ?? 0)) blocked.push(`The member needs ₹${Math.round(num(uc.gate)).toLocaleString('en-IN')} invested in the union first.`);
+      if ((loans?.length ?? 0) >= MAX_LOANS_PER_MEMBER) blocked.push('The member has too many open crop shares.');
       return {
         maxLoan,
         // Whole rupees: the request is in whole rupees.

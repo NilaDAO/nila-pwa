@@ -146,7 +146,7 @@ export function ScanLp({ onBack }) {
       {id == null && !typing && <CameraView mode="qr" onText={read} />}
       {id == null && typing && (
         <>
-          <textarea aria-label="Her code" value={typed} onChange={(e) => setTyped(e.target.value)} rows={4}
+          <textarea aria-label="The LP code" value={typed} onChange={(e) => setTyped(e.target.value)} rows={4}
             style={{ width: '100%', borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box', fontFamily: 'monospace', fontSize: 13 }} />
           <Primary disabled={!typed.trim()} onClick={() => read(typed)}>Check the code</Primary>
         </>
@@ -165,9 +165,9 @@ export function ScanLp({ onBack }) {
       {id != null && !ok && <button type="button" onClick={again} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Scan again</button>}
       {ok && (
         <>
-          <Choice sub={`LP ${short(o.data.lp)} · ${usdcOf(o.data.usdc)} USDC`}>{kind === BRING ? `She brings ${inr(inrAmt)}` : `She collects ${inr(inrAmt)}`}</Choice>
-          <p style={muted}>{kind === BRING ? 'Count the cash she hands over. Confirming pays her the USDC from the union.'
-            : 'Hand over the cash. Confirming takes her USDC into the union.'}</p>
+          <Choice sub={`LP ${short(o.data.lp)} · ${usdcOf(o.data.usdc)} USDC`}>{kind === BRING ? `The LP brings ${inr(inrAmt)}` : `The LP collects ${inr(inrAmt)}`}</Choice>
+          <p style={muted}>{kind === BRING ? 'Count the cash the LP hands over. Confirming pays the LP the USDC from the union.'
+            : 'Hand over the cash. Confirming takes the LP\'s USDC into the union.'}</p>
           {kind === BRING && counted == null && <Primary disabled={!tx.ready} onClick={() => setCounting(true)}>Count the cash</Primary>}
           {kind === BRING && counted != null && counted < inrAmt && <p style={{ color: C.coral }}>Counted {inr(counted)} of {inr(inrAmt)}: count again before you confirm.</p>}
           {(kind !== BRING || (counted != null && counted >= inrAmt)) && <Primary disabled={!tx.ready} onClick={() => tx.run({

@@ -48,10 +48,10 @@ const LABELS = ['Front left', 'Front', 'Front right', 'Left', null, 'Right', 'Ba
 export async function parseVoucherCode(cfg, text) {
   const c = readVoucherCode(text);
   const latest = (await server(cfg).getLatestLedger()).sequence;
-  if (c.exp <= latest) throw new Error('This code has expired. Ask her to make a new one.');
+  if (c.exp <= latest) throw new Error('This code has expired. Ask the member to make a new one.');
   const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(c.member)]).catch(() => []);
   const token = matchToken(cfg, c, (ids || []).map((id) => Buffer.from(id).toString('hex')));
-  if (!token) throw new Error('No voucher of hers matches this code.');
+  if (!token) throw new Error('No voucher of this member matches this code.');
   return { entry: voucherEntry(cfg, c, token), member: c.member, token, signed: c.units };
 }
 
@@ -192,7 +192,7 @@ function Costs({ parts, hours, driverBp }) {
       ))}
       <div style={{ height: 1, background: C.raised }} />
       <KV k="Paid now" v={inr(paidNow)} />
-      <KV k="When she repays" v={inr(total - paidNow)} />
+      <KV k="When the member repays" v={inr(total - paidNow)} />
     </div>
   );
 }
@@ -247,16 +247,16 @@ function Claim({ machine, rate, tractor, onBack }) {
           <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700, fontSize: 20 }}>{hours} h</span>
           <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(scan.max, Math.round((hours + 0.5) * 10) / 10))}>+</button>
         </div>
-        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>Up to {scan.max} h on her code</p>
+        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>Up to {scan.max} h on this code</p>
         {rate && <Costs parts={rate.parts} hours={hours} driverBp={Number(share.data ?? 0)} />}
         <Primary disabled={!tx.ready || scan.max <= 0 || hours <= 0} onClick={claim}>Claim {hours} h</Primary>
       </Page>
     );
   }
   return (
-    <Page title="Scan her code" onBack={onBack}>
+    <Page title="Scan the voucher code" onBack={onBack}>
       <CameraView key={tries} mode="qr" onText={read} />
-      <p style={{ ...muted, textAlign: 'center' }}>Scan the code on her phone after the work.</p>
+      <p style={{ ...muted, textAlign: 'center' }}>Scan the code on the member's phone after the work.</p>
       {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
     </Page>
   );

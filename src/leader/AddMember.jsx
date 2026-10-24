@@ -61,25 +61,25 @@ function Sent({ id, go }) {
   const keypad = m.phone_type === 'keypad';
   return (
     <>
-      <Card label="Her progress">
+      <Card label="Progress">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 16, lineHeight: 1.3, marginBottom: 6 }}>
           <span style={{ fontWeight: 700 }}>{m.name}</span><span style={{ color: C.muted }}>{phoneText(m.phone)}</span>
         </div>
         {keypad ? (
           <>
             <Step done title="Link sent" sub={`${time(l.sent)} · works once, for 30 minutes`} />
-            <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for her' : 'The link no longer works: send it again')} />
+            <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for the member' : 'The link no longer works: send it again')} />
             <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
             {(m.fields || []).map((f) => (
               <Step key={f.n} done title={`Field ${f.n} sent`} sub={`${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}${f.acc != null ? ` · ± ${Math.round(f.acc)} m` : ''}`} />
             ))}
-            <Step title={`Field ${(m.fields || []).length + 1}`} sub={(m.fields || []).length ? 'Walk with her to the next field' : 'Walk with her to her first field'} />
-            <Notice kind="info">Pin Nila to her apps menu: on her phone, in the browser, Options → Pin to Apps Menu.</Notice>
+            <Step title={`Field ${(m.fields || []).length + 1}`} sub={(m.fields || []).length ? 'Walk with the member to the next field' : 'Walk with the member to their first field'} />
+            <Notice kind="info">Pin Nila to the apps menu: on the member's phone, in the browser, Options → Pin to Apps Menu.</Notice>
           </>
         ) : (
           <>
             <Step done title="Link sent" sub={time(l.sent || m.added)} />
-            <Step title="She registers herself" sub="In the Nila app, with her own number" />
+            <Step title="The member registers" sub="In the Nila app, with their own number" />
           </>
         )}
         {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
@@ -87,7 +87,7 @@ function Sent({ id, go }) {
       </Card>
       {keypad && (
         <Card title="Fields">
-          <Notice kind="info">When she has sent every field, match the shapes. The land title cannot change later.</Notice>
+          <Notice kind="info">When every field is sent, match the shapes. The land title cannot change later.</Notice>
           <Primary disabled={!m.job} onClick={() => go(`tasks/border/${m.job}`)}>Match field shapes</Primary>
         </Card>
       )}
@@ -116,12 +116,12 @@ export default function AddMember({ id, go }) {
             <PhoneField id="l14-phone" value={phone} onChange={setPhone} />
             <Row k={<b style={{ color: C.text }}>Union</b>} v={union.name || '—'} />
           </Card>
-          <Card title="Her phone">
-            <div role="radiogroup" aria-label="Her phone" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Radio title="Smartphone" sub="Nila app. She registers herself." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
-              <Radio title="Keypad phone" sub="Nila lite. She opens a link from SMS." on={type === 'keypad'} onClick={() => setType('keypad')} />
+          <Card title="The member's phone">
+            <div role="radiogroup" aria-label="The member's phone" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Radio title="Smartphone" sub="Nila app. The member registers." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
+              <Radio title="Keypad phone" sub="Nila lite. The member opens a link from SMS." on={type === 'keypad'} onClick={() => setType('keypad')} />
             </div>
-            <Notice kind="info">Do this at her farm. She sends the location of each field from her phone. No phone of her own? She uses a family member's phone. No phone, no account.</Notice>
+            <Notice kind="info">Do this at the farm. The member sends the location of each field from their phone. No phone of their own? A family member's phone works. No phone, no account.</Notice>
             {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
             <Primary disabled={!ok || send.isPending} onClick={submit}>Send app link</Primary>
           </Card>

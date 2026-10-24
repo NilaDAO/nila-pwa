@@ -83,8 +83,8 @@ export function LpCode({ swap, onBack }) {
           <Row k={bring ? 'You get' : 'You pay'} v={`${swap.usdc} USDC`} />
           <Row k="Where" v="Union office" />
           <Row k={bring ? 'Bring it by' : 'Collect it by'} v={by(swap.expires)} />
-          <p style={muted}>{bring ? 'Show this to your leader when you hand over the cash. The USDC reaches your wallet when she scans it.'
-            : 'Show this to your leader. When she scans it, the union takes the USDC and she hands you the cash.'}</p>
+          <p style={muted}>{bring ? 'Show this to your leader when you hand over the cash. The USDC reaches your wallet when your leader scans it.'
+            : 'Show this to your leader. When your leader scans it, the union takes the USDC and hands you the cash.'}</p>
         </>
       )}
       <Primary onClick={onBack}>Done</Primary>
@@ -149,7 +149,7 @@ export default function LpOffers({ onBack }) {
         <Row k={`Your fee (${q.data ? q.data.fee_bp / 100 : 1}%)`} v={fee != null ? inr(fee) : '…'} />
         <Row k={bring ? 'You get' : 'You pay'} v={`${usdc} USDC`} />
         <Row k={bring ? 'Bring it by' : 'Collect it by'} v={by(open.expires)} />
-        <p style={muted}>{bring ? 'Your leader scans your code when she has the cash. The USDC then reaches your wallet.'
+        <p style={muted}>{bring ? 'Your leader scans your code when the cash is there. The USDC then reaches your wallet.'
           : `Accepting lets the union take ${usdc} USDC from your wallet when your leader scans your code.`}</p>
         {!bring && lp.data && lp.data.usdc < Number(usdc) && <p style={{ color: C.coral }}>You have {lp.data.usdc.toFixed(2)} USDC: not enough for this offer.</p>}
         {error && <p style={{ color: C.coral }}>{error}</p>}

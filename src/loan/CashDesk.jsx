@@ -130,8 +130,8 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
     <DeskCard title={purpose === 'invest' ? 'Invest' : 'Repay'} onBack={onBack}>
       {fixed ? <p style={muted}>For {member.slice(0, 4)}…{member.slice(-4)}</p> : (
         <>
-          <p style={muted}>{purpose === 'invest' ? 'Her wallet (scan her wallet QR, or paste it)' : 'Her wallet (optional: only her loans)'}</p>
-          <input aria-label="Her wallet" value={member} onChange={(e) => setMember(e.target.value)} placeholder="G…"
+          <p style={muted}>{purpose === 'invest' ? 'Member wallet (scan their wallet QR, or paste it)' : 'Member wallet (optional: only their loans)'}</p>
+          <input aria-label="Member wallet" value={member} onChange={(e) => setMember(e.target.value)} placeholder="G…"
             style={{ width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box' }} />
         </>
       )}
@@ -145,7 +145,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
           ))}
         </>
       )}
-      <p style={{ ...muted, textAlign: 'center' }}>{purpose === 'invest' ? 'She brings' : 'She repays'}</p>
+      <p style={{ ...muted, textAlign: 'center' }}>{purpose === 'invest' ? 'The member brings' : 'The member repays'}</p>
       <Amount value={amount} set={setAmount} />
       {noPhotos && <p style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</p>}
       <Primary disabled={!amount || !isG(who) || !tx.ready} onClick={() => { setNoPhotos(false); setCounting(true); }}>Photo count</Primary>
@@ -162,9 +162,9 @@ function ScanHer({ title, note, shareOnly, onFound, onBack }) {
     const t = String(text || '').trim();
     const share = /^nila:share:(\w+?)_(\w+):(G[A-Z2-7]{55})$/.exec(t);
     if (share) { onFound({ who: share[3], plan: share[1], token: share[2] }); return; }
-    if (shareOnly) { setError('Scan her crop share QR (her Ready crop share in Assets).'); return; }
+    if (shareOnly) { setError('Scan the crop share QR (a Ready crop share in Assets).'); return; }
     const g = addressFromQr(t);
-    if (g) onFound({ who: g }); else setError('This is not a member\'s QR.');
+    if (g) onFound({ who: g }); else setError('This is not a member QR.');
   };
   return (
     <DeskCard title={title} onBack={onBack}>
@@ -197,7 +197,7 @@ function ScanAny({ onBack }) {
       if (share) {
         const hex = tokenHex(share[2]);
         const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(hex)]).catch(() => null);
-        if (!ft || ft.member !== share[3]) throw new Error('This crop share is not hers in your union.');
+        if (!ft || ft.member !== share[3]) throw new Error('This crop share is not this member\'s in your union.');
         const flags = Number(ft.loan?.flags ?? 0);
         if (flags & FLAG_DRAWN) {
           if (flags & FLAG_CLOSED) throw new Error('The loan on this crop share is repaid.');
@@ -208,7 +208,7 @@ function ScanAny({ onBack }) {
         return;
       }
       const g = addressFromQr(t);
-      if (!g) throw new Error("This is not a member's QR.");
+      if (!g) throw new Error("This is not a member QR.");
       const claim = await deskClaim(cfg, g);
       setLane(claim.shares > 0n ? { kind: 'ready', who: g, inr: claim.inr } : { kind: 'invest', who: g });
     } catch (e) { setError(e.message); } finally { setBusy(false); }
@@ -219,18 +219,18 @@ function ScanAny({ onBack }) {
   if (lane?.kind === 'repay') return <Scan purpose="repay" onBack={onBack} initialMember={lane.who} initialToken={lane.token} />;
   if (lane?.kind === 'ready') {
     return (
-      <DeskCard title="Her withdrawal is ready" onBack={() => setLane(undefined)}>
+      <DeskCard title="Withdrawal ready" onBack={() => setLane(undefined)}>
         <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>{inr(Math.floor(lane.inr))} to collect</p>
-        <p style={muted}>To pay it out, she opens her wallet QR again: it carries her signature now. Hand over the cash, then scan it.</p>
+        <p style={muted}>To pay it out, the member opens their wallet QR again: it carries their signature now. Hand over the cash, then scan it.</p>
         <Primary onClick={() => setLane(undefined)}>Scan again</Primary>
-        <Secondary onClick={() => invest(lane.who)}>She came to invest instead</Secondary>
+        <Secondary onClick={() => invest(lane.who)}>Invest instead</Secondary>
       </DeskCard>
     );
   }
   return (
-    <DeskCard title="Scan her QR" onBack={onBack}>
+    <DeskCard title="Scan a member QR" onBack={onBack}>
       <CameraView mode="qr" onText={read} />
-      <p style={muted}>Her wallet QR: invest, or her withdrawal once it is ready. Her crop share QR: use it, or repay its loan.</p>
+      <p style={muted}>Wallet QR: invest, or a withdrawal once it is ready. Crop share QR: use it, or repay its loan.</p>
       {busy && <p style={muted}>…</p>}
       {error && <p style={{ color: C.coral }}>{error}</p>}
     </DeskCard>
@@ -263,10 +263,10 @@ export default function CashDesk({ initial }) {
   if (view === 'scan') return <ScanAny onBack={toTasks} />;
   if (!member && !found && (view === 'invest' || view === 'repay')) {
     return <ScanHer title={view === 'invest' ? 'Invest' : 'Repay'} onBack={toTasks} onFound={setFound}
-      note={view === 'invest' ? 'Scan her wallet QR, then count the cash she brings.' : 'Scan her wallet QR or the crop share QR of the loan, then count the cash she brings.'} />;
+      note={view === 'invest' ? 'Scan the member\'s wallet QR, then count the cash.' : 'Scan the member\'s wallet QR or the crop share QR of the loan, then count the cash.'} />;
   }
   if (!member && view === 'share') {
-    return <ScanHer title="Use a crop share" shareOnly onBack={toTasks} note="Scan her crop share QR (her Ready crop share in Assets)."
+    return <ScanHer title="Use a crop share" shareOnly onBack={toTasks} note="Scan the crop share QR (a Ready crop share in Assets)."
       onFound={(f) => window.location.replace(`#/loan/${f.plan}_${f.token}`)} />;
   }
   if (found) return <Scan purpose={view} onBack={toTasks} initialMember={found.who} initialToken={found.token && tokenHex(found.token)} />;

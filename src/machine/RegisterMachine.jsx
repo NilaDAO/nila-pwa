@@ -70,7 +70,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
     setTo(own);
     setError(undefined); setBusy(true);
     try {
-      if (!isG(own)) throw new Error('That QR is not a member wallet. Scan her wallet QR.');
+      if (!isG(own)) throw new Error('That QR is not a member wallet. Scan the owner\'s wallet QR.');
       const { photos_hash: ph } = await api.machinePhotos(WALK.map((l) => ({ content_type: photos[l].content_type, data_b64: photos[l].data_b64 })));
       setBusy(false);
       await tx.run({
@@ -185,7 +185,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
           <>
             <Primary disabled={!rate || !tx.ready || !api || !s?.stellarAddress} onClick={() => register(s.stellarAddress)}>Union machine: register to me</Primary>
             <button type="button" disabled={!rate || !tx.ready || !api} onClick={() => setScanning(true)}
-              style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>A member's machine: scan her wallet QR</button>
+              style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>A member's machine: scan their wallet QR</button>
           </>
         )}
       </Card>

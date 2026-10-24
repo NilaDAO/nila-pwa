@@ -35,7 +35,7 @@ export function PickMember({ title, onPick, onBack, onScan }) {
           <ListRow key={m.address} first={i === 0} icon={PinIcon} title={m.lands.length ? `Land ${m.lands.join(', ')}` : 'Member'} sub={short(m.address)} onClick={() => onPick(m.address)} />
         ))}
         {members.isSuccess && !members.data.length && <li style={{ color: C.muted, padding: '12px 0' }}>No members with a crop plan or a crop share yet.</li>}
-        {onScan && <ListRow first={!members.data?.length} icon={PayOutIcon} title="Scan her wallet QR" sub="A member not in the list" onClick={onScan} />}
+        {onScan && <ListRow first={!members.data?.length} icon={PayOutIcon} title="Scan a wallet QR" sub="A member not in the list" onClick={onScan} />}
       </ListSection>
     </div>
   );
@@ -47,9 +47,9 @@ const START = [
   ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon]]],
   // One scan for her (executive decision 24 Oct): the QR says which kind, the chain picks invest, withdraw, use or
   // repay. Her G2 in Members stays a second way in.
-  ['Cash', [['Scan her QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
+  ['Cash', [['Scan a member QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
     ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
-  ['Vouchers', [['Register a machine', 'Her own machine, photos and price', 'cash/machine', TractorIcon]]],
+  ['Vouchers', [['Register a machine', 'The owner\'s machine, photos and price', 'cash/machine', TractorIcon]]],
 ];
 
 // To do icons by task kind (board LeaderBorders): accent for a new item to act on, coral for an overdue one.

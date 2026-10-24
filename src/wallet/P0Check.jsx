@@ -59,12 +59,12 @@ export default function P0Check() {
     S1: ['Soroban auth entry signed by raw hash, testnet SUCCESS', () => sorobanAuth({ address: stellar, signHash, log })],
     S2: ['SEP-10 challenge (server-side check)', () => sep10Local({ address: stellar, signHash, log })],
     S3: ['SEP-10 against SDF test anchor (JWT)', () => sep10TestAnchor({ address: stellar, signHash, log })],
-    E1: ['Privy signed in with her own Polygon key (same address)', async () => {
-      if (!evm) throw new Error('her Polygon key is not available');
-      if (privyEvmAddress?.toLowerCase() !== evm.toLowerCase()) throw new Error(`Privy user wallet ${privyEvmAddress} ≠ her key ${evm}`);
+    E1: ['Privy signed in with your own Polygon key (same address)', async () => {
+      if (!evm) throw new Error('your Polygon key is not available');
+      if (privyEvmAddress?.toLowerCase() !== evm.toLowerCase()) throw new Error(`Privy user wallet ${privyEvmAddress} ≠ your key ${evm}`);
       return { address: evm, privyUser: privyUserId };
     }],
-    E2: ['mintForBatchMember signed with her key, not broadcast', async () => {
+    E2: ['mintForBatchMember signed with your key, not broadcast', async () => {
       const data = new Interface(MINT_ABI).encodeFunctionData('mintForBatchMember',
         [1n, 32, 0, 1000n, 2n, 3101, 0, Math.floor(Date.now() / 1000)]);
       // Fixed gas and fees: estimation would revert (this test user is no batch member).
