@@ -16,14 +16,14 @@ export function useSorobanTx() {
   const [tx, setTx] = useState({ status: 'idle' });
   const last = useRef(null);
   const run = useCallback(async (params) => {
-    const { label, rows = [], contractName, fn, args, auth, invalidate = [] } = params;
+    const { label, rows = [], contractName, fn, args, auth, invalidate = [], hold = false } = params;
     last.current = { params, hash: null, sentAt: 0 };
     setTx({ status: 'pending', label, rows });
     try {
       const out = await invokeContract({ cfg, source: s.stellarAddress, signHash: s.signHash, contractName, fn, args, auth,
         onSent: (hash) => { last.current = { params, hash, sentAt: Date.now() }; setTx((t) => ({ ...t, hash })); } });
       invalidate.forEach((k) => qc.invalidateQueries({ queryKey: k }));
-      setTx({ status: 'success', label, rows, hash: out.hash, when: new Date(), result: out.result });
+      setTx({ status: 'success', label, rows, hash: out.hash, when: new Date(), result: out.result, hold });
       return out;
     } catch (e) {
       console.error('[tx]', fn, e);
@@ -101,7 +101,8 @@ export function TxScreens({ tx, onClose, onRetry, network = 'Stellar' }) {
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
-    if (tx.status !== 'success') return undefined;
+    // hold: a result the person must act on (the repay's change, 24 Oct) stays until closed.
+    if (tx.status !== 'success' || tx.hold) return undefined;
     setLeft(5);
     const t = setInterval(() => setLeft((n) => Math.max(0, n - 1)), 1000);
     return () => clearInterval(t);

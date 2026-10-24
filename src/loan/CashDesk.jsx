@@ -34,9 +34,25 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
   if (!s3Keys?.length) return false;
   const amt = BigInt(Math.round(total)) * NIN;
   const scanHash = await sha(`${s3Keys.join('|')}|${who}|${purpose}|${amt}`);
+  // A repay counted above what is owed (24 Oct): the contract takes what is owed and burns the rest, so the leader
+  // hands the difference back in cash; read fresh so the change is right to the rupee.
+  let change = 0;
+  if (purpose === 'repay' && token) {
+    const [loan, vb] = await Promise.all([
+      readContract(cfg, 'fund_core', 'get_loan', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null),
+      readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null),
+    ]);
+    if (loan) {
+      const owed = BigInt(loan.principal) - BigInt(loan.principal_paid) + BigInt(loan.interest_accrued) - BigInt(loan.interest_paid)
+        + (vb ? BigInt(vb.senior_out) + (vb.dues || []).reduce((t, d) => t + BigInt(d.amount), 0n) : 0n);
+      if (amt > owed) change = Number((amt - owed) / NIN);
+    }
+  }
   await tx.run({
     label: purpose === 'invest' ? `Invest ${inr(total)}` : `Repay ${inr(total)}`,
-    rows: [['Amount', inr(total)], ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
+    rows: [...(change > 0 ? [['Hand back', `${inr(change)} in change`], ['Counted', inr(total)], ['Repaid', inr(total - change)]] : [['Amount', inr(total)]]),
+      ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
+    hold: change > 0,
     contractName: 'fx_pool', fn: 'cash_scan_mint',
     args: [sv.address(leader), sv.address(cfg.union), sv.u32(PURPOSE[purpose]), sv.address(who), sv.i128(amt), sv.bytes(scanHash),
       purpose === 'repay' ? sv.bytes32(token) : sv.none()],
