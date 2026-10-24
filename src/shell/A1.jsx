@@ -23,6 +23,7 @@ import MessageSlider, { Title, card, memberSlides, small } from './MessageSlider
 import { Sheet } from '../plan/ui';
 import { useStage } from './stageCtx';
 import { homeTop, useHomeMap } from './MapStage';
+import { useLeaderMap } from '../leader/unionMap';
 import { MEMBER_TODO_ROWS, useLeaderTaskCount } from './taskCount';
 
 // Where A1's card was left (map-central trial, 22 Oct): back from any asset screen it returns at the same scroll position
@@ -147,6 +148,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(arm); window.removeEventListener('scroll', on); };
   }, [stage]);
   const home = useHomeMap(onShare, window.innerHeight - top + 32);
+  // The leader's Assets tab (map-centred lane, 23 Oct): the union map filtered to its assets (machines, Ready shares).
+  const union = useLeaderMap('assets', window.innerHeight - top + 32, !!leader);
   const buttons = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <RoundButton label="History" onClick={onHistory}><HistoryIcon color={C.text} /></RoundButton>
@@ -222,7 +225,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   );
   if (stage) {
     // Her map comes with the card; before her record is read the card stands on the map stage alone.
-    return <Sheet map={home.map || <span />} head={buttons} top={top} startLow={memory.low} onLowered={(v) => { memory.low = v; }}>{content}</Sheet>;
+    return <Sheet map={(leader ? union.map : home.map) || <span />} head={buttons} top={top} startLow={memory.low} onLowered={(v) => { memory.low = v; }}>{content}</Sheet>;
   }
   return (
     <div style={{ fontFamily: FONT, color: C.text, padding: '8px 8px 0' }}>

@@ -21,6 +21,7 @@ import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
 import { ReadyShareRows, TakeUp, rowOf, useMyShares } from '../loan/MyShares';
 import MapStage from './MapStage';
+import { useLeaderMap } from '../leader/unionMap';
 import MapCard from './MapCard';
 import { SlideBar } from '../plan/PlanResult';
 import CropShare from '../loan/CropShare';
@@ -63,6 +64,16 @@ function Later({ title, step }) {
       <div style={{ color: C.text, fontWeight: 700, fontSize: 16, marginBottom: 8 }}>{title}</div>
       Coming in {step}.
     </div>
+  );
+}
+
+/** The leader's Harvests tab (map-centred lane, 23 Oct): the union map, Harvests filter; the tab's screens come later. */
+function HarvestsMap({ go }) {
+  const { map } = useLeaderMap('harvests');
+  return (
+    <MapCard map={map} header={{ title: 'Harvests', onBack: () => go('assets'), onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+      <Later title="Harvests" step="a later step" />
+    </MapCard>
   );
 }
 
@@ -237,6 +248,7 @@ export default function Shell({ leader }) {
   // A2 Tasks: for an LP the board's "Cash offers" section; the other task rows come in a later step.
   else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
   else if (view === 'members' && leader) body = readArg() ? <MemberStatus key={readArg()} id={readArg()} go={go} /> : <Members go={go} />;
+  else if (view === 'harvests' && leader) body = <HarvestsMap go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
 
   // No tab is active on task, settings, history and wallet screens; a crop share (A4/A4a, and taking it up) belongs to

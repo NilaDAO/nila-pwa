@@ -17,7 +17,8 @@ import { usePost } from '../anchor/LeaderLp';
 import { COLLECT } from '../anchor/sep';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
 import { SkeletonRows } from '../shell/Skeleton';
-import { StickyTop } from '../shell/ListRow';
+import MapCard from '../shell/MapCard';
+import { useLeaderMap } from './unionMap';
 import RoundButton, { SettingsButton } from '../shell/RoundButton';
 import { HistoryIcon } from '../shell/icons';
 import { LeaderTasksButton } from '../shell/A1';
@@ -261,23 +262,22 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
   const book = bookQ.data;
   const titles = useQuery({ queryKey: ['stellar', 'unionTitles'], enabled: !!api, staleTime: 5 * 60_000,
     queryFn: () => api.unionTitles().then((r) => r.titles || []) });
+  // A map card on the union map, Cash filter (map-centred lane, 23 Oct): the properties with an active loan, by repayment.
+  const { map } = useLeaderMap('cash');
   if (cashQ.isError) return <div style={{ ...card, margin: 16 }}>Could not read the union. Try again.</div>;
   // The header as on A1L (22 Oct): History, All tasks, Settings.
-  const top = (
-    <StickyTop>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <RoundButton label="History" onClick={() => { window.location.hash = '#/history'; }}><HistoryIcon color={C.text} /></RoundButton>
-        <LeaderTasksButton onClick={() => { window.location.hash = '#/tasks'; }} />
-        <SettingsButton onClick={() => { window.location.hash = '#/settings'; }} />
-      </div>
-    </StickyTop>
+  const buttons = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <RoundButton label="History" onClick={() => { window.location.hash = '#/history'; }}><HistoryIcon color={C.text} /></RoundButton>
+      <LeaderTasksButton onClick={() => { window.location.hash = '#/tasks'; }} />
+      <SettingsButton onClick={() => { window.location.hash = '#/settings'; }} />
+    </div>
   );
   // No S1 inside the app (22 Oct): the header at once and grey rows until the union is read.
-  if (!cash) return <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>{top}<section style={card}><SkeletonRows rows={4} /></section></div>;
+  if (!cash) return <MapCard head={buttons} map={map} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}><section style={card}><SkeletonRows rows={4} /></section></MapCard>;
   const dot = (on) => <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: R.round, background: on ? C.coral : C.accent, display: 'inline-block', marginRight: 8 }} />;
   return (
-    <div style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
-      {top}
+    <MapCard head={buttons} map={map} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         <section style={{ ...card, padding: '18px 22px', gap: 4, alignItems: 'center', textAlign: 'center' }} aria-label="Union treasury">
           <div style={{ color: C.muted }}>Union treasury</div>
@@ -326,6 +326,6 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
         <CashCard cash={cash} onScanLp={onScanLp} />
         {tasks}
       </div>
-    </div>
+    </MapCard>
   );
 }

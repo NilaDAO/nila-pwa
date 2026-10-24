@@ -11,11 +11,11 @@ import RoundButton, { SettingsButton } from '../shell/RoundButton';
 import { HistoryIcon, ScanIcon, UserPlusIcon } from '../shell/icons';
 import { LeaderTasksButton } from '../shell/A1';
 import { SkeletonRows, UpdatingDot } from '../shell/Skeleton';
-import AreaMap from '../plan/AreaMap';
 import CameraView from '../shell/CameraView';
 import ListRow from '../shell/ListRow';
 import { inr } from '../plan/ui';
 import { addressFromQr, useUnionMembers } from './unionMembers';
+import { useLeaderMap } from './unionMap';
 
 const PAGE = 10;
 const MORE = 20;
@@ -25,18 +25,6 @@ function summary(m) {
   if (owed > 0) return `${inr(owed)} owed${m.loans.some((x) => x.overdue) ? ' · overdue' : ''}`;
   return m.note || (m.lands.length ? `Land ${m.lands.join(', ')}` : 'Member');
 }
-/** The union's properties as one "record" for AreaMap: one area per member (her property), labelled with her name. */
-function useUnionMap(list, onPick) {
-  return useMemo(() => {
-    const zones = list.flatMap((m) => m.places.map((p) => ({ zone_id: m.key, geometry: p.geometry })))
-      .filter((z, i, a) => a.findIndex((y) => y.zone_id === z.zone_id) === i);
-    if (!zones.length) return null;
-    const labels = Object.fromEntries(list.map((m) => [m.key, { text: m.label }]));
-    // Fitted with room for the name chips on the sides and for the lowered card and tab bar below.
-    return <AreaMap record={{ zones }} labels={labels} onSelect={(z) => z && onPick(z)} fitSide={90} fitBottom={170} />;
-  }, [list, onPick]);
-}
-
 export default function Members({ go }) {
   const api = usePlanClient();
   const members = useUnionMembers(api);
@@ -47,7 +35,8 @@ export default function Members({ go }) {
   const all = members.data || [];
   // A member picked on the map, in the list or by her QR opens G2.
   const pick = useMemo(() => (key) => { const m = all.find((x) => x.key === key); if (m) go(`members/${m.route}`); }, [all, go]);
-  const map = useUnionMap(all, pick);
+  // The union map, Members filter (map-centred lane, 23 Oct): a tap opens G2, or her own Crop plan for the leader.
+  const { map } = useLeaderMap('members');
   // No S1 here (22 Oct): the card shows at once; grey rows until the first list, the phone's copy meanwhile.
   const waiting = !members.data;
   const needle = q.trim().toLowerCase();
