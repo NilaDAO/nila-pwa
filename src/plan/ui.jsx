@@ -15,7 +15,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
   const stage = useStage();
   const staged = !!stage && isValidElement(map);
   // A sheet without its record yet clears the stage (23 Oct): the last screen's fields never stay behind it.
-  useEffect(() => { if (staged) stage.set(map.props.record ? map.props : null); });
+  useEffect(() => { if (staged) stage.set(map.props.record || map.props.chip ? map.props : null); });   // a filter with no match keeps its chip
   const shown = staged ? null : map;
   const x0 = useRef(null);
   const swipe = onSwipe ? {

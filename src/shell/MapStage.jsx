@@ -20,20 +20,36 @@ export { useStage } from './stageCtx';
 const same = (a, b) => (a === b) || (!!a && !!b && a.record === b.record && a.selected === b.selected && a.onSelect === b.onSelect
   && a.fitBottom === b.fitBottom && a.chip === b.chip && JSON.stringify(a.labels || {}) === JSON.stringify(b.labels || {}));
 
+const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
+
+/** The leader's tab filter (23 Oct): a chip naming it and its count, on the map at any card position. */
+const Chip = ({ text }) => (
+  <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 72px)', left: '50%', transform: 'translateX(-50%)', zIndex: 2,
+    pointerEvents: 'none', background: 'rgba(18,18,18,0.85)', color: '#F1F5F9', borderRadius: 9999, padding: '4px 12px',
+    fontFamily: 'Inter, system-ui, sans-serif', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap' }}>{text}</div>
+);
+
 export default function MapStage({ children }) {
   const [props, setProps] = useState(null);
   const api = useMemo(() => ({ set: (p) => setProps((was) => (same(was, p) ? was : p)) }), []);
   return (
     <StageCtx.Provider value={api}>
-      {props?.record && (
+      {props?.record ? (
         // Clipped: the map's tiles reach past its box and would otherwise make the page taller than the card.
         <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }} data-testid="map-stage">
           <AreaMap {...props} height="100%" />
-          {/* The leader's tab filter (23 Oct): a chip naming it and its count, on the map at any card position. */}
-          {props.chip && (
-            <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 72px)', left: '50%', transform: 'translateX(-50%)', zIndex: 2,
-              pointerEvents: 'none', background: 'rgba(18,18,18,0.85)', color: '#F1F5F9', borderRadius: 9999, padding: '4px 12px',
-              fontFamily: 'Inter, system-ui, sans-serif', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap' }}>{props.chip}</div>
+          {props.chip && <Chip text={props.chip} />}
+        </div>
+      ) : (
+        // No record (yet): a filter with nothing to show keeps its chip; a map still loading shows the bouncing logo
+        // where the map will be, never a black screen (24 Oct).
+        <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', background: '#121212' }} data-testid="map-stage">
+          {props?.chip ? <Chip text={props.chip} /> : (
+            <>
+              <style>{'@keyframes nila-bounce{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,-14px)}}'}</style>
+              <img src={LOGO} alt="" aria-hidden="true" style={{ position: 'absolute', left: '50%', top: '14vh', width: 56, height: 56,
+                animation: 'nila-bounce 1s ease-in-out infinite' }} />
+            </>
           )}
         </div>
       )}
