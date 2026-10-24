@@ -114,7 +114,8 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
     const l = loans.data.find((x) => x.token === initialToken) || (loans.data.length === 1 ? loans.data[0] : null);
     if (l) { setToken(l.token); setAmount(Math.min(10000, owed(l))); }
   }, [loans.data]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Cash at the office may not exceed the union's treasury (R15, fx_pool AboveTreasury): the room left, before counting.
+  // Cash at the office above the union's treasury is offered to its LPs to collect (executive decision 24 Oct): the
+  // part of this count above it is said before counting.
   const room = useQuery({ queryKey: ['stellar', 'deskRoom', cfg?.union], enabled: !!cfg, staleTime: 10_000,
     queryFn: async () => {
       const [t, h] = await Promise.all([
@@ -123,7 +124,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
       ]);
       return Math.max(0, Math.floor(Number(BigInt(t) - BigInt(h)) / Number(NIN)));
     } });
-  const tooMuch = room.data != null && amount > room.data;
+  const over = room.data != null && amount > room.data ? amount - room.data : 0;
   const sel = loans.data?.find((l) => l.token === token);
   const who = purpose === 'repay' ? sel?.loan?.borrower : member.trim();
   const record = async ({ total, s3Keys }) => {
@@ -157,9 +158,9 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
       )}
       <p style={{ ...muted, textAlign: 'center' }}>{purpose === 'invest' ? 'The member brings' : 'The member repays'}</p>
       <Amount value={amount} set={setAmount} />
-      {tooMuch && <p style={{ color: C.coral, margin: 0 }}>Room for {inr(room.data)} more cash at the office (the union's treasury caps it). Let an LP collect cash first on the Cash tab, or count less.</p>}
+      {over > 0 && <p style={{ color: C.gold, margin: 0 }}>{inr(over)} of this is more cash than the union's treasury: it is offered to your LPs to collect.</p>}
       {noPhotos && <p style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</p>}
-      <Primary disabled={!amount || !isG(who) || !tx.ready || tooMuch} onClick={() => { setNoPhotos(false); setCounting(true); }}>Photo count</Primary>
+      <Primary disabled={!amount || !isG(who) || !tx.ready} onClick={() => { setNoPhotos(false); setCounting(true); }}>Photo count</Primary>
       <Secondary disabled>Cash teller · soon</Secondary>
     </DeskCard>
   );
