@@ -46,7 +46,7 @@ export function PickMember({ title, onPick, onBack, onScan }) {
 const START = [
   ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon]]],
   // Each member task scans her QR first (24 Oct, as Pay out cash); her G2 in Members stays a second way in.
-  ['Crop plan and crop share', [['Crop share loan', 'Scan her crop share QR', 'cash/share', RupeeIcon]]],
+  ['Crop plan and crop share', [['Use a crop share', 'Scan her crop share QR', 'cash/share', RupeeIcon]]],
   ['Cash', [['Invest', 'Scan her wallet QR, then count', 'cash/invest', InvestIcon], ['Repay', 'Scan her QR, then count', 'cash/repay', RepayIcon],
     // One task for both withdrawals (24 Oct): her signed QR, investment or nIN; the app tells them apart.
     ['Pay out cash', 'Hand over the cash, then scan her QR', 'cash/payout', PayOutIcon], ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],

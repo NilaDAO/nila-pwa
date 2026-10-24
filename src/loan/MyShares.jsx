@@ -163,7 +163,7 @@ export const amount = (kg) => (kg >= 1000 ? `~${Math.round(kg / 100) / 10} t` : 
 export function ReadyShareRows({ go, first = true }) {
   const ready = (useMyShares().data || []).filter((x) => x.ready);
   return ready.map((x, i) => (
-    <ListRow key={x.token_id} first={first && i === 0} icon={RupeeIcon} tone="new" title="Get your crop share"
+    <ListRow key={x.token_id} first={first && i === 0} icon={RupeeIcon} tone="new" title="Use your crop share"
       sub={`${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area} · at the union office`} onClick={() => go(`share/${x.token_id}`)} />
   ));
 }

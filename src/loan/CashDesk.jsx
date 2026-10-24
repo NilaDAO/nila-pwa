@@ -200,7 +200,7 @@ export default function CashDesk({ initial }) {
       note={view === 'invest' ? 'Scan her wallet QR, then count the cash she brings.' : 'Scan her wallet QR or the crop share QR of the loan, then count the cash she brings.'} />;
   }
   if (!member && view === 'share') {
-    return <ScanHer title="Crop share loan" shareOnly onBack={toTasks} note="Scan her crop share QR (her Ready crop share in Assets)."
+    return <ScanHer title="Use a crop share" shareOnly onBack={toTasks} note="Scan her crop share QR (her Ready crop share in Assets)."
       onFound={(f) => window.location.replace(`#/loan/${f.plan}_${f.token}`)} />;
   }
   if (found) return <Scan purpose={view} onBack={toTasks} initialMember={found.who} initialToken={found.token && tokenHex(found.token)} />;
