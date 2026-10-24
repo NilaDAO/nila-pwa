@@ -7,6 +7,7 @@ import { C, FONT, GRADIENT, R } from '../shell/tokens';
 import { Bouncing } from '../register/RegFrame';
 import { useStellarConfig } from './hooks';
 import { invokeContract, txStatus } from './soroban';
+import { plainError } from './errors';
 
 export function useSorobanTx() {
   const s = useNilaSigner();
@@ -26,7 +27,7 @@ export function useSorobanTx() {
       return out;
     } catch (e) {
       console.error('[tx]', fn, e);
-      setTx({ status: 'failed', label, rows, hash: e.hash, reason: e.message });
+      setTx({ status: 'failed', label, rows, hash: e.hash, reason: plainError(e.message, cfg) });
       return null;
     }
   }, [cfg, s, qc]);
