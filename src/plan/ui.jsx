@@ -123,7 +123,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       </div>
       {/* The header buttons stay fixed at the top, above map and card; they never scroll away (21 Oct) — with or without a map. */}
       {!staged && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
-      <div ref={drag.ref} className="cp-sheet" {...swipe} style={{ background: cardBg, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, pointerEvents: 'auto', minHeight: full ? '100dvh' : undefined, boxSizing: 'border-box', ...drag.style, ...(full && staged ? { animation: 'nila-rise 320ms cubic-bezier(0.2,0.8,0.2,1)' } : {}) }}>
+      <div ref={drag.ref} className="cp-sheet" {...swipe} style={{ background: cardBg, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, pointerEvents: 'auto', minHeight: full ? '100dvh' : undefined, boxSizing: 'border-box', ...drag.style, ...(full && staged && !drag.startedLow ? { animation: 'nila-rise 320ms cubic-bezier(0.2,0.8,0.2,1)' } : {}) }}>
         {full && staged && <style>{`@keyframes nila-rise{from{transform:translateY(${Math.round(window.innerHeight * 0.34) - 24}px)}to{transform:translateY(0)}}`}</style>}
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
         <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}.cp-sheet [data-sheet-head] h1{margin:0!important}html,body{overscroll-behavior-y:none}'}</style>

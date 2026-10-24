@@ -1,7 +1,7 @@
 // The drag line on every map card (executive decision 21 Oct: all map screens behave as R5): drag down lowers the
 // card — never off the screen, and never below the bottom tab bar where there is one; its top strip stays — drag up or a tap on the line brings it back; releasing snaps
 // to the nearer end. `onLowered(bool)` lets a screen slide other parts (R5's info footer) with it.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 const EASE = 'cubic-bezier(0.2,0.8,0.2,1)';
 const KEEP = 72;   // px of the card that stay on screen when lowered
@@ -74,14 +74,20 @@ export default function useSheetDrag(onLowered, resetKey, startLow) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setOff(0); onLowered?.(false); }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A new resetKey brings the card back up; not on mount (a card opening lowered stays down).
+  const firstKey = useRef(true);
+  useEffect(() => { if (firstKey.current) { firstKey.current = false; return; } setOff(0); onLowered?.(false); }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => tell(false), []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const start = startLow || tabLow;
-    tabLow = false;
-    if (!start) { lastLow = false; return undefined; }
-    const t = setTimeout(() => setLow(true), 80);   // once the card is laid out, so its floor is measured right
-    return () => clearTimeout(t);
+  // Opening lowered (A1 coming back, or a tab tapped with the card down, 24 Oct): placed down before the first paint,
+  // with no movement; the content still loads inside, hidden.
+  const [startedLow] = useState(() => { const v = !!(startLow || tabLow); tabLow = false; return v; });
+  const [instant, setInstant] = useState(startedLow);   // no transition while it is placed down
+  useLayoutEffect(() => {
+    if (!startedLow) { lastLow = false; return; }
+    lastLow = true;
+    loweredAt.current = Date.now();   // the scroll reset of the tab change does not raise it
+    setOff(maxOff()); onLowered?.(true); tell(true);
+    requestAnimationFrame(() => requestAnimationFrame(() => setInstant(false)));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const down = (e) => { drag.current = { y: e.clientY, off, max: maxOff(), moved: false }; setMoving(true); e.currentTarget.setPointerCapture?.(e.pointerId); };
   const move = (e) => {
@@ -98,7 +104,7 @@ export default function useSheetDrag(onLowered, resetKey, startLow) {
     if (!d.moved) { setLow(off < 24); return; }                // a tap toggles
     setLow(off > d.max / 2);
   };
-  const style = { transform: `translateY(${off}px)`, transition: moving ? 'none' : `transform 300ms ${EASE}` };
+  const style = { transform: `translateY(${off}px)`, transition: moving || instant ? 'none' : `transform 300ms ${EASE}` };
   const handle = (
     <div role="button" tabIndex={0} aria-label="Drag to move the card up or down"
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
@@ -108,5 +114,5 @@ export default function useSheetDrag(onLowered, resetKey, startLow) {
     </div>
   );
   // low: the card is (being) lowered; a sheet fades its body then, so only the top strip shows (map-central trial).
-  return { ref, style, handle, low: off > 24 && !moving };
+  return { ref, style, handle, low: off > 24 && !moving, startedLow };
 }
