@@ -43,6 +43,8 @@ export async function saveUnionRecord(isLeader, u, evm) {
   writeUnion(evm, { name: u.name, polygon: u.polygon });
   return leader;
 }
+/** The union a title holder belongs to while there is one union (24 Oct, R9 skipped on recovery). */
+export const UNIONS_ONE = () => UNIONS[0];
 export const unionByPolygon = (polygon) => UNIONS.find((u) => u.polygon.toLowerCase() === String(polygon || '').toLowerCase());
 
 const regKey = (evm) => `nila.reg.${(evm || 'none').toLowerCase()}`;
