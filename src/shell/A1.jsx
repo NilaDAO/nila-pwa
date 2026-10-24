@@ -98,8 +98,7 @@ const NinIcon = () => (
 export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp, onRegisterMachine }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
-  // A member holds nIN only as a machine owner's income (LOAN_RULES "Two withdrawals", 24 Oct): the row shows then.
-  const nin = s?.stellarAccount?.nin?.balance ?? 0;
+  const ninHeld = s?.stellarAccount?.nin?.balance ?? 0;
   const titles = useTitleCount(s?.evmAddress, s?.stellarAddress).count;   // Polygon or Stellar (src/register/titles.js)
   const inv = useInvestment(s?.stellarAddress);
   const invested = inv.data ? Number(inv.data.invested) / 1e7 : undefined;
@@ -109,6 +108,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const vOpen = vCode && vCode.until > Date.now() / 1000 && (vouchers.data || []).some((v) => v.token === vCode.token && v.used === vCode.used) ? vCode : null;
   const machine = useMyMachine(s?.stellarAddress).data;
   const lp = useLpStatus().data;
+  // A member handles nIN (and USDC) only once the anchor has checked their identity (K1, executive decision 24 Oct); a
+  // leader always. Without the check the nIN row and its value in the total stay hidden.
+  const nin = leader || lp?.idChecked ? ninHeld : 0;
   // A leader's USDC in rupees at fx_pool's current rate (22 Oct); an expired rate leaves it out of the total.
   const rate = useFxRate().data;
   const usdcInr = leader && lp?.idChecked && rate ? (lp.usdc || 0) * rate : 0;
@@ -198,7 +200,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
           value={titles ?? '…'} valueSub="—" onClick={onLand} />
         {/* A member sees nIN only when she holds some: a machine owner's income, collected in cash (24 Oct). */}
-        {(leader || nin >= 1) && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />}
+        {(leader || (lp?.idChecked && nin >= 1)) && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />}
         {invested !== undefined && (
           <Row label="Open nIN invested" icon={<InvestedTile />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}
             value={Math.floor(invested)} valueSub={inr(invested)} onClick={onInvested} />

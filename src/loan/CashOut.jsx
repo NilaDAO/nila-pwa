@@ -125,7 +125,7 @@ export function DeskQr({ title, rows, qr, until, onBack }) {
 
 const SWITCH = [['cash', 'Cash out'], ['swap', 'Swap']];
 
-export default function CashOut({ onBack }) {
+export default function CashOut({ onBack, kycOnly }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
@@ -168,6 +168,14 @@ export default function CashOut({ onBack }) {
   const done = (e) => { if (e.state === 'paid') { patch(e.hash, { done: true }); setClosed((c) => [...c, e.hash]); } setShow(undefined); };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   if (!s?.stellarAccount || !cfg || mine.isLoading) return <Loading />;
+  // A member without the anchor's identity check does not handle nIN (24 Oct): nothing to show here.
+  if (kycOnly && lp && !lp.idChecked) {
+    return (
+      <AssetScreen title="nIN" onBack={onBack} note="nIN needs an identity check first. Ask your leader.">
+        <Card label="nIN"><p style={{ ...muted, margin: 0 }}>Your identity is not checked yet, so nIN is not available to you.</p></Card>
+      </AssetScreen>
+    );
+  }
   if (desk) return <DeskQr title={`${inr(desk.amount)} in cash`} rows={[['You get', `₹${fmt(desk.amount)} in cash`], ['nIN', `${fmt(desk.amount)} burned when paid`]]} qr={desk.qr} until={desk.until} onBack={() => setDesk(undefined)} />;
   if (shown) return <Code e={shown} img={img} ready={tx.ready} reclaim={reclaim} onDone={() => done(shown)} onBack={() => done(shown)} />;
 

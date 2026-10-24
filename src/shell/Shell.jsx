@@ -238,8 +238,8 @@ export default function Shell({ leader }) {
   else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
   else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go(`cash/invest/${s?.stellarAddress}`)} />;
   // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.
-  // A member holds nIN only as a machine owner's income (24 Oct): she collects it in cash with her signed QR.
-  else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} />;
+  // nIN for a leader, or a member whose identity the anchor checked (K1, 24 Oct); A7 then collects it in cash.
+  else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} kycOnly={!leader} />;
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
   else if (view === 'machine') body = <MyMachine key={readArg()} pick={Number(readArg()) || undefined} onBack={() => go('assets')} />;
   else if (view === 'share') body = <TakeUp key={readArg()} token={readArg()} leader={leader} onBack={() => go(`cropshare/${readArg()}`)} />;
