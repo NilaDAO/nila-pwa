@@ -90,8 +90,9 @@ export function NoteBar({ children }) {
   // A lowered card takes its note down with it (24 Oct): it slides down and fades out, nothing of it under the tab bar.
   const low = useContext(SheetLowCtx);
   return createPortal(
-    <div role="note" style={{ position: 'fixed', left: 8, right: 8, bottom: TAB_BAR_HEIGHT - 24, zIndex: 5, background: C.ink, borderRadius: '24px 24px 0 0',
-      padding: '14px 16px 38px', boxSizing: 'border-box', display: 'flex', gap: 12, alignItems: 'flex-start',
+    // Above the tab bar, not under it (24 Oct): it no longer tucks its lower edge behind the bar.
+    <div role="note" style={{ position: 'fixed', left: 8, right: 8, bottom: TAB_BAR_HEIGHT + 8, zIndex: 5, background: C.ink, borderRadius: 24,
+      padding: '14px 16px', boxSizing: 'border-box', boxShadow: SHADOW, display: 'flex', gap: 12, alignItems: 'flex-start',
       transform: low ? 'translateY(calc(100% + 24px))' : 'none', opacity: low ? 0 : 1, visibility: low ? 'hidden' : 'visible',
       transition: low ? 'transform 250ms ease, opacity 150ms ease, visibility 0s 250ms' : 'transform 250ms ease, opacity 150ms ease' }}>
       <div style={{ width: 32, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

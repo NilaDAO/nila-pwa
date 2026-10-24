@@ -130,7 +130,7 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
             <span style={{ ...muted }}>{inr(invested)}</span>
           </span>
         </div>
-        <KV k="Earned" v={`${fmt(n(p.earned))} nIN`} color={C.accent} />
+        <KV k="Earned" v={`${n(p.earned) < 10 ? n(p.earned).toFixed(2) : fmt(n(p.earned))} nIN`} color={C.accent} />
         <KV k="Locked · what you owe" v={`${fmt(n(p.locked))} nIN`} />
       </Card>
 

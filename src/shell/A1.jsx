@@ -117,11 +117,12 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const shares = useMyShares().data || [];
   const refresh = () => { qc.invalidateQueries({ queryKey: ['stellar'] }); qc.invalidateQueries({ queryKey: ['oracle', 'myShares'] }); };
   const fetching = useIsFetching({ queryKey: ['stellar'] }) > 0;
-  // Her open loans for the repay card (fund_core food_token loans, 7 decimals).
-  const loans = shares.filter((x) => x.drawn && x.ft?.loan).map((x) => {
+  // The open loans for the repay card (fund_core food_token loans, 7 decimals). A closed loan is skipped (24 Oct: a
+  // repaid loan showed "₹1 left"); what is left is counted as the desk counts it: principal and interest still owed.
+  const loans = shares.filter((x) => x.drawn && x.ft?.loan && !(Number(x.ft.loan.flags ?? 0) & 4)).map((x) => {
     const n = (v) => Number(v || 0) / 1e7;
     const l = x.ft.loan;
-    return { id: x.token_id, label: x.crop, principal: n(l.principal), interest: n(l.interest_accrued) + n(l.interest_paid),
+    return { id: x.token_id, label: x.crop, principal: n(l.principal), interest: n(l.interest_accrued),
       paid: n(l.principal_paid) + n(l.interest_paid), due: Number(l.maturity_ts || 0) ? Number(l.maturity_ts) + 21 * 86400 : null };
   });
   // One slider for member and leader (22 Oct): the leader's cash and LP cards first, then her own.
