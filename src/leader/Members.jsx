@@ -76,7 +76,8 @@ export default function Members({ go }) {
         display: 'flex', flexDirection: 'column', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 8 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-            {waiting ? 'Growers' : `${list.length} grower${list.length === 1 ? '' : 's'}`}
+            {/* Growers: everyone on the union's lists, onboarding included; members: those holding a land title (23 Oct). */}
+            {waiting ? 'Growers' : `${list.length} grower${list.length === 1 ? '' : 's'} · ${list.filter((m) => m.lands.length).length} member${list.filter((m) => m.lands.length).length === 1 ? '' : 's'}`}
             {members.isFetching && !waiting && <UpdatingDot />}
           </h2>
           <button type="button" onClick={() => go('tasks/member')} style={{ ...field, height: 36, borderRadius: R.round, fontWeight: 700,
