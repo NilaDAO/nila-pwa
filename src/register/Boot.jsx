@@ -2,6 +2,9 @@
 // BootNotPhone; notes start-spec). Same props and actions as today's features/registration/preLoadPages.js and the
 // loading spinner, so App.js keeps its boot order; only the screens are the boards'. Used in Privy builds.
 import { useEffect, useState } from 'react';
+import { useStage } from '../shell/stageCtx';
+import { SkeletonRows } from '../shell/Skeleton';
+import { C } from '../shell/tokens';
 import QRCode from 'qrcode';
 import { handleInstall } from '../installPrompt';
 import { useHardReload } from '../hooks/useHardReload';
@@ -39,6 +42,28 @@ const Round = ({ label, children }) => (
 export function Loading({ offline, old }) {
   const [slow, setSlow] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSlow(true), 15_000); return () => clearTimeout(t); }, []);
+  // In the map-central shell (24 Oct) a screen loading its data loads in place: the map area shows the bouncing logo
+  // (the stage cleared), and a card of skeleton rows sits where the card will be; the header and the tab bar stay.
+  const stage = useStage();
+  useEffect(() => {
+    if (!stage || offline || old) return undefined;
+    stage.set(null);
+    // The shell lets the map area (and its logo) show through while loading, as an open map card does.
+    const shell = document.querySelector('[data-testid="shell"]');
+    if (!shell) return undefined;
+    const was = shell.style.background;
+    shell.style.background = 'transparent';
+    return () => { shell.style.background = was; };
+  }, [stage, offline, old]);
+  if (stage && !offline && !old) {
+    return (
+      <div role="status" aria-label="Loading" style={{ position: 'fixed', left: 8, right: 8, top: '34vh', bottom: 0, zIndex: 1, background: C.ink,
+        borderRadius: '24px 24px 0 0', padding: '18px 22px', boxSizing: 'border-box' }}>
+        <SkeletonRows rows={5} />
+        {slow && <span style={{ ...sub, display: 'block', marginTop: 12 }}>Loading is slow. One moment please.</span>}
+      </div>
+    );
+  }
   const msg = offline ? 'You are offline. Showing your last saved balances.'
     : old ? 'Your crop shares or land title did not load. Showing the last saved version.'
       : slow ? 'Loading is slow. One moment please.' : 'Loading your wallet';
