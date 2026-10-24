@@ -14,6 +14,9 @@ import { areasOf, useFieldRecord } from '../plan/record';
 import { C } from '../shell/tokens';
 import { BanknoteIcon, TractorIcon } from '../shell/icons';
 import { amount, rowOf, useMyLand, useMyShares } from './MyShares';
+import { tapRule } from '../plan/mapTap';
+import { shareOn } from '../shell/MapStage';
+import { currentSeason } from '../plan/ActivePlan';
 
 const FLAG_OVERDUE = 1;
 const FLAG_DEFAULTED = 2;
@@ -81,7 +84,19 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   const own = x.zones || x.share.zones || [x.zone];
   const labels = Object.fromEntries(own.map((z) => [z, { text: name, colour: r.colour }]));
   // With the asset bar (map-central trial) the card starts at the middle of the screen: her area stays above it.
-  const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 ? x.zone : null}
+  // Map taps (24 Oct rule): her share's field again → back to the previous view; another field → that field's share (the same
+  // season as this one, else this season's).
+  const onTap = tapRule(own, {
+    back: () => window.history.back(),   // the view it came from (Assets, or the crop plan's map)
+    open: (z) => {
+      const on = (y) => (y.zones || y.share?.zones || [y.zone]).includes(z);
+      const seasons = x.plan?.plan?.seasons || [];
+      const y = (shares.data || []).find((s) => on(s) && s.share?.from_date === x.share.from_date)
+        || (seasons.length ? shareOn(shares.data, seasons, currentSeason(seasons), z) : undefined);
+      if (y) window.location.hash = `#/cropshare/${y.token_id}`;
+    },
+  });
+  const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 ? x.zone : null} onSelect={onTap}
     fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
   const head = (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>

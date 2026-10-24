@@ -155,7 +155,8 @@ export default function MemberStatus({ id, go }) {
     invalidate: [['stellar', 'unionMembers'], ['stellar', 'unionShares'], ['stellar', 'loans']],
   });
   // Her fields only (23 Oct): until her record is in, no map at all, never the leader's own fields.
-  const map = m.record ? <AreaMap record={m.record} labels={labels} /> : <span />;
+  // Map taps (24 Oct rule): her property again → back to the list (only her property is on G2's map).
+  const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} /> : <span />;
   return (
     <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings') }}
       style={{ fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5 }}>

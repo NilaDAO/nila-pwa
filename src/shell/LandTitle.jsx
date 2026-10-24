@@ -2,13 +2,14 @@
 // and burning the title. DESIGN GAPs (no hook yet, so not shown or not active): marking a well or bore (A5a,
 // useWaterSources / useSaveWaterSources), farm improvements (useImprovements, useImprovementInterest), the trees row
 // (useTreeCheck, TreeMap) and burning the title (useBurnLandTitle).
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarTitles } from '../stellar/hooks';
 import { useLandTitles, useTitleName } from '../plan/hooks';
 import { useFieldRecord } from '../plan/record';
 import AreaMap from '../plan/AreaMap';
 import { fieldsMap, useTitleFields } from '../plan/titleFields';
+import { areaM2, tapRule } from '../plan/mapTap';
 import { Sheet } from '../plan/ui';
 import { Loading } from '../register/Boot';
 import { C, R } from './tokens';
@@ -34,10 +35,32 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
   // The title's fields (24 Oct): from the land title NFT's metadata, else the record's fields or areas.
   const tf = useTitleFields(landId, onPolygon, stellarTitle, record);
   const shape = useMemo(() => fieldsMap(tf), [tf]);
+  // Map taps (24 Oct rule): a field opens its details in the card; the same field again → the title view; another
+  // field → its details.
+  const [picked, setPicked] = useState(null);
+  const onTap = tapRule(picked, { open: setPicked, back: () => setPicked(null) });
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
   if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched) || field.isLoading) return <Loading />;
-  const map = shape.record ? <AreaMap record={shape.record} labels={shape.labels}
+  const map = shape.record ? <AreaMap record={shape.record} labels={shape.labels} selected={picked} onSelect={onTap}
     fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
+  const f = picked && tf?.fields.find((y) => y.id === picked);
+  if (f) {
+    const m2 = areaM2(f.geometry);
+    return (
+      <Sheet map={map} onBack={() => setPicked(null)} bar={bar} onSwipe={onSwipe}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
+          <span style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>{f.name}</span>
+            <span style={{ color: C.muted }}>Field {tf.fields.indexOf(f) + 1} of {tf.fields.length}{farm ? ` · ${farm}` : ''}</span>
+          </span>
+          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>{(m2 / 4046.86).toFixed(2)} acres</span>
+            <span style={{ color: C.muted }}>{Math.round(m2).toLocaleString('en-IN')} m²</span>
+          </span>
+        </div>
+      </Sheet>
+    );
+  }
   return (
     <Sheet map={map} onBack={onBack} bar={bar} onSwipe={onSwipe}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
