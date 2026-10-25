@@ -63,25 +63,24 @@ export function useLeaderSlides({ on = true, onSettle, onScanLp, onMachine }) {
     );
   }
   const live = offers.filter((o) => o.state <= 1 && o.expires > now);
-  if (live.length) {
-    const here = live.find((o) => o.state === 1);
+  // One slide per LP offer (25 Oct), explained in steps as the repay card: who does what next; an LP who accepted is
+  // "on the way" and the leader's step is the scan. Accepted offers first.
+  for (const o of [...live].sort((a, b) => b.state - a.state)) {
+    const bring = o.kind === 0;
+    const here = o.state === 1;
+    const steps = bring
+      ? [here ? `LP ${short(o.lp)} accepted: they bring ${inr(o.inr)} to the office.` : `An LP accepts it on their phone (expires in ${expiresIn(o.expires, now)}).`,
+        'Take the cash, then scan the LP\'s code (Tasks → Scan an LP code).',
+        'The union\'s USDC pays the LP. The cash is at the office for the loan.']
+      : [here ? `LP ${short(o.lp)} accepted: they come to collect ${inr(o.inr)}.` : `An LP accepts it on their phone (expires in ${expiresIn(o.expires, now)}).`,
+        'Scan the LP\'s code (Tasks → Scan an LP code), then hand over the cash.',
+        'The LP\'s USDC goes to the union; the cash at the office goes down.'];
     slides.push(
-      <section key="lp" aria-label="LP requests" style={card}>
-        <Title Icon={LpBadge}>LP requests · {live.length}</Title>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {live.slice(0, 3).map((o, i) => {
-            const bring = o.kind === 0;
-            const title = o.state === 1 ? 'LP arrived' : bring ? 'LP brings cash' : 'Give cash';
-            const sub = o.state === 1 ? `${short(o.lp)} · fee ${inr(o.inr / 100)} (1%)` : `${bring ? 'Tops up the cash' : 'The LP deposits USDC'} · expires in ${expiresIn(o.expires, now)}`;
-            return (
-              <div key={o.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderTop: i ? `1px solid ${C.raised}` : 0, ...small }}>
-                <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{title} · {inr(o.inr)}</b><span style={{ color: C.muted }}>{sub}</span></span>
-                <span style={{ color: o.state === 1 ? C.accent : C.muted, fontWeight: 700, whiteSpace: 'nowrap' }}>{o.state === 1 ? 'Here' : 'Waiting'}</span>
-              </div>
-            );
-          })}
-        </div>
-        {here && <button type="button" style={primary} onClick={onScanLp}>Accept {inr(here.inr)} from {short(here.lp)}</button>}
+      <section key={`lp-${o.id}`} aria-label="LP offer" style={card}>
+        <Title Icon={LpBadge}>{bring ? 'LP brings cash' : 'LP collects cash'} · {inr(o.inr)}</Title>
+        <span style={{ ...small, color: here ? C.accent : C.muted, fontWeight: 700 }}>{here ? 'The LP is on the way' : 'Waiting for an LP'} · fee {inr((o.inr * 100) / 10_000)} (1%)</span>
+        <Steps items={steps} />
+        {here && <button type="button" style={primary} onClick={onScanLp}>Scan the LP's code</button>}
       </section>,
     );
   }
