@@ -90,7 +90,7 @@ export default function Members({ go }) {
         {scan && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <CameraView mode="qr" onText={onQr} />
-            <span style={{ color: C.muted }}>Scan the QR on her Assets screen (her account number).</span>
+            <span style={{ color: C.muted }}>Scan the QR on the member's Assets screen (their account number).</span>
           </div>
         )}
         {msg && <span style={{ color: C.coral, fontWeight: 700 }}>{msg}</span>}

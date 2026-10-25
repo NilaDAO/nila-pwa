@@ -283,7 +283,7 @@ export function PayOut({ onBack, initial, onInvest }) {
   return (
     <DeskCard title="Pay out cash" onBack={onBack}>
       <CameraView mode="qr" onText={read} />
-      <p style={muted}>Hand over the cash, then scan the QR on her phone.</p>
+      <p style={muted}>Hand over the cash, then scan the QR on the member's phone.</p>
       {error && <p style={{ color: C.coral }}>{error}</p>}
     </DeskCard>
   );

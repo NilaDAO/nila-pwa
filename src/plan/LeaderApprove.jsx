@@ -57,7 +57,7 @@ function DenyDialog({ onClose, onDeny, busy }) {
             <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
           </button>
         </div>
-        <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>She sees your reason and makes a new crop plan.</span>
+        <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>The member sees your reason and makes a new crop plan.</span>
         <div role="radiogroup" aria-label="Reason" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {REASONS.map((r) => (
             <button key={r} type="button" role="radio" aria-checked={why === r} onClick={() => setWhy(r)} style={{ height: 44, border: 0, borderRadius: 12, padding: '0 16px',
@@ -195,11 +195,12 @@ export default function LeaderPlans({ planId, onBack }) {
   const kept = useRef(null);
   if (found) kept.current = found;
   const sel = found || (kept.current && (!planId || kept.current.id === planId) ? kept.current : null);
-  // An approved plan (no longer waiting): L12 in its approved state, to make her crop shares if they are not all made.
+  // An approved plan (no longer waiting): L12 in its approved state, to make the member's crop shares if they are
+  // not all made. Read by its id (25 Oct): the approved-plans list holds the newest 200 only.
   const api = usePlanClient();
-  const approvedQ = useQuery({ queryKey: ['plan', 'approvedList'], enabled: !!api && !sel && !!planId, queryFn: () => api.approvedPlans() });
+  const approvedQ = useQuery({ queryKey: ['plan', 'byId', planId], enabled: !!api && !sel && !!planId, queryFn: () => api.plan(planId) });
   if (sel) return <L12 plan={sel} onDone={onBack} />;
-  const done = (approvedQ.data?.plans || []).find((p) => p.id === planId);
+  const done = approvedQ.data?.approval?.decision === 'approve' ? approvedQ.data : null;
   if (done) return <L12 plan={done} onDone={onBack} approvedAlready />;
   if (list.isLoading || approvedQ.isLoading) return <Loading />;
   return (

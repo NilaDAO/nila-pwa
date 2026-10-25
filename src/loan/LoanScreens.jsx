@@ -58,9 +58,11 @@ export function LeaderLoan({ initial }) {
   // Her property behind L11 / L9 (map-centred lane, 23 Oct): from the union list (records kept on the leader's phone).
   const unionList = useUnionMembers(api);
   const { data: cfg } = useStellarConfig();
-  const plans = useQuery({ queryKey: ['oracle', 'approvedPlans'], enabled: !!api, queryFn: () => api.approvedPlans() });
+  // The plan by its id (25 Oct): the approved-plans list holds the newest 200 only, so a union of 1,000 members
+  // would show "not approved" for most of them.
   const planId = initPlan || undefined;
-  const plan = plans.data?.plans?.find((p) => p.id === planId);
+  const plans = useQuery({ queryKey: ['plan', 'byId', planId], enabled: !!api && !!planId, queryFn: () => api.plan(planId) });
+  const plan = plans.data?.approval?.decision === 'approve' ? plans.data : undefined;
   const holder = unionList.data?.find((m) => m.lands.includes(Number(plan?.land_id)));
   const memberMap = holder?.record ? <AreaMap record={holder.record} /> : <span />;
   const shares = useQuery({
@@ -144,7 +146,7 @@ export function LeaderLoan({ initial }) {
     return (
       <MapCard map={<span />} header={{ title: 'Crop share request', onBack: () => window.history.back() }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
         <Card label="Crop share request">
-          {plans.isLoading || !plans.data ? <SkeletonRows rows={6} /> : <span style={muted}>This crop plan is not approved. Find her in Members.</span>}
+          {plans.isLoading || !plans.data ? <SkeletonRows rows={6} /> : <span style={muted}>This crop plan is not approved. Find the member in Members.</span>}
         </Card>
       </MapCard>
     );
@@ -202,7 +204,7 @@ export function LeaderLoan({ initial }) {
     <MapCard map={memberMap} header={{ title: `Land ${plan.land_id}`, onBack: () => window.history.back() }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
       <Card label="Crop share request">
         {(shares.isLoading || (sel && !checks.data && !checks.isError)) && <SkeletonRows rows={6} />}
-        {shares.data && !sel && <span style={muted}>No crop share of hers is ready.</span>}
+        {shares.data && !sel && <span style={muted}>None of their crop shares is ready.</span>}
         {sel && (checks.data || checks.isError) && (
           <>
             <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>Ready</span>}>{name}</CardTitle>

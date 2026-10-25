@@ -20,7 +20,7 @@ export const getLocalEvmWallet = async () => {
     const pk = db.local_pk || (db.salt && await decryptPrivateKey(await handleGetEncryptedPrivateKey(db), db.salt));
     return pk ? new ethers.Wallet(pk) : undefined;
   } catch (e) {
-    console.error('[privy] her Polygon key is not available', e);
+    console.error('[privy] the Polygon key is not available', e);
     return undefined;
   }
 };

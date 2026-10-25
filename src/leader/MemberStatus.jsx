@@ -182,7 +182,7 @@ export default function MemberStatus({ id, go }) {
           <button type="button" style={{ ...btn(!!dueLoan && tx.ready), flex: 'none', width: '100%' }} disabled={!dueLoan || !tx.ready} onClick={markDefault}>
             Mark as default
           </button>
-          {!dueLoan && <span style={{ color: C.muted }}>Possible once her repay date has passed.</span>}
+          {!dueLoan && <span style={{ color: C.muted }}>Possible once the repay date has passed.</span>}
         </Section>
       )}
       {m.address && (

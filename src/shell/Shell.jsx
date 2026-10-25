@@ -137,7 +137,7 @@ function TitleWait({ titleCount, s }) {
   useEffect(() => { const t = setTimeout(() => setLate(true), 20_000); return () => clearTimeout(t); }, []);
   useEffect(() => {
     if (!late) return;
-    console.warn('[start] still waiting for her titles:', {
+    console.warn('[start] still waiting for the titles:', {
       polygon: titleCount.polygon === undefined ? (titleCount.legacy?.fetchStatus === 'idle' ? 'not started (no Polygon connection or wallet)' : 'reading') : 'done',
       stellar: titleCount.stellar === undefined ? 'not done (Stellar settings or title read)' : 'done',
       evm: !!s?.evmAddress, stellarAddress: !!s?.stellarAddress,
