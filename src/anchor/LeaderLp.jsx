@@ -13,6 +13,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import CameraView from '../shell/CameraView';
+import { Secondary } from '../loan/AssetParts';
 import PhotoCount from '../loan/PhotoCount';
 import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
@@ -151,18 +152,15 @@ export function ScanLp({ onBack }) {
           <Primary disabled={!typed.trim()} onClick={() => read(typed)}>Check the code</Primary>
         </>
       )}
-      {id == null && (
-        <button type="button" onClick={() => setTyping((t) => !t)} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>
-          {typing ? 'Use the camera' : 'Type the code instead'}
-        </button>
-      )}
+      {/* A secondary button (25 Oct). The typed code is the LP's full code (about 160 characters, 10 minutes valid). */}
+      {id == null && <Secondary onClick={() => setTyping((t) => !t)}>{typing ? 'Use the camera' : 'Type the code instead'}</Secondary>}
       {bad && <p style={{ color: C.coral }}>{bad}</p>}
       {id != null && o.isLoading && <p style={muted}>…</p>}
       {o.data === null && <p style={{ color: C.coral }}>No such offer.</p>}
       {o.data && Number(o.data.state) !== 1 && <p style={{ color: C.coral }}>This offer is {why}.</p>}
       {o.data && Number(o.data.state) === 1 && !live && <p style={{ color: C.coral }}>This offer has expired.</p>}
       {o.data && Number(o.data.state) === 1 && live && mine.data === false && <p style={{ color: C.coral }}>This code is not from the LP who accepted the offer, or it is older than 10 minutes. Ask her to open her code again.</p>}
-      {id != null && !ok && <button type="button" onClick={again} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Scan again</button>}
+      {id != null && !ok && <Secondary onClick={again}>Scan again</Secondary>}
       {ok && (
         <>
           <Choice sub={`LP ${short(o.data.lp)} · ${usdcOf(o.data.usdc)} USDC`}>{kind === BRING ? `The LP brings ${inr(inrAmt)}` : `The LP collects ${inr(inrAmt)}`}</Choice>
