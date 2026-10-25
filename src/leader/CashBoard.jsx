@@ -6,7 +6,6 @@
 // waiting cash-outs list (executive decision 20 Oct: the leader scans her code when she comes); LP names are
 // short addresses; "Take a tour" is not built; the cash tasks the board leaves to L1 are listed below the cards.
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
@@ -24,6 +23,8 @@ import { HistoryIcon } from '../shell/icons';
 import { LeaderTasksButton } from '../shell/A1';
 import Segmented from '../shell/Segmented';
 import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
+import CashAhead from './CashAhead';
+import { useUnionMembers } from './unionMembers';
 import { timeLeft } from '../shell/timeLeft';
 
 const U = 10_000_000n;
@@ -262,8 +263,8 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
   const [adjust, setAdjust] = useState(null);   // null (closed), 'deposit' or 'withdraw'
   const cash = cashQ.data;
   const book = bookQ.data;
-  const titles = useQuery({ queryKey: ['stellar', 'unionTitles'], enabled: !!api, staleTime: 5 * 60_000,
-    queryFn: () => api.unionTitles().then((r) => r.titles || []) });
+  // Members from the members list kept on the phone (25 Oct), not the titles read on chain one by one.
+  const members = useUnionMembers(api);
   // A map card on the union map, Cash filter (map-centred lane, 23 Oct): the properties with an active loan, by repayment.
   const { map } = useLeaderMap('cash');
   if (cashQ.isError) return <div style={{ ...card, margin: 16 }}>Could not read the union. Try again.</div>;
@@ -302,7 +303,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
           <div style={rows}>
             <Row k="Total funds" v={book ? inr(book.fundTotal) : '…'} />
             {/* Members, not titles (23 Oct): one member can hold several land titles; G1 counts the same way. */}
-            <Row k="Members" v={titles.data ? new Set(titles.data.map((t) => t.holder)).size : '—'} />
+            <Row k="Members" v={members.data ? members.data.filter((m) => m.lands.length).length : '—'} />
             <Row k="Cash working (on loans)" v={book ? inr(book.loans.reduce((t, l) => t + l.outstanding, 0)) : '…'} />
             <Row k="Vouchers" v={book ? `${Math.round(book.loans.reduce((t, l) => t + (l.hours || 0), 0) * 10) / 10} tractor hours` : '…'} />
             <Row k="Rainy day fund" v={inr(cash.rainy)} />
@@ -329,6 +330,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
               : <Row k="Available to cash in" v={inr(cash.free)} accent />}
           </div>
         </section>
+        <CashAhead api={api} cash={cash} style={card} />
         <CashCard cash={cash} onScanLp={onScanLp} />
         {tasks}
       </div>
