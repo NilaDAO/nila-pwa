@@ -64,10 +64,10 @@ export function useMyShares() {
         const zones = Object.keys(p.plan.proposal).sort();
         const share = (p.plan.shares || []).find((x) => x.key === m.share) || {};
         const drawn = !!ft && (Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
-        // Its window (25 Oct): from its opening (fund_core from_date: six weeks before the last draw date; a token
-        // attested before keeps its season's SOS) up to its last draw date (the attested one, else the plan's).
+        // Its window (25 Oct): from its opening (fund_core from_date: a week before its sowing window, from the crop
+        // calendar) up to its last draw date (the attested one, else the plan's).
         const final = Number(ft?.final_date || 0) || (share.final_date ? Date.parse(`${share.final_date}T23:59:59Z`) / 1000 : 0);
-        const opens = opensOf(ft, final);
+        const opens = opensOf(ft, share);
         const now = Date.now() / 1000;
         const lapsed = !!ft?.lapsed;
         const late = !!ft && !drawn && !lapsed && final > 0 && now > final;
@@ -81,13 +81,11 @@ export function useMyShares() {
   });
 }
 
-/** When a crop share opens (25 Oct): six weeks before its last draw date. A token attested before the window rule
- *  still carries its season's SOS as fund_core from_date; the later of the two counts, so the app never opens it
- *  earlier than the rule. `final`: the last draw date (unix s), when the attestation has none. */
-export const OPEN_WINDOW = 42 * 86400;
-export function opensOf(ft, final = 0) {
-  const f = Number(ft?.final_date || 0) || Number(final || 0);
-  return Math.max(Number(ft?.from_date || 0), f > 0 ? f - OPEN_WINDOW : 0);
+/** When a crop share opens (25 Oct): a week before the sowing window that holds its planned sowing. On-chain the
+ *  crop calendar sets it at the attestation (fund_core from_date); before that, the plan's open_date. */
+export function opensOf(ft, share) {
+  if (ft) return Number(ft.from_date || 0);
+  return share?.open_date ? Date.parse(`${share.open_date}T00:00:00Z`) / 1000 : 0;
 }
 
 export function shareTag(x) {

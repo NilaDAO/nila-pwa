@@ -234,7 +234,7 @@ function ScanAny({ onBack }) {
           // Its last draw date has passed (25 Oct): too late for this cycle.
           throw new Error(`Too late for this cycle: the last day to use this crop share was ${dayOf(Number(ft.final_date))}.`);
         } else if (Date.now() / 1000 < opensOf(ft)) {
-          // Its window opens six weeks before its last draw date (25 Oct).
+          // Its window opens a week before its sowing window (25 Oct, the crop calendar).
           throw new Error(`Not open yet: this crop share can be used from ${dayOf(opensOf(ft))}.`);
         } else {
           window.location.replace(`#/loan/${share[1]}_${share[2]}`);

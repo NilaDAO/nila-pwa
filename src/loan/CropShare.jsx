@@ -134,9 +134,9 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
     // Attested hours are voucher units (centi tractor hours, 23 Oct); before the attestation, the plan's machine hours.
     const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.hours || 0);
     const vouchers = Number(r.finance?.voucher_value || 0);
-    // Its window (25 Oct): ready from six weeks before its last draw date, used by that date.
+    // Its window (25 Oct): ready from a week before its sowing window, used by its last sowing day.
     const until = x.final ? new Date(x.final * 1000) : x.share.final_date ? new Date(x.share.final_date) : null;
-    const opens = x.opens ? new Date(x.opens * 1000) : until ? new Date(until.getTime() - 42 * 86400_000) : null;
+    const opens = x.opens ? new Date(x.opens * 1000) : x.share.open_date ? new Date(x.share.open_date) : null;
     const over = x.lapsed || x.late;
     const day = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     return (

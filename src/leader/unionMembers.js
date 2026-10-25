@@ -181,7 +181,7 @@ export function useUnionShares(api) {
           ? { token: hex, left: n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid), overdue: !!(flags & FLAG_OVERDUE) } : null;
         const m = (by[ft.member] ||= { plan: p, shares: [] });
         m.shares.push({ token: hex, crop: r.name || x.crop.replace(/_/g, ' '), colour: r.colour, area: zones.indexOf(x.zone) + 1, zones: x.zones || share.zones || [x.zone],
-          // Its window (25 Oct): Ready from its opening (from_date, six weeks before the last draw date) until the last
+          // Its window (25 Oct): Ready from its opening (from_date, a week before its sowing window) until the last
           // draw date; past it, unused, lapsed.
           harvest: r.harvest, kg: r.kg, slot: r.slot, from: opensOf(ft), final: Number(ft.final_date || 0), drawn, loan,
           lapsed: !drawn && (!!ft.lapsed || (Number(ft.final_date || 0) > 0 && now > Number(ft.final_date))),

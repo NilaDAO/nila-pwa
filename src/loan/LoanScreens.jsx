@@ -159,7 +159,7 @@ export function LeaderLoan({ initial }) {
   const final = Number(sel?.ft?.final_date || 0);
   const opens = opensOf(sel?.ft);
   const tooLate = !!sel?.ft && (sel.ft.lapsed || (final > 0 && Date.now() / 1000 > final));
-  // Its window opens six weeks before its last draw date (25 Oct; fund_core NotOpenYet before it).
+  // Its window opens a week before its sowing window (25 Oct; fund_core NotOpenYet before it).
   const tooEarly = !!sel?.ft && !tooLate && Date.now() / 1000 < opens;
   const blocked = [...(tooLate ? ['Too late for this cycle: the last day to use this crop share has passed.'] : []),
     ...(tooEarly ? [`Not open yet: this crop share can be used from ${new Date(opens * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.`] : []),
