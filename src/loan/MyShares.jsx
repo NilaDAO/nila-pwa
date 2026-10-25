@@ -27,6 +27,7 @@ import { ChevronIcon, RupeeIcon, ShareTile } from '../shell/icons';
 import MapCard from '../shell/MapCard';
 
 export const FLAG_DRAWN = 8;
+const FLAG_CLOSED = 4;
 export const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
 
 /** Her land as the crop plan finds it (CP1): a Polygon title, else her title on Stellar — the demo's titles and every
@@ -71,7 +72,8 @@ export function useMyShares() {
 
 export function shareTag(x) {
   if (!x.ft) return 'Not attested yet';
-  if (x.drawn) return 'Financed';
+  // A loan paid off closes on-chain (fund_core FLAG_CLOSED): the share then reads Repaid, not Financed (25 Oct).
+  if (x.drawn) return Number(x.ft.loan?.flags ?? 0) & FLAG_CLOSED ? 'Repaid' : 'Financed';
   if (x.ready) return 'Ready';
   return `From ${new Date(Number(x.ft.from_date) * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
 }
