@@ -22,7 +22,8 @@ import { useUnionMembers } from '../leader/unionMembers';
 import { Card, CardTitle, KV } from './AssetParts';
 import { NIN, isLoanRequest, makeRequest } from './request';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
-import PostBring from '../anchor/PostBring';
+import { usePost } from '../anchor/LeaderLp';
+import { BRING } from '../anchor/sep';
 import { TRACTOR, hoursFor, th, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
 import ConfirmShare from './ConfirmShare';
 import { opensOf } from './MyShares';
@@ -121,6 +122,7 @@ export function LeaderLoan({ initial }) {
   const [req, setReq] = useState();
   const [own, setOwn] = useState(false);
   const tx = useSorobanTx();
+  const bring = usePost();   // L11 #short, automatic (25 Oct): see askBring
   const [img, setImg] = useState();
   const [error, setError] = useState();
   // The request is a few characters (23 Oct): a small, coarse QR any phone camera reads.
@@ -169,6 +171,7 @@ export function LeaderLoan({ initial }) {
   const repay = row && rateBp != null ? repayAbout(cash, rateBp, new Date(), row.finance.due) : null;
   const go = async () => {
     setError(undefined);
+    if (!(await askBring())) return;
     try {
       const area = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
       setReq(makeRequest({
@@ -182,6 +185,7 @@ export function LeaderLoan({ initial }) {
   // Her own share (a leader is a member too, 23 Oct): no QR; she confirms (N10) and signs draw_loan herself.
   const mine = !!sel && sel.ft?.member === s?.stellarAddress;
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); window.location.hash = '#/assets'; }} onRetry={() => tx.retry()} />;
+  if (bring.tx.status === 'pending' || bring.tx.status === 'failed') return <TxScreens tx={bring.tx} onClose={() => bring.tx.reset()} onRetry={() => bring.tx.retry()} />;
   if (own && sel) {
     const nm = `${row?.name || sel.crop}`;
     const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
@@ -199,6 +203,23 @@ export function LeaderLoan({ initial }) {
   // Cash is lent from member money only (junior, above its reserve); the plan's cash above that is shown, not lent.
   const notCovered = sel && checks.data ? Math.max(0, Math.round(sel.share.loan_amount || 0) - caps.cash) : 0;
   const rows = checkRows(checks.data, cash, hours, caps);
+  // L11 #short, automatic (25 Oct): when the office has less cash than this crop share, the gap goes to the union's
+  // LPs as a Bring when the leader shows the QR (or takes up an own share); fx_pool adds it to an open Bring no LP
+  // has accepted yet. Kept per crop share on this phone, so showing the QR again never asks twice.
+  const short = !!rows?.[0]?.[2] && !!cfg?.anchor_url && !!checks.data;
+  const gap = short ? Math.ceil(cash - checks.data.onHand) : 0;
+  const askBring = async () => {
+    if (!short || gap <= 0 || !sel) return true;
+    const k = `nila.bring.${tokenHex(sel.token_id)}`;
+    let asked = 0;
+    try { asked = Number(localStorage.getItem(k) || 0); } catch { /* private mode */ }
+    if (gap <= asked) return true;
+    const out = await bring.post(BRING, gap - asked);
+    if (!out) return false;
+    try { localStorage.setItem(k, String(gap)); } catch { /* private mode */ }
+    bring.tx.reset();
+    return true;
+  };
   const line = { height: 1, background: C.raised };
   return (
     <MapCard map={memberMap} header={{ title: `Land ${plan.land_id}`, onBack: () => window.history.back() }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -237,10 +258,10 @@ export function LeaderLoan({ initial }) {
             {blocked.map((b) => <span key={b} style={{ color: C.coral, fontSize: 14 }}>{b}</span>)}
             {/* L11 #short: the gap goes to the union's LPs as a Bring (P9). */}
             {rows[0]?.[2] && (cfg?.anchor_url
-              ? <PostBring gap={Math.ceil(cash - checks.data.onHand)} />
+              ? <span style={muted}>Not enough cash at the office: your LPs are asked to bring {inr(gap)} when you {mine ? 'take it up' : 'show the QR'}.</span>
               : <span style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</span>)}
             {error && <span style={{ color: C.coral }}>{error}</span>}
-            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine ? () => setOwn(true) : go}>{mine ? 'Get cash and vouchers' : 'Show QR to the member'}</Primary>
+            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine ? async () => { if (await askBring()) setOwn(true); } : go}>{mine ? 'Get cash and vouchers' : 'Show QR to the member'}</Primary>
           </>
         )}
       </Card>
