@@ -89,7 +89,8 @@ export function harvestGroups(members, shares, now = Date.now() / 1000) {
       const key = `${x.crop_key}_${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${half(d)}`;
       const c = (crops[x.crop_key] ||= { crop: x.crop_key, name: x.crop, colour: x.colour, groups: {} });
       const g = (c.groups[key] ||= { key, crop: x.crop_key, at: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), [1, 11, 21][half(d)]) / 1000,
-        label: `Harvest ${PART[half(d)]} ${d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}${d.getUTCFullYear() !== new Date().getUTCFullYear() ? ` ${d.getUTCFullYear()}` : ''}`,
+        // No "Harvest" before it (25 Oct): the tab and the card say so already.
+        label: `${PART[half(d)][0].toUpperCase()}${PART[half(d)].slice(1)} ${d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}${d.getUTCFullYear() !== new Date().getUTCFullYear() ? ` ${d.getUTCFullYear()}` : ''}`,
         short: `${PART[half(d)]} ${d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}`,
         shares: [] });
       const m = label[addr];
