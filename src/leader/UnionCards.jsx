@@ -78,7 +78,7 @@ export function useLeaderSlides({ on = true, onSettle, onScanLp, onMachine }) {
     slides.push(
       <section key={`lp-${o.id}`} aria-label="LP offer" style={card}>
         <Title Icon={LpBadge}>{bring ? 'LP brings cash' : 'LP collects cash'} · {inr(o.inr)}</Title>
-        <span style={{ ...small, color: here ? C.accent : C.muted, fontWeight: 700 }}>{here ? 'The LP is on the way' : 'Waiting for an LP'} · fee {inr((o.inr * 100) / 10_000)} (1%)</span>
+        <span style={{ ...small, color: here ? C.accent : C.muted, fontWeight: 700 }}>{here ? 'The LP is on the way' : 'Waiting for an LP'} · fee {inr(Math.round((o.inr * 100) / 10_000))} (1%)</span>
         <Steps items={steps} />
         {here && <button type="button" style={primary} onClick={onScanLp}>Scan the LP's code</button>}
       </section>,
