@@ -16,7 +16,7 @@ import { keypadClient } from '../keypad/api';
 import { fromNodeCached } from '../plan/record';
 import { recordFields, shapeToFields } from '../plan/titleFields';
 import { useNilaSigner } from '../wallet/signer';
-import { rowOf } from '../loan/MyShares';
+import { opensOf, rowOf } from '../loan/MyShares';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -183,9 +183,9 @@ export function useUnionShares(api) {
         m.shares.push({ token: hex, crop: r.name || x.crop.replace(/_/g, ' '), colour: r.colour, area: zones.indexOf(x.zone) + 1, zones: x.zones || share.zones || [x.zone],
           // Its window (25 Oct): Ready from its opening (from_date, six weeks before the last draw date) until the last
           // draw date; past it, unused, lapsed.
-          harvest: r.harvest, kg: r.kg, slot: r.slot, from: Number(ft.from_date), final: Number(ft.final_date || 0), drawn, loan,
+          harvest: r.harvest, kg: r.kg, slot: r.slot, from: opensOf(ft), final: Number(ft.final_date || 0), drawn, loan,
           lapsed: !drawn && (!!ft.lapsed || (Number(ft.final_date || 0) > 0 && now > Number(ft.final_date))),
-          ready: !drawn && !ft.lapsed && now >= Number(ft.from_date || 0) && !(Number(ft.final_date || 0) > 0 && now > Number(ft.final_date)) });
+          ready: !drawn && !ft.lapsed && now >= opensOf(ft) && !(Number(ft.final_date || 0) > 0 && now > Number(ft.final_date)) });
       }
       Object.values(by).forEach((m) => m.shares.sort((a, b) => String(a.harvest || '').localeCompare(String(b.harvest || ''))));
       return by;

@@ -25,6 +25,7 @@ import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import PostBring from '../anchor/PostBring';
 import { TRACTOR, hoursFor, th, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
 import ConfirmShare from './ConfirmShare';
+import { opensOf } from './MyShares';
 
 const FLAG_DRAWN = 8;
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -92,7 +93,7 @@ export function LeaderLoan({ initial }) {
   // per plan) her first Ready share; with the plan's cash and hours.
   useEffect(() => {
     const t = Date.now() / 1000;
-    const isReady = (y) => !!y.ft && !(Number(y.ft.loan?.flags ?? 0) & FLAG_DRAWN) && Number(y.ft.from_date) <= t;
+    const isReady = (y) => !!y.ft && !(Number(y.ft.loan?.flags ?? 0) & FLAG_DRAWN) && opensOf(y.ft) <= t;
     const x = !pick && (initToken
       ? shares.data?.find((y) => y.token_id === initToken || tokenHex(y.token_id) === initToken)
       : shares.data?.find(isReady));
@@ -156,7 +157,7 @@ export function LeaderLoan({ initial }) {
   const caps = capsFor(checks.data, sel?.ft);
   // After its last draw date (25 Oct), or lapsed: too late for this cycle, no draw (fund_core TooLate).
   const final = Number(sel?.ft?.final_date || 0);
-  const opens = Number(sel?.ft?.from_date || 0);
+  const opens = opensOf(sel?.ft);
   const tooLate = !!sel?.ft && (sel.ft.lapsed || (final > 0 && Date.now() / 1000 > final));
   // Its window opens six weeks before its last draw date (25 Oct; fund_core NotOpenYet before it).
   const tooEarly = !!sel?.ft && !tooLate && Date.now() / 1000 < opens;

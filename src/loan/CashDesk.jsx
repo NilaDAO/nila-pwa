@@ -15,7 +15,7 @@ import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
 import { PayOut } from './CashOut';
 import { deskClaim } from './desk';
-import { FLAG_DRAWN } from './MyShares';
+import { FLAG_DRAWN, opensOf } from './MyShares';
 import { NIN } from './request';
 import PhotoCount from './PhotoCount';
 import RegisterMachine from '../machine/RegisterMachine';
@@ -233,9 +233,9 @@ function ScanAny({ onBack }) {
         } else if (ft.lapsed || (Number(ft.final_date || 0) > 0 && Date.now() / 1000 > Number(ft.final_date))) {
           // Its last draw date has passed (25 Oct): too late for this cycle.
           throw new Error(`Too late for this cycle: the last day to use this crop share was ${dayOf(Number(ft.final_date))}.`);
-        } else if (Date.now() / 1000 < Number(ft.from_date || 0)) {
+        } else if (Date.now() / 1000 < opensOf(ft)) {
           // Its window opens six weeks before its last draw date (25 Oct).
-          throw new Error(`Not open yet: this crop share can be used from ${dayOf(Number(ft.from_date))}.`);
+          throw new Error(`Not open yet: this crop share can be used from ${dayOf(opensOf(ft))}.`);
         } else {
           window.location.replace(`#/loan/${share[1]}_${share[2]}`);
         }

@@ -29,7 +29,7 @@ const month = (d) => {
   const t = new Date(d); const day = t.getDate();
   return `${day <= 10 ? 'start of' : day <= 20 ? 'mid' : 'end of'} ${t.toLocaleDateString('en-GB', { month: 'short' })}`;
 };
-const fromLabel = (ts) => `From ${new Date(ts * 1000).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`;
+const fromLabel = (ts) => `From ${new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
 
 // A crop share's state: Planned (from <month>), Ready (Take up → L11), Financed / Overdue from her open loan, Repaid
 // once drawn and no loan is open any more. Harvested / Sold need the harvest and sales data (later).
