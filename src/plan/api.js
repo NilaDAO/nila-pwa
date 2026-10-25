@@ -69,6 +69,13 @@ export function planClient(signer) {
   };
 }
 
+/** H1 (25 Oct): each crop's Polygon family and the union's standing batch for it (public, kept an hour on the node). */
+export async function getCropBatches() {
+  const r = await fetch(`${API}/plan/batches`);
+  if (!r.ok) throw new Error(`batches ${r.status}`);
+  return r.json();
+}
+
 export async function getCatalogue() {
   const r = await fetch(`${API}/plan/catalogue`);
   if (!r.ok) throw new Error(`catalogue ${r.status}`);

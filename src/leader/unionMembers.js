@@ -202,7 +202,9 @@ export function useUnionShares(api, { fresh } = {}) {
           const lapsed = !drawn && (!!ft?.lapsed || (final > 0 && now > final));
           return { token: x.token, planId: x.plan_id, crop: x.name || String(x.crop).replace(/_/g, ' '), colour: x.colour, area: x.area,
             zones: x.zones || [], harvest: x.harvest, kg: x.kg, slot: x.slot, from, final, drawn, loan, lapsed,
-            ready: !drawn && !lapsed && now >= from };
+            ready: !drawn && !lapsed && now >= from,
+            // The harvest the oracle reported for a financed share (fund_core maturity, 25 Oct: H2's harvested dots).
+            harvested: Number(ft?.loan?.maturity_ts || 0), crop_key: x.crop, state: x.state };
         });
         by[m.address] = { planId: shares.find((x) => x.ready)?.planId || shares[shares.length - 1]?.planId, shares };
       }
