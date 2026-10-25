@@ -1,7 +1,7 @@
 // H1 (board LeaderOrders): the Harvests tab, every crop share of the union by crop and harvest, with the crop's price
 // (Update: a leader sets it on Polygon, #price). H2 (board LeaderHarvestCal): one harvest group on the map, its crop
 // shares, what is harvested and late, the estimated value. From the members list kept on the phone (25 Oct).
-// DEVIATIONS: no calendar view (H1a) and no selling yet (Buyer "Not sold", no #sold / H2a; open Q2, X6, O8); the
+// H1a (board LeaderOrdersCal): the same groups as a calendar, a column per month. DEVIATIONS: no selling yet (Buyer "Not sold", no #sold / H2a; open Q2, X6, O8); the
 // harvested dots are the harvests the oracle reported for financed shares (fund_core maturity), so a share without a
 // loan has none and is never late. The quantities are the plan's (open O8: phenology, weighing or the buyer's weight).
 import { useMemo, useState } from 'react';
@@ -11,6 +11,7 @@ import RoundButton, { SettingsButton } from '../shell/RoundButton';
 import { HistoryIcon, ChevronIcon } from '../shell/icons';
 import { LeaderTasksButton } from '../shell/A1';
 import { SkeletonRows } from '../shell/Skeleton';
+import Segmented from '../shell/Segmented';
 import { Primary, inr } from '../plan/ui';
 import { Stepper } from '../loan/AssetParts';
 import { usePlanClient } from '../plan/hooks';
@@ -70,11 +71,69 @@ function PriceEditor({ crop, price, fx, onClose }) {
   );
 }
 
-/** H1: the Harvests tab. */
+const ListIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>;
+const CalIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>;
+const VIEW_KEY = 'nila.harvests.view';
+
+/** H1a: the harvest groups on a month calendar; the line is today. */
+function Calendar({ groups, go }) {
+  const all = groups.flatMap((c) => c.groups.map((g) => ({ ...g, name: c.name, colour: c.colour })))
+    .sort((a, b) => a.at - b.at);
+  if (!all.length) return null;
+  const now = Date.now() / 1000;
+  const m0 = new Date(Math.min(all[0].at, now) * 1000); m0.setUTCDate(1);
+  const end = new Date(all[all.length - 1].at * 1000);
+  const months = [];
+  for (let d = new Date(m0); d <= end && months.length < 12; d.setUTCMonth(d.getUTCMonth() + 1)) months.push(new Date(d));
+  if (!months.length) months.push(new Date(m0));
+  const t0 = months[0].getTime() / 1000;
+  const last = new Date(months[months.length - 1]); last.setUTCMonth(last.getUTCMonth() + 1);
+  const t1 = last.getTime() / 1000;
+  const W = 160; const x = (t) => Math.max(0, Math.min(W, ((t - t0) / (t1 - t0)) * W));
+  const mon = (d) => d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return (
+    <section style={card} aria-label="Harvest groups">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Harvest groups</h2>
+        <span style={sub}>{mon(months[0])} – {mon(months[months.length - 1])} · line = today</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, fontWeight: 700, color: C.muted }}>
+        <span style={{ flex: 1 }}>Group</span>
+        <svg width={W} height="14" viewBox={`0 0 ${W} 14`} aria-hidden="true" style={{ flexShrink: 0 }}>
+          {months.map((d) => <text key={d.getTime()} x={x(d.getTime() / 1000) + (W / months.length) / 2} y="11" textAnchor="middle" fontSize="11" fill={C.muted} fontWeight="700">{d.toLocaleDateString('en-GB', { month: 'narrow', timeZone: 'UTC' })}</text>)}
+        </svg>
+        <span style={{ width: 20 }} />
+      </div>
+      {all.map((g) => {
+        const late = g.shares.filter((s) => s.late).length;
+        return (
+          <button key={g.key} type="button" onClick={() => go(`harvests/${g.key}`)} style={{ display: 'flex', alignItems: 'center', gap: 12, border: 0,
+            borderTop: `1px solid ${C.raised}`, background: 'none', padding: '12px 0 0', color: C.text, fontFamily: FONT, textAlign: 'left', cursor: 'pointer' }}>
+            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontWeight: 700 }}>{g.name}</span>
+              <span style={sub}>{g.short} · not sold</span>
+              {late > 0 && <span style={{ ...sub, color: C.coral }}>{late} harvest{late === 1 ? '' : 's'} late</span>}
+            </span>
+            <svg width={W} height="28" viewBox={`0 0 ${W} 28`} aria-hidden="true" style={{ flexShrink: 0 }}>
+              {months.map((d) => <line key={d.getTime()} x1={x(d.getTime() / 1000)} x2={x(d.getTime() / 1000)} y1="4" y2="24" stroke={C.raised} strokeWidth="1" />)}
+              <rect x={x(g.at) - 4} y="8" width="8" height="12" rx="4" fill={g.colour || C.accent} />
+              <line x1={x(now)} x2={x(now)} y1="0" y2="28" stroke={C.text} strokeWidth="2" />
+            </svg>
+            <ChevronIcon color={C.muted} />
+          </button>
+        );
+      })}
+    </section>
+  );
+}
+
+/** H1: the Harvests tab. The map shows every member's property (25 Oct). */
 export function HarvestList({ go }) {
-  const { map } = useLeaderMap('harvests');
+  const { map } = useLeaderMap('members');
   const { groups, priceOf, fx, loading, refetch } = useHarvests();
   const [edit, setEdit] = useState();
+  const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'list'; } catch { return 'list'; } });
+  const pickView = (v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
   const value = groups.reduce((t, c) => t + c.groups.reduce((a, g) => a + g.shares.reduce((b, x) => b + (x.kg || 0), 0), 0) * priceOf(c.crop).inrPerKg, 0);
   return (
     <MapCard head={<Head />} map={map} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
@@ -82,15 +141,20 @@ export function HarvestList({ go }) {
         <section style={{ ...card, padding: '18px 22px', gap: 4, alignItems: 'center', textAlign: 'center' }} aria-label="Crop shares value">
           <div style={{ color: C.muted }}>Crop shares value</div>
           <div style={{ fontSize: 32, lineHeight: 1.2, fontWeight: 700 }}>{loading ? '…' : inr(value)}</div>
+          {/* Selling is not built yet (Q2, X6, O8): nothing is sold, so ₹0. */}
+          <div style={{ color: C.muted }}>+ {inr(0)} sold</div>
         </section>
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, alignItems: 'center' }}>
+          <Segmented icon width="hug" label="List or calendar" value={view} onChange={pickView}
+            options={[['list', <ListIcon key="l" />, 'List'], ['calendar', <CalIcon key="c" />, 'Calendar']]} />
           <RoundButton label="Refresh" onClick={refetch}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
           </RoundButton>
         </div>
         {loading && <section style={card}><SkeletonRows rows={4} /></section>}
         {!loading && !groups.length && <section style={card}><span style={sub}>No crop shares with a harvest ahead.</span></section>}
-        {groups.map((c) => {
+        {view === 'calendar' && <Calendar groups={groups} go={go} />}
+        {view === 'list' && groups.map((c) => {
           const u = unitOf(c.crop);
           const p = priceOf(c.crop);
           const open = edit === c.crop;

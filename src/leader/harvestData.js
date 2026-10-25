@@ -84,10 +84,12 @@ export function harvestGroups(members, shares, now = Date.now() / 1000) {
       const t = Date.parse(`${String(x.harvest).slice(0, 10)}T00:00:00Z`);
       if (t / 1000 < now - 60 * 86400 && !x.loan) continue;        // a harvest long past and settled
       const d = new Date(t);
-      const key = `${x.crop_key}.${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}.${half(d)}`;
+      // Letters, digits and _ only: the id is a route argument (#/harvests/<id>).
+      const key = `${x.crop_key}_${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${half(d)}`;
       const c = (crops[x.crop_key] ||= { crop: x.crop_key, name: x.crop, colour: x.colour, groups: {} });
       const g = (c.groups[key] ||= { key, crop: x.crop_key, at: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), [1, 11, 21][half(d)]) / 1000,
         label: `Harvest ${PART[half(d)]} ${d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}${d.getUTCFullYear() !== new Date().getUTCFullYear() ? ` ${d.getUTCFullYear()}` : ''}`,
+        short: `${PART[half(d)].replace(' of', '')} ${d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}`,
         shares: [] });
       const m = label[addr];
       g.shares.push({ ...x, member: addr, who: m?.label || `${addr.slice(0, 4)}…${addr.slice(-4)}`, route: m?.route,
