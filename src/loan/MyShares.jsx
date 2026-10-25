@@ -13,7 +13,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig, useStellarTitles } from '../stellar/hooks';
 import { readFoodTokens, sv, tokenHex } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
-import { useCropPlan, useLandTitles, usePlanClient } from '../plan/hooks';
+import { useCropChain, useLandTitles, usePlanClient } from '../plan/hooks';
 import { Primary, inr, muted } from '../plan/ui';
 import ListRow from '../shell/ListRow';
 import { Card, QrCircle } from './AssetParts';
@@ -41,24 +41,27 @@ export function useMyLand() {
   return { landId: onPolygon ? titles.data[0] : stellarTitle?.title_id, onPolygon, stellarTitle, evm: s?.evmAddress };
 }
 
-/** Her shares: her approved plan's mint list + each token's state on Stellar. */
+/** Her shares: the mint lists of her approved plans (the plan and its extensions, 25 Oct) + each token's state on
+ *  Stellar. */
 export function useMyShares() {
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
   const { landId } = useMyLand();
-  const plan = useCropPlan(landId);
-  const p = plan.data;
+  const chain = useCropChain(landId);
+  const plans = chain.data?.plans || [];
   return useQuery({
-    queryKey: ['oracle', 'myShares', p?.id], enabled: !!api && !!cfg && p?.approval?.decision === 'approve',
+    queryKey: ['oracle', 'myShares', plans.map((x) => x.id).join(',')], enabled: !!api && !!cfg && plans.length > 0,
     staleTime: 30_000,
     queryFn: async () => {
-      const { mints } = await api.mintList(p.id);
-      const zones = Object.keys(p.plan.proposal).sort();
+      const lists = await Promise.all(plans.map((p) => api.mintList(p.id).then((r) => r.mints.map((m) => ({ ...m, p })))));
+      const mints = lists.flat();
       // Every share's state in one batched read (22 Oct), instead of a simulation each.
       const withId = mints.filter((m) => m.token_id);
       const fts = withId.length ? await readFoodTokens(cfg, cfg.union, withId.map((m) => tokenHex(m.token_id))).catch(() => ({})) : {};
       return Promise.all(withId.map(async (m) => {
         const ft = fts[tokenHex(m.token_id)] || null;
+        const p = m.p;
+        const zones = Object.keys(p.plan.proposal).sort();
         const share = (p.plan.shares || []).find((x) => x.key === m.share) || {};
         const drawn = !!ft && (Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
         // No floor (25 Oct): Ready from attestation until its last draw date; past it, unused, it is too late, and

@@ -8,7 +8,7 @@ import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT } from '../shell/tokens';
-import { COWS, LAND_ROLE, qkPlan, useAcceptPlan, useCropCatalogue, useCropPlan, useDiscardPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
+import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { BasisDrawer, Drawer, InfoButton } from './Drawer';
 import { useMintCropShares } from './mint';
@@ -159,6 +159,9 @@ export default function CropPlanFlow() {
   const stellarTitle = !onPolygon ? stellarTitles.data?.[0] : undefined;
   const landId = onPolygon ? titles.data[0] : stellarTitle?.title_id;
   const current = useCropPlan(landId);
+  // Extend, not update (25 Oct): the approved plan and its extensions, shown as one once active.
+  const chainQ = useCropChain(landId);
+  const extend = useExtendPlan(landId);
   const catalogue = useCropCatalogue();
   const field = useFieldRecord(landId, s?.evmAddress, stellarTitle ? stellarTitle.record_hash || '' : undefined);
   const record = field.data?.record;
@@ -202,7 +205,8 @@ export default function CropPlanFlow() {
   const [checked, setChecked] = useState(() => new Set());
   const planId = current.data?.id;
   useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const plan = current.data;
+  // Approved: the chain as one plan (its seasons and shares, 25 Oct); a waiting extension shows as itself.
+  const plan = current.data?.approval?.decision === 'approve' ? mergedPlan(chainQ.data, current.data) : current.data;
   const myShares = useMyShares();   // CP13: a crop share she can collect now is a to-do
   // CP13 opens on the season she is in today (CP10 on the first).
   const approved = plan?.approval?.decision === 'approve';
@@ -237,7 +241,10 @@ export default function CropPlanFlow() {
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
   // CP13 (map-central trial, 21 Oct): a tap on an area opens its crop share in the season shown (A4/A4a).
-  const active = approved && mint.status === 'done';
+  // A share whose sowing is over a year ahead is made later (the node defers it, 25 Oct): it does not hold the plan up.
+  const deferredOnly = mint.status === 'partial' && (mint.refused || []).length > 0
+    && mint.refused.every((r) => /more than a year ahead|made later/i.test(r.error || ''));
+  const active = approved && (mint.status === 'done' || deferredOnly);
   const openShare = useCallback((z) => {
     const ss = plan?.plan?.seasons || [];
     const x = z && shareOn(myShares.data, ss, Math.min(season, ss.length - 1), z);
@@ -508,7 +515,7 @@ export default function CropPlanFlow() {
   }
   if (ap?.decision === 'approve') {
     // The union mints her crop shares at the approval (executive decision 21 Oct): her app only waits for them.
-    if (mint.status === 'done') {
+    if (mint.status === 'done' || deferredOnly) {
       // CP13's season bar (board CropPlanActive): it opens on the season she is in; the map's chips follow it.
       const ss = plan.plan.seasons || [];
       const shown = Math.min(season, Math.max(0, ss.length - 1));
@@ -516,7 +523,16 @@ export default function CropPlanFlow() {
         onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
       return (
         <Sheet map={map} landName={name} bar={bar}>
-          <ActivePlan plan={plan} areaNo={areaNo} season={shown} shares={myShares.data} assist={assisted()} onUpdate={() => setStep('change')} />
+          <ActivePlan plan={plan} areaNo={areaNo} season={shown} shares={myShares.data} assist={assisted()}
+            canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
+            onExtend={async () => {
+              setError(undefined);
+              try {
+                const r = await extend.mutateAsync(plan.id);
+                if (r.nothing_to_add) { chainQ.refetch(); return; }
+                setAfterMake('why'); setJobId(r.job_id); setStep('making');
+              } catch (e) { setError(e.message); }
+            }} />
         </Sheet>
       );
     }

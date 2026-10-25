@@ -45,6 +45,9 @@ export function planClient(signer) {
     makePlan: (landId, intake, extra = {}) => call('POST', '/plan/jobs', { land_id: landId, intake, ...extra }),
     job: (jobId) => call('GET', `/plan/jobs/${jobId}`),
     latest: (landId) => call('GET', `/plan/land/${landId}`),
+    // Extend, not update (25 Oct): the land's approved plans in order, a waiting extension, the cycles to add.
+    chain: (landId) => call('GET', `/plan/land/${landId}/chain`),
+    extend: (planId) => call('POST', `/plan/${planId}/extend`, {}),
     plan: (planId) => call('GET', `/plan/${planId}`),
     accept: (planId, zone) => call('POST', `/plan/${planId}/accept`, { zone }),
     pendingApprovals: () => call('GET', '/plan/approvals/pending'),

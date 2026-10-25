@@ -109,8 +109,10 @@ function Group({ name, items, now }) {
 }
 
 /** shares: her crop shares as A1 reads them (useMyShares): a share she can collect now (ready) is a to-do whatever its
- *  month; a drawn one is done and not listed. assist: a shared phone, where the leader updates the plan. */
-export default function ActivePlan({ plan, areaNo, season, shares, assist, today = new Date(), onUpdate }) {
+ *  month; a drawn one is done and not listed. assist: a shared phone, where the leader extends the plan.
+ *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
+ *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
+export default function ActivePlan({ plan, areaNo, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError }) {
   const seasons = plan.plan.seasons || [];
   const now = today.toISOString().slice(0, 10);
   const idx = currentSeason(seasons, today);
@@ -134,14 +136,18 @@ export default function ActivePlan({ plan, areaNo, season, shares, assist, today
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>Your plan</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {seasons[0] && lastDue && <KV k="Plan year" v={`${monthYear(seasons[0].start)} to ${monthYear(lastDue)}`} />}
+          {seasons[0] && lastDue && <KV k="Planned" v={`${monthYear(seasons[0].start)} to ${monthYear(lastDue)}`} />}
           <KV k="Now" v={`Season ${idx + 1} of ${seasons.length}${idx === seasons.length - 1 ? ' · last season' : ''}`} />
         </div>
-        {assist
-          ? <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>Ask your leader to update your plan.</span>
-          : <button type="button" onClick={onUpdate} style={{ height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' }}>
-            {idx === seasons.length - 1 ? 'Plan next year' : 'Update my plan'}
-          </button>}
+        {/* Always one year ahead: the three cycles after this one (25 Oct). The seasons planned stay as they are. */}
+        {!canExtend.length
+          ? <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>Your plan covers the next three seasons.</span>
+          : assist
+            ? <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>Ask your leader to extend your plan.</span>
+            : <button type="button" onClick={onExtend} disabled={extending} style={{ height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer', opacity: extending ? 0.5 : 1 }}>
+              {extending ? 'Planning…' : `Extend my plan · ${canExtend.length} season${canExtend.length > 1 ? 's' : ''}`}
+            </button>}
+        {extendError && <span style={{ fontSize: 14, color: C.coral }}>{extendError}</span>}
       </div>
     </>
   );
