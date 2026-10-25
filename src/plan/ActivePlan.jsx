@@ -56,13 +56,13 @@ export function tasksOf(plan, areaNo) {
   }
   // Receive cash + vouchers: one per crop share, at its planned sowing (from_date), in the season it starts in; it can be
   // used from now until its last draw date (25 Oct), shown with it.
-  const useBy = (d) => (d ? `use it by ${new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : '');
+  const lastDayText = (d) => (d ? `use it by ${new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : '');
   const ss = plan.seasons || [];
   for (const sh of plan.shares || []) {
     if (!sh.from_date || (!sh.loan_amount && !sh.hours)) continue;
     const si = Math.max(0, ss.reduce((k, s, i) => (s.start <= sh.from_date ? i : k), 0));
     out.push({ date: sh.from_date, text: sh.hours ? 'Receive cash + vouchers' : 'Receive cash', share: sh.key, season: si,
-      area: [typeof areaNo(sh.zone) === 'number' ? areaLabel(sh, areaNo) : '', sh.loan_amount ? inr(sh.loan_amount) : '', sh.hours ? `${sh.hours} h` : '', useBy(sh.final_date), 'union office'].filter(Boolean).join(' · ') });
+      area: [typeof areaNo(sh.zone) === 'number' ? areaLabel(sh, areaNo) : '', sh.loan_amount ? inr(sh.loan_amount) : '', sh.hours ? `${sh.hours} h` : '', lastDayText(sh.final_date), 'union office'].filter(Boolean).join(' · ') });
   }
   // Same month: she receives the cash before she plants.
   return out.sort((a, b) => a.date.slice(0, 7).localeCompare(b.date.slice(0, 7)) || (!!b.share - !!a.share) || a.date.localeCompare(b.date));
