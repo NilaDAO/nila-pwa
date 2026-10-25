@@ -230,9 +230,12 @@ function ScanAny({ onBack }) {
         if (flags & FLAG_DRAWN) {
           if (flags & FLAG_CLOSED) throw new Error('The loan on this crop share is repaid.');
           setLane({ kind: 'repay', who: share[3], token: hex });
-        } else if (Number(ft.from_date) * 1000 <= Date.now()) {
-          window.location.replace(`#/loan/${share[1]}_${share[2]}`);
-        } else throw new Error(`This crop share can be used from ${dayOf(Number(ft.from_date))}.`);
+        } else if (ft.lapsed || (Number(ft.final_date || 0) > 0 && Date.now() / 1000 > Number(ft.final_date))) {
+          // Its last draw date has passed (25 Oct): too late for this cycle.
+          throw new Error(`Too late for this cycle: the last day to use this crop share was ${dayOf(Number(ft.final_date))}.`);
+        } else {
+          window.location.replace(`#/loan/${share[1]}_${share[2]}`);   // no floor: usable once attested
+        }
         return;
       }
       const g = addressFromQr(t);

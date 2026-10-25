@@ -24,7 +24,6 @@ import { shareOn } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 
 function Making({ jobId, onDone, onError }) {
   const job = usePlanJob(jobId);
@@ -67,16 +66,19 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
       {!readOnly && <TapLine done={checked.size} total={zones.length} />}
       <h2 style={{ fontSize: 14, fontWeight: 700, color: C.muted, margin: '16px 0 8px' }}>Finance</h2>
       <table style={{ width: '100%', fontSize: 14, marginTop: 8, borderCollapse: 'collapse' }}>
-        {/* Simplified (executive decision 21 Oct): season (its months), available from, total — no rate column, no repay line, no tabs. */}
-        <thead><tr style={{ color: C.muted }}><td>Season</td><td>Available from</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
+        {/* Simplified (executive decision 21 Oct): season (its months), use it by, total — no rate column, no repay line, no tabs.
+            "Use it by" (25 Oct): the season's last draw date (no floor any more: a share is usable once made). */}
+        <thead><tr style={{ color: C.muted }}><td>Season</td><td>Use it by</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
         <tbody>
           {seasons.map((s) => {
             const cash = s.rows.reduce((a, r) => a + cost(r.finance), 0);
-            const from = s.rows.map((r) => r.sow).sort()[0];
+            // The season's shares: their planned sowing is one of the season's rows' sowing dates.
+            const sows = new Set(s.rows.map((r) => r.sow).filter(Boolean));
+            const by = (p.shares || []).filter((sh) => sows.has(sh.from_date) && sh.final_date).map((sh) => sh.final_date).sort().pop();
             return (
               <tr key={s.slot} style={{ borderTop: `1px solid ${C.raised}` }}>
                 <td style={{ padding: '8px 0' }}><b>{SEASON[s.slot]}</b></td>
-                <td>{from ? new Date(from).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</td>
+                <td>{by ? new Date(by).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{inr(cash)}</td>
               </tr>
             );
@@ -121,7 +123,7 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
           Each loan (one area in one season) gives at most ₹10,000 in cash. The {inr(above)} above the cap is financed by the member contributions in Nila.
         </Notice>
       )}
-      {lastDue && <p style={muted}>The loans are {inr(total.financed)}; you repay {inr(total.financed + total.interest)} in {seasons.length} parts, the last by end of {monthYear(lastDue)}.</p>}
+      {lastDue && <p style={muted}>The loans are {inr(total.financed)}; you repay {inr(total.financed + total.interest)} in {seasons.length} parts, each 21 days after its harvest.</p>}
       {p.left_out?.length > 0 && <p style={muted}>Areas too small to plan: {p.left_out.length}.</p>}
       {/* Her changes are hard rules (21 Oct); only a hard fact refuses one, and anything the node could not read is named. */}
       {p.member_request?.not_followed?.length > 0 && (

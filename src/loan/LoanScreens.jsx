@@ -154,7 +154,10 @@ export function LeaderLoan({ initial }) {
   // contract yet, so it is not promised here (contract gap, P5-Loan.md).
   const rateBp = checks.data?.rateBp;
   const caps = capsFor(checks.data, sel?.ft);
-  const blocked = checks.data?.blocked || [];
+  // After its last draw date (25 Oct), or lapsed: too late for this cycle, no draw (fund_core TooLate).
+  const final = Number(sel?.ft?.final_date || 0);
+  const tooLate = !!sel?.ft && (sel.ft.lapsed || (final > 0 && Date.now() / 1000 > final));
+  const blocked = [...(tooLate ? ['Too late for this cycle: the last day to use this crop share has passed.'] : []), ...(checks.data?.blocked || [])];
   const repay = row && rateBp != null ? repayAbout(cash, rateBp, new Date(), row.finance.due) : null;
   const go = async () => {
     setError(undefined);

@@ -61,10 +61,15 @@ export function useMyShares() {
         const ft = fts[tokenHex(m.token_id)] || null;
         const share = (p.plan.shares || []).find((x) => x.key === m.share) || {};
         const drawn = !!ft && (Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
-        const ready = !!ft && !drawn && Number(ft.from_date) * 1000 <= Date.now();
+        // No floor (25 Oct): Ready from attestation until its last draw date; past it, unused, it is too late, and
+        // once lapsed on Stellar it reads so. A token attested before 25 Oct has no last date (final_date 0).
+        const final = Number(ft?.final_date || 0);
+        const lapsed = !!ft?.lapsed;
+        const late = !!ft && !drawn && !lapsed && final > 0 && Date.now() / 1000 > final;
+        const ready = !!ft && !drawn && !lapsed && !late;
         // "1" or, for areas merged in a season (same crop, 21 Oct), "1 + 2": shown as "Area {area}".
         const area = (m.zones || share.zones || [m.zone]).map((z) => zones.indexOf(z) + 1).join(' + ');
-        return { ...m, share, ft, drawn, ready, area, plan: p };
+        return { ...m, share, ft, drawn, ready, late, lapsed, final, area, plan: p };
       }));
     },
   });
@@ -72,10 +77,11 @@ export function useMyShares() {
 
 export function shareTag(x) {
   if (!x.ft) return 'Not attested yet';
+  // Unused past its last draw date (25 Oct): not an error, the cycle is over.
+  if (x.lapsed || x.late) return 'Not used · lapsed';
   // A loan paid off closes on-chain (fund_core FLAG_CLOSED): the share then reads Repaid, not Financed (25 Oct).
   if (x.drawn) return Number(x.ft.loan?.flags ?? 0) & FLAG_CLOSED ? 'Repaid' : 'Financed';
-  if (x.ready) return 'Ready';
-  return `From ${new Date(Number(x.ft.from_date) * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+  return 'Ready';   // no floor (25 Oct): attested, undrawn and in time
 }
 
 /** A map card on her own property (map-centred lane, 23 Oct): the header, then the body in one card. */

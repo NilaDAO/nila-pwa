@@ -49,22 +49,28 @@ export async function readFoodTokens(cfg, union, hexes) {
   if (!id) throw new Error('no fund_core contract in the node config');
   const contract = new Address(id).toScAddress();
   const uniq = [...new Set(hexes.map((h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0')))];
-  const keyOf = (hex) => xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+  const keyOf = (name, hex) => xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
     contract, durability: at(xdr.ContractDataDurability, 'persistent'),
-    key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol('FoodToken'), sv.address(union), sv.bytes32(hex)]),
+    key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(name), sv.address(union), sv.bytes32(hex)]),
   }));
   const out = Object.fromEntries(uniq.map((h) => [h, null]));
+  const fin = {};
   const s = server(cfg);
-  for (let i = 0; i < uniq.length; i += 200) {
-    const part = uniq.slice(i, i + 200);
-    const keys = part.map(keyOf);
+  // Each token's fact and its last draw date (FoodTokenFinal, 25 Oct; absent for one attested before): 100 a call.
+  for (let i = 0; i < uniq.length; i += 100) {
+    const part = uniq.slice(i, i + 100);
+    const keys = part.flatMap((h) => [keyOf('FoodToken', h), keyOf('FoodTokenFinal', h)]);
     const r = await s.getLedgerEntries(...keys);
     for (const e of r.entries || []) {
       const want = e.key.toXDR('base64');
-      const i2 = keys.findIndex((k) => k.toXDR('base64') === want);
-      if (i2 >= 0) out[part[i2]] = scValToNative(at(at(e.val, 'contractData'), 'val'));
+      const k = keys.findIndex((x) => x.toXDR('base64') === want);
+      if (k < 0) continue;
+      const v = scValToNative(at(at(e.val, 'contractData'), 'val'));
+      if (k % 2 === 0) out[part[k / 2]] = v; else fin[part[(k - 1) / 2]] = v;
     }
   }
+  // As fund_core.food_token returns it: final_date 0 when there is none, lapsed false.
+  for (const h of uniq) if (out[h]) out[h] = { ...out[h], final_date: fin[h]?.final_date ?? 0, lapsed: !!fin[h]?.lapsed };
   return out;
 }
 

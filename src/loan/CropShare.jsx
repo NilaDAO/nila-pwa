@@ -59,6 +59,8 @@ const DropIcon = () => ico(<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-
 function statusOf(x) {
   if (!x.ft) return 'Not attested yet';
   const f = Number(x.ft.loan?.flags ?? 0);
+  // Unused past its last draw date (25 Oct): the cycle is over; shown as a state, not an error.
+  if (!x.drawn && (x.lapsed || x.late)) return 'Not used · lapsed';
   if (!x.drawn) return 'Active when you collect';
   if (f & FLAG_CLOSED) return 'Repaid';
   if (f & FLAG_DEFAULTED) return 'Defaulted';
@@ -131,13 +133,15 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
     // Attested hours are voucher units (centi tractor hours, 23 Oct); before the attestation, the plan's machine hours.
     const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.hours || 0);
     const vouchers = Number(r.finance?.voucher_value || 0);
-    const from = x.ft ? new Date(Number(x.ft.from_date) * 1000) : x.share.from_date ? new Date(x.share.from_date) : null;
+    // Use it by its last draw date (25 Oct; there is no "from" any more): the attested one, else the plan's.
+    const until = x.final ? new Date(x.final * 1000) : x.share.final_date ? new Date(x.share.final_date) : null;
+    const over = x.lapsed || x.late;
     return (
       <Sheet map={map} onBack={onBack} bar={bar} onSwipe={onSwipe}>
         {head}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Row k="Status" v={statusOf(x)} />
-          <Row k="Collect from" v={partOfMonth(from)} strong />
+          <Row k={over ? 'Last day was' : 'Use it by'} v={until ? until.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} strong />
           <Row k="Where" v="Union office" strong />
         </div>
         <div style={line} />
@@ -157,6 +161,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
         <Row k="Total" v={inr(cash + vouchers)} strong />
         {/* Ready: her scan of the leader's QR (assisted: the leader taps it on her phone), or a leader's own take-up. */}
         {x.ready && <Primary onClick={() => onTakeUp(x.token_id)}>Get cash and vouchers</Primary>}
+        {over && <p style={{ ...muted, textAlign: 'center' }}>Too late for this cycle. Its fields are freed for a new plan.</p>}
       </Sheet>
     );
   }
