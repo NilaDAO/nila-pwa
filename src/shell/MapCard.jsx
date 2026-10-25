@@ -13,7 +13,7 @@ const openShare = (t) => { window.location.hash = `#/cropshare/${t}`; };
 /** header: ScreenHeader's props (title, onBack, onSettings, settings), or head: a header row of its own (G1: A1L's).
  *  map: a map of its own instead of her land (G1: the union's properties). full: false leaves her map in view above the
  *  card (G2). style: the screen's own wrapper style. */
-export default function MapCard({ header, head, map, full = true, style, children }) {
+export default function MapCard({ header, head, map, full = true, top, style, children }) {
   const stage = useStage();
   const home = useHomeMap(openShare, window.innerHeight - homeTop() + 32);
   useEffect(() => { if (stage) window.scrollTo(0, 0); }, [stage]);   // a card opens at its top, not where A1 was scrolled
@@ -21,7 +21,7 @@ export default function MapCard({ header, head, map, full = true, style, childre
   // The screen's own cards keep their 8 px gutter: the sheet's 22 px padding is taken back.
   const { padding, ...rest } = style || {};
   return (
-    <Sheet map={map || home.map || <span />} full={full} top={full ? undefined : Math.round(window.innerHeight * 0.4)} head={head || <HeaderRow {...header} />}>
+    <Sheet map={map || home.map || <span />} full={full} top={top ?? (full ? undefined : Math.round(window.innerHeight * 0.4))} head={head || <HeaderRow {...header} />}>
       <div style={{ ...rest, margin: '0 -14px', minHeight: undefined }}>{children}</div>
     </Sheet>
   );

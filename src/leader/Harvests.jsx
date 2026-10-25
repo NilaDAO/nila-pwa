@@ -17,6 +17,7 @@ import { Stepper } from '../loan/AssetParts';
 import { usePlanClient } from '../plan/hooks';
 import { useFxRate } from '../shell/UsdcAsset';
 import { useLeaderMap } from './unionMap';
+import AreaMap from '../plan/AreaMap';
 import { useUnionMembers, useUnionShares } from './unionMembers';
 import { harvestGroups, unitOf, useCropBatches, useSetPrice } from './harvestData';
 
@@ -26,6 +27,28 @@ const chip = { flexShrink: 0, height: 24, borderRadius: R.round, padding: '0 10p
 const sub = { color: C.muted, fontSize: 14 };
 const qty = (kg, u) => `${Math.round((kg / u.per) * 10) / 10} ${u.short}`;
 const day = (t) => new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+/** H2's map (25 Oct): only this group's crop shares, each by the areas it grows on (from the member's field record),
+ *  the member's name on the first; a member without a record shows the property. */
+function GroupMap({ group, members }) {
+  const byAddr = Object.fromEntries((members || []).map((m) => [m.address, m]));
+  const zones = []; const labels = {};
+  for (const s of group?.shares || []) {
+    const m = byAddr[s.member];
+    if (!m) continue;
+    const parts = (m.record?.zones || []).filter((z) => (s.zones || []).includes(z.zone_id) && z.geometry);
+    const shapes = parts.length ? parts.map((z) => z.geometry) : m.places.map((p) => p.geometry);
+    shapes.forEach((geometry, i) => {
+      const id = `${s.token}#${i}`;
+      zones.push({ zone_id: id, geometry });
+      labels[id] = i ? { hide: true, colour: s.late ? C.coral : s.harvested ? C.accent : '#ffffff' }
+        : { text: s.who, sub: s.harvested ? 'Harvested' : s.late ? 'Late' : undefined, colour: s.late ? C.coral : s.harvested ? C.accent : '#ffffff' };
+    });
+  }
+  const chip = `${group?.shares?.length || 0} crop share${group?.shares?.length === 1 ? '' : 's'}`;
+  return <AreaMap record={zones.length ? { zones } : null} labels={labels} fitSide={90} fitBottom={Math.round(window.innerHeight * 0.5)} chip={chip}
+    onSelect={(z) => { const t = z && String(z).split('#')[0]; const x = group?.shares?.find((y) => y.token === t); if (x?.route) window.location.hash = `#/members/${x.route}`; }} />;
+}
 
 function useHarvests() {
   const api = usePlanClient();
@@ -40,7 +63,7 @@ function useHarvests() {
     if (b?.usdtPerKg > 0 && fx > 0) return { inrPerKg: b.usdtPerKg * fx, set: true, batch: b.batch };
     return { inrPerKg: b?.catalogueInrPerKg || 0, set: false, batch: b?.batch };
   };
-  return { groups, priceOf, fx, loading: !members.data || !shares.data, refetch: () => { shares.refetch(); batches.refetch(); } };
+  return { groups, priceOf, fx, members: members.data, loading: !members.data || !shares.data, refetch: () => { shares.refetch(); batches.refetch(); } };
 }
 
 function Head() {
@@ -199,15 +222,15 @@ export function HarvestList({ go }) {
 
 /** H2: one harvest group on the map. */
 export function HarvestGroup({ id, go }) {
-  const { map } = useLeaderMap('harvests');
-  const { groups, priceOf, loading } = useHarvests();
+  const { groups, priceOf, loading, members } = useHarvests();
   const [open, setOpen] = useState(true);
   const c = groups.find((x) => x.groups.some((g) => g.key === id));
   const g = c?.groups.find((x) => x.key === id);
   const back = () => go('harvests');
+  const map = <GroupMap group={g} members={members} />;
   if (loading || !g) {
     return (
-      <MapCard map={map} header={{ title: 'Harvest', onBack: back }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+      <MapCard map={map} full={false} top={Math.round(window.innerHeight * 0.5)} header={{ title: 'Harvest', onBack: back }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
         <section style={card}>{loading ? <SkeletonRows rows={6} /> : <span style={sub}>This harvest is not in the list any more.</span>}</section>
       </MapCard>
     );
@@ -230,7 +253,7 @@ export function HarvestGroup({ id, go }) {
     </div>
   );
   return (
-    <MapCard map={map} header={{ title: c.name, onBack: back, onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+    <MapCard map={map} full={false} top={Math.round(window.innerHeight * 0.5)} header={{ title: c.name, onBack: back, onSettings: () => go('settings') }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
       <section style={card} aria-label={`${c.name} harvest`}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{c.name}</h2>
