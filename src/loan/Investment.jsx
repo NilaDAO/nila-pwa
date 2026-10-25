@@ -173,8 +173,9 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
             : `Your withdrawal is on its way: collect it in cash at the union office from about ${dateOf(claimAt)}.`}</p>
         ) : (
           <>
-            <p style={muted}>You can withdraw {fmt(free)} nIN</p>
-            <Stepper value={o} set={setOut} step={25} min={0} max={free} unit="nIN" label="nIN to withdraw" />
+            {/* Members never hold nIN (22 Oct): their withdrawal is rupees, in cash at the office; a leader's goes to her wallet as nIN. */}
+            <p style={muted}>{leader ? `You can withdraw ${fmt(free)} nIN` : `You can withdraw ${inr(free)}`}</p>
+            <Stepper value={o} set={setOut} step={25} min={0} max={free} unit={leader ? 'nIN' : '₹'} label={leader ? 'nIN to withdraw' : 'Rupees to withdraw'} />
             <KV k="You get about" v={leader ? `${fmt(o)} nIN` : `₹${fmt(o)} in cash`} />
             <p style={muted}>{leader ? `Arrives in your wallet by about ${dateOf(now + DAYS_14)}` : `Collect it in cash at the union office from about ${dateOf(now + DAYS_14)}`}</p>
             <Secondary disabled={!tx.ready || o < 1 || !market.data} onClick={() => withdraw(o)}>Withdraw</Secondary>

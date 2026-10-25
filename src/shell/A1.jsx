@@ -6,10 +6,11 @@
 // leader, the cash and LP slides and the Union rows (treasury, cash). P11: a member with no land title registers
 // first (src/register/Registration.jsx, from the Shell), so A1 always shows her title row.
 import { useEffect, useMemo } from 'react';
-import { useIsFetching, useQueryClient } from '@tanstack/react-query';
+import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useTitleCount } from '../register/titles';
-import { useInvestment } from '../stellar/hooks';
+import { useInvestment, useStellarConfig } from '../stellar/hooks';
+import { readContract, sv } from '../stellar/soroban';
 import { ShareRows, useMyLand, useMyShares } from '../loan/MyShares';
 import { loadVoucherCode, th, typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
@@ -102,6 +103,11 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const titles = useTitleCount(s?.evmAddress, s?.stellarAddress).count;   // Polygon or Stellar (src/register/titles.js)
   const inv = useInvestment(s?.stellarAddress);
   const invested = inv.data ? Number(inv.data.invested) / 1e7 : undefined;
+  // The value of a withdrawal on its way (its shares at the fund's index), only while there is one.
+  const { data: scfg } = useStellarConfig();
+  const out = inv.data && (BigInt(inv.data.pending_shares ?? 0) > 0n || BigInt(inv.data.claimable_shares ?? 0) > 0n);
+  const juniorIndex = useQuery({ queryKey: ['stellar', 'fund', scfg?.union], enabled: !!scfg && !!out,
+    queryFn: () => readContract(scfg, 'fund_core', 'get_junior_market', [sv.address(scfg.union)]), select: (m) => BigInt(m?.index ?? 0) });
   const vouchers = useVouchers(s?.stellarAddress);
   // Her voucher code is kept on her phone (A8a, 23 Oct): open while unused and not expired.
   const vCode = loadVoucherCode();
@@ -137,7 +143,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   )] : [];
   // The LP offers come first in the slider (25 Oct): an LP may be on the way; then her machine, the union's cards, hers.
   const lpSlides = leaderSlides.filter((el) => String(el.key).startsWith('lp-'));
-  const slides = [...lpSlides, ...confirmSlide, ...leaderSlides.filter((el) => !lpSlides.includes(el)), ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans, onRepayQr: (t) => onShare(`${t}/qr`) })];
+  const slides = [...lpSlides, ...confirmSlide, ...leaderSlides.filter((el) => !lpSlides.includes(el)), ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans, onRepayQr: (t) => onShare(`${t}/qr`),
+    index: juniorIndex.data, onWithdrawal: onInvested, leader: !!leader })];
 
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell A1 is a card over the map of her
   // land (drag line, rounded top), opening high with a strip of map; History, All tasks and Settings are the card's
@@ -205,8 +212,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         {/* A member sees nIN only when she holds some: a machine owner's income, collected in cash (24 Oct). */}
         {(leader || (lp?.idChecked && nin >= 1)) && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />}
         {invested !== undefined && (
-          <Row label="Open nIN invested" icon={<InvestedTile />} title="nIN invested" sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : 'Union investment'}
-            value={Math.floor(invested)} valueSub={inr(invested)} onClick={onInvested} />
+          <Row label={leader ? 'Open nIN invested' : 'Open union investment'} icon={<InvestedTile />} title={leader ? 'nIN invested' : 'Union investment'}
+            sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : leader ? 'Union investment' : 'In your union'}
+            value={leader ? Math.floor(invested) : inr(invested)} valueSub={leader ? inr(invested) : ''} onClick={onInvested} />
         )}
         {/* One row per machine she owns (23 Oct), named by its type. */}
         {machine?.all.map((x) => (

@@ -45,7 +45,7 @@ const qrBtn = { height: 40, borderRadius: 12, border: 0, background: C.accent, c
 
 /** The member's cards. position: fund_core.position (7 decimals) or undefined; loans: the drawn, open loans;
  *  onRepayQr(token): that crop share's QR for the leader's Repay scan (24 Oct). */
-export function memberSlides({ position, positionKnown, loans = [], now = Date.now() / 1000, onRepayQr }) {
+export function memberSlides({ position, positionKnown, loans = [], now = Date.now() / 1000, onRepayQr, index, onWithdrawal, leader = false }) {
   const out = [];
   for (const l of loans) {
     const total = l.principal + l.interest;
@@ -75,7 +75,7 @@ export function memberSlides({ position, positionKnown, loans = [], now = Date.n
         <Title Icon={MarkTile}>Invest at least ₹{MINIMUM} in your union</Title>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, ...small }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: C.muted }}>Invested</span><span style={{ fontWeight: 700 }}>{Math.floor(invested)} of {MINIMUM} nIN</span>
+            <span style={{ color: C.muted }}>Invested</span><span style={{ fontWeight: 700 }}>₹{Math.floor(invested)} of ₹{MINIMUM}</span>
           </div>
           <Bar pct={(100 * invested) / MINIMUM} label={`${Math.floor(invested)} of ${MINIMUM} invested`} />
         </div>
@@ -83,20 +83,42 @@ export function memberSlides({ position, positionKnown, loans = [], now = Date.n
       </section>,
     );
   }
+  // Her withdrawal (25 Oct): the cash is picked up at the union office, never paid to her wallet as nIN. On its way:
+  // the amount, the days left and the day it is ready; ready: the steps at the office and her QR to collect it.
   const req = position ? Number(position.request_ts || 0) : 0;
-  if (position && Number(position.pending_shares || 0) > 0 && req > 0) {
-    const ready = req + 14 * 86400;
-    const days = Math.max(0, Math.ceil((ready - now) / 86400));
-    out.push(
+  const pendingShares = position ? BigInt(position.pending_shares ?? 0) : 0n;
+  const claimableShares = position ? BigInt(position.claimable_shares ?? 0) : 0n;
+  if (pendingShares > 0n || claimableShares > 0n) {
+    const readyAt = req + 14 * 86400;
+    const isReady = claimableShares > 0n || (req > 0 && readyAt <= now);
+    const days = Math.max(0, Math.ceil((readyAt - now) / 86400));
+    const value = index ? Number(((pendingShares + claimableShares) * index) / 10n ** 27n) / 1e7 : null;
+    const when = new Date(readyAt * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    out.push(isReady ? (
+      <section key="withdraw" aria-label="Withdrawal ready" style={card}>
+        <Title Icon={MarkTile}>Your withdrawal is ready</Title>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+          <span style={big}>{value != null ? inr(Math.floor(value)) : '…'}</span>
+          <span style={{ ...small, color: C.muted, textAlign: 'right' }}>{leader ? 'to your wallet' : 'in cash at the office'}</span>
+        </div>
+        {leader ? null : <Steps items={['Go to your union office.', (
+          <>
+            <span>Your leader hands you the cash. Then show your QR code.</span>
+            {onWithdrawal && <button type="button" style={qrBtn} onClick={onWithdrawal}>Show your QR</button>}
+          </>
+        ), 'The leader scans it. Your investment updates here.']} />}
+      </section>
+    ) : (
       <section key="withdraw" aria-label="Withdrawal on its way" style={card}>
         <Title Icon={MarkTile}>Your withdrawal is on its way</Title>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
           <span style={big}>{days} {days === 1 ? 'day' : 'days'}</span>
-          <span style={{ ...small, color: C.muted, textAlign: 'right' }}>ready on {new Date(ready * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+          <span style={{ ...small, color: C.muted, textAlign: 'right' }}>{value != null ? `${inr(Math.floor(value))} · ` : ''}ready on {when}</span>
         </div>
         <Bar pct={(100 * (14 - days)) / 14} label={`Day ${14 - days} of 14`} />
-      </section>,
-    );
+        <span style={{ ...small, color: C.muted }}>{leader ? `It arrives in your wallet from ${when}.` : `Pick it up in cash at your union office from ${when}.`}</span>
+      </section>
+    ));
   }
   return out;
 }
