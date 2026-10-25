@@ -61,15 +61,18 @@ export function useMyShares() {
         const ft = fts[tokenHex(m.token_id)] || null;
         const share = (p.plan.shares || []).find((x) => x.key === m.share) || {};
         const drawn = !!ft && (Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
-        // No floor (25 Oct): Ready from attestation until its last draw date; past it, unused, it is too late, and
-        // once lapsed on Stellar it reads so. A token attested before 25 Oct has no last date (final_date 0).
-        const final = Number(ft?.final_date || 0);
+        // Its window (25 Oct): from its opening (fund_core from_date: six weeks before the last draw date; a token
+        // attested before keeps its season's SOS) up to its last draw date (the attested one, else the plan's).
+        const final = Number(ft?.final_date || 0) || (share.final_date ? Date.parse(`${share.final_date}T23:59:59Z`) / 1000 : 0);
+        const opens = Number(ft?.from_date || 0);
+        const now = Date.now() / 1000;
         const lapsed = !!ft?.lapsed;
-        const late = !!ft && !drawn && !lapsed && final > 0 && Date.now() / 1000 > final;
-        const ready = !!ft && !drawn && !lapsed && !late;
+        const late = !!ft && !drawn && !lapsed && final > 0 && now > final;
+        const early = !!ft && !drawn && !lapsed && !late && now < opens;
+        const ready = !!ft && !drawn && !lapsed && !late && !early;
         // "1" or, for areas merged in a season (same crop, 21 Oct), "1 + 2": shown as "Area {area}".
         const area = (m.zones || share.zones || [m.zone]).map((z) => zones.indexOf(z) + 1).join(' + ');
-        return { ...m, share, ft, drawn, ready, late, lapsed, final, area, plan: p };
+        return { ...m, share, ft, drawn, ready, late, early, opens, lapsed, final, area, plan: p };
       }));
     },
   });
@@ -81,7 +84,8 @@ export function shareTag(x) {
   if (x.lapsed || x.late) return 'Not used · lapsed';
   // A loan paid off closes on-chain (fund_core FLAG_CLOSED): the share then reads Repaid, not Financed (25 Oct).
   if (x.drawn) return Number(x.ft.loan?.flags ?? 0) & FLAG_CLOSED ? 'Repaid' : 'Financed';
-  return 'Ready';   // no floor (25 Oct): attested, undrawn and in time
+  if (x.early) return `From ${new Date(x.opens * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+  return 'Ready';   // in its window (25 Oct)
 }
 
 /** A map card on her own property (map-centred lane, 23 Oct): the header, then the body in one card. */

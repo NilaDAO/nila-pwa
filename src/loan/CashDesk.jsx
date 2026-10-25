@@ -233,8 +233,11 @@ function ScanAny({ onBack }) {
         } else if (ft.lapsed || (Number(ft.final_date || 0) > 0 && Date.now() / 1000 > Number(ft.final_date))) {
           // Its last draw date has passed (25 Oct): too late for this cycle.
           throw new Error(`Too late for this cycle: the last day to use this crop share was ${dayOf(Number(ft.final_date))}.`);
+        } else if (Date.now() / 1000 < Number(ft.from_date || 0)) {
+          // Its window opens six weeks before its last draw date (25 Oct).
+          throw new Error(`Not open yet: this crop share can be used from ${dayOf(Number(ft.from_date))}.`);
         } else {
-          window.location.replace(`#/loan/${share[1]}_${share[2]}`);   // no floor: usable once attested
+          window.location.replace(`#/loan/${share[1]}_${share[2]}`);
         }
         return;
       }

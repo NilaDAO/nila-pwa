@@ -61,6 +61,7 @@ function statusOf(x) {
   const f = Number(x.ft.loan?.flags ?? 0);
   // Unused past its last draw date (25 Oct): the cycle is over; shown as a state, not an error.
   if (!x.drawn && (x.lapsed || x.late)) return 'Not used · lapsed';
+  if (!x.drawn && x.early) return 'Not open yet';
   if (!x.drawn) return 'Active when you collect';
   if (f & FLAG_CLOSED) return 'Repaid';
   if (f & FLAG_DEFAULTED) return 'Defaulted';
@@ -133,15 +134,18 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
     // Attested hours are voucher units (centi tractor hours, 23 Oct); before the attestation, the plan's machine hours.
     const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.hours || 0);
     const vouchers = Number(r.finance?.voucher_value || 0);
-    // Use it by its last draw date (25 Oct; there is no "from" any more): the attested one, else the plan's.
+    // Its window (25 Oct): ready from six weeks before its last draw date, used by that date.
     const until = x.final ? new Date(x.final * 1000) : x.share.final_date ? new Date(x.share.final_date) : null;
+    const opens = x.opens ? new Date(x.opens * 1000) : until ? new Date(until.getTime() - 42 * 86400_000) : null;
     const over = x.lapsed || x.late;
+    const day = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     return (
       <Sheet map={map} onBack={onBack} bar={bar} onSwipe={onSwipe}>
         {head}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Row k="Status" v={statusOf(x)} />
-          <Row k={over ? 'Last day was' : 'Use it by'} v={until ? until.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} strong />
+          {!over && opens && <Row k={x.ready ? 'Ready since' : 'Ready from'} v={day(opens)} strong />}
+          <Row k={over ? 'Last day was' : 'Use it by'} v={until ? day(until) : '—'} strong />
           <Row k="Where" v="Union office" strong />
         </div>
         <div style={line} />
