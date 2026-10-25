@@ -66,7 +66,8 @@ export function useMyShares() {
         const drawn = !!ft && (Number(ft.loan?.flags ?? 0) & FLAG_DRAWN);
         // Its window (25 Oct): from its opening (fund_core from_date: a week before its sowing window, from the crop
         // calendar) up to its last draw date (the attested one, else the plan's).
-        const final = Number(ft?.final_date || 0) || (share.final_date ? Date.parse(`${share.final_date}T23:59:59Z`) / 1000 : 0);
+        // A share attested before the last-date rule (25 Oct) has none on-chain: it never lapses, whatever its plan says.
+        const final = ft ? Number(ft.final_date || 0) : (share.final_date ? Date.parse(`${share.final_date}T23:59:59Z`) / 1000 : 0);
         const opens = opensOf(ft, share);
         const now = Date.now() / 1000;
         const lapsed = !!ft?.lapsed;

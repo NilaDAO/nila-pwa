@@ -197,7 +197,8 @@ export function useUnionShares(api, { fresh } = {}) {
             ? { token: x.token, left: n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid), overdue: !!(flags & FLAG_OVERDUE) } : null;
           // Its window (25 Oct): Ready from its opening (a week before its sowing window) until the last draw date.
           const from = ft ? opensOf(ft) : Number(x.open || 0);
-          const final = Number(ft?.final_date || x.final || 0);
+          // Attested before the last-date rule (25 Oct): no last date on-chain, so never lapsed.
+          const final = ft ? Number(ft.final_date || 0) : Number(x.final || 0);
           const lapsed = !drawn && (!!ft?.lapsed || (final > 0 && now > final));
           return { token: x.token, planId: x.plan_id, crop: x.name || String(x.crop).replace(/_/g, ' '), colour: x.colour, area: x.area,
             zones: x.zones || [], harvest: x.harvest, kg: x.kg, slot: x.slot, from, final, drawn, loan, lapsed,
