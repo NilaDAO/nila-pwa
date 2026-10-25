@@ -181,10 +181,11 @@ export function useUnionShares(api) {
           ? { token: hex, left: n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid), overdue: !!(flags & FLAG_OVERDUE) } : null;
         const m = (by[ft.member] ||= { plan: p, shares: [] });
         m.shares.push({ token: hex, crop: r.name || x.crop.replace(/_/g, ' '), colour: r.colour, area: zones.indexOf(x.zone) + 1, zones: x.zones || share.zones || [x.zone],
-          // No floor (25 Oct): Ready from attestation until its last draw date; past it, unused, lapsed.
+          // Its window (25 Oct): Ready from its opening (from_date, six weeks before the last draw date) until the last
+          // draw date; past it, unused, lapsed.
           harvest: r.harvest, kg: r.kg, slot: r.slot, from: Number(ft.from_date), final: Number(ft.final_date || 0), drawn, loan,
           lapsed: !drawn && (!!ft.lapsed || (Number(ft.final_date || 0) > 0 && now > Number(ft.final_date))),
-          ready: !drawn && !ft.lapsed && !(Number(ft.final_date || 0) > 0 && now > Number(ft.final_date)) });
+          ready: !drawn && !ft.lapsed && now >= Number(ft.from_date || 0) && !(Number(ft.final_date || 0) > 0 && now > Number(ft.final_date)) });
       }
       Object.values(by).forEach((m) => m.shares.sort((a, b) => String(a.harvest || '').localeCompare(String(b.harvest || ''))));
       return by;

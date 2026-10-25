@@ -36,7 +36,7 @@ const MESSAGES = {
     41: 'Only a leader of the union can do this.',
     44: 'This crop share is not attested for this member.',
     45: 'This crop share is used already.',
-    46: 'This crop share cannot be used yet.',
+    46: 'Not open yet: a crop share can be used from six weeks before its last day.',
     47: 'More cash than the crop share allows.',
     48: "The treasury would fall below the cash at the office.",
     53: 'Not enough senior money to back the machine vouchers.',
