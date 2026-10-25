@@ -230,7 +230,8 @@ function CashCard({ cash, onScanLp }) {
       {live.length > 0 && (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollSnapType: 'x mandatory' }} aria-label="LP">
           {live.map((o) => (
-            <section key={o.id} style={{ ...card, flex: '0 0 85%', scrollSnapAlign: 'center', marginBottom: 0 }}>
+            // One offer takes the full width; several swipe, the next one peeking in (25 Oct).
+            <section key={o.id} style={{ ...card, flex: live.length > 1 ? '0 0 85%' : '0 0 100%', scrollSnapAlign: 'center', marginBottom: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <b>{o.state === 1 ? `LP ${short(o.lp)}` : o.kind === 0 ? 'LP brings cash' : 'Give cash'}</b>
                 <span style={{ color: o.state === 1 ? C.accent : C.muted, fontWeight: 700 }}>{o.state === 1 ? 'Here' : until(o.expires)}</span>
