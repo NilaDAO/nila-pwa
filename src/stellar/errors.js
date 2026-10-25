@@ -42,7 +42,7 @@ const MESSAGES = {
     53: 'Not enough senior money to back the machine vouchers.',
     56: 'Nothing is owed yet.',
     57: 'This crop share is not this member’s loan.',
-    58: 'This crop share is planned outside its crop'\''s sowing time.',
+    58: "This crop share is planned outside its crop's sowing time.",
     59: 'This crop share was not used in time and has lapsed.',
     60: 'Too late for this cycle: the last day to use this crop share has passed.',
     61: 'This crop share can still be used: its last day has not passed yet.',
