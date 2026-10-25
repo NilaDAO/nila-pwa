@@ -29,8 +29,9 @@ const qty = (kg, u) => `${Math.round((kg / u.per) * 10) / 10} ${u.short}`;
 const day = (t) => new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 
 /** H2's map (25 Oct): only this group's crop shares, each by the areas it grows on (from the member's field record),
- *  the member's name on the first; a member without a record shows the property. */
-function GroupMap({ group, members }) {
+ *  the member's name on the first; a member without a record shows the property. An AreaMap element itself, not a
+ *  component around it: the map stage draws the element's own props (record, labels, chip). */
+function groupMap(group, members) {
   const byAddr = Object.fromEntries((members || []).map((m) => [m.address, m]));
   const zones = []; const labels = {};
   for (const s of group?.shares || []) {
@@ -227,7 +228,7 @@ export function HarvestGroup({ id, go }) {
   const c = groups.find((x) => x.groups.some((g) => g.key === id));
   const g = c?.groups.find((x) => x.key === id);
   const back = () => go('harvests');
-  const map = <GroupMap group={g} members={members} />;
+  const map = groupMap(g, members);
   if (loading || !g) {
     return (
       <MapCard map={map} full={false} top={Math.round(window.innerHeight * 0.5)} header={{ title: 'Harvest', onBack: back }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
