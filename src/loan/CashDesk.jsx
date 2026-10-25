@@ -22,7 +22,7 @@ import RegisterMachine from '../machine/RegisterMachine';
 import { ScanLp } from '../anchor/LeaderLp';
 import CashBoard from '../leader/CashBoard';
 import CameraView from '../shell/CameraView';
-import { addressFromQr } from '../leader/unionMembers';
+import { addressFromQr, useUnionMembers } from '../leader/unionMembers';
 import { Secondary } from './AssetParts';
 
 const PURPOSE = { invest: 0, repay: 1 };
@@ -86,37 +86,29 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
   const [counting, setCounting] = useState(false);
   const [noPhotos, setNoPhotos] = useState(false);
   // Repay: her open loans from fund_core.loans_of (the contract's list, so a loan never drops out when
-  // her plan is replaced). The members are the one typed here, else the holders of the approved plans'
-  // tokens. Owed = cash part with interest + the voucher part (owners' dues and the senior prepay).
+  // her plan is replaced). The members are the one typed here, else the borrowers in the members list kept on the
+  // phone (25 Oct: no mint list per plan). Owed = cash part with interest + the voucher part (owners' dues and the
+  // senior prepay).
   const typed = isG(member.trim()) ? member.trim() : null;
+  const union = useUnionMembers(api);
   const loans = useQuery({
-    queryKey: ['stellar', 'loans', 'open', typed], enabled: purpose === 'repay' && !!api && !!cfg,
+    queryKey: ['stellar', 'loans', 'open', typed, union.dataUpdatedAt], enabled: purpose === 'repay' && !!api && !!cfg && !!union.data,
     queryFn: async () => {
       const crops = {};
-      const members = new Set(typed ? [typed] : []);
-      for (const p of (await api.approvedPlans()).plans) {
-        const { mints } = await api.mintList(p.id).catch(() => ({ mints: [] }));
-        for (const m of mints.filter((x) => x.token_id)) {
-          crops[tokenHex(m.token_id)] = { crop: m.crop, land: p.land_id };
-          if (!typed) {
-            const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(tokenHex(m.token_id))]).catch(() => null);
-            if (ft?.member) members.add(ft.member);
-          }
-        }
-      }
-      const out = [];
-      for (const who of members) {
-        const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(who)]);
-        for (const id of ids || []) {
+      for (const m of union.data) for (const x of m.shareList || []) crops[x.token] = { crop: x.name, land: m.lands[0] };
+      const members = typed ? [typed] : union.data.filter((m) => m.address && m.loans.length).map((m) => m.address);
+      const per = await Promise.all(members.map(async (who) => {
+        const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(who)]).catch(() => []);
+        return Promise.all((ids || []).map(async (id) => {
           const h = Buffer.from(id).toString('hex');
           const [loan, vb] = await Promise.all([
             readContract(cfg, 'fund_core', 'get_loan', [sv.address(cfg.union), sv.bytes32(h)]),
             readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(h)]).catch(() => null),
           ]);
-          if (loan && !loan.closed) out.push({ token: h, ...(crops[h] || { crop: 'Crop share' }), loan, vb });
-        }
-      }
-      return out;
+          return loan && !loan.closed ? { token: h, ...(crops[h] || { crop: 'Crop share' }), loan, vb } : null;
+        }));
+      }));
+      return per.flat().filter(Boolean);
     },
   });
   const owed = (l) => {

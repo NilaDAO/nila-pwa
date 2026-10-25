@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
+import { useUnionMembers } from './unionMembers';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -91,68 +92,39 @@ export function useUnionBook(api) {
 }
 
 /**
- * The union's members the leader's app knows (L5 "Who is it for?"): the holders of the approved plans' food tokens,
- * with their land, plus the borrowers in the node's loan list. DESIGN GAP: no names (the contact book is not wired);
- * a member is shown by land and short address. Members without an approved plan or a loan are found by scanning.
+ * The union's members the leader's app knows (L5 "Who is it for?"): every member of the members list with a Stellar
+ * account, with their land (25 Oct: from the list kept on the phone, no mint list or chain read per plan).
  */
 export function useKnownMembers(api) {
-  const { data: cfg } = useStellarConfig();
-  return useQuery({
-    queryKey: ['stellar', 'knownMembers', cfg?.union], enabled: !!api && !!cfg?.contracts?.fund_core, staleTime: 5 * 60_000,
-    queryFn: async () => {
-      const by = new Map();
-      const add = (g, land) => { if (!g) return; const m = by.get(g) || { address: g, lands: new Set() }; if (land) m.lands.add(land); by.set(g, m); };
-      const plans = (await api.approvedPlans().catch(() => ({ plans: [] }))).plans || [];
-      for (const p of plans) {
-        const { mints } = await api.mintList(p.id).catch(() => ({ mints: [] }));
-        const first = mints.find((m) => m.token_id);
-        if (!first) continue;
-        const hex = BigInt(first.token_id).toString(16).padStart(64, '0');
-        const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(hex)]).catch(() => null);
-        add(ft?.member, p.land_id);
-      }
-      const { loans } = await api.unionLoans().catch(() => ({ loans: [] }));
-      for (const l of loans) add(l.borrower);
-      return [...by.values()].map((m) => ({ address: m.address, lands: [...m.lands].sort((a, b) => a - b) }));
-    },
-  });
+  const members = useUnionMembers(api);
+  return { ...members, data: members.data?.filter((m) => m.address).map((m) => ({ address: m.address, lands: m.lands })) };
 }
 
-/** The union's to-do items for L1, from what the contracts and the node give today. */
+/** The union's to-do items for L1 (25 Oct): from the members list kept on the phone, not one call per plan or loan.
+ *  Crop shares ready: one row with the count, which opens the Assets map (every member with a Ready share is marked
+ *  there). Repayments: from the list's loans and their estimated due date (LOAN_RULES §1); her G2 reads the contract's. */
 export function useLeaderTodo(api, cash) {
   const { data: cfg } = useStellarConfig();
+  const members = useUnionMembers(api);
   return useQuery({
-    queryKey: ['stellar', 'leaderTodo', cfg?.union], enabled: !!api && !!cfg?.contracts?.fund_core, staleTime: 60_000, refetchInterval: 60_000,
+    queryKey: ['stellar', 'leaderTodo', cfg?.union, members.dataUpdatedAt],
+    enabled: !!api && !!cfg?.contracts?.fund_core && Array.isArray(members.data), staleTime: 60_000, refetchInterval: 60_000,
     queryFn: async () => {
-      const u = sv.address(cfg.union);
       const now = Date.now() / 1000;
       const out = [];
       const pending = (await api.pendingApprovals().catch(() => ({ plans: [] }))).plans || [];
       for (const p of pending) out.push({ key: `approve-${p.id}`, title: 'Approve crop plan', who: `Land ${p.land_id}`, to: `approvals/${p.id}` });
-      // A crop share request: an approved plan with a share that is ready (from its SOS) and not drawn.
-      const approved = (await api.approvedPlans().catch(() => ({ plans: [] }))).plans || [];
-      for (const p of approved) {
-        const { mints } = await api.mintList(p.id).catch(() => ({ mints: [] }));
-        let ready = 0; let amount = 0;
-        for (const m of mints.filter((x) => x.token_id)) {
-          const hex = BigInt(m.token_id).toString(16).padStart(64, '0');
-          const ft = await readContract(cfg, 'fund_core', 'food_token', [u, sv.bytes32(hex)]).catch(() => null);
-          if (ft && Number(ft.from_date) <= now && !(Number(ft.loan?.flags ?? 0) & 8)) { ready += 1; amount += n(ft.amount); }
-        }
-        if (ready) out.push({ key: `share-${p.id}`, title: 'Crop share request', amount, who: `Land ${p.land_id}`, to: `loan/${p.id}` });
+      let shares = 0; let who = 0;
+      for (const m of members.data) {
+        const ready = (m.shareList || []).filter((x) => x.state === 'ready' && !(Number(x.final || 0) > 0 && now > Number(x.final)));
+        if (ready.length) { shares += ready.length; who += 1; }
       }
-      const { loans } = await api.unionLoans().catch(() => ({ loans: [] }));
-      for (const l of loans) {
-        const [g, due] = await Promise.all([
-          readContract(cfg, 'fund_core', 'get_loan', [u, sv.bytes32(l.token_id)]).catch(() => null),
-          readContract(cfg, 'fund_core', 'due_date', [u, sv.bytes32(l.token_id)]).catch(() => null),
-        ]);
-        if (!g || g.closed) continue;
-        const owed = n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid);
-        const d = Number(due || 0);
-        const who = `${l.borrower.slice(0, 4)}…${l.borrower.slice(-4)}`;
-        if (g.overdue || (d && d < now)) out.push({ key: `collect-${l.token_id}`, title: 'Collect repayment', amount: owed, who, to: `cash/repay/${l.borrower}`, urgent: true });
-        else if (d && d - now < 14 * 86400) out.push({ key: `payback-${l.token_id}`, title: 'Payback coming', amount: owed, who, to: `cash/repay/${l.borrower}` });
+      if (shares) out.push({ key: 'share-ready', title: 'Crop shares ready', who: `${shares} share${shares === 1 ? '' : 's'} · ${who} member${who === 1 ? '' : 's'}`, to: 'assets' });
+      for (const m of members.data) {
+        for (const l of m.loans) {
+          if (l.overdue || (l.due && l.due < now)) out.push({ key: `collect-${l.token}`, title: 'Collect repayment', amount: l.left, who: m.label, to: `members/${m.route}`, urgent: true });
+          else if (l.due && l.due - now < 14 * 86400) out.push({ key: `payback-${l.token}`, title: 'Payback coming', amount: l.left, who: m.label, to: `members/${m.route}` });
+        }
       }
       return out;
     },

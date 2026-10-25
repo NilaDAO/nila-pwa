@@ -16,14 +16,14 @@ import { keypadClient } from '../keypad/api';
 import { fromNodeCached } from '../plan/record';
 import { recordFields, shapeToFields } from '../plan/titleFields';
 import { useNilaSigner } from '../wallet/signer';
-import { opensOf, rowOf } from '../loan/MyShares';
+import { opensOf } from '../loan/MyShares';
+import { keptGet, keptPut } from '../shell/kept';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
 const FLAG_OVERDUE = 1;
 const FLAG_CLOSED = 4;
 const FLAG_DRAWN = 8;
-const hexOf = (id) => BigInt(id).toString(16).padStart(64, '0');
 const short = (g) => (g ? `${g.slice(0, 4)}…${g.slice(-4)}` : '');
 // ~25 m square around a sent field point (an open border job has no accepted shape yet).
 const square = ({ lat, lng }) => {
@@ -46,12 +46,22 @@ const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'no
 function readKept(acct, union) {
   try { const v = JSON.parse(localStorage.getItem(cacheKey(acct, union)) || 'null'); return Array.isArray(v) ? v : undefined; } catch { return undefined; }
 }
-const nodeKey = (acct, union) => `nila.members.node.${union}.${acct}`;
-function readNodeList(acct, union) {
-  try { return JSON.parse(localStorage.getItem(nodeKey(acct, union)) || 'null') || undefined; } catch { return undefined; }
-}
-function keepNodeList(acct, union, v) {
-  try { localStorage.setItem(nodeKey(acct, union), JSON.stringify(v)); } catch { /* full or private mode */ }
+// The node's rows as last seen, with the list's change counter (25 Oct), kept in IndexedDB: only rows changed since
+// that counter are asked for (GET /stellar/union/members?since=N) and merged in.
+const rowsKey = (acct, union) => `members.${union}.${acct}`;
+async function nodeRows(api, acct, union) {
+  const kept = await keptGet(rowsKey(acct, union));
+  const node = await api.unionMembers(kept?.seq).catch(() => null);
+  if (!Array.isArray(node?.members)) return kept?.rows;
+  let rows;
+  if (node.full || !kept) rows = Object.fromEntries(node.members.map((r) => [r.key || r.address, r]));
+  else {
+    rows = { ...kept.rows };
+    for (const r of node.members) rows[r.key || r.address] = r;
+    for (const k of node.removed || []) delete rows[k];
+  }
+  keptPut(rowsKey(acct, union), { seq: node.seq || 0, rows });
+  return rows;
 }
 function keep(acct, union, list) {
   try { localStorage.setItem(cacheKey(acct, union), JSON.stringify(list.map((m) => Object.fromEntries(KEEP.map((k) => [k, m[k]]))))); } catch { /* full or private mode */ }
@@ -77,18 +87,15 @@ export function useUnionMembers(api) {
     staleTime: 2 * 60_000,
     placeholderData: () => (cfg?.union && acct ? readKept(acct, cfg.union) : undefined),
     queryFn: async () => {
-      // The node's compact members list (map-centred lane, 23 Oct): one row per member; the property outlines from the
-      // records kept on this phone. Until the node has it (404), the list is built from the lists below.
-      // ETag (24 Oct): the last list from the node and its tag are kept on this phone; an unchanged list comes back as
-      // 304 and the kept one is used.
-      const kept = readNodeList(acct, cfg.union);
-      let node = await api.unionMembers(kept?.etag).catch(() => null);
-      if (node?.notModified) node = kept?.body || null;
-      else if (Array.isArray(node?.members) && node.etag) keepNodeList(acct, cfg.union, { etag: node.etag, body: node });
-      if (Array.isArray(node?.members)) {
-        const list = finish(await Promise.all(node.members.map(async (r) => {
+      // The node's compact members list (map-centred lane, 23 Oct): one row per member, with its crop shares (25 Oct);
+      // the property outlines from the records kept on this phone. Until the node has it (404), the list is built
+      // from the lists below. Kept on the phone with its change counter: only changed rows are fetched (25 Oct).
+      const rows = await nodeRows(api, acct, cfg.union);
+      if (rows) {
+        const list = finish(await Promise.all(Object.values(rows).map(async (r) => {
           const m = { key: r.key || r.address, address: r.address || '', name: r.name || '', phone: r.phone || '', lands: new Set(), places: [], fields: [],
             note: r.note || '', job: r.job, nextHarvest: r.next_harvest || null, shareCounts: r.shares || {},
+            seq: r.seq || 0, shareList: r.share_list || [],
             loans: (r.loans || []).map((l) => ({ token: String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'), left: Number(l.left ?? l.cash ?? 0), overdue: !!l.overdue, due: Number(l.due || 0) })) };
           await Promise.all((r.titles || []).map(async (t) => {
             m.lands.add(t.title_id);
@@ -152,42 +159,52 @@ export function useUnionMembers(api) {
   });
 }
 
-/** G2: her crop shares and her loans' due dates, read when her G2 opens. The approved plans of the union's lands, their
- *  mint lists in parallel, then every share's state in one batched read; kept 2 minutes. */
-export function useUnionShares(api) {
+/** The union's crop shares per member (25 Oct): from the members list's rows (token, crop, area, season, window —
+ *  no mint list per plan), with each share's state on Stellar. Chain reads are kept on this phone and read again only
+ *  for members whose row changed since the last read (their counter), in batches of 100; `fresh`: one member whose
+ *  shares are always read again (her G2, so a share just drawn on her own phone does not still offer Take up). */
+export function useUnionShares(api, { fresh } = {}) {
   const { data: cfg } = useStellarConfig();
+  const members = useUnionMembers(api);
+  const list = members.data;
   return useQuery({
-    queryKey: ['stellar', 'unionShares', cfg?.union], enabled: !!api && !!cfg?.contracts?.fund_core,
-    // Read again whenever G2 opens (23 Oct): a share she just drew on her own phone must not still offer Take up.
-    staleTime: 2 * 60_000, refetchOnMount: 'always',
+    queryKey: ['stellar', 'unionShares', cfg?.union, members.dataUpdatedAt, fresh || ''],
+    enabled: !!api && !!cfg?.contracts?.fund_core && Array.isArray(list),
+    staleTime: 2 * 60_000, placeholderData: (prev) => prev,
     queryFn: async () => {
       const now = Date.now() / 1000;
-      const plans = await api.approvedPlans().then((r) => r.plans || []).catch(() => []);
-      const lists = await Promise.all(plans.map((p) => api.mintList(p.id).then((r) => r.mints || []).catch(() => [])));
-      const items = plans.flatMap((p, i) => lists[i].filter((x) => x.token_id).map((x) => ({ p, x, hex: hexOf(x.token_id) })));
-      const fts = items.length ? await readFoodTokens(cfg, cfg.union, items.map((it) => it.hex)) : {};
-      const by = {};
-      for (const { p, x, hex } of items) {
-        const ft = fts[hex];
-        if (!ft?.member) continue;
-        const zones = Object.keys(p.plan?.proposal || {}).sort();
-        const share = (p.plan.shares || []).find((y) => y.key === x.share) || {};
-        const r = rowOf({ ...x, share, plan: p }) || {};
-        const flags = Number(ft.loan?.flags ?? 0);
-        const drawn = !!(flags & FLAG_DRAWN);
-        // Her loan read from the share itself (23 Oct): a fresh draw is not in the node's loan list until its next sync.
-        const g = ft.loan || {};
-        const loan = drawn && !(flags & FLAG_CLOSED)
-          ? { token: hex, left: n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid), overdue: !!(flags & FLAG_OVERDUE) } : null;
-        const m = (by[ft.member] ||= { plan: p, shares: [] });
-        m.shares.push({ token: hex, crop: r.name || x.crop.replace(/_/g, ' '), colour: r.colour, area: zones.indexOf(x.zone) + 1, zones: x.zones || share.zones || [x.zone],
-          // Its window (25 Oct): Ready from its opening (from_date, a week before its sowing window) until the last
-          // draw date; past it, unused, lapsed.
-          harvest: r.harvest, kg: r.kg, slot: r.slot, from: opensOf(ft), final: Number(ft.final_date || 0), drawn, loan,
-          lapsed: !drawn && (!!ft.lapsed || (Number(ft.final_date || 0) > 0 && now > Number(ft.final_date))),
-          ready: !drawn && !ft.lapsed && now >= opensOf(ft) && !(Number(ft.final_date || 0) > 0 && now > Number(ft.final_date)) });
+      const key = `chain.${cfg.union}`;
+      const kept = (await keptGet(key)) || { seqs: {}, fts: {} };
+      const need = [];
+      for (const m of list) {
+        const again = m.key === fresh || kept.seqs[m.key] !== m.seq;
+        for (const x of m.shareList || []) if (again || !(x.token in kept.fts)) need.push(x.token);
       }
-      Object.values(by).forEach((m) => m.shares.sort((a, b) => String(a.harvest || '').localeCompare(String(b.harvest || ''))));
+      const read = need.length ? await readFoodTokens(cfg, cfg.union, need).catch(() => null) : {};
+      const fts = { ...kept.fts };
+      if (read) for (const t of need) fts[t] = read[t] || null;
+      keptPut(key, { seqs: read ? Object.fromEntries(list.map((m) => [m.key, m.seq])) : kept.seqs, fts });
+      const by = {};
+      for (const m of list) {
+        if (!m.address || !(m.shareList || []).length) continue;
+        const shares = m.shareList.map((x) => {
+          const ft = fts[x.token];
+          const flags = Number(ft?.loan?.flags ?? 0);
+          const drawn = ft ? !!(flags & FLAG_DRAWN) : ['financed', 'overdue', 'repaid'].includes(x.state);
+          // Her loan read from the share itself (23 Oct): a fresh draw is not in the node's loan list until its next sync.
+          const g = ft?.loan || {};
+          const loan = drawn && ft && !(flags & FLAG_CLOSED)
+            ? { token: x.token, left: n(g.principal) - n(g.principal_paid) + n(g.interest_accrued) - n(g.interest_paid), overdue: !!(flags & FLAG_OVERDUE) } : null;
+          // Its window (25 Oct): Ready from its opening (a week before its sowing window) until the last draw date.
+          const from = ft ? opensOf(ft) : Number(x.open || 0);
+          const final = Number(ft?.final_date || x.final || 0);
+          const lapsed = !drawn && (!!ft?.lapsed || (final > 0 && now > final));
+          return { token: x.token, planId: x.plan_id, crop: x.name || String(x.crop).replace(/_/g, ' '), colour: x.colour, area: x.area,
+            zones: x.zones || [], harvest: x.harvest, kg: x.kg, slot: x.slot, from, final, drawn, loan, lapsed,
+            ready: !drawn && !lapsed && now >= from };
+        });
+        by[m.address] = { planId: shares.find((x) => x.ready)?.planId || shares[shares.length - 1]?.planId, shares };
+      }
       return by;
     },
   });

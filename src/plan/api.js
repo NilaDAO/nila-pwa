@@ -63,8 +63,8 @@ export function planClient(signer) {
     unionLoans: () => call('GET', '/stellar/union/loans'),
     unionTitles: () => call('GET', '/stellar/union/titles'),
     // The compact members list (map-centred lane, 23 Oct): one row per member; 404 until the node has it.
-    // With the ETag of the list kept on the phone: { notModified: true } when the node's list has not changed (24 Oct).
-    unionMembers: (etag) => call('GET', '/stellar/union/members', undefined, { etag }),
+    // since (25 Oct): the change counter of the list kept on the phone; only the rows changed after it come back.
+    unionMembers: (since) => call('GET', since ? `/stellar/union/members?since=${since}` : '/stellar/union/members'),
     unionSearch: (window) => call('POST', '/stellar/union/search', { window }),
   };
 }

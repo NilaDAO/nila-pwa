@@ -6,6 +6,7 @@
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
@@ -69,8 +70,12 @@ export default function MemberStatus({ id, go }) {
   const members = useUnionMembers(api);
   const { data: cfg } = useStellarConfig();
   const found = (members.data || []).find((x) => x.route === id);
-  // Her crop shares and her loans' due dates are read only here (22 Oct), after the list.
-  const shares = useUnionShares(api);
+  // Her crop shares from the members list (25 Oct); hers are read on-chain again whenever her G2 opens.
+  const shares = useUnionShares(api, { fresh: found?.key });
+  // Her plan (what grows on each area today): one call for her plan only, not one per member.
+  const planId = shares.data?.[found?.address]?.planId;
+  const plan = useQuery({ queryKey: ['plan', 'byId', planId], enabled: !!api && !!planId, staleTime: 5 * 60_000,
+    queryFn: () => api.plan(planId) });
   // Her open loans: the node's list, plus any drawn share it does not hold yet (read from the share on-chain).
   const loans = useMemo(() => {
     if (!found) return undefined;
@@ -83,9 +88,9 @@ export default function MemberStatus({ id, go }) {
   const m = useMemo(() => {
     if (!found) return found;
     const mine = shares.data?.[found.address] || {};
-    return { ...found, plan: mine.plan, shares: mine.shares || [],
+    return { ...found, plan: plan.data, shares: mine.shares || [],
       loans: loans.map((l) => ({ ...l, due: dues.data?.[l.token] || 0, ...((mine.shares || []).find((x) => x.token === l.token) ? { crop: mine.shares.find((x) => x.token === l.token).crop } : {}) })) };
-  }, [found, loans, shares.data, dues.data]);
+  }, [found, loans, shares.data, dues.data, plan.data]);
   const inv = useInvestment(m?.address);
   const tx = useSorobanTx();
   // Invest runs in place (22 Oct): the button row turns into Photo count | Cash teller; Photo count opens the C6 count
@@ -219,7 +224,7 @@ export default function MemberStatus({ id, go }) {
                     <span style={{ color: C.muted }}>Area {x.area}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
                   </span>
                   {st.take ? (
-                    <button type="button" onClick={() => go(`loan/${m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
+                    <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
                       background: C.accent, color: C.ink, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Take up</button>
                   ) : (
                     <span style={{ flexShrink: 0, height: 24, borderRadius: R.round, padding: '0 8px', display: 'flex', alignItems: 'center', fontSize: 12,
