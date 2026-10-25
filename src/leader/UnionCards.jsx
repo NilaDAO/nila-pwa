@@ -86,7 +86,6 @@ export function useLeaderSlides({ on = true, onSettle, onScanLp, onMachine }) {
     slides.push(
       <section key={`lp-${o.id}`} aria-label="LP offer" style={card}>
         <Title Icon={LpBadge}>{here ? `LP ${short(o.lp)} comes to ${verb} ${inr(o.inr)}` : `Waiting for an LP to ${verb} ${inr(o.inr)}`}</Title>
-        <span style={{ ...small, color: C.muted }}>Fee {inr(Math.round((o.inr * 100) / 10_000))} (1%)</span>
         <Steps items={steps} />
       </section>,
     );
