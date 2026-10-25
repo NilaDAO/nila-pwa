@@ -17,7 +17,7 @@ import { usePlanClient } from '../plan/hooks';
 import { useFxRate } from '../shell/UsdcAsset';
 import { useLeaderMap } from './unionMap';
 import { useUnionMembers, useUnionShares } from './unionMembers';
-import { harvestGroups, unitOf, useCropBatches, useSetPrice } from './harvests';
+import { harvestGroups, unitOf, useCropBatches, useSetPrice } from './harvestData';
 
 const DAY = 86400;
 const card = { background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 };
