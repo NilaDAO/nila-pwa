@@ -7,7 +7,7 @@
 //  - useHomeMap: A1's map, her areas labelled with what grows there in the season she is in; a tap on an area opens
 //    its crop share for that season.
 import { useCallback, useMemo, useState } from 'react';
-import { StageCtx } from './stageCtx';
+import { LabelsCtx, StageCtx } from './stageCtx';
 import AreaMap from '../plan/AreaMap';
 import { useFieldRecord } from '../plan/record';
 import { useCropPlan } from '../plan/hooks';
@@ -29,15 +29,23 @@ const Chip = ({ text }) => (
     fontFamily: 'Inter, system-ui, sans-serif', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap' }}>{text}</div>
 );
 
+const LABELS_KEY = 'nila.map.labels';
+
 export default function MapStage({ children }) {
   const [props, setProps] = useState(null);
   const api = useMemo(() => ({ set: (p) => setProps((was) => (same(was, p) ? was : p)) }), []);
+  // Labels off (25 Oct): the outlines stay, their names and notes are hidden; kept on this phone for every map.
+  const [off, setOff] = useState(() => { try { return localStorage.getItem(LABELS_KEY) === 'off'; } catch { return false; } });
+  const labels = useMemo(() => ({ off, toggle: () => setOff((v) => { try { localStorage.setItem(LABELS_KEY, v ? 'on' : 'off'); } catch { /* private mode */ } return !v; }) }), [off]);
+  const shownLabels = useMemo(() => (off && props?.labels
+    ? Object.fromEntries(Object.entries(props.labels).map(([k, v]) => [k, { ...v, text: undefined, sub: undefined, hide: true }])) : props?.labels), [off, props]);
   return (
     <StageCtx.Provider value={api}>
+    <LabelsCtx.Provider value={labels}>
       {props?.record ? (
         // Clipped: the map's tiles reach past its box and would otherwise make the page taller than the card.
         <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }} data-testid="map-stage">
-          <AreaMap {...props} height="100%" />
+          <AreaMap {...props} labels={shownLabels} height="100%" />
           {props.chip && <Chip text={props.chip} />}
         </div>
       ) : (
@@ -54,6 +62,7 @@ export default function MapStage({ children }) {
         </div>
       )}
       {children}
+    </LabelsCtx.Provider>
     </StageCtx.Provider>
   );
 }

@@ -1,6 +1,6 @@
 // Shared crop-plan layout: the header band (map in P4c) and the bottom sheet of the CP boards.
-import { cloneElement, isValidElement, useEffect, useLayoutEffect, useRef } from 'react';
-import { SheetLowCtx, useStage } from '../shell/stageCtx';
+import { cloneElement, isValidElement, useContext, useEffect, useLayoutEffect, useRef } from 'react';
+import { LabelsCtx, SheetLowCtx, useStage } from '../shell/stageCtx';
 import { C, FONT, GRADIENT, R } from '../shell/tokens';
 import useSheetDrag from '../shell/useSheetDrag';
 import { SettingsButton } from '../shell/RoundButton';
@@ -14,6 +14,8 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
   // (shell/MapStage) draws this sheet's map, so it is never mounted again between screens.
   const stage = useStage();
   const staged = !!stage && isValidElement(map);
+  const labelsCtx = useContext(LabelsCtx);
+  const labelled = staged && Object.keys(map.props.labels || {}).length > 0;
   // A sheet without its record yet clears the stage (23 Oct): the last screen's fields never stay behind it.
   useEffect(() => { if (staged) stage.set(map.props.record || map.props.chip ? map.props : null); });   // a filter with no match keeps its chip
   const shown = staged ? null : map;
@@ -129,6 +131,15 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}.cp-sheet [data-sheet-head] h1{margin:0!important}html,body{overscroll-behavior-y:none}'}</style>
         {/* CP10's season / area bar sits on top of the card and moves with it (board CropPlanQ3-xdlz). */}
         {bar && <div style={{ position: 'absolute', left: 8, right: 8, bottom: 'calc(100% + 12px)' }}>{bar}</div>}
+        {/* Labels on the map on or off (25 Oct): a small toggle above the card, on map screens with labels. */}
+        {!bar && staged && labelled && (
+          <div style={{ position: 'absolute', right: 8, bottom: 'calc(100% + 12px)' }}>
+            <button type="button" aria-pressed={!labelsCtx.off} onClick={labelsCtx.toggle} style={{ height: 32, borderRadius: R.round, border: 0, padding: '0 12px',
+              background: 'rgba(18,18,18,0.85)', color: C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              {labelsCtx.off ? 'Show labels' : 'Hide labels'}
+            </button>
+          </div>
+        )}
         <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
         {headRow}
         {/* Lowered (map-central): the body fades out, so under the tab bar only the card's gradient shows. */}
