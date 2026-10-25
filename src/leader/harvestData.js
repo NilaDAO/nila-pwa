@@ -72,7 +72,8 @@ export function useSetPrice() {
 }
 
 const half = (d) => (d.getUTCDate() <= 10 ? 0 : d.getUTCDate() <= 20 ? 1 : 2);
-const PART = ['start of', 'mid', 'end of'];
+// early / mid / late (25 Oct): "Harvest start of May 2027" read as a date ("starts on May 27").
+const PART = ['early', 'mid', 'late'];
 
 /** The union's crop shares by crop, then by harvest (start, mid or end of a month): the H1 rows and an H2 group. */
 export function harvestGroups(members, shares, now = Date.now() / 1000) {
@@ -89,7 +90,7 @@ export function harvestGroups(members, shares, now = Date.now() / 1000) {
       const c = (crops[x.crop_key] ||= { crop: x.crop_key, name: x.crop, colour: x.colour, groups: {} });
       const g = (c.groups[key] ||= { key, crop: x.crop_key, at: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), [1, 11, 21][half(d)]) / 1000,
         label: `Harvest ${PART[half(d)]} ${d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}${d.getUTCFullYear() !== new Date().getUTCFullYear() ? ` ${d.getUTCFullYear()}` : ''}`,
-        short: `${PART[half(d)].replace(' of', '')} ${d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}`,
+        short: `${PART[half(d)]} ${d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}`,
         shares: [] });
       const m = label[addr];
       g.shares.push({ ...x, member: addr, who: m?.label || `${addr.slice(0, 4)}…${addr.slice(-4)}`, route: m?.route,
