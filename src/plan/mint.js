@@ -3,13 +3,16 @@
 // the tokens go to her wallet (the land title's holder) and the attester copies them to Stellar (F2). Steps, each
 // safe to repeat: the node tops up the leader's POL (once per plan) → mintForBatchMemberByLeader with exactly the
 // node's arguments (GET /plan/{id}/mint, which names the minting union), skipping tokens she already holds.
-// `check` (her CP12 too) reads which of her crop shares are made.
+// `check` (her CP12 too) reads which of her crop shares are made: attested on Stellar first (the attester copies only
+// minted FoodTokens; one quick read each, 25 Oct), Polygon balances only for the rest.
 import { useCallback, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import { useProvider } from '../hooks/useWallet.ts';
 import { useNilaSigner } from '../wallet/signer';
 import foodTokenAbi from '../components/ABI/FoodTokenP1.json';
 import { usePlanClient } from './hooks';
+import { useStellarConfig } from '../stellar/hooks';
+import { readContract, sv, tokenHex } from '../stellar/soroban';
 
 const FOODTOKEN = process.env.REACT_APP_FOODTOKEN_ADDRESS;
 const CHAIN_ID = Number(process.env.REACT_APP_CHAIN_ID) || 137;
@@ -58,6 +61,7 @@ export function reasonOf(e) {
 export function useMintCropShares() {
   const s = useNilaSigner();
   const api = usePlanClient();
+  const { data: cfg } = useStellarConfig();
   const { provider } = useProvider();
   const [state, setState] = useState({ status: 'idle' });
   const nonceRef = useRef(null); // our own counter: ethers caches getTransactionCount for 250 ms
@@ -132,15 +136,20 @@ export function useMintCropShares() {
       const ft = new ethers.Contract(FOODTOKEN, ABI, provider);
       const { mints, land_id: landId } = await api.mintList(planId);
       const ready = mints.filter((m) => m.args);
-      const holder = await holderOf(ft, landId);
-      const held = await Promise.all(ready.map((m) => ft.balanceOf(holder, m.token_id)));
-      const n = held.filter((b) => b > 0n).length;
+      // Attested on Stellar = made (the attester copies only minted FoodTokens). A demo fork that started fresh has
+      // none of them any more; Stellar still does, so the plan opens at once instead of waiting forever.
+      const attested = cfg ? await Promise.all(ready.map((m) => readContract(cfg, 'fund_core', 'food_token',
+        [sv.address(cfg.union), sv.bytes32(tokenHex(m.token_id))]).then((x) => !!x, () => false))) : ready.map(() => false);
+      const rest = ready.filter((_, i) => !attested[i]);
+      const holder = rest.length ? await holderOf(ft, landId) : null;
+      const held = await Promise.all(rest.map((m) => ft.balanceOf(holder, m.token_id)));
+      const n = attested.filter(Boolean).length + held.filter((b) => b > 0n).length;
       const seen = n && n === ready.length
         ? { status: mints.length > n ? 'partial' : 'done', done: n, total: mints.length, refused: mints.filter((m) => m.error).map((r) => ({ ...r, error: reasonOf(r.error) })) }
         : { status: 'waiting', done: n, total: mints.length };
       setState((prev) => (prev.status === 'busy' ? prev : seen));   // never over a mint in progress
     } catch { setState((prev) => (prev.status === 'busy' ? prev : { status: 'waiting' })); }
-  }, [api, provider, holderOf]);
+  }, [api, provider, holderOf, cfg]);
 
   return { ...state, run, check };
 }
