@@ -282,7 +282,8 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
         <section style={{ ...card, padding: '18px 22px', gap: 4, alignItems: 'center', textAlign: 'center' }} aria-label="Union treasury">
           <div style={{ color: C.muted }}>Union treasury</div>
           <div style={{ fontSize: 32, lineHeight: 1.2, fontWeight: 700 }}>{inr(cash.treasury)}</div>
-          <div style={{ color: C.muted }}>+ {book ? inr(book.earningsPending) : '…'} earnings pending</div>
+          {/* The union's cut of open loans' interest (treasury + rainy-day fee, 1.77% on the demo union): small, so in paise. */}
+          <div style={{ color: C.muted }}>+ {book ? (book.earningsPending < 10 ? `₹${book.earningsPending.toFixed(2)}` : inr(book.earningsPending)) : '…'} earnings pending</div>
           <Chip book={book} api={api} onFound={() => bookQ.refetch()} />
           {bookQ.isError && <p style={{ color: C.coral, fontSize: 13, margin: 0 }}>The share list could not be read: {bookQ.error.message}</p>}
         </section>
@@ -319,8 +320,11 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
               </a>
             )}
             <Row k="Member contributions" v={book ? inr(book.contributions) : '…'} />
-            <Row k="In circulation" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}%)`} />
-            <Row k="Available to cash in" v={inr(cash.free)} accent />
+            {/* Cash at the office may pass the treasury (24 Oct): the part above it is offered to the LPs to collect. */}
+            <Row k="Cash at the office" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}% of the treasury)`} />
+            {cash.atHand > cash.treasury
+              ? <Row k="Above the treasury" v={`${inr(cash.atHand - cash.treasury)} · offered to LPs`} />
+              : <Row k="Available to cash in" v={inr(cash.free)} accent />}
           </div>
         </section>
         <CashCard cash={cash} onScanLp={onScanLp} />

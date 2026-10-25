@@ -31,7 +31,7 @@ export function useUnionCash({ poll = 30_000, on = true } = {}) {
         usdc: { lp: n(lpUsdc), domestic: n(dom), offshore: n(off) },
         // Lending is on hold while a loan is overdue (fund_core.on_hold: the count).
         overdue: Number(hold || 0),
-        // Available to cash in = treasury − cash in circulation (cash at hand never exceeds the treasury).
+        // Available to cash in = treasury − cash at the office, never below 0 (cash at hand may pass the treasury, 24 Oct).
         free: Math.max(0, n(treasury) - n(atHand)),
       };
     },
