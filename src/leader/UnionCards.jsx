@@ -70,17 +70,24 @@ export function useLeaderSlides({ on = true, onSettle, onScanLp, onMachine }) {
     const here = o.state === 1;
     const steps = bring
       ? [here ? `LP ${short(o.lp)} accepted: they bring ${inr(o.inr)} to the office.` : `An LP accepts it on their phone (expires in ${expiresIn(o.expires, now)}).`,
-        'Take the cash, then scan the LP\'s code (Tasks → Scan an LP code).',
+        'Take the cash, then scan the LP\'s code.',
         'The union\'s USDC pays the LP. The cash is at the office for the loan.']
       : [here ? `LP ${short(o.lp)} accepted: they come to collect ${inr(o.inr)}.` : `An LP accepts it on their phone (expires in ${expiresIn(o.expires, now)}).`,
-        'Scan the LP\'s code (Tasks → Scan an LP code), then hand over the cash.',
+        'Scan the LP\'s code, then hand over the cash.',
         'The LP\'s USDC goes to the union; the cash at the office goes down.'];
+    // Step 2 carries the scan (25 Oct, as the repay card's "Show your QR"); the state is the title.
+    steps[1] = (
+      <>
+        <span>{steps[1]}</span>
+        <button type="button" style={{ ...(here ? primary : secondary), alignSelf: 'flex-start', height: 40, padding: '0 16px', width: 'auto' }} onClick={onScanLp}>Scan the LP's code</button>
+      </>
+    );
+    const verb = bring ? 'bring' : 'collect';
     slides.push(
       <section key={`lp-${o.id}`} aria-label="LP offer" style={card}>
-        <Title Icon={LpBadge}>{bring ? 'LP brings cash' : 'LP collects cash'} · {inr(o.inr)}</Title>
-        <span style={{ ...small, color: here ? C.accent : C.muted, fontWeight: 700 }}>{here ? 'The LP is on the way' : 'Waiting for an LP'} · fee {inr(Math.round((o.inr * 100) / 10_000))} (1%)</span>
+        <Title Icon={LpBadge}>{here ? `LP ${short(o.lp)} comes to ${verb} ${inr(o.inr)}` : `Waiting for an LP to ${verb} ${inr(o.inr)}`}</Title>
+        <span style={{ ...small, color: C.muted }}>Fee {inr(Math.round((o.inr * 100) / 10_000))} (1%)</span>
         <Steps items={steps} />
-        {here && <button type="button" style={primary} onClick={onScanLp}>Scan the LP's code</button>}
       </section>,
     );
   }
