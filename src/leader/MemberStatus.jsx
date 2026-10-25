@@ -37,6 +37,7 @@ function stateOf(x, loans) {
   const loan = loans.find((l) => l.token === x.token);
   if (loan) return loan.overdue ? { label: 'Overdue', bg: 'rgba(230,146,131,0.18)', fg: C.coral } : { label: 'Financed', bg: C.ink, fg: C.muted };
   if (x.drawn) return { label: 'Repaid', bg: C.ink, fg: C.text };
+  if (x.lapsed) return { label: 'Not used · lapsed', bg: C.ink, fg: C.muted };   // past its last draw date (25 Oct)
   if (x.ready) return { take: true };
   return { label: fromLabel(x.from), bg: C.ink, fg: C.muted };
 }
@@ -134,8 +135,9 @@ export default function MemberStatus({ id, go }) {
   const areas = areasOf(m.record);
   const fields = m.record?.meta?.geometry?.field_features?.features || [];
   const acres = areas.reduce((a, z) => a + (z.area_m2 || 0), 0) / 4046.86;
-  const open = m.shares.filter((x) => !x.drawn && x.from);
-  const next = [...open].sort((a, b) => a.from - b.from)[0];
+  // Not drawn and not lapsed (25 Oct: no from date any more, attested with its last draw date), soonest last date first.
+  const open = m.shares.filter((x) => !x.drawn && !x.lapsed);
+  const next = [...open].sort((a, b) => (a.final || a.from) - (b.final || b.from))[0];
   const owed = m.loans.reduce((a, x) => a + (x.left || 0), 0);
   const loan = [...m.loans].sort((a, b) => (a.due || 9e12) - (b.due || 9e12))[0];
   const dueLoan = m.loans.find((x) => x.due && x.due < now);
@@ -158,7 +160,7 @@ export default function MemberStatus({ id, go }) {
         {/* Fields: the fields her title was minted with (L3/L4), from the title's record (meta.geometry.field_features);
             the record's areas are only for the crops on the map. "—" when the record lists none. */}
         {m.record && <Row k="Fields" v={fields.length || '—'} />}
-        {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? 'ready' : month(next.from * 1000)}`} />}
+        {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
         {!m.record && <Row k="Status" v={m.note || 'No land title yet'} />}
       </div>
       {m.loans.length > 0 && (
