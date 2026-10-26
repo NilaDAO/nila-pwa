@@ -355,11 +355,12 @@
   /** The asset list: F1/F11/F12 as rows (the QR is the right softkey). */
   function assetsHome(d) {
     var me = d.me, shares = me.shares || [];
-    var rows = [{ t: 'Invested', s: 'Union investment', v: inr(d.invested), go: null }];
-    var hours = 0;
+    var rows = [{ t: 'Invested', s: 'Invest or withdraw', v: inr(d.invested), go: function () { go('#/invested'); } }];
+    var hours = 0, owed = 0;
     shares.forEach(function (x) {
       var i = shareInfo(d, x);
       hours += i.hours;
+      if (i.m) owed += i.m.left;
       if (i.m && i.m.left > 0) rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 repay by ' + part(i.due), v: inr(i.m.atDue), go: function () { go('#/share/' + hexKey(x.token)); } });
       else if (x.state === 'ready') rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 ready to use', v: inr(x.cash), go: function () { go('#/share/' + hexKey(x.token)); } });
     });
@@ -370,7 +371,10 @@
     var t = me.title, acres = t.areas.reduce(function (a, z) { return a + z.acres; }, 0);
     rows.push({ t: 'My land', s: t.areas.length + (t.areas.length === 1 ? ' area' : ' areas') + ' \u00b7 ' + (Math.round(acres * 10) / 10) + ' acres', go: function () { go('#/land'); } });
     rows.push({ t: 'Messages', s: (me.messages || []).length + ' from Nila', go: function () { go('#/messages'); } });
-    menu('home', 'Nila', '', rows, ['Refresh', function () { data = null; home(); }], undefined, null);
+    // The total at the top (26 Oct): what is invested less what is owed on crop shares now.
+    var head = '<div class="total"><small class="muted">Total balance</small><div class="big">' + esc(inr(d.invested - owed)) + '</div>' +
+      (owed > 0 ? '<small class="muted">Invested ' + esc(inr(d.invested)) + ' \u00b7 owed ' + esc(inr(owed)) + '</small>' : '') + '</div>';
+    menu('home', 'Nila', head, rows, ['Refresh', function () { data = null; home(); }], undefined, null);
   }
 
   function share(token) {
@@ -384,10 +388,30 @@
           row('Repaid', inr(i.m.repaid)) + row('Repay by', part(i.due)) + '</div><p class="muted small">Repay at the union office, in cash.</p>';
       } else {
         h += row('Cash up to', inr(x.cash)) + row(x.state === 'early' ? 'From' : 'Use by', part(x.state === 'early' ? x.open : x.final)) +
-          '</div><p class="muted small">To use it, go to your union office and show your help QR to your leader.</p>';
+          '</div><p class="muted small">To use it, go to your union office and show your QR to your leader.</p>';
       }
       screen(h, back, null, null, 'My crop share');
     });
+  }
+  /** #/invested: invest or withdraw, each a list of steps (both at the union office, with the QR). */
+  function invested() {
+    withData('Invested', function (d) {
+      menu('invested', 'Invested', '<p class="small">Invested: <b>' + esc(inr(d.invested)) + '</b></p>', [
+        { t: 'Invest', s: 'Add cash to your investment', go: function () { go('#/invested/in'); } },
+        { t: 'Withdraw', s: 'Take cash out', go: function () { go('#/invested/out'); } },
+      ], ['Back', function () { go('#/home'); }], undefined, null);
+    });
+  }
+  var STEPS = {
+    'in': ['Invest', ['Take the cash to your union office.', 'Press QR and show it to your leader.',
+      'Your leader counts the cash and scans your QR.', 'Your investment shows here after Refresh.']],
+    out: ['Withdraw', ['Go to your union office.', 'Press QR and show it to your leader. Your leader starts the withdrawal.',
+      'After 14 days, go to the office again and show your QR.', 'Your leader pays you the cash.']],
+  };
+  function steps(k) {
+    var st = STEPS[k];
+    screen('<h1>' + esc(st[0]) + '</h1><ol class="steps">' + st[1].map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>',
+      ['Back', function () { go('#/invested'); }], null, null, st[0]);
   }
   function row(k, v) { return '<div class="row"><span class="muted">' + esc(k) + '</span><b>' + esc(v) + '</b></div>'; }
 
@@ -401,11 +425,7 @@
         var a = t.areas.filter(function (z) { return n.indexOf(z.n) >= 0; }).reduce(function (s2, z) { return s2 + z.acres; }, 0);
         return a ? ' \u00b7 ' + (Math.round(a * 10) / 10) + ' acres' : '';
       };
-      var first = list[0], last = list[list.length - 1];
-      var next = list.filter(function (x) { return tsOf(x.sow) * 1000 > Date.now(); })[0];
-      var head = list.length ? '<p class="muted small" style="margin:0">' + (first ? MON[new Date(tsOf(first.sow) * 1000).getUTCMonth()] + ' ' + new Date(tsOf(first.sow) * 1000).getUTCFullYear() : '') +
-        ' \u2013 ' + (last && last.harvest ? MON[new Date(tsOf(last.harvest) * 1000).getUTCMonth()] + ' ' + new Date(tsOf(last.harvest) * 1000).getUTCFullYear() : '') + ' \u00b7 approved</p>' +
-        (next ? '<p class="small">Next: sow ' + esc(next.name || next.crop) + ' by ' + part(tsOf(next.sow)) + '</p>' : '') : '';
+      var head = '';
       // One sentence on what a crop plan is (26 Oct); without a plan, the member opens the QR for the leader to make it.
       head = '<p class="small">Your crop plan says what to grow on each area for the coming year, and the cash and machine hours for it.</p>' + head +
         (list.length ? '' : d.me.plan === 'waiting' ? '<p>Your crop plan is made. It waits for your union leader to approve it.</p>' :
@@ -502,7 +522,7 @@
   var helpTimer = null, helpCache = null;   // the QR stays on screen while the rows move (5 minutes)
   /** #/help: the help QR as large as the screen allows. */
   function help() {
-    screen('<div class="qr qr-big" id="qr"><p class="muted" style="color:#121212">Making your help QR\u2026</p></div>' +
+    screen('<div class="qr qr-big" id="qr"><p class="muted" style="color:#121212">Making your QR\u2026</p></div>' +
       '<p class="muted small" id="left" style="text-align:center">Show this to your leader</p>',
       ['Back', function () { go('#/home'); }], ['New', function () { helpCache = null; help(); }], null, 'QR');
     helpQr();
@@ -569,6 +589,8 @@
     if (h === '#/help') { help(); return; }
     if (h === '#/home') { home(); return; }
     if ((m = /^#\/share\/([0-9a-f]+)$/.exec(h))) { share(m[1]); return; }
+    if (h === '#/invested') { invested(); return; }
+    if ((m = /^#\/invested\/(in|out)$/.exec(h))) { steps(m[1]); return; }
     if (h === '#/plan') { plan(); return; }
     if ((m = /^#\/plan\/(\d+)$/.exec(h))) { season(parseInt(m[1], 10)); return; }
     if (h === '#/land') { land(); return; }
