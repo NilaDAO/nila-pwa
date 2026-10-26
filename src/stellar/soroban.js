@@ -108,6 +108,14 @@ const randomNonce = () => xdr.Int64.fromString(String(BigInt.asIntN(64,
   BigInt(`0x${[...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('')}`))));
 const credType = (a) => (typeof a.credentials === 'function' ? a.credentials().switch().name : a.credentials?.type);
 
+/** An address entry in the first (ADDRESS) form (26 Oct): a protocol 29 network records ADDRESS_V2 entries, which the
+ *  node's Stellar library (Python stellar-sdk 13) cannot read, so it refuses to sponsor the call. ADDRESS is still valid
+ *  there; the entry is turned back before it is signed, so its signature covers the ADDRESS form. */
+const legacy = (e) => (credType(e) !== 'sorobanCredentialsAddressV2' ? e : new xdr.SorobanAuthorizationEntry({
+  credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(e.credentials.addressV2),
+  rootInvocation: e.rootInvocation,
+}));
+
 function checkPrepared(raw, tx, source, given = []) {
   const ops = tx.operations;
   const bad = () => { throw new Error('The network returned a different transaction. Nothing was signed.'); };
@@ -156,7 +164,7 @@ export async function invokeContract({ cfg, source, account, signHash, contractN
   if (given.length || mine || session) {
     const sim = await s.simulateTransaction(build(op));
     if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
-    const recorded = sim.result?.auth || [];
+    const recorded = (sim.result?.auth || []).map(legacy);
     let own = recorded.filter((a) => credType(a) === 'sorobanCredentialsSourceAccount');
     if (mine) {
       const forAccount = recorded.filter((a) => credType(a) !== 'sorobanCredentialsSourceAccount' && entryAddress(a) === account);
@@ -217,7 +225,7 @@ export async function signAuthFor({ cfg, source, signer, signHash, contractName,
   // The entry with a credential node for her address (the sdk checks it: forAddress); a source-account entry is the
   // member's own.
   let signed;
-  for (const e of sim.result?.auth || []) {
+  for (const e of (sim.result?.auth || []).map(legacy)) {
     if (credType(e) === 'sorobanCredentialsSourceAccount') continue;
     try { signed = await authorizeEntry(e, sign, until, cfg.passphrase, signer); break; } catch (err) {
       if (!/no credential node/.test(err.message)) throw err;
