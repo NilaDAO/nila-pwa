@@ -13,7 +13,9 @@ export async function signStellarMessage(signHash, message) {
 }
 
 /** A signed fetch to the node, for /plan and the other signed APIs (border O16 …). */
-export function signedCall({ stellarAddress, signHash }) {
+export function signedCall({ stellarAddress, senderAddress, signHash }) {
+  // The key that signs (her Privy wallet, G…); the node maps it to her smart account (26 Oct).
+  const signer = senderAddress || stellarAddress;
   // opts.etag: sent as If-None-Match; a 304 returns { notModified: true } and the reply's ETag is kept in out.etag.
   return async function call(method, path, body, opts = {}) {
     const raw = body === undefined ? '' : JSON.stringify(body);
@@ -22,7 +24,7 @@ export function signedCall({ stellarAddress, signHash }) {
     const sig = await signStellarMessage(signHash, msg);
     const r = await fetch(`${API}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json', 'X-Nila-Account': stellarAddress, 'X-Nila-Ts': String(ts), 'X-Nila-Sig': sig,
+      headers: { 'Content-Type': 'application/json', 'X-Nila-Account': signer, 'X-Nila-Ts': String(ts), 'X-Nila-Sig': sig,
         ...(opts.etag ? { 'If-None-Match': opts.etag } : {}) },
       body: body === undefined ? undefined : raw,
       ...(opts.etag ? { cache: 'no-store' } : {}),

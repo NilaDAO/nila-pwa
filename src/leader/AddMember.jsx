@@ -5,7 +5,13 @@
 // field she sends from her keypad phone (F14, into her border job); "Match field shapes" opens that job (L2) once a field
 // is in. DESIGN GAPs: the leader's own name is not on Stellar, so the
 // link names the union's representative (R9's union list); the hooks' names are the design's proposal (Q53).
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useNilaSigner } from '../wallet/signer';
+import { useStellarConfig } from '../stellar/hooks';
+import { invokeContract, server } from '../stellar/soroban';
+import { signerVal } from '../stellar/account';
+import { Address, xdr } from '@stellar/stellar-sdk';
 import { C, FONT, R } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
 import { Card, CardButton, Row, Text } from '../shell/SettingsParts';
@@ -51,11 +57,36 @@ function Step({ done, title, sub }) {
   );
 }
 
+/** The keypad member's smart account (26 Oct): once the phone has its device key, the leader's app creates the account
+ *  through the union's factory (anyone may; the node only pays the fee). True once it exists. */
+function useKeypadAccount(m) {
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const tried = useRef();
+  const deployed = useQuery({
+    queryKey: ['stellar', 'deployed', m?.account], enabled: !!cfg && !!m?.account, refetchInterval: (q) => (q.state.data ? false : 5_000),
+    queryFn: async () => {
+      const key = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({ contract: new Address(m.account).toScAddress(),
+        key: xdr.ScVal.scvLedgerKeyContractInstance(), durability: xdr.ContractDataDurability.persistent() }));
+      return ((await server(cfg).getLedgerEntries(key)).entries || []).length > 0;
+    },
+  });
+  useEffect(() => {
+    if (!m?.device || !m?.signer || deployed.data !== false || tried.current === m.account || !s?.ready) return;
+    tried.current = m.account;
+    invokeContract({ cfg, source: s.senderAddress, signHash: s.signHash, contractName: 'account_factory', fn: 'create',
+      args: [signerVal(Uint8Array.from(m.signer.match(/../g).map((x) => parseInt(x, 16))))] })
+      .then(() => deployed.refetch()).catch((e) => { console.error('[L14] account not created', e); tried.current = undefined; });
+  }, [m, deployed.data, s, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
+  return !!deployed.data;
+}
+
 /** #sent: her progress, polled while the leader is with her. */
 function Sent({ id, go }) {
   const q = useKeypadMember(id);
   const send = useInviteLink();
   const m = q.data;
+  const accountMade = useKeypadAccount(m);
   if (!m) return <Text>{q.error ? q.error.message : '…'}</Text>;
   const l = m.link || {};
   const keypad = m.phone_type === 'keypad';
@@ -70,6 +101,7 @@ function Sent({ id, go }) {
             <Step done title="Link sent" sub={`${time(l.sent)} · works once, for 30 minutes`} />
             <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for the member' : 'The link no longer works: send it again')} />
             <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
+            {m.account && <Step done={accountMade} title="Account made" sub={accountMade ? `${m.account.slice(0, 4)}…${m.account.slice(-4)}` : 'Making it…'} />}
             {(m.fields || []).map((f) => (
               <Step key={f.n} done title={`Field ${f.n} sent`} sub={`${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}${f.acc != null ? ` · ± ${Math.round(f.acc)} m` : ''}`} />
             ))}
