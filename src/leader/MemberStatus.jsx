@@ -5,7 +5,7 @@
 // more (→ the desk); Redeem from the plan (her crop shares not drawn yet; Ready → L11); her record.
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
@@ -73,6 +73,9 @@ export default function MemberStatus({ id, go }) {
   const members = useUnionMembers(api);
   const { data: cfg } = useStellarConfig();
   const found = (members.data || []).find((x) => x.route === id);
+  // While a member's G2 is open the list is asked every 20 s (only changed rows): crop shares just made show soon (26 Oct).
+  const refetchMembers = members.refetch;
+  useEffect(() => { const t = setInterval(() => refetchMembers(), 20_000); return () => clearInterval(t); }, [refetchMembers]);
   // Her crop shares from the members list (25 Oct); hers are read on-chain again whenever her G2 opens.
   const shares = useUnionShares(api, { fresh: found?.key });
   // Her plan (what grows on each area today): one call for her plan only, not one per member.

@@ -206,6 +206,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       setMaking(true);
       await mint.run(plan.id);
       qc.invalidateQueries({ queryKey: qkPlan.plan(landId) });
+      qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });
     } catch (e) { setError(e.message); }
   };
   // The member's scan is the acceptance (26 Oct): no CP11 conditions step in assist mode.
