@@ -18,7 +18,7 @@ import { rowOf, useMyLand, useMyShares } from '../loan/MyShares';
 export { useStage } from './stageCtx';
 
 const same = (a, b) => (a === b) || (!!a && !!b && a.record === b.record && a.selected === b.selected && a.onSelect === b.onSelect
-  && a.fitBottom === b.fitBottom && a.chip === b.chip && JSON.stringify(a.labels || {}) === JSON.stringify(b.labels || {}));
+  && a.fitBottom === b.fitBottom && a.chip === b.chip && JSON.stringify(a.center || null) === JSON.stringify(b.center || null) && JSON.stringify(a.labels || {}) === JSON.stringify(b.labels || {}));
 
 const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
 
@@ -42,7 +42,7 @@ export default function MapStage({ children }) {
   return (
     <StageCtx.Provider value={api}>
     <LabelsCtx.Provider value={labels}>
-      {props?.record ? (
+      {props?.record || props?.center ? (
         // Clipped: the map's tiles reach past its box and would otherwise make the page taller than the card.
         <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }} data-testid="map-stage">
           <AreaMap {...props} labels={shownLabels} height="100%" />
