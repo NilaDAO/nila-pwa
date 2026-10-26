@@ -8,7 +8,7 @@ import { SettingsButton } from '../shell/RoundButton';
 /** head: header buttons in place of Back / name / Settings. top: the card's top (px) when it opens. onSwipe(±1): a
  *  sideways swipe on the card (A4/A5's ‹ asset › bar). */
 /** full (map-central): the card takes the whole screen height, rising from where A1's card stands. */
-export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered }) {
+export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered, noSettings }) {
   const drag = useSheetDrag(onLowered, resetKey, startLow);   // the drag line as on R5 (all map screens, 21 Oct)
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell the one map behind the tabs
   // (shell/MapStage) draws this sheet's map, so it is never mounted again between screens.
@@ -73,7 +73,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           {onBack ? <button type="button" aria-label="Back" onClick={onBack} style={btnIn}>←</button> : <span style={{ width: 40 }} />}
           <span style={{ flexGrow: 1, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{inTitle || ''}</span>
-          <SettingsButton />
+          {noSettings ? <span style={{ width: 40 }} /> : <SettingsButton />}
         </div>
       )}
     </div>
