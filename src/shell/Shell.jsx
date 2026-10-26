@@ -47,6 +47,8 @@ import { C, FONT, GRADIENT, TAB_BAR_HEIGHT, loadInter } from './tokens';
 import ListRow, { ListSection } from './ListRow';
 import { BanknoteIcon, CropIcon } from './icons';
 import { assisted } from '../loan/MyShares';
+import { usePlanClient } from '../plan/hooks';
+import { useUnionMembers } from '../leader/unionMembers';
 
 const MOVE = {
   waiting: 'Your nIN from the old network arrives after your union confirms your land title.',
@@ -73,6 +75,14 @@ function Later({ title, step }) {
 const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+))?/) || [];
 // tasks/member[/<id>]: L14 Add a member and its #sent progress (P8).
 const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?$/);
+
+/** A member's crop plan, made by the leader with the member (assist mode, 26 Oct): #/memberplan/<route>. */
+function MemberPlan({ route }) {
+  const api = usePlanClient();
+  const m = (useUnionMembers(api).data || []).find((x) => x.route === route);
+  if (!m) return <BootLoading />;
+  return <CropPlanFlow forLand={{ landId: Number(m.titleId || m.lands[0]), recordHash: m.recordHash, evm: m.polygon }} />;
+}
 
 function TasksView({ leader, go }) {
   const lp = useLpStatus();
@@ -250,6 +260,7 @@ export default function Shell({ leader }) {
   // A2 Tasks: for an LP the board's "Cash offers" section; the other task rows come in a later step.
   else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
   else if (view === 'members' && leader) body = readArg() ? <MemberStatus key={readArg()} id={readArg()} go={go} /> : <Members go={go} />;
+  else if (view === 'memberplan' && leader) body = <MemberPlan route={readArg()} />;
   // H1 / H2 (25 Oct): the Harvests tab, and one harvest group on the map.
   else if (view === 'harvests' && leader) body = readArg() ? <HarvestGroup key={readArg()} id={readArg()} go={go} /> : <HarvestList go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;

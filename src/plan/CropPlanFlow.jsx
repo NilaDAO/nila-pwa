@@ -22,6 +22,7 @@ import { AreaCard, SEASON, SlideBar, TapLine, fmtKg, rowsInSeason, seasonLabel, 
 import ActivePlan, { currentSeason } from './ActivePlan';
 import { shareOn } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
+import HelpQr from '../loan/HelpQr';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -149,21 +150,36 @@ function Pending({ map, name, error }) {
   );
 }
 
-export default function CropPlanFlow() {
+/** `forLand` (26 Oct, assist mode): a leader makes a member's crop plan with the member, in a session: the member's
+ *  land { landId, recordHash, evm } instead of the signed-in person's own. */
+/** Assist mode: the crop plan is made with the leader (26 Oct). */
+function AssistPlan({ map, name, waiting }) {
+  const [qr, setQr] = useState(false);
+  if (qr) return <HelpQr onBack={() => setQr(false)} note="Show this to your union leader. Your leader makes your crop plan with you and reads it to you." />;
+  return (
+    <Sheet map={map} landName={name} title={waiting ? 'Your crop plan is with your leader' : 'Your crop plan'}>
+      <p style={muted}>{waiting ? 'Your leader checks it and approves it. Your crop shares come after that.'
+        : 'Your union leader makes your crop plan with you at the union office. Show your help QR there.'}</p>
+      {!waiting && <Primary onClick={() => setQr(true)}>Show your help QR</Primary>}
+    </Sheet>
+  );
+}
+
+export default function CropPlanFlow({ forLand } = {}) {
   const s = useNilaSigner();
   const qc = useQueryClient();
-  const titles = useLandTitles(s?.evmAddress);
+  const titles = useLandTitles(forLand ? undefined : s?.evmAddress);
   // A title on Stellar only (the demo writes new titles there, 21 Oct): used when she has none on Polygon.
-  const stellarTitles = useStellarTitles(s);
-  const onPolygon = (titles.data || []).length > 0;
-  const stellarTitle = !onPolygon ? stellarTitles.data?.[0] : undefined;
-  const landId = onPolygon ? titles.data[0] : stellarTitle?.title_id;
+  const stellarTitles = useStellarTitles(forLand ? null : s);
+  const onPolygon = !forLand && (titles.data || []).length > 0;
+  const stellarTitle = forLand ? { title_id: forLand.landId, record_hash: forLand.recordHash } : !onPolygon ? stellarTitles.data?.[0] : undefined;
+  const landId = forLand ? forLand.landId : onPolygon ? titles.data[0] : stellarTitle?.title_id;
   const current = useCropPlan(landId);
   // Extend, not update (25 Oct): the approved plan and its extensions, shown as one once active.
   const chainQ = useCropChain(landId);
   const extend = useExtendPlan(landId);
   const catalogue = useCropCatalogue();
-  const field = useFieldRecord(landId, s?.evmAddress, stellarTitle ? stellarTitle.record_hash || '' : undefined);
+  const field = useFieldRecord(landId, forLand ? forLand.evm : s?.evmAddress, stellarTitle ? stellarTitle.record_hash || '' : undefined);
   const record = field.data?.record;
   const submit = useSubmitIntake(landId);
   const accept = useAcceptPlan(landId);
@@ -256,13 +272,16 @@ export default function CropPlanFlow() {
 
   // While her titles load (the Stellar list also waits for her signer), CP1's pending sheet — never "No land title"
   // before both chains have answered.
-  const titlesKnown = !titles.isLoading && (onPolygon || stellarTitles.isFetched);
+  const titlesKnown = !!forLand || (!titles.isLoading && (onPolygon || stellarTitles.isFetched));
   // Plain loading (titles, plan, record not fetched yet) is S1 (executive decision 21 Oct); CP1's pending card is only
   // for a record that is really not there yet.
   if (!titlesKnown || current.isLoading) return <Loading />;
   if (titles.data && !titles.data.length && !stellarTitle) {
     return <Sheet map={map} landName={name} title="No land title yet"><p style={muted}>Your crop plan starts when your land title is ready.</p></Sheet>;
   }
+  // Assist mode (26 Oct): the member's phone makes no crop plan; the leader makes it with the member at the office, in a
+  // session from the member's help QR. Until the plan is approved the phone says so and shows the help QR.
+  if (!forLand && assisted() && !approved) return <AssistPlan map={map} name={name} waiting={plan?.status === 'accepted'} />;
   const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');
   const back = (to) => () => setStep(to);
 

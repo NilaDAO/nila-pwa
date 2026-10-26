@@ -208,6 +208,10 @@ export default function MemberStatus({ id, go }) {
             {helpUntil ? 'Helping this member · scan again' : 'Help this member · scan their QR'}
           </button>
           {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
+          {/* Assist mode (26 Oct): the leader makes the member's crop plan with the member, in the session. */}
+          {helpUntil > 0 && m.recordHash && (
+            <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make the crop plan</button>
+          )}
           {helpUntil > 0 && nin.data >= 1 && (
             <button type="button" style={{ ...btn(tx.ready), flex: 'none', width: '100%' }} disabled={!tx.ready} onClick={ninOut}>
               Pay out {Math.floor(nin.data).toLocaleString('en-IN')} nIN in cash
