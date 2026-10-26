@@ -49,7 +49,7 @@ export default function RecoverSteps({ evm, onDone }) {
   useEffect(() => { const t = setTimeout(() => setStep((v) => v || 'union'), 8000); return () => clearTimeout(t); }, []);
 
   const after = (from) => {
-    const order = ['union', 'mode', 'notify'];
+    const order = ['union', 'notify'];   // no R13 (26 Oct): assist mode until K1 or the Settings toggle
     for (const s of order.slice(order.indexOf(from) + 1)) {
       if (s === 'mode' && !hasMode()) return setStep('mode');
       if (s === 'notify' && !notifyAllowed()) return setStep('notify');

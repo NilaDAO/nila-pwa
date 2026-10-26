@@ -16,8 +16,8 @@ import { HOLD_REASONS, typeName, useMyMachine, useRates } from '../machine/hooks
 import { inr } from '../plan/ui';
 import { AccountCard, Card, CardButton, ConfirmCard, NotificationsCard, ResetCard, Row, SwitchRow, Text, UnionCard, useUnionInfo } from './SettingsParts';
 import { C, FONT } from './tokens';
+import { assisted } from '../loan/MyShares';
 
-const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
 
 /** "How you use Nila": the tab bar follows nila.mode, so the app opens again with the new mode. */
 function ModeCard() {

@@ -8,7 +8,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
-import { sv } from '../stellar/soroban';
+import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { C, FONT, R } from '../shell/tokens';
@@ -24,8 +24,8 @@ import { useNilaSigner } from '../wallet/signer';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
 import WithdrawStart from '../loan/WithdrawStart';
-import CameraView from '../shell/CameraView';
-import { readSessionQr, setSession, useSessionUntil } from '../stellar/session';
+import StartHelp from '../loan/StartHelp';
+import { useSessionUntil } from '../stellar/session';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -106,6 +106,8 @@ export default function MemberStatus({ id, go }) {
   const [scanning, setScanning] = useState(false);
   const [helpError, setHelpError] = useState();
   const helpUntil = useSessionUntil(m?.address);
+  const nin = useQuery({ queryKey: ['stellar', 'memberNin', m?.address], enabled: !!cfg && !!m?.address, staleTime: 30_000,
+    queryFn: async () => Number(BigInt(await readContract(cfg, 'nin', 'balance', [sv.address(m.address)]).catch(() => 0n) ?? 0n)) / 1e7 });
   const labels = useMemo(() => {
     // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
     // A financed share grows too (23 Oct): its draw is the start, whatever the plan's sowing date says.
@@ -149,21 +151,14 @@ export default function MemberStatus({ id, go }) {
   const withdrawing = !!p && (BigInt(p.pending_shares ?? 0) > 0n || BigInt(p.claimable_shares ?? 0) > 0n);
   const free = p ? Math.max(0, n(p.free) - (BigInt(p.locked ?? 0) > 0n ? 1 : 0)) : 0;
   // Help (A2, 26 Oct): the member's help QR starts a 5-minute session in which this leader acts for the member.
-  if (scanning) {
-    return (
-      <MapCard map={<span />} header={{ title: `Help · ${m.label}`, onBack: () => setScanning(false) }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
-        <CameraView mode="qr" onText={(t) => {
-          let q;
-          try { q = readSessionQr(t); } catch (e) { setHelpError(e.message); setScanning(false); return; }
-          if (q.member !== m.address) { setHelpError("This is another member's help QR."); setScanning(false); return; }
-          setScanning(false); setHelpError(undefined);
-          tx.run({ label: `Help ${m.label}`, rows: [['For', '5 minutes']], contractName: q.member, fn: 'start_session', args: q.args, auth: [q.entry],
-            invalidate: [] }).then((out) => { if (out) setSession(q.member, Number(out.result || 0) || Math.floor(Date.now() / 1000) + 300); });
-        }} />
-        <p style={{ color: C.muted, textAlign: 'center' }}>Scan the help QR on the member's phone.</p>
-      </MapCard>
-    );
-  }
+  if (scanning) return <StartHelp member={m.address} label={m.label} onBack={() => setScanning(false)} onStarted={() => setScanning(false)} />;
+  // An identity-checked member's nIN (a machine owner's income), paid out in cash in the session (26 Oct).
+  const ninOut = () => tx.run({
+    label: `Pay out nIN · ${m.label}`, rows: [['Hand over', `₹${Math.floor(nin.data || 0).toLocaleString('en-IN')} in cash`]],
+    contractName: 'fx_pool', fn: 'cash_out_signed', session: m.address,
+    args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.address(m.address), sv.i128(BigInt(Math.floor(nin.data || 0)) * 10_000_000n)],
+    invalidate: [['stellar', 'memberNin']],
+  });
   const payOut = () => tx.run({
     label: `Pay out the withdrawal · ${m.label}`, rows: [['Member', m.label]],
     contractName: 'fund_core', fn: 'claim_junior_cash', session: m.address,
@@ -213,6 +208,11 @@ export default function MemberStatus({ id, go }) {
             {helpUntil ? 'Helping this member · scan again' : 'Help this member · scan their QR'}
           </button>
           {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
+          {helpUntil > 0 && nin.data >= 1 && (
+            <button type="button" style={{ ...btn(tx.ready), flex: 'none', width: '100%' }} disabled={!tx.ready} onClick={ninOut}>
+              Pay out {Math.floor(nin.data).toLocaleString('en-IN')} nIN in cash
+            </button>
+          )}
         </Section>
       )}
       {m.loans.length > 0 && (

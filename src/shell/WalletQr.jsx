@@ -11,11 +11,17 @@ import { useStellarConfig } from '../stellar/hooks';
 import { deskClaim } from '../loan/desk';
 import { signDeskCode } from '../loan/deskCode';
 import { C, FONT, R, TAB_BAR_HEIGHT } from './tokens';
+import HelpQr from '../loan/HelpQr';
 
 const SHADOW = 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px';
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
 
+/** A member's QR is the help QR (executive decision 26 Oct: one QR at the office); a leader's is her account number. */
 export default function WalletQr({ onBack, leader }) {
+  return leader ? <AccountQr onBack={onBack} leader={leader} /> : <HelpQr onBack={onBack} />;
+}
+
+function AccountQr({ onBack, leader }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const addr = s?.stellarAddress;

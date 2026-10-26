@@ -27,7 +27,8 @@ import { MapFrame, MapStage, anim, btnDisabled, btnPrimary, btnSecondary, cardTi
 // Today's one union (the Polygon registry's entry, src/components/Forms/memberUnion.js). DESIGN GAP: from the node.
 const UNIONS = [{ name: 'Mother Theresa Union', rep: 'Mrs. Rosalie Susairaj', polygon: '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070',
   location: [11.878671, 78.964561] }];
-const STEPS = ['points', 'sheet', 'union', 'mode', 'notify', 'done'];
+// No R13 any more (26 Oct): every member starts in assist mode; the identity check or Settings switches to self.
+const STEPS = ['points', 'sheet', 'union', 'notify', 'done'];
 
 // Her union per wallet, on the phone (notes reg-recover: a recover skips R9 when it is there). The leader flag is
 // checked again on the chain at every recover, never taken from here.

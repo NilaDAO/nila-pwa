@@ -25,6 +25,7 @@ import CameraView from '../shell/CameraView';
 import { addressFromQr, useUnionMembers } from '../leader/unionMembers';
 import { Secondary } from './AssetParts';
 import { owedOf } from './owed';
+import StartHelp from './StartHelp';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
@@ -195,69 +196,15 @@ function ScanHer({ title, note, shareOnly, onFound, onBack }) {
 const FLAG_CLOSED = 4;
 const dayOf = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
-/** Tasks → Scan her QR (executive decision 24 Oct): one scanner; the QR says which kind, the chain picks the lane.
- *  Her address (wallet QR): a withdrawal ready (14 days passed) → pay it out (her wallet QR then carries her signature,
- *  NILA:W), else invest. Her crop share QR: an open loan on it → repay, no loan and its season started → use it (L11).
- *  A machine owner's signed nIN QR (NILA:N) → pay out. */
+/** Tasks → Scan her QR (executive decision 26 Oct: one QR at the office, every mode): the member's help QR starts the
+ *  session and opens the member's G2, where the leader invests, repays, uses a crop share or pays out. */
 function ScanAny({ onBack }) {
-  const { data: cfg } = useStellarConfig();
-  const [lane, setLane] = useState();
-  const [error, setError] = useState();
-  const [busy, setBusy] = useState(false);
-  const read = async (text) => {
-    const t = String(text || '').trim();
-    setError(undefined);
-    if (/^NILA:[WN]:/i.test(t) || /^nila:cash:/i.test(t)) { setLane({ kind: 'payout', text: t }); return; }
-    setBusy(true);
-    try {
-      const share = /^nila:share:(\w+?)_(\w+):([GC][A-Z2-7]{55})$/.exec(t);
-      if (share) {
-        const hex = tokenHex(share[2]);
-        const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(hex)]).catch(() => null);
-        if (!ft || ft.member !== share[3]) throw new Error('This crop share is not this member\'s in your union.');
-        const flags = Number(ft.loan?.flags ?? 0);
-        if (flags & FLAG_DRAWN) {
-          if (flags & FLAG_CLOSED) throw new Error('The loan on this crop share is repaid.');
-          setLane({ kind: 'repay', who: share[3], token: hex });
-        } else if (ft.lapsed || (Number(ft.final_date || 0) > 0 && Date.now() / 1000 > Number(ft.final_date))) {
-          // Its last draw date has passed (25 Oct): too late for this cycle.
-          throw new Error(`Too late for this cycle: the last day to use this crop share was ${dayOf(Number(ft.final_date))}.`);
-        } else if (Date.now() / 1000 < opensOf(ft)) {
-          // Its window opens a week before its sowing window (25 Oct, the crop calendar).
-          throw new Error(`Not open yet: this crop share can be used from ${dayOf(opensOf(ft))}.`);
-        } else {
-          window.location.replace(`#/loan/${share[1]}_${share[2]}`);
-        }
-        return;
-      }
-      const g = addressFromQr(t);
-      if (!g) throw new Error("This is not a member QR.");
-      const claim = await deskClaim(cfg, g);
-      setLane(claim.shares > 0n ? { kind: 'ready', who: g, inr: claim.inr } : { kind: 'invest', who: g });
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
-  };
-  const invest = (who) => setLane({ kind: 'invest', who });
-  if (lane?.kind === 'payout') return <PayOut onBack={onBack} initial={lane.text} onInvest={invest} />;
-  if (lane?.kind === 'invest') return <Scan purpose="invest" onBack={onBack} initialMember={lane.who} />;
-  if (lane?.kind === 'repay') return <Scan purpose="repay" onBack={onBack} initialMember={lane.who} initialToken={lane.token} />;
-  if (lane?.kind === 'ready') {
-    return (
-      <DeskCard title="Withdrawal ready" onBack={() => setLane(undefined)}>
-        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>{inr(Math.floor(lane.inr))} to collect</p>
-        <p style={muted}>To pay it out, the member opens their wallet QR again: it carries their signature now. Hand over the cash, then scan it.</p>
-        <Primary onClick={() => setLane(undefined)}>Scan again</Primary>
-        <Secondary onClick={() => invest(lane.who)}>Invest instead</Secondary>
-      </DeskCard>
-    );
-  }
-  return (
-    <DeskCard title="Scan a member QR" onBack={onBack}>
-      <CameraView mode="qr" onText={read} />
-      <p style={muted}>Wallet QR: invest, or a withdrawal once it is ready. Crop share QR: use it, or repay its loan.</p>
-      {busy && <p style={muted}>…</p>}
-      {error && <p style={{ color: C.coral }}>{error}</p>}
-    </DeskCard>
-  );
+  const api = usePlanClient();
+  const union = useUnionMembers(api);
+  return <StartHelp onBack={onBack} onStarted={(who) => {
+    const m = (union.data || []).find((x) => x.address === who);
+    window.location.replace(m ? `#/members/${m.route}` : '#/members');
+  }} />;
 }
 
 // An old #/cash/invest|withdraw/<her> link: her G2 does these in place now.

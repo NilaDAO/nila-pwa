@@ -46,6 +46,7 @@ import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomT
 import { C, FONT, GRADIENT, TAB_BAR_HEIGHT, loadInter } from './tokens';
 import ListRow, { ListSection } from './ListRow';
 import { BanknoteIcon, CropIcon } from './icons';
+import { assisted } from '../loan/MyShares';
 
 const MOVE = {
   waiting: 'Your nIN from the old network arrives after your union confirms your land title.',
@@ -56,7 +57,6 @@ const MOVE = {
 
 const readTab = () => (window.location.hash.match(/^#\/(\w+)/) || [])[1];
 const readArg = () => (window.location.hash.match(/^#\/\w+\/(\w+)/) || [])[1];
-const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
 
 // Screens built in later steps (P4 crop plan, P5 scan and loans, leader screens). DESIGN GAP: interim.
 function Later({ title, step }) {
@@ -148,6 +148,15 @@ export default function Shell({ leader }) {
     els.forEach((e) => { e.style.background = '#121212'; });
     return () => els.forEach((e, i) => { e.style.background = was[i]; });
   }, []);
+  // Self mode from the identity check (executive decision 26 Oct): a member who passed K1 and never chose a mode
+  // switches from assist to self once; the Settings toggle still decides after that.
+  const idCheck = useLpStatus();
+  useEffect(() => {
+    if (leader || !idCheck.data?.idChecked) return;
+    try {
+      if (localStorage.getItem('nila.mode') === null) { localStorage.setItem('nila.mode', 'self'); window.location.reload(); }
+    } catch { /* private mode: stays in assist mode */ }
+  }, [leader, idCheck.data?.idChecked]);
   const tabs = leader ? LEADER_TABS : assisted() ? ASSISTED_TABS : MEMBER_TABS;
   const [view, setView] = useState(() => readTab() || 'assets');
   const [, setHash] = useState(window.location.hash);

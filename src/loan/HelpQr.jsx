@@ -10,7 +10,8 @@ import { Sheet, muted, Primary } from '../plan/ui';
 import { C } from '../shell/tokens';
 import { QrCircle } from './AssetParts';
 
-export default function HelpQr() {
+/** `note`: what the leader will do (repay, invest, collect…); `onBack` when opened from a page (not the Scan tab). */
+export default function HelpQr({ note, onBack } = {}) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const [qr, setQr] = useState();
@@ -33,10 +34,10 @@ export default function HelpQr() {
   }, []);
   const over = qr && now > qr.until;
   return (
-    <Sheet landName="Nila" title="Your help QR">
+    <Sheet landName="Nila" title="Your help QR" onBack={onBack}>
       {qr && !over && <QrCircle img={img} alt="Your help QR" />}
       <p style={{ ...muted, textAlign: 'center' }}>
-        {over ? 'This QR has expired.' : 'Show this to your union leader. Your leader can then act for you for 5 minutes: use a crop share, start or collect a withdrawal.'}
+        {over ? 'This QR has expired.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop share, start or collect a withdrawal.'}
       </p>
       {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
       {(over || error) && <Primary onClick={make}>Make a new QR</Primary>}

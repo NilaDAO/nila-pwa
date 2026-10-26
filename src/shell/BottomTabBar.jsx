@@ -9,7 +9,7 @@ import { C, FONT, S, SHADOW, TAB_BAR_HEIGHT } from './tokens';
 import { AssetsIcon, CashIcon, CropPlanIcon, HarvestsIcon, MembersIcon, ScanIcon } from './icons';
 
 export const MEMBER_TABS = [['crop', 'Crop plan', CropPlanIcon], ['assets', 'Assets', AssetsIcon]];
-export const ASSISTED_TABS = [['crop', 'Crop plan', CropPlanIcon], ['scan', 'Help', ScanIcon], ['assets', 'Assets', AssetsIcon]];
+export const ASSISTED_TABS = [['crop', 'Crop plan', CropPlanIcon], ['scan', 'Scan', ScanIcon], ['assets', 'Assets', AssetsIcon]];
 export const LEADER_TABS = [
   ['crop', 'Crop plan', CropPlanIcon], ['assets', 'Assets', AssetsIcon], ['members', 'Members', MembersIcon],
   ['cash', 'Cash', CashIcon], ['harvests', 'Harvests', HarvestsIcon],

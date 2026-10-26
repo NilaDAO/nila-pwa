@@ -1,7 +1,7 @@
 // L11 crop share request + L9 QR (leader) and A1b scan + N10 confirm (member). Boards LeaderRedeem,
-// LeaderRequestQR, MemberWalletQR-o19l-1f7c, ConfirmLoan. L9 is the one request QR of A1 (26 Oct, taskCode.js): a
-// member on their own phone confirms and draws there; in assist or keypad mode the member's phone answers with a
-// signed QR and the leader's app submits the draw. Decisions 16 Oct: cash (seed included) and
+// LeaderRequestQR, MemberWalletQR-o19l-1f7c, ConfirmLoan. Since 26 Oct (executive decision: one QR at the office, the
+// help QR) there is no request QR: the leader scans the member's help QR and uses the crop share for the member in the
+// 5-minute session; a leader's own share is drawn on the leader's own phone. Decisions 16 Oct: cash (seed included) and
 // machine hours only; her tokens from her approved plan's mint list, read with fund_core.food_token.
 // DESIGN GAPs: no member names on the node ("Land N", "Your union leader"); the union checks on L11 (cash
 // on hand, stock, union limit) are not shown yet; "Type the code" is a text box for the whole code.
@@ -20,8 +20,7 @@ import AreaMap from '../plan/AreaMap';
 import { useUnionMembers } from '../leader/unionMembers';
 import { Card, CardTitle, KV } from './AssetParts';
 import { NIN } from './request';
-import { makeTask } from './taskCode';
-import { TaskRequest } from './TaskScreens';
+import StartHelp from './StartHelp';
 import { useSessionUntil } from '../stellar/session';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import { usePost } from '../anchor/LeaderLp';
@@ -129,12 +128,10 @@ export function LeaderLoan({ initial }) {
   const helpUntil = useSessionUntil(shares.data?.find((x) => x.token_id === pick)?.ft?.member);
 
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); window.location.hash = '#/assets'; }} onRetry={() => tx.retry()} />;
-  // L9 (board LeaderRequestQR): the request QR as big as the screen allows, then the member's answer (A1, 26 Oct).
+  // No session yet (26 Oct: the help QR is the one office QR): the leader scans the member's help QR first, then uses
+  // the crop share for the member in the session.
   if (req) {
-    return (
-      <TaskRequest task={req} title="Crop share request" map={memberMap} onBack={() => setReq(undefined)}
-        rows={[['For', req.label], ['Cash', inr(Number(BigInt(req.cash) / NIN))], ...(req.hours ? [['Vouchers', `${inr(value)} (${th(req.hours)} tractor h)`]] : [])]} />
-    );
+    return <StartHelp member={req.member} label="the member" onBack={() => setReq(undefined)} onStarted={() => { setReq(undefined); setOwn(true); }} />;
   }
   // The page shows at once (header and card); the card fills as the plan, her share and the union are read.
   if (!plan) {
@@ -166,18 +163,14 @@ export function LeaderLoan({ initial }) {
   const go = async () => {
     setError(undefined);
     if (!(await askBring())) return;
-    try {
-      const area = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
-      setReq({ ...(await makeTask(cfg, { task: 'D', member: sel.ft.member, token: tokenHex(sel.token_id),
-        cash: String(BigInt(Math.round(cash)) * NIN), hours: Math.round(hours) })), label: `${row?.name || sel.share.crop} · Area ${area}` });
-    } catch (e) { setError(e.message); }
+    setReq({ member: sel.ft.member });
   };
   // Her own share (a leader is a member too, 23 Oct): no QR; she confirms (N10) and signs draw_loan herself.
   const mine = !!sel && sel.ft?.member === s?.stellarAddress;
   // Helping the member (A2, 26 Oct): in a session the leader draws for the member at once, no request QR.
   const helping = !mine && helpUntil > 0;
   if (bring.tx.status === 'pending' || bring.tx.status === 'failed') return <TxScreens tx={bring.tx} onClose={() => bring.tx.reset()} onRetry={() => bring.tx.retry()} />;
-  if (own && sel) {
+  if (own && sel && mine) {
     const nm = `${row?.name || sel.crop}`;
     const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
     const draw = () => tx.run({
@@ -263,7 +256,7 @@ export function LeaderLoan({ initial }) {
               ? <span style={muted}>Not enough cash at the office: your LPs are asked to bring {inr(gap)} when you {mine ? 'take it up' : 'show the QR'}.</span>
               : <span style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</span>)}
             {error && <span style={{ color: C.coral }}>{error}</span>}
-            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : 'Show QR to the member'}</Primary>
+            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's help QR"}</Primary>
             {helping && <span style={muted}>You are helping this member until {new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.</span>}
           </>
         )}

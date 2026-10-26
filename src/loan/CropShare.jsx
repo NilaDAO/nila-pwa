@@ -10,11 +10,13 @@
 // Field notes are 'later' in the design (open-assets/2–4, Q27: no store and no member version of L7 yet): the list
 // is empty and the Add a note buttons are shown disabled.
 import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
+import { useQuery } from '@tanstack/react-query';
+import { useStellarConfig } from '../stellar/hooks';
+import { readContract, sv, tokenHex } from '../stellar/soroban';
+import HelpQr from './HelpQr';
+import { owedOf } from './owed';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { useNilaSigner } from '../wallet/signer';
-import DeskCard from '../shell/DeskCard';
-import { QrCircle } from './AssetParts';
 import AreaMap from '../plan/AreaMap';
 import { Loading } from '../register/Boot';
 import { areasOf, useFieldRecord } from '../plan/record';
@@ -79,10 +81,9 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   const s = useNilaSigner();
   // #/cropshare/<token>/qr (A1's repay card, step 2): open on the QR.
   const [repayQr, setRepayQr] = useState(() => /\/qr$/.test(window.location.hash));
-  const [img, setImg] = useState();
-  useEffect(() => {
-    if (repayQr && x?.plan?.id && s?.stellarAddress) QRCode.toDataURL(`nila:share:${x.plan.id}_${x.token_id}:${s.stellarAddress}`, { width: 720, margin: 2 }).then(setImg);
-  }, [repayQr, x?.plan?.id, x?.token_id, s?.stellarAddress]);
+  const { data: cfg } = useStellarConfig();
+  const vb = useQuery({ queryKey: ['stellar', 'voucherBook', token], enabled: !!cfg && !!token, staleTime: 30_000,
+    queryFn: () => readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(tokenHex(token))]).catch(() => null) });
   // S1 until her shares and her field record are both in (21 Oct): the card never shows before its map.
   if ((!x && (shares.isLoading || !shares.data)) || (x && !record && !field.error)) return <Loading />;
   if (!x) {
@@ -173,15 +174,10 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   // A4: active. The loan on it: the cash part handed out, what is left to repay, due 3 weeks after harvest.
   const l = x.ft.loan || {};
   const open = !(Number(l.flags ?? 0) & FLAG_CLOSED);
-  if (repayQr) {
-    return (
-      <DeskCard title={`${name} · Area ${x.area}`} onBack={() => setRepayQr(false)}>
-        <QrCircle img={img} alt="Your crop share QR" />
-        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment.</p>
-      </DeskCard>
-    );
-  }
-  const left = num(l.principal) - num(l.principal_paid);
+  // One QR at the office (executive decision 26 Oct): the help QR; the leader counts the cash and records the repayment.
+  if (repayQr) return <HelpQr onBack={() => setRepayQr(false)} note="Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment." />;
+  // What is left: the cash part and the voucher's value, with interest (26 Oct: the voucher is debt from the draw).
+  const left = Number(owedOf(l, vb.data)) / 1e7;
   const harvest = r.harvest ? new Date(r.harvest) : null;
   const sugarcane = /sugarcane/.test(x.crop);
   const noteBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14,
@@ -192,7 +188,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Row k="Status" v={statusOf(x)} />
         <Row k="Harvest" v={fodder ? 'Regular cuts' : partOfMonth(harvest)} strong />
-        {num(l.principal) > 0 && <Row k="Loan" v={`${inr(num(l.principal))}${left > 0 ? ` · ${inr(left)} to repay` : ''}`} strong />}
+        {(num(l.principal) > 0 || vb.data) && <Row k="Loan" v={`${inr(num(l.principal) + (vb.data ? num(vb.data.value) : 0))}${left > 0 ? ` · ${inr(Math.ceil(left))} to repay` : ''}`} strong />}
       </div>
       {open && <Primary onClick={() => setRepayQr(true)}>Repay at the office</Primary>}
       <div style={line} />
