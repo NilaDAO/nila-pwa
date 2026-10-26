@@ -31,7 +31,7 @@ import LpOffers from '../anchor/LpOffers';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
 import Settings from './Settings';
-import LeaderTasks from '../leader/LeaderTasks';
+import LeaderTasks, { PlanFor } from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
 import AddMember, { KeypadPoints } from '../leader/AddMember';
@@ -82,7 +82,7 @@ function MemberPlan({ route }) {
   const api = usePlanClient();
   const m = (useUnionMembers(api).data || []).find((x) => x.route === route);
   if (!m) return <BootLoading />;
-  return <CropPlanFlow forLand={{ landId: Number(m.titleId || m.lands[0]), recordHash: m.recordHash, evm: m.polygon }} />;
+  return <CropPlanFlow forLand={{ landId: Number(m.titleId || m.lands[0]), recordHash: m.recordHash, evm: m.polygon, account: m.address, label: m.label }} />;
 }
 
 function TasksView({ leader, go }) {
@@ -90,6 +90,7 @@ function TasksView({ leader, go }) {
   const shares = useMyShares().data;
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
+  if (leader && window.location.hash.startsWith('#/tasks/planfor')) return <PlanFor go={go} />;
   const member = readMember();
   if (leader && member && member[2]) return <KeypadPoints key={member[1]} id={member[1]} go={go} />;
   if (leader && member) return <AddMember key={member[1] || 'new'} id={member[1]} go={go} />;

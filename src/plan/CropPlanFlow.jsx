@@ -23,6 +23,8 @@ import ActivePlan, { currentSeason } from './ActivePlan';
 import { shareOn } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
 import HelpQr from '../loan/HelpQr';
+import StartHelp from '../loan/StartHelp';
+import { useSessionUntil } from '../stellar/session';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -150,8 +152,9 @@ function Pending({ map, name, error }) {
   );
 }
 
-/** `forLand` (26 Oct, assist mode): a leader makes a member's crop plan with the member, in a session: the member's
- *  land { landId, recordHash, evm } instead of the signed-in person's own. */
+/** `forLand` (26 Oct, assist mode): a leader makes a member's crop plan with the member: the member's land
+ *  { landId, recordHash, evm, account, label } instead of the signed-in person's own. Making the plan takes longer than a
+ *  5-minute session, so the member's help QR is scanned only at the end, to accept it (CP11). */
 /** Assist mode: the crop plan is made with the leader (26 Oct). */
 function AssistPlan({ map, name, waiting }) {
   const [qr, setQr] = useState(false);
@@ -159,7 +162,7 @@ function AssistPlan({ map, name, waiting }) {
   return (
     <Sheet map={map} landName={name} title={waiting ? 'Your crop plan is with your leader' : 'Your crop plan'}>
       <p style={muted}>{waiting ? 'Your leader checks it and approves it. Your crop shares come after that.'
-        : 'Your union leader makes your crop plan with you at the union office. Show your help QR there.'}</p>
+        : 'Your union leader makes your crop plan with you at the union office. At the end you show your help QR to accept it.'}</p>
       {!waiting && <Primary onClick={() => setQr(true)}>Show your help QR</Primary>}
     </Sheet>
   );
@@ -183,6 +186,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const record = field.data?.record;
   const submit = useSubmitIntake(landId);
   const accept = useAcceptPlan(landId);
+  const sessionUntil = useSessionUntil(forLand?.account);
+  const [scanToAccept, setScanToAccept] = useState(false);
   const mint = useMintCropShares();
   const revise = useRevisePlan();
   const discard = useDiscardPlan(landId);
@@ -489,8 +494,19 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // CP11 (board CropPlanTerms): the money chart, the two conditions, read-and-accept. The card scrolls inside.
     const go = async () => {
       setError(undefined);
+      // The leader accepts for the member only in the member's session: scan the help QR first (26 Oct).
+      if (forLand && !(sessionUntil > Date.now() / 1000 + 10)) { setScanToAccept(true); return; }
       try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
     };
+    if (scanToAccept) {
+      return (
+        <StartHelp member={forLand.account} label={forLand.label} onBack={() => setScanToAccept(false)}
+          onStarted={async () => {
+            setScanToAccept(false);
+            try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
+          }} />
+      );
+    }
     return (
       <Sheet map={map} landName={name} title="Before you accept your crop plan" onBack={back('plan')} scroll>
         <MoneyChart plan={plan} />
@@ -510,7 +526,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <button type="button" disabled={!read || accept.isPending} aria-disabled={!read} onClick={go} style={{
           width: '100%', height: 44, border: 0, borderRadius: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, padding: '0 24px', marginTop: 14,
-          color: read ? C.ink : C.muted, background: read ? C.accent : C.raised, cursor: read ? 'pointer' : 'not-allowed' }}>I accept</button>
+          color: read ? C.ink : C.muted, background: read ? C.accent : C.raised, cursor: read ? 'pointer' : 'not-allowed' }}>{forLand ? 'Scan the member\'s QR and accept' : 'I accept'}</button>
       </Sheet>
     );
   }
