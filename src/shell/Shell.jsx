@@ -72,7 +72,7 @@ function Later({ title, step }) {
 
 
 // tasks/border/<job id>[/<field>]: L2a–L4 for a leader.
-const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+))?/) || [];
+const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+|add))?/) || [];
 // tasks/member[/<id>]: L14 Add a member and its #sent progress (P8).
 const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?(\/points)?$/);
 

@@ -17,6 +17,8 @@ export function borderClient(signer) {
     accept: (id, field, shape) => call('POST', `/border/job/${id}/decide`, { field, action: 'accept', shape }).then(jobOf),
     noneFit: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit' }).then(jobOf),
     retry: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'retry' }).then(jobOf),
+    // L2 + Add a point (26 Oct): more fields for an open job, taken on the leader's phone.
+    addPoints: (id, points) => call('POST', `/border/job/${id}/points`, { points }).then(jobOf),
     mint: (id, farm) => call('POST', `/border/job/${id}/mint`, farm ? { farm } : {}).then(jobOf),
   };
 }

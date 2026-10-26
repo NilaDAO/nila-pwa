@@ -30,7 +30,7 @@ const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, zoomControl:
   clickableIcons: false, mapId: '8fa18e8fd7e4c318' };
 
 /** Google: the same drawing rules as below, on the satellite map. */
-function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360 }) {
+function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360, fitBottom }) {
   const map = useRef(null);
   const drawn = useRef([]);
   const fitKey = useRef();
@@ -75,7 +75,8 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
     const key = `${active || 'all'}:${fields.length}`;
     if (fitKey.current !== key && !bounds.isEmpty()) {
       fitKey.current = key;
-      m.fitBounds(hasFocus ? focus : bounds, 32);
+      // Full height behind a card (26 Oct): the fields sit in the part above the card.
+      m.fitBounds(hasFocus ? focus : bounds, fitBottom ? { top: 72, left: 32, right: 32, bottom: fitBottom } : 32);
     }
   };
   useEffect(draw); // eslint-disable-line react-hooks/exhaustive-deps

@@ -3,13 +3,16 @@
 // state picks the board: drawing → L2a (#retry-fN when a field is drawn again), ready → L2, a field → L3, every
 // field accepted or left out → L4 (mint). Data: the node's border job (O16). DESIGN GAP: no member names in the
 // app (the farm name or a short address stands in).
-import { useCallback, useState } from 'react';
+import { cloneElement, useCallback, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
 import useSheetDrag from '../shell/useSheetDrag';
 import { acres, shapeFor } from './api';
 import BorderMap, { ShapeThumb } from './BorderMap';
-import { useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
+import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
+import { PointsStep, clearPoints, readPoints } from './SendLocation';
+import { Loading } from '../register/Boot';
 import { TxScreens } from '../stellar/TxStatus';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
@@ -20,18 +23,22 @@ const btn = (primary) => ({ flex: 1, height: 44, borderRadius: R.button, border:
   background: primary ? C.accent : C.raised, color: primary ? C.ink : C.text });
 const DONE = ['accepted', 'left_out'];
 
+// The map fills the screen behind the card (26 Oct, as the other map screens): dragging the card down shows more map,
+// never a blank space. The card starts at 40 % of the screen and reaches at least the bottom.
+const TOP = 0.4;
+
 function Frame({ name, onBack, backLabel, map, children }) {
   const drag = useSheetDrag();   // the drag line as on R5 (all map screens, 21 Oct)
+  const full = map ? cloneElement(map, { height: '100%', fitBottom: Math.round(window.innerHeight * (1 - TOP)) }) : null;
   return (
     <div style={{ fontFamily: FONT, color: C.text, position: 'relative' }}>
-      <div style={{ position: 'relative' }}>
-        {map}
-        <button type="button" aria-label={backLabel} onClick={onBack} style={{ ...pill, position: 'absolute', zIndex: 500, left: 8, top: 12, width: 40, height: 40, border: 0, color: C.text, fontSize: 20 }}>←</button>
-        <h1 style={{ position: 'absolute', zIndex: 500, left: 56, right: 56, top: 12, margin: 0, display: 'flex', justifyContent: 'center' }}>
-          <span style={{ ...pill, padding: '0 14px', height: 40, display: 'flex', alignItems: 'center', fontSize: 16, fontWeight: 700 }}>{name}</span>
-        </h1>
-      </div>
-      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', marginTop: -24, position: 'relative', zIndex: 600, padding: '14px 22px 24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW, ...drag.style }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>{full}</div>
+      <button type="button" aria-label={backLabel} onClick={onBack} style={{ ...pill, position: 'fixed', zIndex: 500, left: 8, top: 12, width: 40, height: 40, border: 0, color: C.text, fontSize: 20 }}>←</button>
+      <h1 style={{ position: 'fixed', zIndex: 500, left: 56, right: 56, top: 12, margin: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+        <span style={{ ...pill, padding: '0 14px', height: 40, display: 'flex', alignItems: 'center', fontSize: 16, fontWeight: 700 }}>{name}</span>
+      </h1>
+      <div aria-hidden="true" style={{ height: `${TOP * 100}vh`, pointerEvents: 'none' }} />
+      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', minHeight: `${(1 - TOP) * 100}vh`, boxSizing: 'border-box', position: 'relative', zIndex: 600, padding: '14px 22px 24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW, ...drag.style }}>
         {drag.handle}
         {children}
       </div>
@@ -56,8 +63,14 @@ const Head = ({ title, sub }) => (
   </div>
 );
 
+/** L2 "+ Add a point" (26 Oct): another field for this member, taken on the leader's phone (R5–R7). */
+const AddRow = ({ onClick }) => (
+  <button type="button" onClick={onClick} style={{ width: '100%', minHeight: 48, borderRadius: 12, border: `1.5px dashed ${C.muted}`, background: 'transparent',
+    color: C.text, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>+ Add a point</button>
+);
+
 /** L2a: shapes are being drawn (first run, or one field again after None fit). */
-function Fetch({ job, onBack }) {
+function Fetch({ job, onBack, onAdd }) {
   const again = job.fields.find((f) => f.state === 'drawing' && f.round > 0);
   return (
     <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
@@ -66,12 +79,13 @@ function Fetch({ job, onBack }) {
       {job.fields.map((f) => (
         <FieldRow key={f.n} f={f} right={f.state === 'drawing' ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.state === 'accepted' ? 'Accepted' : f.state === 'left_out' ? 'Left out' : 'Waiting'} />
       ))}
+      <AddRow onClick={onAdd} />
     </Frame>
   );
 }
 
 /** L2: the best match for every field, all still to check. */
-function Plan({ job, onField, onBack }) {
+function Plan({ job, onField, onBack, onAdd }) {
   const open = job.fields.filter((f) => f.state !== 'left_out');
   return (
     <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
@@ -82,6 +96,7 @@ function Plan({ job, onField, onBack }) {
         return <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : s ? acres(s.acres) : ''} right={f.accepted ? 'Accepted' : undefined}
           onClick={f.state === 'left_out' ? undefined : () => onField(f.n)} />;
       })}
+      <AddRow onClick={onAdd} />
       <button type="button" disabled style={{ ...btn(true), flex: 'none', opacity: 0.5 }}>Mint land title</button>
     </Frame>
   );
@@ -151,7 +166,7 @@ function Check({ job, n, onDone, onBack }) {
 }
 
 /** L4: every field accepted (or left out): mint her land title. */
-function Done({ job, onField, onBack }) {
+function Done({ job, onField, onBack, onAdd }) {
   const mint = useMintLandTitle(job.id);
   const [farm, setFarm] = useState('');   // the title's name: hers from R6, else the leader names it here
   const ok = job.fields.filter((f) => f.state === 'accepted');
@@ -184,6 +199,7 @@ function Done({ job, onField, onBack }) {
         <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
           onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} />
       ))}
+      {!st && <AddRow onClick={onAdd} />}
       {st === 'minting' && <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Minting the land title. The member gets a notification when it is ready.</p>}
       {st === 'minted' && <p role="status" style={{ margin: 0, fontSize: 14, color: C.accent, fontWeight: 700 }}>Land title minted.</p>}
       {(st === 'failed' || mint.error) && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{mint.error?.message || job.mint?.error || 'The mint failed.'}</p>}
@@ -204,22 +220,38 @@ function Done({ job, onField, onBack }) {
   );
 }
 
-/** tasks/border/<id>[/<field>] */
+/** tasks/border/<id>/add: more points for this member's open job, on the leader's phone (R5–R7, 26 Oct). */
+function AddPoints({ job, onDone }) {
+  const api = useBorderClient();
+  const qc = useQueryClient();
+  const key = `job-${job.id}`;
+  const add = useMutation({
+    mutationFn: () => api.addPoints(job.id, readPoints(key).points.map(({ lat, lng, acc }) => ({ lat, lng, acc }))),
+    onSuccess: (j) => { clearPoints(key); qc.invalidateQueries({ queryKey: ['oracle', 'border'] }); qc.setQueryData(['oracle', 'border', 'job', job.id], j); onDone(); },
+  });
+  if (add.isPending) return <Loading />;
+  if (add.error) return <ErrorFull title="The points were not added" text={add.error.message} primary="Try again" onPrimary={() => add.mutate()} secondary="Back to all fields" onSecondary={onDone} />;
+  return <PointsStep evm={key} forName={memberName(job)} onDone={() => add.mutate()} onBack={onDone} />;
+}
+
+/** tasks/border/<id>[/<field> | /add] */
 export default function LeaderBorder({ id, field, go }) {
   const q = useBorderJob(id);
   const job = q.data;
   const toTasks = useCallback(() => go('tasks'), [go]);
   const toPlan = useCallback(() => go(`tasks/border/${id}`), [go, id]);
   const toField = useCallback((n) => go(`tasks/border/${id}/${n}`), [go, id]);
+  const toAdd = useCallback(() => go(`tasks/border/${id}/add`), [go, id]);
   if (q.isLoading || !job) {
     return <div style={{ padding: 16, fontFamily: FONT, color: q.error ? C.coral : C.muted }}>{q.error ? q.error.message : '…'}</div>;
   }
   if (job.status === 'failed') {
     return <div style={{ padding: 16, fontFamily: FONT, color: C.coral }}>{job.mint?.error || 'The shapes could not be drawn.'} The member sends the field location again. <button type="button" onClick={toTasks} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700 }}>Back to tasks</button></div>;
   }
-  if (job.status === 'drawing') return <Fetch job={job} onBack={toTasks} />;
-  if (field && !['minting', 'minted'].includes(job.status)) return <Check key={`${field}:${job.updated}`} job={job} n={Number(field)} onDone={toPlan} onBack={toPlan} />;
+  if (field === 'add' && ['drawing', 'ready'].includes(job.status)) return <AddPoints job={job} onDone={toPlan} />;
+  if (job.status === 'drawing') return <Fetch job={job} onBack={toTasks} onAdd={toAdd} />;
+  if (field && field !== 'add' && !['minting', 'minted'].includes(job.status)) return <Check key={`${field}:${job.updated}`} job={job} n={Number(field)} onDone={toPlan} onBack={toPlan} />;
   const allDone = job.fields.every((f) => DONE.includes(f.state)) && job.fields.some((f) => f.state === 'accepted');
-  if (allDone || ['minting', 'minted'].includes(job.status)) return <Done job={job} onField={toField} onBack={toTasks} />;
-  return <Plan job={job} onField={toField} onBack={toTasks} />;
+  if (allDone || ['minting', 'minted'].includes(job.status)) return <Done job={job} onField={toField} onBack={toTasks} onAdd={toAdd} />;
+  return <Plan job={job} onField={toField} onBack={toTasks} onAdd={toAdd} />;
 }
