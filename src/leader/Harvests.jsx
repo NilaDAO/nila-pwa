@@ -15,11 +15,10 @@ import Segmented from '../shell/Segmented';
 import { Primary, inr } from '../plan/ui';
 import { Stepper } from '../loan/AssetParts';
 import { usePlanClient } from '../plan/hooks';
-import { useFxRate } from '../shell/UsdcAsset';
 import { useLeaderMap } from './unionMap';
 import AreaMap from '../plan/AreaMap';
 import { useUnionMembers, useUnionShares } from './unionMembers';
-import { harvestGroups, unitOf, useCropBatches, useSetPrice } from './harvestData';
+import { harvestGroups, unitOf, useCropPrices, useSetPrice } from './harvestData';
 
 const DAY = 86400;
 const card = { background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 };
@@ -55,16 +54,15 @@ function useHarvests() {
   const api = usePlanClient();
   const members = useUnionMembers(api);
   const shares = useUnionShares(api);
-  const batches = useCropBatches();
-  const fx = useFxRate().data;
+  const prices = useCropPrices();
   const groups = useMemo(() => harvestGroups(members.data, shares.data), [members.data, shares.data]);
-  // The crop's rupees per kg: its batch price on Polygon at today's rate, else the catalogue's until a leader sets one.
+  // The crop's rupees per kg: the union's local price on Stellar, else the catalogue's until a leader sets one.
   const priceOf = (crop) => {
-    const b = (batches.data || []).find((x) => x.crop === crop);
-    if (b?.usdtPerKg > 0 && fx > 0) return { inrPerKg: b.usdtPerKg * fx, set: true, batch: b.batch };
-    return { inrPerKg: b?.catalogueInrPerKg || 0, set: false, batch: b?.batch };
+    const b = (prices.data || []).find((x) => x.crop === crop);
+    if (b?.inrPerKg > 0) return { inrPerKg: b.inrPerKg, set: true, family: b.code };
+    return { inrPerKg: b?.catalogueInrPerKg || 0, set: false, family: b?.code };
   };
-  return { groups, priceOf, fx, members: members.data, loading: !members.data || !shares.data, refetch: () => { shares.refetch(); batches.refetch(); } };
+  return { groups, priceOf, members: members.data, loading: !members.data || !shares.data, refetch: () => { shares.refetch(); prices.refetch(); } };
 }
 
 function Head() {
@@ -77,19 +75,18 @@ function Head() {
   );
 }
 
-function PriceEditor({ crop, price, fx, onClose }) {
+function PriceEditor({ crop, price, onClose }) {
   const u = unitOf(crop.crop);
   const [v, setV] = useState(Math.round(price.inrPerKg * u.per) || 0);
   const { state, set } = useSetPrice();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <Stepper value={v} set={setV} step={u.per === 1000 ? 50 : 10} min={0} max={1_000_000} unit={`₹ /${u.name}`} label={`Price per ${u.name}`} />
-      <Primary disabled={state.status === 'busy' || !price.batch || !(fx > 0) || v <= 0}
-        onClick={async () => { if (await set(price.batch, v / u.per, fx)) onClose(); }}>
+      <Primary disabled={state.status === 'busy' || !price.family || v <= 0}
+        onClick={async () => { if (await set(price.family, v / u.per)) onClose(); }}>
         {state.status === 'busy' ? 'Setting the price…' : `Set ${inr(v)} /${u.name}`}
       </Primary>
-      {!price.batch && <span style={{ ...sub, color: C.coral }}>This crop has no open batch on Polygon yet.</span>}
-      {!(fx > 0) && <span style={{ ...sub, color: C.coral }}>No exchange rate today: the price cannot be set now.</span>}
+      {!price.family && <span style={{ ...sub, color: C.coral }}>This crop has no crop code yet.</span>}
       {state.status === 'failed' && <span style={{ ...sub, color: C.coral }}>{state.error}</span>}
     </div>
   );
@@ -154,7 +151,7 @@ function Calendar({ groups, go }) {
 /** H1: the Harvests tab. The map shows every member's property (25 Oct). */
 export function HarvestList({ go }) {
   const { map } = useLeaderMap('members');
-  const { groups, priceOf, fx, loading, refetch } = useHarvests();
+  const { groups, priceOf, loading, refetch } = useHarvests();
   const [edit, setEdit] = useState();
   const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'list'; } catch { return 'list'; } });
   const pickView = (v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
@@ -196,7 +193,7 @@ export function HarvestList({ go }) {
                   </span>
                 </div>
               </div>
-              {open && <PriceEditor crop={c} price={p} fx={fx} onClose={() => setEdit(undefined)} />}
+              {open && <PriceEditor crop={c} price={p} onClose={() => setEdit(undefined)} />}
               {c.groups.map((g) => {
                 const late = g.shares.filter((x) => x.late).length;
                 const kg = g.shares.reduce((t, x) => t + (x.kg || 0), 0);

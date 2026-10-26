@@ -47,6 +47,9 @@ const MESSAGES = {
     60: 'Too late for this cycle: the last day to use this crop share has passed.',
     61: 'This crop share can still be used: its last day has not passed yet.',
   },
+  crop_calendar: {
+    5: 'Only a leader of the union can set its crop prices.',
+  },
   machinery: {
     5: 'This account is not a member of the union.',
     6: 'This machine is not the owner’s.',

@@ -1,73 +1,58 @@
 // Harvests (H1, H2; 25 Oct): the union's crop shares by crop and harvest, from the members list kept on the phone, and
-// each crop's price, which a leader sets on Polygon (FoodTokenUpgradeable.setBatchPrice on the crop's standing batch;
-// executive decision 25 Oct: on-chain, set by the leaders now and then, as it is local). The batch keeps the price in
-// USDT per kg (6 decimals, as Polygon USDT); the leader works in rupees per quintal or tonne, turned into USDT at
-// today's fx_pool rate. Selling (buyer, sold lots) is not built: every harvest is "Not sold" (open Q2, X6, O8).
+// each crop's local price, which a leader sets on Stellar (crop_calendar.set_price(leader, union, family, paise per kg),
+// sponsored by the node; executive decision 26 Oct: per union, on-chain, set by the leaders now and then). Not on the
+// Polygon batch: the standing batches belong to no union, so a leader cannot set their price, and a price there would
+// be every union's. The leader works in rupees per quintal or tonne. Selling (buyer, sold lots) is not built: every
+// harvest is "Not sold" (open Q2, X6, O8).
 import { useCallback, useState } from 'react';
-import { ethers } from 'ethers';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useProvider } from '../hooks/useWallet.ts';
 import { useNilaSigner } from '../wallet/signer';
+import { useStellarConfig } from '../stellar/hooks';
+import { invokeContract, readContract, sv } from '../stellar/soroban';
+import { plainError } from '../stellar/errors';
 import { getCropBatches } from '../plan/api';
-import foodTokenAbi from '../components/ABI/FoodTokenP1.json';
-
-const FOODTOKEN = process.env.REACT_APP_FOODTOKEN_ADDRESS;
-const CHAIN_ID = Number(process.env.REACT_APP_CHAIN_ID) || 137;
-const USDT = 1e6;
 
 /** The unit a crop is weighed in on H1 (the boards): tonnes for cane, banana and cassava, else quintals. */
 export const unitOf = (crop) => (['sugarcane', 'banana', 'cassava'].some((k) => String(crop).startsWith(k)) ? { per: 1000, name: 'MT', short: 'MT' }
   : { per: 100, name: 'quintal', short: 'q' });
 
-/** Each crop's standing batch and its price on Polygon: [{ crop, name, colour, code, batch, usdtPerKg, catalogueInrPerKg }]. */
-export function useCropBatches() {
-  const { provider } = useProvider();
+/** Each crop and the union's local price of it: [{ crop, name, colour, code, inrPerKg, catalogueInrPerKg }]. */
+export function useCropPrices() {
+  const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['polygon', 'batches'], enabled: !!provider && !!FOODTOKEN, staleTime: 60 * 60_000,
+    queryKey: ['stellar', 'cropPrices', cfg?.union], enabled: !!cfg?.union && !!cfg?.contracts?.crop_calendar, staleTime: 60 * 60_000,
     queryFn: async () => {
       const { batches } = await getCropBatches();
-      const ft = new ethers.Contract(FOODTOKEN, foodTokenAbi, provider);
       return Promise.all((batches || []).map(async (b) => {
-        let usdtPerKg = 0;
-        if (b.batch) {
-          try { usdtPerKg = Number((await ft.getBatch(b.batch)).pricePerKgUsdt) / USDT; } catch { /* not readable: no price */ }
+        let inrPerKg = 0;
+        if (b.code) {
+          try { inrPerKg = Number((await readContract(cfg, 'crop_calendar', 'price', [sv.address(cfg.union), sv.u32(b.code)]))?.paise_per_kg || 0) / 100; } catch { /* not readable: no price */ }
         }
-        return { ...b, usdtPerKg, catalogueInrPerKg: Number(b.catalogue_inr_per_kg || 0) };
+        return { ...b, inrPerKg, catalogueInrPerKg: Number(b.catalogue_inr_per_kg || 0) };
       }));
     },
   });
 }
 
-/** Sets a crop's price on its standing batch, signed by this leader's own Polygon key (as the mint at approval). */
+/** Sets the union's local price of a crop family, this leader's own call (the node pays the fee). */
 export function useSetPrice() {
   const s = useNilaSigner();
-  const { provider } = useProvider();
+  const { data: cfg } = useStellarConfig();
   const qc = useQueryClient();
   const [state, setState] = useState({ status: 'idle' });
-  const set = useCallback(async (batch, inrPerKg, inrPerUsd) => {
+  const set = useCallback(async (family, inrPerKg) => {
     setState({ status: 'busy' });
     try {
-      if (!(inrPerUsd > 0)) throw new Error('No exchange rate today: try again later.');
-      const price = BigInt(Math.round((inrPerKg / inrPerUsd) * USDT));
-      const ft = new ethers.Contract(FOODTOKEN, foodTokenAbi, provider);
-      const data = ft.interface.encodeFunctionData('setBatchPrice', [batch, price]);
-      const me = s.evmAddress;
-      const [nonce, fees, gas] = await Promise.all([provider.getTransactionCount(me, 'pending'), provider.getFeeData(),
-        provider.estimateGas({ from: me, to: FOODTOKEN, data })]);
-      const raw = await s.signEvmTx({ to: FOODTOKEN, data, chainId: CHAIN_ID, nonce, gasLimit: (gas * 12n) / 10n,
-        maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas, value: 0, type: 2 });
-      const r = await (await provider.broadcastTransaction(raw)).wait();
-      if (r.status !== 1) throw new Error('The price was not set on Polygon.');
-      await qc.invalidateQueries({ queryKey: ['polygon', 'batches'] });
+      await invokeContract({ cfg, source: s.stellarAddress, signHash: s.signHash, contractName: 'crop_calendar', fn: 'set_price',
+        args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.u32(family), sv.u32(Math.round(inrPerKg * 100))] });
+      await qc.invalidateQueries({ queryKey: ['stellar', 'cropPrices'] });
       setState({ status: 'done' });
       return true;
     } catch (e) {
-      const m = String(e?.shortMessage || e?.message || e);
-      setState({ status: 'failed', error: /NotAuthorized/.test(m) ? 'Only a leader of the union can set the price.'
-        : /insufficient funds/i.test(m) ? 'Your Polygon wallet has no POL for the fee.' : m });
+      setState({ status: 'failed', error: plainError(e?.message || String(e), cfg) });
       return false;
     }
-  }, [s, provider, qc]);
+  }, [s, cfg, qc]);
   return { state, set, reset: () => setState({ status: 'idle' }) };
 }
 
