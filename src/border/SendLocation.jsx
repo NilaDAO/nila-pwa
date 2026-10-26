@@ -70,7 +70,8 @@ const WifiOff = () => (
  *  "Next point" and stores it. "Take a second point": when she cannot stand in the middle of the field, a second point
  *  and the field's point becomes the middle of the two. The name input shows only for a new point or a selected one (then with the remove button next to it).
  *  "All my fields have a point" ends it (executive decisions 20 Oct). */
-export function PointsStep({ evm, onDone }) {
+export function PointsStep({ evm, onDone, forName, onBack }) {
+  // forName (26 Oct): the leader takes a keypad member's points on the leader's phone; the texts name the member.
   const online = useOnline();
   const [q, setQ] = useState(() => readPoints(evm));
   const [name, setName] = useState('');
@@ -147,9 +148,11 @@ export function PointsStep({ evm, onDone }) {
       : undefined;
   const wait = unnamed || busy;
   return (
-    <MapFrame map={q.points} me={pan ? null : me} start={me} pan={pan} onCenter={setCentre} info={info}
+    <MapFrame header={forName ? `Fields of ${forName}` : undefined} map={q.points} me={pan ? null : me} start={me} pan={pan} onCenter={setCentre} info={info}
       selected={selected} onSelect={setSelected}>
-      <div style={cardTitle}>{n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field'}</div>
+      <div style={cardTitle}>{forName
+        ? (n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field')
+        : (n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field')}</div>
       {!online && (
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', ...sheetText }}>
           <div style={{ width: 20, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><WifiOff /></div>
@@ -211,7 +214,8 @@ export function PointsStep({ evm, onDone }) {
       {n === 0 && (pan
         ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
         : <button type="button" style={btnSecondary} onClick={choose}>Choose on the map</button>)}
-      {n > 0 && <button type="button" style={wait ? btnDisabled : btnSecondary} disabled={wait} onClick={finish}>All my fields have a point</button>}
+      {n > 0 && <button type="button" style={wait ? btnDisabled : btnSecondary} disabled={wait} onClick={finish}>{forName ? 'All fields have a point' : 'All my fields have a point'}</button>}
+      {onBack && <button type="button" style={btnSecondary} onClick={onBack}>Back</button>}
     </MapFrame>
   );
 }

@@ -41,15 +41,15 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
   const getToken = useSep10Token();
   const lp = useLpStatus();
   const trust = useUsdcTrustline();
-  const [signedIn, setSignedIn] = useState(false);
   const [vals, setVals] = useState({});
   const [selfie, setSelfie] = useState();
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState();
-  // Her K1 at the anchor; read after she signed in (one SEP-10 signature), refreshed while it is checked.
+  // Her K1 at the anchor, read as soon as the screen opens (26 Oct: no Start step; the SEP-10 signature is silent),
+  // refreshed while it is checked.
   const k1 = useQuery({
-    queryKey: ['anchor', 'k1', kind], enabled: signedIn && !!info.data, retry: 1,
+    queryKey: ['anchor', 'k1', kind], enabled: !!info.data, retry: 1,
     refetchInterval: (q) => (q.state.data?.status === 'PROCESSING' ? 30_000 : false),
     queryFn: async () => getCustomer(info.data, await getToken(), kind),
   });
@@ -82,17 +82,16 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
     setBusy(false);
   };
 
-  // Reaching the anchor: the app's standard loading view (bouncing logo, skeleton card), not a bare "…".
-  if (!info.data && !info.isError) return <Loading />;
+  // Reaching the anchor and reading the member's check: the app's standard loading view, not a bare "…".
+  if ((!info.data && !info.isError) || k1.isLoading) return <Loading />;
   let body;
   if (!info.data) {
     body = <p style={muted}>The anchor is not reachable. Try again later.</p>;
-  } else if (!signedIn || k1.isLoading) {
+  } else if (k1.isError) {
     body = (
       <>
-        <p style={muted}>{leader ? 'Needed for union leaders.' : 'Needed to become an LP.'}</p>
-        {k1.isError && <p style={{ color: C.coral }}>{k1.error.message}</p>}
-        <Primary onClick={() => setSignedIn(true)}>{signedIn ? '…' : 'Start'}</Primary>
+        <p style={{ color: C.coral }}>{k1.error.message}</p>
+        <Primary onClick={() => k1.refetch()}>Try again</Primary>
       </>
     );
   } else if (status === 'PROCESSING') {

@@ -34,7 +34,7 @@ import Settings from './Settings';
 import LeaderTasks from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
-import AddMember from '../leader/AddMember';
+import AddMember, { KeypadPoints } from '../leader/AddMember';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { pointsSent } from '../register/Registration';
 import { BootLoading } from '../register/Boot';
@@ -74,7 +74,7 @@ function Later({ title, step }) {
 // tasks/border/<job id>[/<field>]: L2a–L4 for a leader.
 const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+))?/) || [];
 // tasks/member[/<id>]: L14 Add a member and its #sent progress (P8).
-const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?$/);
+const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?(\/points)?$/);
 
 /** A member's crop plan, made by the leader with the member (assist mode, 26 Oct): #/memberplan/<route>. */
 function MemberPlan({ route }) {
@@ -90,6 +90,7 @@ function TasksView({ leader, go }) {
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
   const member = readMember();
+  if (leader && member && member[2]) return <KeypadPoints key={member[1]} id={member[1]} go={go} />;
   if (leader && member) return <AddMember key={member[1] || 'new'} id={member[1]} go={go} />;
   if (leader) return <LeaderTasks go={go} />;
   // A2 (board Tasks): "Cash offers" for an LP, then "To do". DESIGN GAP: the board's to-do rows (use machine hours,

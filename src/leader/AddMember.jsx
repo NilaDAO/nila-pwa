@@ -1,12 +1,12 @@
 // L14 — Add a member (board LeaderAddMember, #sent): the leader at her farm enters her name and number and her phone
 // type, and Nila texts her the app link (oracle O17). A keypad phone gets a one-time link to Nila lite (/l/<code>,
 // 30 minutes, one use, bound to her number; F9); a smartphone the app's address (she registers herself, R1–R14).
-// #sent follows her progress: link sent, opened and agreed, phone set up (no PIN, executive decision 22 Oct), then each
-// field she sends from her keypad phone (F14, into her border job); "Match field shapes" opens that job (L2) once a field
-// is in. DESIGN GAPs: the leader's own name is not on Stellar, so the
+// #sent follows her progress: link sent, opened and agreed, phone set up (no PIN, executive decision 22 Oct). Then the
+// leader takes the field points on the leader's own phone (26 Oct, executive decision: the keypad phone takes none;
+// R5–R7's screen, tasks/member/<id>/points), which starts the border job; "Match field shapes" opens it (L2). DESIGN GAPs: the leader's own name is not on Stellar, so the
 // link names the union's representative (R9's union list); the hooks' names are the design's proposal (Q53).
 import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { invokeContract, server } from '../stellar/soroban';
@@ -17,7 +17,9 @@ import MapCard from '../shell/MapCard';
 import { Card, CardButton, Row, Text } from '../shell/SettingsParts';
 import { useUnionInfo } from '../shell/SettingsParts';
 import { Notice, Primary } from '../plan/ui';
-import { useInviteLink, useKeypadMember } from '../keypad/hooks';
+import { useInviteLink, useKeypadClient, useKeypadMember } from '../keypad/hooks';
+import { PointsStep, clearPoints, readPoints } from '../border/SendLocation';
+import { Loading } from '../register/Boot';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 
 const field = { height: 48, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 16px', boxSizing: 'border-box',
@@ -102,10 +104,7 @@ function Sent({ id, go }) {
             <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for the member' : 'The link no longer works: send it again')} />
             <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
             {m.account && <Step done={accountMade} title="Account made" sub={accountMade ? `${m.account.slice(0, 4)}…${m.account.slice(-4)}` : 'Making it…'} />}
-            {(m.fields || []).map((f) => (
-              <Step key={f.n} done title={`Field ${f.n} sent`} sub={`${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}${f.acc != null ? ` · ± ${Math.round(f.acc)} m` : ''}`} />
-            ))}
-            <Step title={`Field ${(m.fields || []).length + 1}`} sub={(m.fields || []).length ? 'Walk with the member to the next field' : 'Walk with the member to their first field'} />
+            <Step done={!!m.job} title="Field points taken" sub={m.job ? `${(m.fields || []).length} field${(m.fields || []).length === 1 ? '' : 's'}` : 'On your phone, at the farm'} />
             <Notice kind="info">Pin Nila to the apps menu: on the member's phone, in the browser, Options → Pin to Apps Menu.</Notice>
           </>
         ) : (
@@ -119,8 +118,14 @@ function Sent({ id, go }) {
       </Card>
       {keypad && (
         <Card title="Fields">
-          <Notice kind="info">When every field is sent, match the shapes. The land title cannot change later.</Notice>
-          <Primary disabled={!m.job} onClick={() => go(`tasks/border/${m.job}`)}>Match field shapes</Primary>
+          {m.job ? (
+            <Primary onClick={() => go(`tasks/border/${m.job}`)}>Match field shapes</Primary>
+          ) : (
+            <>
+              <Notice kind="info">Walk with the member to each field and take its point on your phone. Take every field now: the land title cannot change later.</Notice>
+              <Primary disabled={!m.device} onClick={() => go(`tasks/member/${m.id}/points`)}>Take the field points</Primary>
+            </>
+          )}
         </Card>
       )}
     </>
@@ -153,7 +158,7 @@ export default function AddMember({ id, go }) {
               <Radio title="Smartphone" sub="Nila app. The member registers." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
               <Radio title="Keypad phone" sub="Nila lite. The member opens a link from SMS." on={type === 'keypad'} onClick={() => setType('keypad')} />
             </div>
-            <Notice kind="info">Do this at the farm. The member sends the location of each field from their phone. No phone of their own? A family member's phone works. No phone, no account.</Notice>
+            <Notice kind="info">Do this at the farm. A smartphone member sends the location of each field from their phone; for a keypad phone you take them on your phone. No phone of their own? A family member's phone works. No phone, no account.</Notice>
             {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
             <Primary disabled={!ok || send.isPending} onClick={submit}>Send app link</Primary>
           </Card>
@@ -161,4 +166,25 @@ export default function AddMember({ id, go }) {
       )}
     </MapCard>
   );
+}
+
+/** tasks/member/<id>/points (26 Oct): the leader takes a keypad member's field points on the leader's phone, as R5–R7;
+ *  sent together, they start the member's border job and the leader goes on to match the shapes (L2a). */
+export function KeypadPoints({ id, go }) {
+  const api = useKeypadClient();
+  const m = useKeypadMember(id).data;
+  const key = `keypad-${id}`;
+  const send = useMutation({ mutationFn: () => api.points(id, readPoints(key).points.map(({ lat, lng, acc }) => ({ lat, lng, acc }))) });
+  const done = () => send.mutate(undefined, { onSuccess: (r) => { clearPoints(key); go(`tasks/border/${r.job}`); } });
+  if (send.isPending) return <Loading />;
+  if (send.error) {
+    return (
+      <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}
+        header={{ title: 'Field points', onBack: () => go(`tasks/member/${id}`) }}>
+        <Text style={{ color: C.coral }}>{send.error.message}</Text>
+        <Primary onClick={done}>Try again</Primary>
+      </MapCard>
+    );
+  }
+  return <PointsStep evm={key} forName={m?.name || 'the member'} onDone={done} onBack={() => go(`tasks/member/${id}`)} />;
 }

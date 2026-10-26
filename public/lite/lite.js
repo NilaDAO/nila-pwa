@@ -4,9 +4,7 @@
  *                     makes its device key and registers it (no PIN, executive decision 22 Oct: the device key's
  *                     signature is her consent)
  *   #/expired         F9 #expired: the link was used, voided or is older than 30 minutes
- *   #/fields          F14: each field's location — allow, #search, #ready (± 20 m or better), #check (the dot on a
- *                     satellite image the node renders), SEND, #sent (Next = another field), #denied; Done ends it
- *                     (F13 #pending is not built: a plain "done" screen stands in)
+ *   (F14 is gone, 26 Oct: the leader takes her field points on the leader's phone; after F9 the phone opens F1)
  *   #/help            the help QR (A2, 26 Oct): lets a leader of the union act for her for 5 minutes (session.js)
  *   #/home            F1: value invested, then Help QR, My assets, My crop plan, My land, Messages (26 Oct; read only)
  *   #/assets          F11: invested, crop shares, machine hours, land title (no nIN rows: members hold no nIN)
@@ -187,11 +185,8 @@
         localStorage.setItem('nila.lite.member', out.member);
         // Her smart account (26 Oct), from her device key; the leader's app creates it at L14.
         if (out.account) localStorage.setItem('nila.lite.account', out.account);
-        // A new phone goes on from the fields her open job already has (a lost phone, L14 again).
-        localStorage.setItem('nila.lite.fields', String(out.fields || 0));
-        localStorage.removeItem('nila.lite.done');
       } catch (e) { /* no storage */ }
-      go('#/fields');
+      go('#/home');
     }, fail);
   }
 
@@ -202,173 +197,8 @@
     if (msg) msg.textContent = (e && e.message) || 'Something went wrong. Try again.';
   }
 
-  // ---- F14: each field's location (board KeypadLocation) ----
-
-  var fix = null;         // the latest GPS fix: { lat, lng, acc }
-  var watch = null;
-  var GOOD = 20;          // metres: under this she checks the dot on the map
-
+  // F14 is gone (26 Oct, executive decision): the leader takes her field points on the leader's phone (L14).
   function stored(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* no storage */ } }
-  function fieldNo() { return (parseInt(stored('nila.lite.fields'), 10) || 0) + 1; }
-  function deg(v) { return v.toFixed(5); }
-  function stopGps() {
-    if (watch && watch.stop) watch.stop();
-    else if (watch !== null && navigator.geolocation) navigator.geolocation.clearWatch(watch);
-    watch = null;
-  }
-  // Accuracy only (26 Oct): latitude and longitude mean nothing to her.
-  function rows(f, colour) {
-    return '<div class="rows"><div class="row"><span class="muted">Accuracy</span><b style="color:' + colour + '">' +
-      (f ? '± ' + Math.round(f.acc) + ' m' : '…') + '</b></div></div>';
-  }
-  // The accuracy circle (board: wide and coral while finding her, small and yellow when ready).
-  function circle(acc, colour) {
-    var r = Math.max(8, Math.min(44, Math.round(acc || 44)));
-    return '<svg width="220" height="96" viewBox="0 0 220 96" class="pic" aria-hidden="true">' +
-      '<circle cx="110" cy="48" r="' + r + '" fill="' + colour + '" fill-opacity="0.18" stroke="' + colour + '" stroke-width="2"/>' +
-      '<circle cx="110" cy="48" r="5" fill="' + colour + '"/></svg>';
-  }
-
-  function fieldsStart() {
-    stopGps(); fix = null;
-    screen('<p class="muted" style="margin:0">Field ' + fieldNo() + '</p><h1>Stand in the middle of your field.</h1>' +
-      '<div class="card"><b>nila.land wants to know your location</b><p class="muted" style="margin:0">The phone asks this once. Press Allow.</p></div>',
-      ['Deny', function () { go('#/fields/denied'); }], ['Allow', function () { go('#/fields/search'); }], null, 'Register your land');
-  }
-
-  function searching() {
-    var f = fix;
-    screen('<h1>Field ' + fieldNo() + ' · finding you…</h1>' + circle(f ? f.acc : 44, '#E69283') + rows(f, '#E69283') +
-      '<p class="muted">Stay still in the open, away from trees.</p>',
-      ['Cancel', function () { stopGps(); go('#/fields'); }], null, null, 'Register your land');
-  }
-
-  function onFix(lat, lng, acc) {
-    fix = { lat: lat, lng: lng, acc: acc };
-    if (location.hash !== '#/fields/search') return;
-    if (acc <= GOOD) { stopGps(); go('#/fields/ready'); return; }
-    searching();
-  }
-
-  function startGps() {
-    if (watch !== null) return;
-    demoGps().then(function (pts) {
-      if (location.hash !== '#/fields/search' || watch !== null) return;
-      if (pts) { watch = demoWatch(pts[(fieldNo() - 1) % pts.length]); return; }
-      if (!navigator.geolocation) { go('#/fields/denied'); return; }
-      watch = navigator.geolocation.watchPosition(function (pos) {
-        onFix(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-      }, function (err) {
-        if (err && err.code === 1) { stopGps(); go('#/fields/denied'); }   // PERMISSION_DENIED; else keep waiting
-      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 });
-    });
-  }
-
-  // The demo has no GPS: off pwa.nila.land the demo phone server may offer points inside a demo parcel
-  // (/__demo/gps.json, made at run time from a demo record); without it the browser's location is used (Chrome
-  // DevTools → Sensors → Location). Never asked on pwa.nila.land.
-  var demoPts;
-  function demoGps() {
-    if (demoPts !== undefined || location.hostname === 'pwa.nila.land') return Promise.resolve(demoPts || null);
-    return fetch('/__demo/gps.json').then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { demoPts = (j && j.points && j.points.length) ? j.points : null; return demoPts; },
-        function () { demoPts = null; return null; });
-  }
-  function demoWatch(pt) {
-    var steps = [85, 40, 12], i = 0, t;
-    function tick() {
-      var a = steps[i], j = a / 111320 / 3;
-      onFix(pt.lat + (i < 2 ? j : 0), pt.lng + (i < 2 ? -j : 0), a);
-      i += 1;
-      if (i < steps.length) t = setTimeout(tick, 1200);
-    }
-    t = setTimeout(tick, 600);
-    return { stop: function () { clearTimeout(t); } };
-  }
-
-  function ready() {
-    if (!fix) { go('#/fields'); return; }
-    screen('<h1>Field ' + fieldNo() + ' · location found</h1>' + circle(fix.acc, '#D4CF5A') + rows(fix, '#D4CF5A') +
-      '<p class="muted">Good enough (under 20 m). Press OK to see the spot on the map.</p>',
-      ['Cancel', function () { go('#/fields'); }], ['OK', function () { go('#/fields/check'); }], null, 'Register your land');
-  }
-
-  function check() {
-    if (!fix) { go('#/fields'); return; }
-    var f = fix;
-    screen('<h1 style="margin-bottom:4px">Is the dot in your field?</h1><div class="map"><p class="muted" id="mapmsg">…</p></div>' +
-      '<p class="muted small">Satellite image · circle = ± ' + Math.round(f.acc) + ' m</p><p id="msg" class="err"></p>',
-      ['No, again', function () { go('#/fields/search'); }], ['Send', function () { sendField(f); }], null, 'Register your land');
-    signed('map', { lat: f.lat, lng: f.lng, acc: f.acc }).then(function (q) {
-      var box = main.querySelector('.map');
-      if (!box || fix !== f) return;
-      var img = new Image();
-      img.width = 220; img.height = 150; img.alt = 'Satellite image of your field';
-      img.onload = function () { box.innerHTML = ''; box.appendChild(img); };
-      img.onerror = function () { var m = document.getElementById('mapmsg'); if (m) m.textContent = 'No map image right now. Check the place yourself, then SEND.'; };
-      img.src = API + '/keypad/map?p=' + encodeURIComponent(q.p) + '&s=' + encodeURIComponent(q.s);
-    }, function (e) { var m = document.getElementById('mapmsg'); if (m) m.textContent = e.message; });
-  }
-
-  function sendField(f) {
-    busy = true;
-    var msg = document.getElementById('msg');
-    if (msg) msg.textContent = '';
-    signed('field', { lat: f.lat, lng: f.lng, acc: Math.round(f.acc * 10) / 10 }).then(function (q) {
-      return call('POST', '/keypad/fields', q);
-    }).then(function (out) {
-      busy = false;
-      store('nila.lite.fields', String(out.field));
-      store('nila.lite.last', JSON.stringify({ n: out.field, lat: f.lat, lng: f.lng, acc: f.acc }));
-      fix = null;
-      go('#/fields/sent');
-    }, function (e) {
-      busy = false;
-      var m = document.getElementById('msg');
-      if (m) m.textContent = (e && e.message) || 'Not sent. Try again.';
-    });
-  }
-
-  function sent() {
-    var last = null;
-    try { last = JSON.parse(stored('nila.lite.last') || 'null'); } catch (e) { last = null; }
-    if (!last) { go('#/fields'); return; }
-    screen('<h1>Field ' + last.n + ' sent</h1><p class="muted">Accuracy ± ' + Math.round(last.acc) + ' m</p>' +
-      '<p class="muted">Another field? Walk to it and press Next field. Send every field now: the land title cannot change later. ' +
-      'No more fields? Press All sent.</p><p id="msg" class="err"></p>',
-      ['All sent', allSent], null, ['Next field', function () { go('#/fields'); }], 'Register your land');
-  }
-
-  // "All sent" (26 Oct): tells the node, so the leader's border screens say no more fields are coming.
-  function allSent() {
-    if (busy) return;
-    busy = true;
-    signed('fields_done', {}).then(function (q) { return call('POST', '/keypad/fields/done', q); }).then(function () {
-      busy = false;
-      store('nila.lite.done', '1');
-      go('#/done');
-    }, function (e) {
-      busy = false;
-      var m = document.getElementById('msg');
-      if (m) m.textContent = (e && e.message) || 'Not sent. Try again.';
-    });
-  }
-
-  function denied() {
-    stopGps();
-    screen('<h1>No location</h1><p class="muted">Location is off or blocked. Turn it on in Settings, Location, then try again. ' +
-      'Or your leader takes it on the leader phone.</p>',
-      ['Later', function () { go('#/fields'); }], ['Retry', function () { go('#/fields/search'); }], null, 'Register your land');
-  }
-
-  // After Done: F13 #pending (her land, once the leader has checked the borders) is not built yet.
-  function done() {
-    var n = parseInt(stored('nila.lite.fields'), 10) || 0;
-    screen('<h1>Your fields are sent</h1><p>' + n + (n === 1 ? ' field' : ' fields') + '</p>' +
-      '<p class="muted">Your union leader checks the borders. Nila sends you an SMS when your land title is ready.</p>',
-      ['Home', function () { go('#/home'); }], null, ['Add a field', function () { store('nila.lite.done', ''); go('#/fields'); }], 'Register your land');
-  }
 
   // ---- F1–F13: her own things, read only (26 Oct) ----
 
@@ -545,7 +375,7 @@
       var t = d.me.title, back = ['Back', function () { go('#/home'); }];
       if (!t) {
         var f = (d.me.pending && d.me.pending.fields) || [], h = '<h1>Waiting for your land title</h1>';
-        if (f.length) { h += '<p class="muted small">Fields you sent</p><div class="rows">'; f.forEach(function (p) { h += row('Field ' + p.n, p.lat.toFixed(5) + ', ' + p.lng.toFixed(5)); }); h += '</div>'; }
+        if (f.length) h += '<p class="muted small">' + f.length + (f.length === 1 ? ' field' : ' fields') + ' with your union leader</p>';
         screen(h + '<p class="muted small">Your union leader draws the borders of each field. You get an SMS when your land title is ready; then the map shows here.</p>',
           back, null, null, 'My land');
         return;
@@ -607,7 +437,7 @@
   function help() {
     var account = stored('nila.lite.account');
     if (helpTimer) { clearInterval(helpTimer); helpTimer = null; }
-    var back = ['Back', function () { go(stored('nila.lite.done') ? '#/home' : '#/fields'); }];
+    var back = ['Back', function () { go('#/home'); }];
     if (!account) {
       screen('<h1>Not ready yet</h1><p class="muted">Your account is not set up on this phone. Ask your union leader to send a new link.</p>',
         back, null, null, 'Help QR');
@@ -653,17 +483,10 @@
 
   function route() {
     var h = location.hash, m;
-    if (h !== '#/fields/search') stopGps();
     if ((m = /^#\/l\/([0-9A-Z]+)$/.exec(h))) { open(m[1], function () { welcome(m[1]); }); return; }
     if (h === '#/expired') { expired(); return; }
     var member = stored('nila.lite.member');
     if (!member) { expired(); return; }
-    if (h === '#/fields/search') { searching(); startGps(); return; }
-    if (h === '#/fields/ready') { ready(); return; }
-    if (h === '#/fields/check') { check(); return; }
-    if (h === '#/fields/sent') { sent(); return; }
-    if (h === '#/fields/denied') { denied(); return; }
-    if (h === '#/done') { done(); return; }
     if (h === '#/help') { help(); return; }
     if (h === '#/home') { home(); return; }
     if (h === '#/assets') { assets(); return; }
@@ -674,8 +497,7 @@
     if ((m = /^#\/land\/(\d+)$/.exec(h))) { area(parseInt(m[1], 10)); return; }
     if (h === '#/messages') { messages(); return; }
     if ((m = /^#\/messages\/(\d+)$/.exec(h))) { message(parseInt(m[1], 10)); return; }
-    if (h === '#/fields' || h === '#/next') { fieldsStart(); return; }
-    go(stored('nila.lite.done') ? '#/home' : '#/fields');
+    go('#/home');
   }
 
   // KaiOS keys: SoftLeft / Enter / SoftRight, digits, Backspace (the hardware back key). On a computer the same keys.
