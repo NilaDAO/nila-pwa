@@ -10,6 +10,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { C, FONT } from '../shell/tokens';
 import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { CheckRow, Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
+import { Sheet as BaseSheet } from './ui';
 import { BasisDrawer, Drawer, InfoButton } from './Drawer';
 import { useMintCropShares } from './mint';
 import { TxScreens } from '../stellar/TxStatus';
@@ -170,6 +171,9 @@ function AssistPlan({ map, name, waiting }) {
 }
 
 export default function CropPlanFlow({ forLand, self = false } = {}) {
+  // A member's plan made by the leader (26 Oct): the member's name on every card, no settings button.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const Sheet = useMemo(() => (forLand ? function MemberSheet(p) { return <BaseSheet {...p} noSettings />; } : BaseSheet), [!!forLand]);
   const s = useNilaSigner();
   const qc = useQueryClient();
   const titles = useLandTitles(forLand ? undefined : s?.evmAddress);
@@ -255,7 +259,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   useEffect(() => { if (approved) setSeason(currentSeason(plan.plan.seasons || [])); }, [planId, approved]); // eslint-disable-line react-hooks/exhaustive-deps
   // Her land's name comes from the land title's metadata (not the record), "Land <id>" only when it has none.
   const titleName = useTitleName(landId, onPolygon, stellarTitle);
-  const name = titleName || (landId != null ? `Land ${landId}` : 'Nila');
+  const name = (forLand && forLand.label) || titleName || (landId != null ? `Land ${landId}` : 'Nila');
   const zoneOrder = useMemo(() => areasOf(record).map((z) => z.zone_id), [record]);
   const areaNo = useCallback((zone) => (zoneOrder.indexOf(zone) + 1) || zone, [zoneOrder]);
   // The map is the list (CP10): each area's chip shows what grows there in the season shown, or just "Area n".
@@ -332,10 +336,10 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     if (!record) return <Pending map={map} name={name} error={field.error} />;
     const sum = summarize(record);
     return (
-      <Sheet map={map} landName={name} title="Your field record">
+      <Sheet map={map} landName={name} title={forLand ? 'Field record' : 'Your field record'}>
         {sum.from && <p style={{ ...muted, textAlign: 'center', margin: 0 }}>{sum.from} to {sum.to}</p>}
         <p style={{ ...muted, textAlign: 'center' }}>{sum.cultivations} cultivations on {sum.areas} areas</p>
-        <Primary onClick={() => setStep('intro')}>Make my crop plan</Primary>
+        <Primary onClick={() => setStep('intro')}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
       </Sheet>
     );
   }
@@ -518,7 +522,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       try { const r = await revise.mutateAsync({ planId: plan.id, note: changeNote }); setJobId(r.job_id); setStep('making'); } catch (e) { setError(e.message); }
     };
     return (
-      <Sheet map={map} landName={name} title="Change my plan" onBack={back('plan')}>
+      <Sheet map={map} landName={name} title={forLand ? 'Change the plan' : 'Change my plan'} onBack={back('plan')}>
         <p style={muted}>Tell us what to change and why. Your plan follows you unless a fact rules it out, and it says why.</p>
         <textarea aria-label="What to change" value={changeNote} maxLength={1000} onChange={(e) => setChangeNote(e.target.value)}
           style={{ width: '100%', minHeight: 100, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 14 }} />
