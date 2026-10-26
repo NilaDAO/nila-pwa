@@ -33,12 +33,12 @@ function Frame({ name, onBack, backLabel, map, children }) {
   return (
     <div style={{ fontFamily: FONT, color: C.text, position: 'relative' }}>
       <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>{full}</div>
-      <button type="button" aria-label={backLabel} onClick={onBack} style={{ ...pill, position: 'fixed', zIndex: 500, left: 8, top: 12, width: 40, height: 40, border: 0, color: C.text, fontSize: 20 }}>←</button>
-      <h1 style={{ position: 'fixed', zIndex: 500, left: 56, right: 56, top: 12, margin: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+      <button type="button" aria-label={backLabel} onClick={onBack} style={{ ...pill, position: 'fixed', zIndex: 6, left: 8, top: 12, width: 40, height: 40, border: 0, color: C.text, fontSize: 20 }}>←</button>
+      <h1 style={{ position: 'fixed', zIndex: 6, left: 56, right: 56, top: 12, margin: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
         <span style={{ ...pill, padding: '0 14px', height: 40, display: 'flex', alignItems: 'center', fontSize: 16, fontWeight: 700 }}>{name}</span>
       </h1>
       <div aria-hidden="true" style={{ height: `${TOP * 100}vh`, pointerEvents: 'none' }} />
-      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', minHeight: `${(1 - TOP) * 100}vh`, boxSizing: 'border-box', position: 'relative', zIndex: 600, padding: '14px 22px 24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW, ...drag.style }}>
+      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', minHeight: `${(1 - TOP) * 100}vh`, boxSizing: 'border-box', position: 'relative', zIndex: 5, padding: '14px 22px 24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW, ...drag.style }}>
         {drag.handle}
         {children}
       </div>
