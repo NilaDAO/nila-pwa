@@ -9,8 +9,9 @@
 import { Loading } from '../register/Boot';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Primary, Sheet, muted } from '../plan/ui';
-import { C, R } from '../shell/tokens';
+import { Primary, muted } from '../plan/ui';
+import MapCard from '../shell/MapCard';
+import { C, FONT, R } from '../shell/tokens';
 import { useAnchorInfo, useLpStatus, useSep10Token, useUsdcTrustline } from './hooks';
 import { getCustomer, putConsent, putCustomer } from './sep';
 
@@ -167,5 +168,11 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
       </>
     );
   }
-  return <Sheet landName="Nila" title="Identity check" onBack={onBack}>{body}</Sheet>;
+  // The map-view standard (26 Oct, as the help QR): a full-height card with the drag line, the title in its header,
+  // no "Nila" heading over it.
+  return (
+    <MapCard header={{ title: 'Identity check', onBack }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+      {body}
+    </MapCard>
+  );
 }
