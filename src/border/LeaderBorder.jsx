@@ -93,8 +93,10 @@ function Plan({ job, onField, onBack, onAdd }) {
       <Head title={`${open.length} fields · best match`} sub="Tap a field to check it" />
       {job.fields.map((f) => {
         const s = shapeFor(f, job.plan);
-        return <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : s ? acres(s.acres) : ''} right={f.accepted ? 'Accepted' : undefined}
-          onClick={f.state === 'left_out' ? undefined : () => onField(f.n)} />;
+        const busy = f.state === 'drawing';
+        return <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : busy ? 'Drawing the shapes, please wait' : s ? acres(s.acres) : ''}
+          right={busy ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.accepted ? 'Accepted' : undefined}
+          onClick={f.state === 'left_out' || busy ? undefined : () => onField(f.n)} />;
       })}
       <AddRow onClick={onAdd} />
       <button type="button" disabled style={{ ...btn(true), flex: 'none', opacity: 0.5 }}>Mint land title</button>
@@ -249,9 +251,11 @@ export default function LeaderBorder({ id, field, go }) {
     return <div style={{ padding: 16, fontFamily: FONT, color: C.coral }}>{job.mint?.error || 'The shapes could not be drawn.'} The member sends the field location again. <button type="button" onClick={toTasks} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700 }}>Back to tasks</button></div>;
   }
   if (field === 'add' && ['drawing', 'ready'].includes(job.status)) return <AddPoints job={job} onDone={toPlan} />;
-  if (job.status === 'drawing') return <Fetch job={job} onBack={toTasks} onAdd={toAdd} />;
-  if (field && field !== 'add' && !['minting', 'minted'].includes(job.status)) return <Check key={`${field}:${job.updated}`} job={job} n={Number(field)} onDone={toPlan} onBack={toPlan} />;
-  const allDone = job.fields.every((f) => DONE.includes(f.state)) && job.fields.some((f) => f.state === 'accepted');
+  // One field drawn again (26 Oct): the others stay on L2 to check meanwhile; L2a only while no field has shapes yet.
+  const drawingN = (n) => job.fields.some((f) => f.n === n && f.state === 'drawing');
+  if (job.status === 'drawing' && !job.fields.some((f) => f.shapes?.length)) return <Fetch job={job} onBack={toTasks} onAdd={toAdd} />;
+  if (field && field !== 'add' && !drawingN(Number(field)) && !['minting', 'minted'].includes(job.status)) return <Check key={`${field}:${job.updated}`} job={job} n={Number(field)} onDone={toPlan} onBack={toPlan} />;
+  const allDone = job.status !== 'drawing' && job.fields.every((f) => DONE.includes(f.state)) && job.fields.some((f) => f.state === 'accepted');
   if (allDone || ['minting', 'minted'].includes(job.status)) return <Done job={job} onField={toField} onBack={toTasks} onAdd={toAdd} />;
   return <Plan job={job} onField={toField} onBack={toTasks} onAdd={toAdd} />;
 }
