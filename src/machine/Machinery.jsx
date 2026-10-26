@@ -18,6 +18,10 @@ import { C, FONT, R } from '../shell/tokens';
 import { Card, CardTitle, KV, NoteBar } from '../loan/AssetParts';
 import { TRACTOR, hoursFor, loadVoucherCode as load, saveVoucherCode as save, th, unitsOf, useMachines, useRates, useVouchers } from './hooks';
 import MapCard from '../shell/MapCard';
+import { useQuery } from '@tanstack/react-query';
+import { readContract, sv } from '../stellar/soroban';
+import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
+import { assisted } from '../loan/MyShares';
 
 const TERM = 34_560;                          // ledgers, ~48 h
 const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -169,8 +173,56 @@ export default function Machinery({ onBack }) {
           <Primary disabled={!online || busy || !s?.ready || !cfg || !rate || h <= 0 || !!open} onClick={make}>{!online ? 'Needs internet' : h <= 0 ? 'Enter an amount' : `Make code for ${h} h`}</Primary>
         </Card>
       )}
+      {balance > 0 && !assisted() && <HandBack list={list} tractorRate={tractorRate} />}
       {!vouchers.isLoading && balance === 0 && !open && <Card label="No hours"><span style={{ color: C.muted, fontSize: 14 }}>No machine hours yet. They come with a crop share.</span></Card>}
     </Page>
+  );
+}
+
+/** Hand back hours (executive decision 26 Oct): unused tractor hours of a voucher whose value she still owes come off
+ *  her debt at their whole value; 5% of it is owed to the union treasury (fund_core.return_voucher). Self mode only:
+ *  in assist mode her leader does it in a session. DESIGN GAP: no board. */
+function HandBack({ list, tractorRate }) {
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const tx = useSorobanTx();
+  const [hours, setHours] = useState(1);
+  // Per voucher: what of its value she still owes (voucher_book), so how many of its hours she may hand back.
+  const books = useQuery({
+    queryKey: ['stellar', 'voucherBooks', list.map((v) => v.token).join(',')], enabled: !!cfg && list.length > 0, staleTime: 30_000,
+    queryFn: () => Promise.all(list.map(async (v) => {
+      const b = await readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(v.token)]).catch(() => null);
+      const owedUnits = b && Number(b.per_hour) > 0 ? Math.floor(((Number(b.value) - Number(b.repaid)) * 100) / Number(b.per_hour)) : 0;
+      return { ...v, can: Math.max(0, Math.min(v.left, owedUnits)) };
+    })),
+  });
+  const best = (books.data || []).filter((v) => v.can > 0).sort((a, b) => b.can - a.can)[0];
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
+  if (!best) return null;
+  const max = Math.floor(best.can / 10) / 10;           // tractor hours, a tenth
+  const h = Math.min(hours, max);
+  const units = Math.round(h * 100);
+  const off = (units / 100) * tractorRate;
+  const step = (d) => setHours(Math.max(0, Math.min(max, Math.round((h + d) * 10) / 10)));
+  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, cursor: 'pointer' };
+  return (
+    <Card label="Hand back hours" style={{ gap: 12 }}>
+      <CardTitle>Hand back hours</CardTitle>
+      <span style={{ color: C.muted, fontSize: 14 }}>Hours you will not use come off what you owe. 5% of their value goes to your union.</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button type="button" aria-label="Fewer hours" style={b} onClick={() => step(-0.5)}>−</button>
+        <span style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: 700 }}>{h} tractor h</span>
+        <button type="button" aria-label="More hours" style={b} onClick={() => step(0.5)}>+</button>
+      </div>
+      <KV k="Off what you owe" v={inr(off * 0.95)} />
+      <KV k="To your union (5%)" v={inr(off * 0.05)} />
+      <Primary disabled={units <= 0 || !tx.ready} onClick={() => tx.run({
+        label: `Hand back ${h} h`, rows: [['Hours', `${h} tractor h`], ['Off what you owe', inr(off * 0.95)]],
+        contractName: 'fund_core', fn: 'return_voucher',
+        args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.bytes32(best.token), sv.u32(units)],
+        invalidate: [['stellar', 'vouchers'], ['stellar', 'voucherBooks'], ['oracle', 'myShares']],
+      })}>{`Hand back ${h} h`}</Primary>
+    </Card>
   );
 }
 

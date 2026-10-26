@@ -24,6 +24,7 @@ import CashBoard from '../leader/CashBoard';
 import CameraView from '../shell/CameraView';
 import { addressFromQr, useUnionMembers } from '../leader/unionMembers';
 import { Secondary } from './AssetParts';
+import { owedOf } from './owed';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
@@ -43,8 +44,7 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
       readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null),
     ]);
     if (loan) {
-      const owed = BigInt(loan.principal) - BigInt(loan.principal_paid) + BigInt(loan.interest_accrued) - BigInt(loan.interest_paid)
-        + (vb ? BigInt(vb.senior_out) + (vb.dues || []).reduce((t, d) => t + BigInt(d.amount), 0n) : 0n);
+      const owed = owedOf(loan, vb);
       if (amt > owed) change = Number((amt - owed) / NIN);
     }
   }
@@ -111,11 +111,8 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
       return per.flat().filter(Boolean);
     },
   });
-  const owed = (l) => {
-    const cash = BigInt(l.loan.principal) - BigInt(l.loan.principal_paid) + BigInt(l.loan.interest_accrued) - BigInt(l.loan.interest_paid);
-    const voucher = l.vb ? BigInt(l.vb.senior_out) + (l.vb.dues || []).reduce((t, d) => t + BigInt(d.amount), 0n) : 0n;
-    return Math.ceil(Number(cash + voucher) / Number(NIN));
-  };
+  // Cash and the voucher's value, with interest, and the treasury's 5% of handed-back hours (26 Oct).
+  const owed = (l) => Math.ceil(Number(owedOf(l.loan, l.vb)) / Number(NIN));
   // From her G2 with one open loan, or her crop share QR (24 Oct): that loan is picked for her.
   useEffect(() => {
     if (!fixed || token || !loans.data) return;

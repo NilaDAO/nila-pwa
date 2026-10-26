@@ -5,8 +5,9 @@
 // The contract has no list views: machine types are found by reading rate(union, 1..16), machines by
 // reading machine(1..) until the first empty id, her vouchers through fund_core.loans_of.
 import { useQuery } from '@tanstack/react-query';
+import { useMyShares } from '../loan/MyShares';
 import { useStellarConfig } from '../stellar/hooks';
-import { readContract, sv } from '../stellar/soroban';
+import { readContract, sv, tokenHex } from '../stellar/soroban';
 
 const NIN = 10_000_000;
 export const num = (v) => Number(BigInt(v ?? 0)) / NIN;
@@ -62,17 +63,20 @@ const CODE_KEY = 'nila.voucher.signed';
 export const loadVoucherCode = () => { try { return JSON.parse(localStorage.getItem(CODE_KEY)) || null; } catch { return null; } };
 export const saveVoucherCode = (c) => { try { if (c) localStorage.setItem(CODE_KEY, JSON.stringify(c)); else localStorage.removeItem(CODE_KEY); } catch { /* private */ } };
 
-/** Her vouchers: one per loan with hours (fund_core.loans_of → machinery.voucher), in units. Left = hours − used. */
+/** Her vouchers: one per crop share with hours (machinery.voucher), in units. Left = hours − used. The hours stay hers
+ *  after the loan is repaid (26 Oct), and a repaid loan leaves fund_core.loans_of: so her drawn crop shares (her plans'
+ *  mint lists, `tokens`) are read too, not only her open loans. */
 export function useVouchers(member) {
   const { data: cfg } = useStellarConfig();
+  const tokens = (useMyShares().data || []).filter((x) => x.drawn).map((x) => tokenHex(x.token_id));
   return useQuery({
-    queryKey: ['stellar', 'vouchers', cfg?.union, member], enabled: !!cfg?.contracts?.machinery && !!member, staleTime: 30_000,
+    queryKey: ['stellar', 'vouchers', cfg?.union, member, tokens.join(',')], enabled: !!cfg?.contracts?.machinery && !!member, staleTime: 30_000,
     queryFn: async () => {
-      const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(member)]);
-      const rows = await Promise.all((ids || []).map(async (id) => {
-        const token = hexOf(id);
+      const open = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(member)]);
+      const all = [...new Set([...(open || []).map(hexOf), ...tokens.map((t) => String(t).replace(/^0x/, '').toLowerCase().padStart(64, '0'))])];
+      const rows = await Promise.all(all.map(async (token) => {
         const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null);
-        if (!v || v.void) return null;
+        if (!v || v.void || v.member !== member) return null;
         return { token, hours: Number(v.hours), used: Number(v.used), left: Number(v.hours) - Number(v.used) };
       }));
       return rows.filter(Boolean);
@@ -114,30 +118,25 @@ export function useMyMachine(owner, { pick, poll } = {}) {
   return { ...machines, data: machines.data && (mine ? { ...mine, usedThisWeek: Number(week.data ?? 0) / 100, all } : null) };
 }
 
-// The owner's jobs, kept on her phone from her claim results (no indexer yet, 17 Oct): the pending part
-// is read again from each loan's voucher_book.
+// The owner's jobs, kept on her phone from her claim results (no indexer yet, 17 Oct). Since 26 Oct an owner is paid in
+// full at the claim, so nothing is pending; `ready` is only a balance left from before (owner_balance).
 const JOBS = 'nila.machine.jobs';
 export const loadJobs = () => { try { return JSON.parse(localStorage.getItem(JOBS)) || []; } catch { return []; } };
 export const saveJob = (j) => { try { localStorage.setItem(JOBS, JSON.stringify([...loadJobs(), j])); } catch { /* private */ } };
 
-/** A13 "Paid to you": received at the job (her claims), pending per job, ready to collect (owner_balance). */
+/** A13 "Paid to you": paid at each claim, and any balance left to collect from before 26 Oct (owner_balance). */
 export function useOwnerDues(owner) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
     queryKey: ['stellar', 'dues', cfg?.union, owner], enabled: !!cfg && !!owner, staleTime: 30_000,
     queryFn: async () => {
       const jobs = loadJobs().filter((j) => j.owner === owner);
-      const books = {};
-      for (const t of new Set(jobs.map((j) => j.token))) {
-        books[t] = await readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(t)]).catch(() => null);
-      }
-      const pendingOf = (t) => num((books[t]?.dues || []).filter((d) => d.owner === owner).reduce((a, d) => a + BigInt(d.amount), 0n));
-      const ready = num(await readContract(cfg, 'fund_core', 'owner_balance', [sv.address(cfg.union), sv.address(owner)]));
+      const ready = num(await readContract(cfg, 'fund_core', 'owner_balance', [sv.address(cfg.union), sv.address(owner)]).catch(() => 0n));
       return {
         received: jobs.reduce((a, j) => a + j.prepay, 0),
-        pending: [...new Set(jobs.map((j) => j.token))].reduce((a, t) => a + pendingOf(t), 0),
+        pending: 0,
         ready,
-        jobs: jobs.map((j) => ({ ...j, pendingNow: pendingOf(j.token) })),
+        jobs: jobs.map((j) => ({ ...j, pendingNow: 0 })),
       };
     },
   });

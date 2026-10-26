@@ -33,7 +33,8 @@ export function useUnionChecks(member) {
         readContract(cfg, 'fund_core', 'senior_earmark', u),
         readContract(cfg, 'fund_core', 'union_treasury', u),
         readContract(cfg, 'fx_pool', 'cash_at_hand', u).catch(() => 0n),
-        cfg.contracts.machinery ? readContract(cfg, 'machinery', 'prepay_per_tractor_hour', u).catch(() => 0n) : 0n,
+        // A voucher hour is lent at the tractor hour's whole value (26 Oct), out of free senior money.
+        cfg.contracts.machinery ? readContract(cfg, 'machinery', 'value_per_tractor_hour', u).catch(() => 0n) : 0n,
         readContract(cfg, 'fund_core', 'on_hold', u),
         readContract(cfg, 'fund_core', 'position', um),
         readContract(cfg, 'fund_core', 'loans_of', um),
@@ -44,7 +45,9 @@ export function useUnionChecks(member) {
       const juniorCash = BigInt(junior?.cash ?? 0);
       const lendable = juniorCash > reserve ? juniorCash - reserve : 0n;
       const maxLoan = num(uc.max_loan);
-      const seniorFree = num(senior?.cash) - num(earmark);
+      // The voucher reserve is outside senior cash (26 Oct): all of it is free.
+      const seniorFree = num(senior?.cash);
+      void earmark;
       const ph = num(perHour);
       const blocked = [];
       if (Number(hold) > 0) blocked.push('Lending is on hold in the union.');
@@ -55,8 +58,9 @@ export function useUnionChecks(member) {
         // Whole rupees: the request is in whole rupees.
         cashCap: Math.max(0, Math.floor(Math.min(maxLoan, num(lendable)))),
         // No machine rate set for the union → no machine hours can be granted yet.
-        // In units (centi tractor hours, 23 Oct): the senior money free for the prepay of tractor hours.
+        // In units (centi tractor hours, 23 Oct): the senior money free for the value of tractor hours.
         hoursCap: ph > 0 ? Math.max(0, Math.floor((seniorFree * 100) / ph)) : 0,
+        valuePerHour: ph,
         enforceToken: !!uc.enforce_token_amount,
         onHand: num(atHand) + num(treasury),
         rateBp: Number(uc.rate_bp),

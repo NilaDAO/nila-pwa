@@ -1,9 +1,10 @@
 // A13 my machine (board MemberMachine), the owner's side of a voucher (executive decision, 17 Oct):
 // - after the leader registered it (L13), she confirms it (machinery.confirm_machine);
 // - she scans a member's voucher code (A8a: the member's signed authorization of machinery.claim for up to N units,
-//   centi tractor hours, 23 Oct), enters the whole hours her machine worked and claims (machinery.claim, with that authorization): the prepaid part (diesel + the driver share) reaches her wallet in nIN at once,
-//   the rest is pending until the member repays (fund_core.pay_voucher inside the claim);
-// - what members repaid for her collects into her balance; "Collect" moves it to her wallet (collect_dues);
+//   centi tractor hours, 23 Oct), enters the hours her machine worked and claims (machinery.claim, with that authorization): the whole
+//   amount (the rate × the hours) reaches her wallet in nIN at once, from the voucher's senior reserve (26 Oct: the
+//   member's debt is separate, nothing waits for a repayment);
+// - a balance left from before 26 Oct can still be collected (collect_dues);
 // - on hold / available (machinery.set_hold) with a reason.
 // DESIGN GAPs: no per-job names (no member names on the node; jobs are kept on her phone from her claims,
 // no indexer yet); photos are shown as the 8 positions, not the images; the hold switch sits here, not in
@@ -144,9 +145,8 @@ export default function MyMachine({ onBack, pick: first }) {
         {dues.isLoading && <span style={muted}>…</span>}
         {d && (
           <>
-            <Paid k="Received" sub="In nIN, at the job" v={inr(d.received)} color={C.accent} />
-            <Paid k="Pending" sub="When the farmers repay" v={inr(d.pending)} />
-            {d.ready > 0 && <Paid k="Repaid to you" sub="Ready to move to your wallet" v={inr(d.ready)} />}
+            <Paid k="Received" sub="In nIN, in full at each job" v={inr(d.received)} color={C.accent} />
+            {d.ready > 0 && <Paid k="Left from before" sub="Ready to move to your wallet" v={inr(d.ready)} />}
             {d.ready > 0 && <Primary disabled={!tx.ready} onClick={() => tx.run({ label: 'Collect', rows: [['Amount', inr(d.ready)]], contractName: 'fund_core', fn: 'collect_dues',
               args: [sv.address(me), sv.address(cfg.union)], invalidate: [['stellar', 'dues'], ['stellar', 'account']] })}>Collect {inr(d.ready)}</Primary>}
             {d.jobs.map((j) => (
@@ -167,32 +167,20 @@ export default function MyMachine({ onBack, pick: first }) {
   );
 }
 
-/** The cost list for the hours worked (23 Oct): each part of the rate × hours; a check on what is paid now at the
- *  job (diesel and the driver's prepaid share, machinery.prepay_per_hour); no icon on what is paid when she repays. */
-function Costs({ parts, hours, driverBp }) {
-  const now = { diesel: parts.diesel, driver: (parts.driver * driverBp) / 10_000 };
-  const rows = PARTS.filter(([k]) => parts[k] > 0).map(([k, name]) => [name, parts[k] * hours, (now[k] || 0) * hours]);
-  const paidNow = rows.reduce((a, r) => a + r[2], 0);
+/** The cost list for the hours worked (23 Oct): each part of the rate × hours, all paid now at the job (26 Oct). */
+function Costs({ parts, hours }) {
+  const rows = PARTS.filter(([k]) => parts[k] > 0).map(([k, name]) => [name, parts[k] * hours]);
   const total = rows.reduce((a, r) => a + r[1], 0);
-  // A blank of the check's width keeps the names in line on the rows without an icon.
-  const check = (on) => (
-    <span aria-label={on ? 'Paid now' : undefined} style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center',
-      justifyContent: 'center', background: on ? C.accent : 'transparent' }}>
-      {on && <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}
-    </span>
-  );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14, lineHeight: 1.5 }}>
-      {rows.map(([name, all, pre]) => (
+      {rows.map(([name, all]) => (
         <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {check(pre > 0)}
-          <span style={{ flexGrow: 1, color: C.muted }}>{name}{pre > 0 && pre < all ? ` · ${inr(pre)} now` : ''}</span>
+          <span style={{ flexGrow: 1, color: C.muted }}>{name}</span>
           <b>{inr(all)}</b>
         </div>
       ))}
       <div style={{ height: 1, background: C.raised }} />
-      <KV k="Paid now" v={inr(paidNow)} />
-      <KV k="When the member repays" v={inr(total - paidNow)} />
+      <KV k="Paid to you now" v={inr(total)} />
     </div>
   );
 }
@@ -206,9 +194,6 @@ function Claim({ machine, rate, tractor, onBack }) {
   const [error, setError] = useState();
   const [hours, setHours] = useState(1);
   const [tries, setTries] = useState(0);     // the camera reads once: a new one after a wrong code
-  // The share of the driver paid at the job (machinery.prepay_share, basis points); diesel is always paid at the job.
-  const share = useQuery({ queryKey: ['stellar', 'prepayShare', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 300_000,
-    queryFn: () => readContract(cfg, 'machinery', 'prepay_share', [sv.address(cfg.union)]) });
   const read = async (text) => {
     setError(undefined);
     try {
@@ -248,7 +233,7 @@ function Claim({ machine, rate, tractor, onBack }) {
           <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(scan.max, Math.round((hours + 0.5) * 10) / 10))}>+</button>
         </div>
         <p style={{ ...muted, textAlign: 'center', margin: 0 }}>Up to {scan.max} h on this code</p>
-        {rate && <Costs parts={rate.parts} hours={hours} driverBp={Number(share.data ?? 0)} />}
+        {rate && <Costs parts={rate.parts} hours={hours} />}
         <Primary disabled={!tx.ready || scan.max <= 0 || hours <= 0} onClick={claim}>Claim {hours} h</Primary>
       </Page>
     );
