@@ -390,7 +390,8 @@ export default function CropPlanFlow({ forLand } = {}) {
   }
   if (at === 'making') {
     return (
-      <Sheet map={map} landName={name} title="Making your crop plan">
+      // No farm name over the wait (26 Oct): the card's header is "Making your crop plan".
+      <Sheet map={map} title="Making your crop plan">
         <Making jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
           onError={(e) => { setError(e); setStep('farmcash'); }} />
       </Sheet>
