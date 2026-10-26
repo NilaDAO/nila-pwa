@@ -6,9 +6,9 @@
  *   #/expired         F9 #expired: the link was used, voided or is older than 30 minutes
  *   (F14 is gone, 26 Oct: the leader takes her field points on the leader's phone; after F9 the phone opens F1)
  *   #/home            (26 Oct, simplified) no land title yet: the pending screen; the title ready and not seen yet:
- *                     #/property; then the assets screen: the help QR as large as the screen allows (A2: a leader acts
- *                     for her for 5 minutes, session.js), and under it F1/F11/F12 as rows: invested, crop shares,
- *                     machine hours, crop plan, land, messages (read only; no nIN rows: members hold no nIN)
+ *                     #/property; then the asset list (26 Oct): Help QR first, then F1/F11/F12 as rows: invested, crop
+ *                     shares, machine hours, crop plan, land, messages (read only; no nIN rows: members hold no nIN)
+ *   #/help            the help QR as large as the screen allows (A2: a leader acts for her for 5 minutes, session.js)
  *   #/property        the land title is ready: one image of the screen's exact size showing the property; OK → home
  *   #/share/<token>   F7: one crop share (lent, repay, repaid, by when; or ready to use, with the help QR)
  *   #/plan, #/plan/<i>  F12: the crop plan's seasons per area, and one season
@@ -297,7 +297,6 @@
     }
     var open = function () { var r = rows[f]; if (r && r.go) r.go(); };
     screen(html, left, centre === undefined ? (rows.length ? ['Select', open] : null) : centre, right, title);
-    if (id === 'home') helpQr();   // the help QR is part of the home screen's head: kept while the focus moves
     keys.ArrowDown = function () { if (f < rows.length - 1) { focus[id] = f + 1; menu(id, title, head, rows, left, centre, right); } };
     keys.ArrowUp = function () { if (f > 0) { focus[id] = f - 1; menu(id, title, head, rows, left, centre, right); } };
     var el = main.querySelector('.focus');
@@ -349,10 +348,11 @@
     });
   }
 
-  /** The assets screen: the help QR first and as large as the screen allows, then F1/F11/F12 as rows. */
+  /** The asset list: Help QR first (it opens the QR as large as the screen allows), then F1/F11/F12 as rows. */
   function assetsHome(d) {
     var me = d.me, shares = me.shares || [];
-    var rows = [{ t: 'Invested', s: 'Union investment', v: inr(d.invested), go: null }];
+    var rows = [{ t: 'Help QR', s: 'Show it to your leader at the office', go: function () { go('#/help'); } },
+      { t: 'Invested', s: 'Union investment', v: inr(d.invested), go: null }];
     var hours = 0;
     shares.forEach(function (x) {
       var i = shareInfo(d, x);
@@ -367,9 +367,7 @@
     var t = me.title, acres = t.areas.reduce(function (a, z) { return a + z.acres; }, 0);
     rows.push({ t: 'My land', s: t.areas.length + (t.areas.length === 1 ? ' area' : ' areas') + ' \u00b7 ' + (Math.round(acres * 10) / 10) + ' acres', go: function () { go('#/land'); } });
     rows.push({ t: 'Messages', s: (me.messages || []).length + ' from Nila', go: function () { go('#/messages'); } });
-    var head = '<div class="qr qr-big" id="qr"><p class="muted" style="color:#121212">Making your help QR\u2026</p></div>' +
-      '<p class="muted small" id="left" style="text-align:center">Show this to your leader</p>';
-    menu('home', 'Nila', head, rows, null, undefined, ['New QR', function () { data = null; helpCache = null; home(); }]);
+    menu('home', 'Nila', '', rows, null, undefined, ['Refresh', function () { data = null; home(); }]);
   }
 
   function share(token) {
@@ -383,9 +381,9 @@
           row('Repaid', inr(i.m.repaid)) + row('Repay by', part(i.due)) + '</div><p class="muted small">Repay at the union office, in cash.</p>';
       } else {
         h += row('Cash up to', inr(x.cash)) + row(x.state === 'early' ? 'From' : 'Use by', part(x.state === 'early' ? x.open : x.final)) +
-          '</div><p class="muted small">To use it, go to your union office and show your help QR (the home screen) to your leader.</p>';
+          '</div><p class="muted small">To use it, go to your union office and show your help QR to your leader.</p>';
       }
-      screen(h, back, null, null, 'My crop share');
+      screen(h, back, i.m ? null : ['Help QR', function () { go('#/help'); }], null, 'My crop share');
     });
   }
   function row(k, v) { return '<div class="row"><span class="muted">' + esc(k) + '</span><b>' + esc(v) + '</b></div>'; }
@@ -490,6 +488,14 @@
   // ---- the help QR (A2): her leader acts for her for 5 minutes ----
 
   var helpTimer = null, helpCache = null;   // the QR stays on screen while the rows move (5 minutes)
+  /** #/help: the help QR as large as the screen allows. */
+  function help() {
+    screen('<div class="qr qr-big" id="qr"><p class="muted" style="color:#121212">Making your help QR\u2026</p></div>' +
+      '<p class="muted small" id="left" style="text-align:center">Show this to your leader</p>',
+      ['Back', function () { go('#/home'); }], ['New', function () { helpCache = null; help(); }], null, 'Help QR');
+    helpQr();
+  }
+
   /** Fills #qr and #left with a fresh help QR (made once per 5 minutes; the list redraws keep it). */
   function helpQr() {
     var box = document.getElementById('qr');
@@ -546,6 +552,7 @@
     var member = stored('nila.lite.member');
     if (!member) { expired(); return; }
     if (h === '#/property') { property(); return; }
+    if (h === '#/help') { help(); return; }
     if (h === '#/home') { home(); return; }
     if ((m = /^#\/share\/([0-9a-f]+)$/.exec(h))) { share(m[1]); return; }
     if (h === '#/plan') { plan(); return; }
