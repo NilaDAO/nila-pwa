@@ -14,6 +14,7 @@ import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } fr
 import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
 import { TxScreens } from '../stellar/TxStatus';
+import { Notice } from '../plan/ui';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
@@ -212,12 +213,20 @@ function Done({ job, onField, onBack, onAdd }) {
         </label>
       )}
       {!st && !job.polygon && (
-        // A keypad member's job carries the phone's Polygon address from F9 (26 Oct); a job started before has none.
-        // Points taken before the member opened the SMS link: the phone's address joins the job when it is set up (26 Oct).
-        <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>The member's phone is not set up yet: the land title is minted to it. Ask the member to open the app link from the SMS; you can mint right after.</p>
+        // Points taken before the member opened the SMS link (26 Oct): the title is minted to the phone's address, which
+        // joins the job when the member opens the link. A step for the member: a waiting card, not a hint.
+        <Notice kind="warn" title="Waiting for the member">
+          The member opens the app link from the SMS on their phone. The land title is minted to that phone, so minting starts right after.
+        </Notice>
       )}
-      {!st && <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim()) || !job.polygon} style={{ ...btn(true), flex: 'none' }}
-        onClick={() => { setStarted(true); setClosed(false); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }}>Mint land title</button>}
+      {!st && (job.polygon
+        ? <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim())} style={{ ...btn(true), flex: 'none' }}
+          onClick={() => { setStarted(true); setClosed(false); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }}>Mint land title</button>
+        : <button type="button" disabled style={{ ...btn(false), flex: 'none', color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: R.round, border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite' }} />
+          <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
+          Waiting for the member to open the SMS
+        </button>)}
       {st === 'minted' && <button type="button" style={{ ...btn(false), flex: 'none' }} onClick={onBack}>Back to tasks</button>}
     </Frame>
   );
