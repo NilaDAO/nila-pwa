@@ -405,12 +405,15 @@
       var next = list.filter(function (x) { return tsOf(x.sow) * 1000 > Date.now(); })[0];
       var head = list.length ? '<p class="muted small" style="margin:0">' + (first ? MON[new Date(tsOf(first.sow) * 1000).getUTCMonth()] + ' ' + new Date(tsOf(first.sow) * 1000).getUTCFullYear() : '') +
         ' \u2013 ' + (last && last.harvest ? MON[new Date(tsOf(last.harvest) * 1000).getUTCMonth()] + ' ' + new Date(tsOf(last.harvest) * 1000).getUTCFullYear() : '') + ' \u00b7 approved</p>' +
-        (next ? '<p class="small">Next: sow ' + esc(next.name || next.crop) + ' by ' + part(tsOf(next.sow)) + '</p>' : '') : '<p class="muted">No approved crop plan yet. Your union leader makes it with you.</p>';
+        (next ? '<p class="small">Next: sow ' + esc(next.name || next.crop) + ' by ' + part(tsOf(next.sow)) + '</p>' : '') : '';
+      // One sentence on what a crop plan is (26 Oct); without a plan, the member opens the QR for the leader to make it.
+      head = '<p class="small">Your crop plan says what to grow on each area for the coming year, and the cash and machine hours for it.</p>' + head +
+        (list.length ? '' : '<p>No crop plan yet. Open your QR and show it to your union leader to make it with you.</p>');
       menu('plan', 'My crop plan', head, list.map(function (x, k) {
         var i = shareInfo(d, x);
         return { t: (months(x.slot) ? months(x.slot) + ' \u00b7 ' : '') + (x.name || x.crop), s: 'Area ' + x.area + acresOf(x) + (i.m ? ' \u00b7 financed' : ''),
           v: i.m ? inr(i.m.lent) : '\u2014', go: function () { go('#/plan/' + k); } };
-      }), ['Back', function () { go('#/home'); }], undefined, ['Map', function () { go('#/land'); }]);
+      }), ['Back', function () { go('#/home'); }], list.length ? undefined : ['Open QR', function () { go('#/help'); }], null);
     });
   }
   function season(k) {
