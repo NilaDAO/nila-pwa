@@ -56,6 +56,14 @@ const Head = ({ title, sub }) => (
   </div>
 );
 
+/** Whether the member has sent every field (26 Oct): a keypad phone sends one field at a time and ends with
+ *  "All sent"; a smartphone sends all at once. Not a lock: the leader may still mint. */
+const Sent = ({ job }) => (
+  <p role="status" style={{ margin: 0, fontSize: 14, fontWeight: 700, color: job.sent_all === false ? C.gold : C.accent }}>
+    {job.sent_all === false ? 'More fields may come: the member has not pressed All sent yet.' : 'All fields sent.'}
+  </p>
+);
+
 /** L2a: shapes are being drawn (first run, or one field again after None fit). */
 function Fetch({ job, onBack }) {
   const again = job.fields.find((f) => f.state === 'drawing' && f.round > 0);
@@ -63,6 +71,7 @@ function Fetch({ job, onBack }) {
     <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} drawing active={again?.n} />}>
       <Head title={again ? `Drawing field ${again.n} again` : 'Finding field borders'} sub="Drawing shapes, please wait" />
+      <Sent job={job} />
       {job.fields.map((f) => (
         <FieldRow key={f.n} f={f} right={f.state === 'drawing' ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.state === 'accepted' ? 'Accepted' : f.state === 'left_out' ? 'Left out' : 'Waiting'} />
       ))}
@@ -77,6 +86,7 @@ function Plan({ job, onField, onBack }) {
     <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} onField={onField} />}>
       <Head title={`${open.length} fields · best match`} sub="Tap a field to check it" />
+      <Sent job={job} />
       {job.fields.map((f) => {
         const s = shapeFor(f, job.plan);
         return <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : s ? acres(s.acres) : ''} right={f.accepted ? 'Accepted' : undefined}
@@ -180,6 +190,7 @@ function Done({ job, onField, onBack }) {
     <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} />}>
       <Head title={`${ok.length} fields · all accepted`} sub={`Total ${total.toFixed(2)} acres`} />
+      {!st && <Sent job={job} />}
       {job.fields.map((f) => (
         <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
           onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} />

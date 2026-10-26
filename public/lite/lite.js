@@ -336,8 +336,23 @@
     if (!last) { go('#/fields'); return; }
     screen('<h1>Field ' + last.n + ' sent</h1><p class="muted">Accuracy ± ' + Math.round(last.acc) + ' m</p>' +
       '<p class="muted">Another field? Walk to it and press Next field. Send every field now: the land title cannot change later. ' +
-      'No more fields? Press All sent.</p>',
-      ['All sent', function () { store('nila.lite.done', '1'); go('#/done'); }], null, ['Next field', function () { go('#/fields'); }], 'Register your land');
+      'No more fields? Press All sent.</p><p id="msg" class="err"></p>',
+      ['All sent', allSent], null, ['Next field', function () { go('#/fields'); }], 'Register your land');
+  }
+
+  // "All sent" (26 Oct): tells the node, so the leader's border screens say no more fields are coming.
+  function allSent() {
+    if (busy) return;
+    busy = true;
+    signed('fields_done', {}).then(function (q) { return call('POST', '/keypad/fields/done', q); }).then(function () {
+      busy = false;
+      store('nila.lite.done', '1');
+      go('#/done');
+    }, function (e) {
+      busy = false;
+      var m = document.getElementById('msg');
+      if (m) m.textContent = (e && e.message) || 'Not sent. Try again.';
+    });
   }
 
   function denied() {
