@@ -81,11 +81,9 @@ export default function LeaderTasks({ go }) {
     items.unshift({ key: `border-${j.id}`, title: 'Check field borders', who: `${memberName(j)} · ${j.fields} fields`, to: `tasks/border/${j.id}`, ready: j.status === 'ready' });
   }
   // A keypad member with no fields yet (26 Oct): the leader takes the field points on the leader's phone (R5–R7),
-  // once the member's phone is set up from the link; before that the row opens the member's progress (L14 #sent).
+  // with or without the member's phone set up.
   for (const m of keypads.filter((x) => x.phone_type === 'keypad' && !x.job)) {
-    items.unshift(m.device
-      ? { key: `border-pts-${m.id}`, title: 'Take field points', who: m.name, to: `tasks/member/${m.id}/points`, ready: true }
-      : { key: `border-link-${m.id}`, title: 'Set up a keypad phone', who: `${m.name} · waiting for the link`, to: `tasks/member/${m.id}` });
+    items.unshift({ key: `border-pts-${m.id}`, title: 'Take field points', who: m.name, to: `tasks/member/${m.id}/points`, ready: true });
   }
   const shown = items.filter((t) => !q || `${t.title} ${t.who}`.toLowerCase().includes(q.toLowerCase()));
   const row = (t, i) => {

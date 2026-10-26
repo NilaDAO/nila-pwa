@@ -114,20 +114,12 @@ function Sent({ id, go }) {
           </>
         )}
         {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
+        {/* A keypad member's fields (26 Oct): the leader takes the points on the leader's phone, without waiting for
+            the member to open the SMS link; once taken, the borders are checked (L2–L4). */}
+        {keypad && !m.job && <CardButton onClick={() => go(`tasks/member/${m.id}/points`)}>Take field points</CardButton>}
+        {keypad && m.job && <CardButton onClick={() => go(`tasks/border/${m.job}`)}>Check field borders</CardButton>}
         <CardButton onClick={send.isPending ? undefined : () => send.mutate({ again: m.id })}>Send the link again</CardButton>
       </Card>
-      {keypad && (
-        <Card title="Fields">
-          {m.job ? (
-            <Primary onClick={() => go(`tasks/border/${m.job}`)}>Match field shapes</Primary>
-          ) : (
-            <>
-              <Notice kind="info">Walk with the member to each field and take its point on your phone. Take every field now: the land title cannot change later.</Notice>
-              <Primary disabled={!m.device} onClick={() => go(`tasks/member/${m.id}/points`)}>Take the field points</Primary>
-            </>
-          )}
-        </Card>
-      )}
     </>
   );
 }
