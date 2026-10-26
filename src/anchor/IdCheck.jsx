@@ -82,9 +82,11 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
     setBusy(false);
   };
 
+  // Reaching the anchor: the app's standard loading view (bouncing logo, skeleton card), not a bare "…".
+  if (!info.data && !info.isError) return <Loading />;
   let body;
   if (!info.data) {
-    body = <p style={muted}>{info.isError ? 'The anchor is not reachable. Try again later.' : '…'}</p>;
+    body = <p style={muted}>The anchor is not reachable. Try again later.</p>;
   } else if (!signedIn || k1.isLoading) {
     body = (
       <>
