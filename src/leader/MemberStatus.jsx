@@ -194,6 +194,7 @@ export default function MemberStatus({ id, go }) {
   // Her fields only (23 Oct): until her record is in, no map at all, never the leader's own fields.
   // Map taps (24 Oct rule): her property again → back to the list (only her property is on G2's map).
   const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} /> : <span />;
+  const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>;
   return (
     <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings') }}
       style={{ fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5 }}>
@@ -207,10 +208,10 @@ export default function MemberStatus({ id, go }) {
         {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
         {!m.record && <Row k="Status" v={m.note || 'No land title yet'} />}
       </div>
-      {m.recordHash && (
+      {m.recordHash && !m.shares.length && (
         // The member's crop plan (26 Oct): made with the member without a session; the member's QR accepts it at the end.
         <Section title="Crop plan" right={helpUntil ? `QR scanned · until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}>
-          <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>
+          {planBtn}
           {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
         </Section>
       )}
@@ -288,6 +289,9 @@ export default function MemberStatus({ id, go }) {
               );
             })}
           </ul>
+          {/* With crop shares the plan is reached below them (26 Oct). */}
+          {m.recordHash && planBtn}
+          {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
         </Section>
       )}
       {m.recordHash && (
