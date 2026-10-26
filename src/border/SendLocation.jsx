@@ -135,7 +135,12 @@ export function PointsStep({ evm, onDone, forName, onBack }) {
       (e) => { setBusy(false); setError(e.code === 1 ? 'Allow location for this app in your phone settings.' : 'Your location was not found. Try again outside.'); });
   };
   const remove = (i) => { save({ ...q, points: q.points.filter((_, k) => k !== i) }); setSelected(null); };
-  const finish = () => { save({ ...q, finish: true }); onDone(); };
+  // Done while the last point waits for its name (26 Oct): it keeps the typed name, else its number.
+  const finish = () => {
+    const pts = q.points.slice();
+    if (unnamed) pts[n - 1] = { ...pts[n - 1], name: (name.trim() || String(n)).slice(0, 40) };
+    save({ ...q, points: pts, finish: true }); setName(''); onDone();
+  };
 
   const ready = pan ? !!centre : loc === 'on';           // she can save a point now
   // The info note explains the second point while a field waits for its name (executive decision 21 Oct; the text
@@ -214,7 +219,7 @@ export function PointsStep({ evm, onDone, forName, onBack }) {
       {n === 0 && (pan
         ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
         : <button type="button" style={btnSecondary} onClick={choose}>Choose on the map</button>)}
-      {n > 0 && <button type="button" style={wait ? btnDisabled : btnSecondary} disabled={wait} onClick={finish}>{forName ? 'All fields have a point' : 'All my fields have a point'}</button>}
+      {n > 0 && <button type="button" style={busy || second ? btnDisabled : btnSecondary} disabled={busy || second} onClick={finish}>{forName ? 'All fields have a point' : 'All my fields have a point'}</button>}
       {onBack && <button type="button" style={btnSecondary} onClick={onBack}>Back</button>}
     </MapFrame>
   );
