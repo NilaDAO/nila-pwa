@@ -10,6 +10,7 @@ import useSheetDrag from '../shell/useSheetDrag';
 import { acres, shapeFor } from './api';
 import BorderMap, { ShapeThumb } from './BorderMap';
 import { useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
+import { TxScreens } from '../stellar/TxStatus';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
@@ -159,6 +160,22 @@ function Done({ job, onField, onBack }) {
   const st = job.status === 'minted' || job.mint?.status === 'minted' ? 'minted'
     : job.mint?.status === 'failed' || job.mint?.error ? 'failed'
       : job.status === 'minting' || ['pending', 'processing'].includes(job.mint?.status) ? 'minting' : null;
+  // N1 / N2 / N3 around the mint (26 Oct): pending while the node mints the title on Polygon, then confirmed (back to
+  // Tasks after 5 s) or failed (try again). Closed while pending, the card below shows the state.
+  const [closed, setClosed] = useState(false);
+  const [started, setStarted] = useState(false);   // the result screens only for a mint asked for here
+  const minting = mint.isPending || st === 'minting';
+  if (!closed && (minting || (started && (st === 'minted' || st === 'failed' || mint.error)))) {
+    const tx = {
+      status: st === 'minted' ? 'success' : st === 'failed' || mint.error ? 'failed' : 'pending',
+      label: 'Minting the land title',
+      rows: [['Land', job.farm || farm || 'Land title'], ['Fields', `${ok.length} · ${total.toFixed(2)} acres`], ['For', memberName(job)]],
+      when: new Date(),
+      reason: mint.error?.message || job.mint?.error || 'The mint failed.',
+    };
+    return <TxScreens tx={tx} network="Polygon" onClose={() => { setClosed(true); if (st === 'minted') onBack(); }}
+      onRetry={() => { mint.reset(); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }} />;
+  }
   return (
     <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} />}>
@@ -181,7 +198,7 @@ function Done({ job, onField, onBack }) {
         <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>The member's wallet is not made yet (keypad phone). The land title can be minted once it is.</p>
       )}
       {!st && <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim()) || !job.polygon} style={{ ...btn(true), flex: 'none' }}
-        onClick={() => mint.mutate(job.farm ? {} : { farm: farm.trim() })}>Mint land title</button>}
+        onClick={() => { setStarted(true); setClosed(false); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }}>Mint land title</button>}
       {st === 'minted' && <button type="button" style={{ ...btn(false), flex: 'none' }} onClick={onBack}>Back to tasks</button>}
     </Frame>
   );
