@@ -7,6 +7,7 @@
  *   #/fields          F14: each field's location — allow, #search, #ready (± 20 m or better), #check (the dot on a
  *                     satellite image the node renders), SEND, #sent (Next = another field), #denied; Done ends it
  *                     (F13 #pending is not built: a plain "done" screen stands in)
+ *   #/help            the help QR (A2, 26 Oct): lets a leader of the union act for her for 5 minutes (session.js)
  * The node: keypad endpoints of nila-sensing O17 (docs/stellar/O17.md). The device key: ECDSA P-256 made with
  * WebCrypto, not extractable, kept in this origin's IndexedDB (spec Keypad_Reverse_QR_Consent.md, step 0). */
 (function () {
@@ -173,6 +174,8 @@
       busy = false;
       try {
         localStorage.setItem('nila.lite.member', out.member);
+        // Her smart account (26 Oct), from her device key; the leader's app creates it at L14.
+        if (out.account) localStorage.setItem('nila.lite.account', out.account);
         // A new phone goes on from the fields her open job already has (a lost phone, L14 again).
         localStorage.setItem('nila.lite.fields', String(out.fields || 0));
         localStorage.removeItem('nila.lite.done');
@@ -338,7 +341,49 @@
     var n = parseInt(stored('nila.lite.fields'), 10) || 0;
     screen('<h1>Your fields are sent</h1><p>' + n + (n === 1 ? ' field' : ' fields') + '</p>' +
       '<p class="muted">Your union leader checks the borders. Nila sends you an SMS when your land title is ready.</p>',
-      null, null, ['Add a field', function () { store('nila.lite.done', ''); go('#/fields'); }], 'Your fields');
+      ['Help QR', function () { go('#/help'); }], null, ['Add a field', function () { store('nila.lite.done', ''); go('#/fields'); }], 'Your fields');
+  }
+
+  // ---- the help QR (A2): her leader acts for her for 5 minutes ----
+
+  var helpTimer = null;
+  function help() {
+    var account = stored('nila.lite.account');
+    if (helpTimer) { clearInterval(helpTimer); helpTimer = null; }
+    var back = ['Back', function () { go(stored('nila.lite.done') ? '#/done' : '#/fields'); }];
+    if (!account) {
+      screen('<h1>Not ready yet</h1><p class="muted">Your account is not set up on this phone. Ask your union leader to send a new link.</p>',
+        back, null, null, 'Help QR');
+      return;
+    }
+    screen('<p class="muted">Making your QR…</p><p id="msg" class="err"></p>', back, null, null, 'Help QR');
+    var cfg;
+    call('GET', '/stellar/config').then(function (c) {
+      cfg = c;
+      // The latest ledger, for the signature's expiry (the phone's own clock ends the QR after 5 minutes).
+      return fetch(c.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (r) { return r.json(); });
+    }).then(function (l) {
+      return loadKey().then(function (pair) {
+        if (!pair) throw new Error('This phone has no key. Ask your union leader for a new link.');
+        return window.NilaSession.make({ passphrase: cfg.passphrase, account: account, ledger: l.result.sequence, now: Math.floor(Date.now() / 1000) },
+          function (payload) { return window.crypto.subtle.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, pair.privateKey, payload); });
+      });
+    }).then(function (q) {
+      return window.NilaQR.svg(q.qr, { margin: 1, errorCorrectionLevel: 'L' }).then(function (svg) {
+        var left = function () { return Math.max(0, q.until - Math.floor(Date.now() / 1000)); };
+        screen('<div class="qr">' + svg + '</div><p class="muted" id="left">Show this to your leader · ' + left() + ' s</p>',
+          back, ['New', help], null, 'Help QR');
+        helpTimer = setInterval(function () {
+          var el = document.getElementById('left');
+          if (!el) { clearInterval(helpTimer); helpTimer = null; return; }
+          el.textContent = left() > 0 ? 'Show this to your leader · ' + left() + ' s' : 'Expired: press New';
+        }, 1000);
+      });
+    }, function (e) {
+      var msg = document.getElementById('msg');
+      if (msg) msg.textContent = (e && e.message) || 'Could not make the QR. Try again.';
+    });
   }
 
   function open(code, then) {
@@ -362,6 +407,7 @@
     if (h === '#/fields/sent') { sent(); return; }
     if (h === '#/fields/denied') { denied(); return; }
     if (h === '#/done') { done(); return; }
+    if (h === '#/help') { help(); return; }
     if (h === '#/fields' || h === '#/next') { fieldsStart(); return; }
     go(stored('nila.lite.done') ? '#/done' : '#/fields');
   }

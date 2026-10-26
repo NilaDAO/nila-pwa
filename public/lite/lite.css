@@ -24,3 +24,7 @@ p { margin: 0 0 8px; }
   display: flex; align-items: center; justify-content: center; text-align: center; }
 .map img { display: block; }
 .small { font-size: 12px; line-height: 1.35; margin-top: 4px; }
+
+/* The help QR (26 Oct): as large as the 240-wide screen allows, on white for the leader's camera. */
+.qr { background: #fff; padding: 6px; margin: 4px auto; width: 196px; }
+.qr svg { display: block; width: 100%; height: auto; }
