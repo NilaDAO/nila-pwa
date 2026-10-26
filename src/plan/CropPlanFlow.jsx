@@ -28,7 +28,7 @@ import { useSessionUntil } from '../stellar/session';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function Making({ jobId, onDone, onError }) {
+function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
   const job = usePlanJob(jobId);
   const [secs, setSecs] = useState(0);
   useEffect(() => { const t = setInterval(() => setSecs((s) => s + 1), 1000); return () => clearInterval(t); }, []);
@@ -39,7 +39,7 @@ function Making({ jobId, onDone, onError }) {
   // Board CropPlanMaking (CP8): the bouncing Nila logo (the same bounce as R14), then the counter and "Time passed".
   return (
     <div style={{ textAlign: 'center' }}>
-      <Bouncing top={42} bottom={8} label="Making your crop plan" />
+      <Bouncing top={42} bottom={8} label={label} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <span aria-label="Time passed" style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}</span>
         <span style={muted}>Time passed</span>
@@ -395,9 +395,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   }
   if (at === 'making') {
     return (
-      // No farm name over the wait (26 Oct): the card's header is "Making your crop plan".
-      <Sheet map={map} title="Making your crop plan">
-        <Making jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
+      // No farm name over the wait (26 Oct): the card's header says whose plan is made (a leader for a member: the name).
+      <Sheet map={map} title={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : 'Making your crop plan'}>
+        <Making label={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : undefined} jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
           onError={(e) => { setError(e); setStep('farmcash'); }} />
       </Sheet>
     );
