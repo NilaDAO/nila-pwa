@@ -194,8 +194,8 @@ function Done({ job, onField, onBack }) {
         </label>
       )}
       {!st && !job.polygon && (
-        // A keypad member (O17, F14) has no wallet yet: her server wallet is a later keypad step, so no mint now.
-        <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>The member's wallet is not made yet (keypad phone). The land title can be minted once it is.</p>
+        // A keypad member's job carries the phone's Polygon address from F9 (26 Oct); a job started before has none.
+        <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>This keypad phone has no Polygon address yet. Send the member a new app link (L14), then the fields again.</p>
       )}
       {!st && <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim()) || !job.polygon} style={{ ...btn(true), flex: 'none' }}
         onClick={() => { setStarted(true); setClosed(false); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }}>Mint land title</button>}
