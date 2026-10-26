@@ -6,7 +6,7 @@
  *   #/expired         F9 #expired: the link was used, voided or is older than 30 minutes
  *   (F14 is gone, 26 Oct: the leader takes her field points on the leader's phone; after F9 the phone opens F1)
  *   #/home            (26 Oct, simplified) no land title yet: the pending screen; the title ready and not seen yet:
- *                     #/property; then the asset list (26 Oct): Help QR first, then F1/F11/F12 as rows: invested, crop
+ *                     #/property; then the asset list (26 Oct): F1/F11/F12 as rows (the Help QR is the right softkey on every screen): invested, crop
  *                     shares, machine hours, crop plan, land, messages (read only; no nIN rows: members hold no nIN)
  *   #/help            the help QR as large as the screen allows (A2: a leader acts for her for 5 minutes, session.js)
  *   #/property        the land title is ready: one image of the screen's exact size showing the property; OK → home
@@ -53,7 +53,11 @@
     el.setAttribute('href', '#');
     el.style.visibility = label ? 'visible' : 'hidden';
   }
+  // The help QR on the right softkey of every screen once the phone is set up (26 Oct), so the member can show it to
+  // a leader from anywhere; the route turns it off for F9, the property image and the QR itself.
+  var qrKey = false;
   function screen(html, l, c, r, title) {
+    if (qrKey) r = ['Help QR', function () { go('#/help'); }];
     hd.textContent = title || 'Nila';
     main.innerHTML = html;
     keys = { SoftLeft: l && l[1], Enter: c && c[1], SoftRight: r && r[1] };
@@ -323,7 +327,7 @@
     screen('<h1>Waiting for your land title</h1>' +
       (f.length ? '<p>' + f.length + (f.length === 1 ? ' field' : ' fields') + ' with your union leader</p>' : '') +
       '<p class="muted">Your union leader maps your fields and makes your land title. You get an SMS when it is ready.</p>',
-      null, null, ['Refresh', function () { data = null; home(); }], 'Nila');
+      ['Refresh', function () { data = null; home(); }], null, null, 'Nila');
   }
 
   /** #/property: the land title is ready; the property on one image of this screen's exact size. */
@@ -351,8 +355,7 @@
   /** The asset list: Help QR first (it opens the QR as large as the screen allows), then F1/F11/F12 as rows. */
   function assetsHome(d) {
     var me = d.me, shares = me.shares || [];
-    var rows = [{ t: 'Help QR', s: 'Show it to your leader at the office', go: function () { go('#/help'); } },
-      { t: 'Invested', s: 'Union investment', v: inr(d.invested), go: null }];
+    var rows = [{ t: 'Invested', s: 'Union investment', v: inr(d.invested), go: null }];
     var hours = 0;
     shares.forEach(function (x) {
       var i = shareInfo(d, x);
@@ -367,7 +370,7 @@
     var t = me.title, acres = t.areas.reduce(function (a, z) { return a + z.acres; }, 0);
     rows.push({ t: 'My land', s: t.areas.length + (t.areas.length === 1 ? ' area' : ' areas') + ' \u00b7 ' + (Math.round(acres * 10) / 10) + ' acres', go: function () { go('#/land'); } });
     rows.push({ t: 'Messages', s: (me.messages || []).length + ' from Nila', go: function () { go('#/messages'); } });
-    menu('home', 'Nila', '', rows, null, undefined, ['Refresh', function () { data = null; home(); }]);
+    menu('home', 'Nila', '', rows, ['Refresh', function () { data = null; home(); }], undefined, null);
   }
 
   function share(token) {
@@ -383,7 +386,7 @@
         h += row('Cash up to', inr(x.cash)) + row(x.state === 'early' ? 'From' : 'Use by', part(x.state === 'early' ? x.open : x.final)) +
           '</div><p class="muted small">To use it, go to your union office and show your help QR to your leader.</p>';
       }
-      screen(h, back, i.m ? null : ['Help QR', function () { go('#/help'); }], null, 'My crop share');
+      screen(h, back, null, null, 'My crop share');
     });
   }
   function row(k, v) { return '<div class="row"><span class="muted">' + esc(k) + '</span><b>' + esc(v) + '</b></div>'; }
@@ -547,10 +550,12 @@
   function route() {
     var h = location.hash, m;
     if (h !== '#/property') document.body.className = '';
+    qrKey = false;
     if ((m = /^#\/l\/([0-9A-Z]+)$/.exec(h))) { open(m[1], function () { welcome(m[1]); }); return; }
     if (h === '#/expired') { expired(); return; }
     var member = stored('nila.lite.member');
-    if (!member) { expired(); return; }
+    if (!member) { qrKey = false; expired(); return; }
+    qrKey = h !== '#/property' && h !== '#/help';
     if (h === '#/property') { property(); return; }
     if (h === '#/help') { help(); return; }
     if (h === '#/home') { home(); return; }
