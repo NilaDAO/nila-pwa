@@ -1,12 +1,12 @@
 // Stellar hooks for the PWA (P2). Loaded only inside the Privy chunk, so the live build carries none of it.
 // Names and keys follow the design (data/DataHooksRead.md, DataHooksWrite.md): useAccount, useSetupAccount.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Address, Asset, StrKey, TransactionBuilder, xdr } from '@stellar/stellar-sdk';
+import { Address, Asset, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
 import { signerVal } from './account';
 import { ethers } from 'ethers';
 import { buildAccount, buildNinTrustline, getAccount, getStellarConfig, linkMessage, submitAccount, submitNinTrustline } from './api';
 import { qk } from './keys';
-import { invokeContract, readContract, server, sv } from './soroban';
+import { invokeContract, isDeployed, readContract, sv } from './soroban';
 
 export function useStellarConfig() {
   return useQuery({ queryKey: qk.stellar.config(), queryFn: getStellarConfig, staleTime: Infinity, retry: 2 });
@@ -48,15 +48,6 @@ export function useAccount(address, smart) {
       };
     },
   });
-}
-
-/** Whether a contract (her smart account) is deployed: its instance entry on the ledger. */
-async function isDeployed(cfg, id) {
-  const key = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
-    contract: new Address(id).toScAddress(), key: xdr.ScVal.scvLedgerKeyContractInstance(),
-    durability: xdr.ContractDataDurability.persistent() }));
-  const r = await server(cfg).getLedgerEntries(key);
-  return (r.entries || []).length > 0;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

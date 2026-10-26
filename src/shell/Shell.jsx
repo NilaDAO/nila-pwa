@@ -35,6 +35,7 @@ import LeaderTasks from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
 import AddMember, { KeypadPoints } from '../leader/AddMember';
+import { KeypadAccounts } from '../keypad/hooks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { pointsSent } from '../register/Registration';
 import { BootLoading } from '../register/Boot';
@@ -279,6 +280,7 @@ export default function Shell({ leader }) {
         {/* One card per screen (24 Oct): a new screen gets a fresh card, so a header button (Tasks, Settings, History)
             opens it raised; only a bottom-bar tab keeps a lowered card down (keepLowOnTab). */}
         <Fragment key={view}>{body}</Fragment>
+        {leader && <KeypadAccounts />}
         <BottomTabBar tabs={tabs} active={active} onSelect={(v) => { keepLowOnTab(); resetA1Scroll(); go(v); }} />
       </div>
     </MapStage>

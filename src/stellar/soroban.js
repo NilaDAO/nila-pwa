@@ -43,6 +43,14 @@ export async function readContract(cfg, contractName, fn, args = []) {
 // stellar-sdk 17 exposes XDR members as properties, older builds as methods.
 const at = (o, k) => (typeof o[k] === 'function' ? o[k]() : o[k]);
 
+/** Whether a contract (a smart account) is deployed: its instance entry on the ledger (one read). */
+export async function isDeployed(cfg, id) {
+  const key = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+    contract: new Address(id).toScAddress(), key: at(xdr.ScVal, 'scvLedgerKeyContractInstance'),
+    durability: at(xdr.ContractDataDurability, 'persistent') }));
+  return ((await server(cfg).getLedgerEntries(key)).entries || []).length > 0;
+}
+
 /** Many crop shares at once (22 Oct): fund_core keeps each as persistent DataKey::FoodToken(union, token_id), so one
  *  getLedgerEntries call reads up to 200 of them instead of a simulation each. Returns { [hex]: FoodToken | null }. */
 export async function readFoodTokens(cfg, union, hexes) {

@@ -9,9 +9,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { invokeContract, server } from '../stellar/soroban';
+import { invokeContract, isDeployed } from '../stellar/soroban';
 import { signerVal } from '../stellar/account';
-import { Address, xdr } from '@stellar/stellar-sdk';
 import { C, FONT, R } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
 import { Card, CardButton, Row, Text } from '../shell/SettingsParts';
@@ -67,11 +66,7 @@ function useKeypadAccount(m) {
   const tried = useRef();
   const deployed = useQuery({
     queryKey: ['stellar', 'deployed', m?.account], enabled: !!cfg && !!m?.account, refetchInterval: (q) => (q.state.data ? false : 5_000),
-    queryFn: async () => {
-      const key = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({ contract: new Address(m.account).toScAddress(),
-        key: xdr.ScVal.scvLedgerKeyContractInstance(), durability: xdr.ContractDataDurability.persistent() }));
-      return ((await server(cfg).getLedgerEntries(key)).entries || []).length > 0;
-    },
+    queryFn: () => isDeployed(cfg, m.account),
   });
   useEffect(() => {
     if (!m?.device || !m?.signer || deployed.data !== false || tried.current === m.account || !s?.ready) return;

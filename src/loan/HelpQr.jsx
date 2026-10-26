@@ -38,7 +38,7 @@ export default function HelpQr({ note, onBack } = {}) {
   return (
     <MapCard header={{ title: 'Your help QR', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}
       style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {qr && !over && <QrCircle img={img} alt="Your help QR" />}
+      {!over && !error && <QrCircle img={qr ? img : undefined} alt="Your help QR" />}
       <p style={{ ...muted, textAlign: 'center', margin: 0 }}>
         {over ? 'This QR has expired.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop share, start or collect a withdrawal.'}
       </p>
