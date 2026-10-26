@@ -113,9 +113,27 @@
    *  Polygon address the phone makes for her crop shares (26 Oct, option C: the key stays on this phone, only the
    *  address is used: L12 mints her FoodTokens to it). */
   function makeKey(code) {
-    var poly = window.NilaPolygon.newKey();
     var c = window.crypto && window.crypto.subtle;
     if (!c) return Promise.reject(new Error('This phone cannot make a key (no secure connection).'));
+    // A re-sent link opened on the phone that already holds this member's key (26 Oct): the same key and Polygon
+    // address again, so the account stays the same and needs no recovery. Another member on this phone: a new key.
+    if (invite && invite.member && stored('nila.lite.member') === invite.member) {
+      return loadDevice().then(function (rec) { return rec && rec.pair ? reuseKey(code, rec) : newDeviceKey(code); });
+    }
+    return newDeviceKey(code);
+  }
+  function hexBytes(h) { var a = new Uint8Array(h.length / 2); for (var i = 0; i < a.length; i++) a[i] = parseInt(h.substr(i * 2, 2), 16); return a; }
+  function reuseKey(code, rec) {
+    var c = window.crypto.subtle, address = window.NilaPolygon.addressOf(hexBytes(rec.polygon)), spki;
+    return c.exportKey('spki', rec.pair.publicKey).then(function (der) {
+      spki = b64(der);
+      return c.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, rec.pair.privateKey,
+        utf8('nila-keypad-register\n' + code + '\n' + spki + '\n' + address));
+    }).then(function (sig) { return { device_key: spki, sig: b64(sig), polygon: address }; });
+  }
+  function newDeviceKey(code) {
+    var poly = window.NilaPolygon.newKey();
+    var c = window.crypto.subtle;
     var algo = { name: 'ECDSA', namedCurve: 'P-256' };
     var pair, spki;
     return c.generateKey(algo, false, ['sign', 'verify']).then(function (p) {
@@ -130,6 +148,15 @@
     });
   }
 
+  function loadDevice() {
+    return idb().then(function (db) {
+      return new Promise(function (ok, fail) {
+        var req = db.transaction('keys', 'readonly').objectStore('keys').get('device');
+        req.onsuccess = function () { ok(req.result || null); };
+        req.onerror = function () { fail(req.error); };
+      });
+    });
+  }
   function loadKey() {
     return idb().then(function (db) {
       return new Promise(function (ok, fail) {
