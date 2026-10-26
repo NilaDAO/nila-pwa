@@ -1,17 +1,17 @@
 // L11 crop share request + L9 QR (leader) and A1b scan + N10 confirm (member). Boards LeaderRedeem,
-// LeaderRequestQR, MemberWalletQR-o19l-1f7c, ConfirmLoan. Decisions 16 Oct: cash (seed included) and
+// LeaderRequestQR, MemberWalletQR-o19l-1f7c, ConfirmLoan. L9 is the one request QR of A1 (26 Oct, taskCode.js): a
+// member on their own phone confirms and draws there; in assist or keypad mode the member's phone answers with a
+// signed QR and the leader's app submits the draw. Decisions 16 Oct: cash (seed included) and
 // machine hours only; her tokens from her approved plan's mint list, read with fund_core.food_token.
 // DESIGN GAPs: no member names on the node ("Land N", "Your union leader"); the union checks on L11 (cash
 // on hand, stock, union limit) are not shown yet; "Type the code" is a text box for the whole code.
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import QRCode from 'qrcode';
 import CameraView from '../shell/CameraView';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readFoodTokens, sv, tokenHex } from '../stellar/soroban';
 import { SkeletonRows } from '../shell/Skeleton';
-import BigQr from '../shell/BigQr';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
@@ -20,7 +20,11 @@ import MapCard from '../shell/MapCard';
 import AreaMap from '../plan/AreaMap';
 import { useUnionMembers } from '../leader/unionMembers';
 import { Card, CardTitle, KV } from './AssetParts';
-import { NIN, isLoanRequest, makeRequest } from './request';
+import { NIN } from './request';
+import { callOf, isTask, makeTask, readTask, answerTask } from './taskCode';
+import { TaskAnswer, TaskRequest } from './TaskScreens';
+import { rowOf, useMyShares } from './MyShares';
+import { readContract } from '../stellar/soroban';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import { usePost } from '../anchor/LeaderLp';
 import { BRING } from '../anchor/sep';
@@ -123,24 +127,20 @@ export function LeaderLoan({ initial }) {
   const [own, setOwn] = useState(false);
   const tx = useSorobanTx();
   const bring = usePost();   // L11 #short, automatic (25 Oct): see askBring
-  const [img, setImg] = useState();
   const [error, setError] = useState();
-  // The request is a few characters (23 Oct): a small, coarse QR any phone camera reads.
-  useEffect(() => { if (req) QRCode.toDataURL(req.qr, { width: 720, margin: 2, errorCorrectionLevel: 'M' }).then(setImg); }, [req]);
 
-  // L9 (board LeaderRequestQR): the request QR as big as the screen allows; no 6 numbers (no typed fallback, 22 Oct).
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); window.location.hash = '#/assets'; }} onRetry={() => tx.retry()} />;
+  // L9 (board LeaderRequestQR): the request QR as big as the screen allows, then the member's answer (A1, 26 Oct).
   if (req) {
-    const r = req.request;
-    const mv = value;
+    const c = callOf(cfg, req);
     return (
-      <MapCard map={memberMap} header={{ title: 'Crop share request', onBack: () => setReq(undefined) }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <Card label="Crop share request" style={{ gap: 12 }}>
-          <BigQr img={img} alt="Crop share request QR" caption="Let the member scan this with their phone" below={340} />
-          <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>
-            {r.crop} · {inr(Number(BigInt(r.cash) / NIN))} cash{r.hours ? ` + ${inr(mv)} vouchers (${th(r.hours)} tractor h)` : ''}</span>
-          <KV k="Valid for" v="48 hours" />
-        </Card>
-      </MapCard>
+      <TaskRequest cfg={cfg} task={req} title="Crop share request" map={memberMap} onBack={() => setReq(undefined)}
+        rows={[['For', req.label], ['Cash', inr(Number(BigInt(req.cash) / NIN))], ...(req.hours ? [['Vouchers', `${inr(value)} (${th(req.hours)} tractor h)`]] : [])]}
+        onSigned={(entry) => tx.run({
+          label: `Crop share ${req.label}`, rows: [['Cash', inr(Number(BigInt(req.cash) / NIN))], ['For', req.label]],
+          contractName: c.contract, fn: c.fn, args: c.args, auth: [entry],
+          invalidate: [['oracle', 'shares'], ['stellar', 'unionChecks']],
+        })} />
     );
   }
   // The page shows at once (header and card); the card fills as the plan, her share and the union are read.
@@ -174,17 +174,12 @@ export function LeaderLoan({ initial }) {
     if (!(await askBring())) return;
     try {
       const area = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
-      setReq(makeRequest({
-        union: cfg.union, member: sel.ft.member, token: tokenHex(sel.token_id), cash: String(BigInt(Math.round(cash)) * NIN / 1n),
-        hours: Math.round(hours), crop: row?.name || sel.share.crop, area: `Area ${area}`,
-        repay: repay != null ? String(repay) : '',
-        due: row?.finance?.due || '',
-      }));
+      setReq({ ...(await makeTask(cfg, { task: 'D', member: sel.ft.member, token: tokenHex(sel.token_id),
+        cash: String(BigInt(Math.round(cash)) * NIN), hours: Math.round(hours) })), label: `${row?.name || sel.share.crop} · Area ${area}` });
     } catch (e) { setError(e.message); }
   };
   // Her own share (a leader is a member too, 23 Oct): no QR; she confirms (N10) and signs draw_loan herself.
   const mine = !!sel && sel.ft?.member === s?.stellarAddress;
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); window.location.hash = '#/assets'; }} onRetry={() => tx.retry()} />;
   if (bring.tx.status === 'pending' || bring.tx.status === 'failed') return <TxScreens tx={bring.tx} onClose={() => bring.tx.reset()} onRetry={() => bring.tx.retry()} />;
   if (own && sel) {
     const nm = `${row?.name || sel.crop}`;
@@ -269,18 +264,53 @@ export function LeaderLoan({ initial }) {
   );
 }
 
-/** A1b (Scan): a QR from her leader. A crop share request is scanned on her Ready share (23 Oct); her withdrawals
- *  are her own QR that the leader scans (24 Oct). So this only says where to go. */
+/** A1b (Scan): a request from the member's leader (A1, 26 Oct): any task, answered with a signed QR. The member's
+ *  withdrawal QR (self mode) is still their own QR that the leader scans. */
 export function MemberScan() {
   const [error, setError] = useState();
-  const read = (text) => setError(isLoanRequest(text.trim())
-    ? 'Open your Ready crop share in Assets, then scan this.'
-    : 'This QR is not for this screen. To collect cash, open Union investment or nIN and tap Collect.');
+  const [r, setR] = useState();
+  const [tries, setTries] = useState(0);
+  const s = useNilaSigner();
+  const read = (text) => {
+    if (!isTask(text)) { setError('This QR is not a request from your union. Ask your leader to show the request.'); setTries((t) => t + 1); return; }
+    try {
+      const x = readTask(text);
+      if (x.member !== s?.stellarAddress) throw new Error('This request is for another member.');
+      setError(undefined); setR(x);
+    } catch (e) { setError(e.message); setTries((t) => t + 1); }
+  };
+  if (r) return <MemberTask r={r} onBack={() => setR(undefined)} />;
   return (
     <Sheet landName="Nila" title="Scan">
-      <CameraView mode="qr" onText={read} />
+      <CameraView key={tries} mode="qr" onText={read} />
       <p style={{ ...muted, textAlign: 'center' }}>Scan the QR on your leader's phone.</p>
       {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
     </Sheet>
   );
+}
+
+const RAY = 10n ** 27n;
+
+/** The member's side of a request: what it asks, Confirm, the answer QR. */
+export function MemberTask({ r, onBack }) {
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const shares = useMyShares();
+  const market = useQuery({ queryKey: ['stellar', 'fund', cfg?.union], enabled: !!cfg && r.task === 'U',
+    queryFn: () => readContract(cfg, 'fund_core', 'get_junior_market', [sv.address(cfg.union)]) });
+  const sign = () => answerTask(cfg, r, s.signHash);
+  if (r.task === 'D') {
+    const x = shares.data?.find((y) => tokenHex(y.token_id) === r.token);
+    const name = x ? `${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area}` : 'Your crop share';
+    return <TaskAnswer title="Use your crop share" onBack={onBack} sign={sign} note="Confirm only if these amounts are what you asked for."
+      rows={[['For', name], ['Cash', inr(Number(BigInt(r.cash) / NIN))], ...(r.hours ? [['Machine vouchers', `${th(r.hours)} tractor hours`]] : [])]} />;
+  }
+  if (r.task === 'U') {
+    const idx = BigInt(market.data?.index ?? 0);
+    const rupees = idx ? Number((BigInt(r.shares) * idx) / RAY / NIN) : null;
+    return <TaskAnswer title="Start a withdrawal" onBack={onBack} sign={sign} note="The cash can be collected at the union office after 14 days."
+      rows={[['Withdraw', rupees != null ? inr(rupees) : '…'], ['Ready', 'in 14 days']]} />;
+  }
+  return <TaskAnswer title="Collect your withdrawal" onBack={onBack} sign={sign} note="Confirm only once you have received the cash."
+    rows={[['You get', 'your withdrawal in cash']]} />;
 }

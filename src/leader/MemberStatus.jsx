@@ -23,6 +23,7 @@ import { useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
 import { useNilaSigner } from '../wallet/signer';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
+import WithdrawStart from '../loan/WithdrawStart';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -94,7 +95,8 @@ export default function MemberStatus({ id, go }) {
   const inv = useInvestment(m?.address);
   const tx = useSorobanTx();
   // Invest runs in place (22 Oct): the button row turns into Photo count | Cash teller; Photo count opens the C6 count
-  // with her. Withdraw (24 Oct) opens Pay out cash: the leader hands over the cash and scans her signed QR.
+  // with her. Withdraw (24 Oct) opens Pay out cash: the leader hands over the cash and scans her signed QR; with no
+  // withdrawal on its way it starts one (26 Oct, A1: the request QR, the member's signed answer).
   const s = useNilaSigner();
   const [act, setAct] = useState();          // 'invest': the row shows the count choice
   const [step, setStep] = useState();        // 'count' (C6)
@@ -135,7 +137,16 @@ export default function MemberStatus({ id, go }) {
         if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose: 'invest', who: m.address, total: c.total, s3Keys: c.s3Keys }))) setNoPhotos(true);
       }} />;
   }
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); members.refetch(); }} onRetry={() => tx.retry()} />;
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); setStep(); members.refetch(); }} onRetry={() => tx.retry()} />;
+  // Withdraw (26 Oct, A1): with a withdrawal on its way or ready, Pay out cash collects it; otherwise the leader starts
+  // one and the member answers the request on their phone.
+  const p = inv.data;
+  const withdrawing = !!p && (BigInt(p.pending_shares ?? 0) > 0n || BigInt(p.claimable_shares ?? 0) > 0n);
+  const free = p ? Math.max(0, n(p.free) - (BigInt(p.locked ?? 0) > 0n ? 1 : 0)) : 0;
+  if (step === 'withdraw') {
+    return <WithdrawStart cfg={cfg} member={m.address} label={m.label} free={free} tx={tx} onBack={() => setStep()}
+      map={m.record ? <AreaMap record={m.record} /> : <span />} />;
+  }
   const now = Date.now() / 1000;
   const areas = areasOf(m.record);
   const fields = m.record?.meta?.geometry?.field_features?.features || [];
@@ -192,7 +203,8 @@ export default function MemberStatus({ id, go }) {
           {!act ? (
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
-              {invested > 0 && <button type="button" style={btn()} onClick={() => go('cash/payout')}>Withdraw</button>}
+              {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
+                onClick={() => (withdrawing ? go('cash/payout') : setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
             </div>
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>

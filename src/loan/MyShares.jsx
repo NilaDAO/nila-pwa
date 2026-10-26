@@ -1,7 +1,8 @@
 // Her crop shares (A1 group "Crop shares", board MemberAssets-ley3) and taking one up: she signs
 // fund_core.draw_loan herself; the leader hands over the cash at the office.
 // A member takes a Ready share up at the office (23 Oct): her page is the camera; she scans the leader's L9 QR
-// (L11's signed request), checks it against this share and confirms (N10). First the page shows her share QR
+// (the A1 request, 26 Oct), checks it against this share and confirms (N10); in assist mode the phone then shows a
+// signed answer QR for the leader instead of drawing itself. First the page shows her share QR
 // (`nila:share:<plan>_<token>:<her G>`): the leader's Members scan opens L11 with this share picked; a tap on it puts
 // the camera in its place (so does the button under it). A leader taking up her own share sets
 // it herself (her own L11/N10 in one). Both full pages, no map card.
@@ -20,8 +21,9 @@ import { Card, QrCircle } from './AssetParts';
 import CameraView from '../shell/CameraView';
 import ConfirmShare from './ConfirmShare';
 import { th } from '../machine/hooks';
-import { LeaderLoan } from './LoanScreens';
-import { NIN, readRequest } from './request';
+import { LeaderLoan, MemberTask } from './LoanScreens';
+import { NIN } from './request';
+import { readTask } from './taskCode';
 import { C, FONT } from '../shell/tokens';
 import { ChevronIcon, RupeeIcon, ShareTile } from '../shell/icons';
 import MapCard from '../shell/MapCard';
@@ -131,12 +133,18 @@ function ShareScan({ x, onBack }) {
   const read = useMemo(() => async (text) => {
     setError(undefined);
     try {
-      // The QR holds the amounts only; the share is this one, the member is she (23 Oct).
-      setReq({ ...readRequest(text), union: cfg.union, member: s?.stellarAddress, token: tokenHex(x.token_id) });
+      // The leader's request (A1, 26 Oct): for this member and this share.
+      const r = readTask(text);
+      if (r.task !== 'D') throw new Error('This request is not for a crop share. Scan it from the Scan tab.');
+      if (r.member !== s?.stellarAddress) throw new Error('This request is for another member.');
+      if (r.token !== tokenHex(x.token_id)) throw new Error('This request is for another crop share.');
+      setReq({ ...r, union: cfg.union });
     } catch (e) { setError(e.message); setTries((t) => t + 1); }
   }, [cfg, s, x.token_id]);
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   const name = rowOf(x)?.name || x.crop.replace(/_/g, ' ');
+  // Assist mode (26 Oct): the member's phone answers with a signed QR; the leader's app submits the draw.
+  if (req && assisted()) return <MemberTask r={req} onBack={() => setReq(undefined)} />;
   if (req) {
     const cash = Number(BigInt(req.cash) / NIN);
     const confirm = () => tx.run({

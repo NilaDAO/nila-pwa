@@ -11,13 +11,13 @@ import { contractId, server, sv } from '../stellar/soroban';
 export const DESK_TERM = 34_560;     // ledgers (~5 s each): about 48 hours
 const KIND = { W: { prefix: 'NILA:W:', len: 100 }, N: { prefix: 'NILA:N:', len: 108 } };
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-const toB32 = (bytes) => {
+export const toB32 = (bytes) => {
   let bits = 0; let val = 0; let out = '';
   for (const b of bytes) { val = ((val << 8) | b) & 0xffff; bits += 8; while (bits >= 5) { out += B32[(val >>> (bits - 5)) & 31]; bits -= 5; } }
   if (bits > 0) out += B32[(val << (5 - bits)) & 31];
   return out;
 };
-const fromB32 = (str) => {
+export const fromB32 = (str) => {
   let bits = 0; let val = 0; const out = [];
   for (const ch of str) {
     const i = B32.indexOf(ch); if (i < 0) throw new Error('bad');

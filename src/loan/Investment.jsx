@@ -158,7 +158,7 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
 
       {mode === 'withdraw' && <Card label="Withdraw">
         <Segmented label="Invest or withdraw" options={SWITCH} value={mode} onChange={setPick} />
-        {/* Assisted (23 Oct): the leader drives her phone; she confirms and signs here, as in self mode. */}
+        {/* Assisted: collecting is the member's signed QR, as in self mode; starting is the leader's request (26 Oct). */}
         {canClaim && leader ? (
           <Primary disabled={!tx.ready} onClick={claim}>Get your withdrawal</Primary>
         ) : canClaim ? (
@@ -178,7 +178,11 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
             <Stepper value={o} set={setOut} step={25} min={0} max={free} unit={leader ? 'nIN' : '₹'} label={leader ? 'nIN to withdraw' : 'Rupees to withdraw'} />
             <KV k="You get about" v={leader ? `${fmt(o)} nIN` : `₹${fmt(o)} in cash`} />
             <p style={muted}>{leader ? `Arrives in your wallet by about ${dateOf(now + DAYS_14)}` : `Collect it in cash at the union office from about ${dateOf(now + DAYS_14)}`}</p>
-            <Secondary disabled={!tx.ready || o < 1 || !market.data} onClick={() => withdraw(o)}>Withdraw</Secondary>
+            {/* Assist mode (26 Oct, A1): the member's app signs no call itself; the leader starts it on G2 and the member
+                answers the request in the Scan tab. */}
+            {helped
+              ? <p style={muted}>Ask your leader to start it, then scan their request in the Scan tab.</p>
+              : <Secondary disabled={!tx.ready || o < 1 || !market.data} onClick={() => withdraw(o)}>Withdraw</Secondary>}
           </>
         )}
       </Card>}
