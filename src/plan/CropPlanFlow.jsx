@@ -8,10 +8,11 @@ import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT } from '../shell/tokens';
-import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
+import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { CheckRow, Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { BasisDrawer, Drawer, InfoButton } from './Drawer';
 import { useMintCropShares } from './mint';
+import { TxScreens } from '../stellar/TxStatus';
 import MoneyChart from './MoneyChart';
 import { areasOf, summarize, useFieldRecord } from './record';
 import { useTitleName } from './hooks';
@@ -189,6 +190,21 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const sessionUntil = useSessionUntil(forLand?.account);
   const [scanToAccept, setScanToAccept] = useState(false);
   const mint = useMintCropShares();
+  const approve = useApprovePlan();
+  // Assist mode (26 Oct): the leader made the plan, so the member's scan at CP11 is the whole consent: accept, approve
+  // and make the crop shares in one go (no separate L12).
+  const [making, setMaking] = useState(false);
+  const makeMine = async () => {
+    setError(undefined);
+    try {
+      if (plan.status !== 'accepted') await accept.mutateAsync(plan);
+      await approve.mutateAsync({ planId: plan.id, decision: 'approve' });
+      setMaking(true);
+      await mint.run(plan.id);
+      qc.invalidateQueries({ queryKey: qkPlan.plan(landId) });
+    } catch (e) { setError(e.message); }
+  };
+  const when = useRef(new Date());
   const revise = useRevisePlan();
   const discard = useDiscardPlan(landId);
   const renew = async () => {
@@ -201,12 +217,12 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const checkMinted = mint.check;
   const checkedFor = useRef();
   useEffect(() => {   // per approved plan: check now, then every 15 s until her crop shares are made (the union mints them)
-    if (!approvedId) return undefined;
+    if (!approvedId || making) return undefined;
     if (checkedFor.current !== approvedId) { checkedFor.current = approvedId; checkMinted(approvedId); }
     if (mint.status === 'done' || mint.status === 'partial') return undefined;
     const t = setInterval(() => checkMinted(approvedId), 15_000);
     return () => clearInterval(t);
-  }, [approvedId, checkMinted, mint.status]);
+  }, [approvedId, checkMinted, mint.status, making]);
   const [step, setStep] = useState(null);
   const [crops, setCrops] = useState(new Set());
   const [role, setRole] = useState();
@@ -280,6 +296,14 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const titlesKnown = !!forLand || (!titles.isLoading && (onPolygon || stellarTitles.isFetched));
   // Plain loading (titles, plan, record not fetched yet) is S1 (executive decision 21 Oct); CP1's pending card is only
   // for a record that is really not there yet.
+  if (making) {
+    const seq = { busy: 'pending', done: 'success', failed: 'failed', partial: 'failed' }[mint.status] || 'pending';
+    if (seq !== 'success') when.current = new Date();
+    const tx = { status: seq, label: 'Making the crop shares', when: when.current,
+      rows: [['Crop shares', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Member', forLand?.label || `Land ${landId}`]],
+      reason: (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
+    return <TxScreens tx={tx} network="Polygon" onClose={() => { window.location.hash = '#/members'; }} onRetry={() => mint.run(plan.id)} />;
+  }
   if (!titlesKnown || current.isLoading) return <Loading />;
   if (titles.data && !titles.data.length && !stellarTitle) {
     return <Sheet map={map} landName={name} title="No land title yet"><p style={muted}>Your crop plan starts when your land title is ready.</p></Sheet>;
@@ -496,15 +520,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       setError(undefined);
       // The leader accepts for the member only in the member's session: scan the help QR first (26 Oct).
       if (forLand && !(sessionUntil > Date.now() / 1000 + 10)) { setScanToAccept(true); return; }
+      if (forLand) { await makeMine(); return; }
       try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
     };
     if (scanToAccept) {
       return (
         <StartHelp member={forLand.account} label={forLand.label} onBack={() => setScanToAccept(false)}
-          onStarted={async () => {
-            setScanToAccept(false);
-            try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
-          }} />
+          onStarted={async () => { setScanToAccept(false); await makeMine(); }} />
       );
     }
     return (
@@ -581,12 +603,21 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       </Sheet>
     );
   }
-  if (forLand || self) {
-    // Leader app (26 Oct): the plan made for a member, or the leader's own, waits for a leader: this leader may approve
-    // it now (L12; a leader may approve their own plan, 23 Oct).
+  if (forLand) {
+    // A member's plan accepted before the one-go rule (26 Oct): approve it and make the crop shares here.
     return (
       <Sheet map={map} landName={name} title="Plan accepted">
-        <p style={muted}>{forLand ? `${forLand.label || 'The member'} accepted the plan.` : 'You accepted your plan.'} A leader of the union approves it next.</p>
+        <p style={muted}>{forLand.label || 'The member'} accepted the plan. Approve it to make the crop shares.</p>
+        {error && <p style={{ color: C.coral }}>{error}</p>}
+        <Primary disabled={!plan?.id} onClick={makeMine}>Approve and make the crop shares</Primary>
+      </Sheet>
+    );
+  }
+  if (self) {
+    // Leader app (26 Oct): the leader's own plan waits for a leader; this leader may approve it now (L12, 23 Oct).
+    return (
+      <Sheet map={map} landName={name} title="Plan accepted">
+        <p style={muted}>You accepted your plan. A leader of the union approves it next.</p>
         <Primary disabled={!plan?.id} onClick={() => { window.location.hash = `#/approvals/${plan.id}`; }}>Check and approve</Primary>
         <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 10, fontSize: 14, fontFamily: 'inherit' }}>See the plan</button>
       </Sheet>
