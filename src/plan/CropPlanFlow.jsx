@@ -581,6 +581,17 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       </Sheet>
     );
   }
+  if (forLand || self) {
+    // Leader app (26 Oct): the plan made for a member, or the leader's own, waits for a leader: this leader may approve
+    // it now (L12; a leader may approve their own plan, 23 Oct).
+    return (
+      <Sheet map={map} landName={name} title="Plan accepted">
+        <p style={muted}>{forLand ? `${forLand.label || 'The member'} accepted the plan.` : 'You accepted your plan.'} A leader of the union approves it next.</p>
+        <Primary disabled={!plan?.id} onClick={() => { window.location.hash = `#/approvals/${plan.id}`; }}>Check and approve</Primary>
+        <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 10, fontSize: 14, fontFamily: 'inherit' }}>See the plan</button>
+      </Sheet>
+    );
+  }
   return (
     // CP12 #waiting (board CropPlanPending-590i): the amber clock in a raised circle, then a secondary "See my plan".
     <Sheet map={map} landName={name}>

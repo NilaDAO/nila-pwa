@@ -408,12 +408,15 @@
         (next ? '<p class="small">Next: sow ' + esc(next.name || next.crop) + ' by ' + part(tsOf(next.sow)) + '</p>' : '') : '';
       // One sentence on what a crop plan is (26 Oct); without a plan, the member opens the QR for the leader to make it.
       head = '<p class="small">Your crop plan says what to grow on each area for the coming year, and the cash and machine hours for it.</p>' + head +
-        (list.length ? '' : '<p>No crop plan yet. Open your QR and show it to your union leader to make it with you.</p>');
+        (list.length ? '' : d.me.plan === 'waiting' ? '<p>Your crop plan is made. It waits for your union leader to approve it.</p>' :
+          d.me.plan === 'approved' ? '<p>Your crop plan is approved. Your union is making your crop shares.</p>' :
+          d.me.plan === 'denied' ? '<p>Your union leader did not approve the plan. Open your QR and show it to your union leader to make a new one.</p>' :
+          '<p>No crop plan yet. Open your QR and show it to your union leader to make it with you.</p>');
       menu('plan', 'My crop plan', head, list.map(function (x, k) {
         var i = shareInfo(d, x);
         return { t: (months(x.slot) ? months(x.slot) + ' \u00b7 ' : '') + (x.name || x.crop), s: 'Area ' + x.area + acresOf(x) + (i.m ? ' \u00b7 financed' : ''),
           v: i.m ? inr(i.m.lent) : '\u2014', go: function () { go('#/plan/' + k); } };
-      }), ['Back', function () { go('#/home'); }], list.length ? undefined : ['Open QR', function () { go('#/help'); }], null);
+      }), ['Back', function () { go('#/home'); }], list.length || d.me.plan === 'waiting' || d.me.plan === 'approved' ? undefined : ['Open QR', function () { go('#/help'); }], null);
     });
   }
   function season(k) {
