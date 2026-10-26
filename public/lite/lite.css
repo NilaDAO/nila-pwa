@@ -28,3 +28,8 @@ p { margin: 0 0 8px; }
 /* The help QR (26 Oct): as large as the 240-wide screen allows, on white for the leader's camera. */
 .qr { background: #fff; padding: 6px; margin: 4px auto; width: 196px; }
 .qr svg { display: block; width: 100%; height: auto; }
+
+/* F1–F13 lists (26 Oct): a row per item, the focused one yellow (boards Keypad*). */
+.item { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 32px; padding: 4px 8px; margin: 0 -8px; }
+.item small { font-size: 12px; color: #94A3B8; }
+.item.focus small { color: #121212; }
