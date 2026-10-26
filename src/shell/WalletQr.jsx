@@ -24,7 +24,7 @@ export default function WalletQr({ onBack, leader }) {
   const claim = useQuery({ queryKey: ['stellar', 'deskClaim', addr], enabled: !!cfg && !!addr && !leader, queryFn: () => deskClaim(cfg, addr) });
   const ready = claim.data?.shares > 0n;
   const signed = useQuery({ queryKey: ['stellar', 'deskCode', addr, ready], enabled: ready && !!s?.ready,
-    queryFn: () => signDeskCode({ cfg, signer: addr, signHash: s.signHash, kind: 'W' }), staleTime: 3_600_000 });
+    queryFn: () => signDeskCode({ cfg, signer: s.senderAddress, signHash: s.signHash, kind: 'W' }), staleTime: 3_600_000 });
   const text = ready ? signed.data?.qr : addr;
   useEffect(() => { if (text) QRCode.toDataURL(text, { width: 400, margin: 0, errorCorrectionLevel: 'L' }).then(setImg); }, [text]);
   const copy = async () => {

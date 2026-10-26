@@ -60,7 +60,7 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
   });
   return true;
 }
-const isG = (a) => /^G[A-Z2-7]{55}$/.test(a || '');
+const isG = (a) => /^[GC][A-Z2-7]{55}$/.test(a || '');
 
 function Amount({ value, set, max = 10000 }) {
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
@@ -180,7 +180,7 @@ function ScanHer({ title, note, shareOnly, onFound, onBack }) {
   const [error, setError] = useState();
   const read = (text) => {
     const t = String(text || '').trim();
-    const share = /^nila:share:(\w+?)_(\w+):(G[A-Z2-7]{55})$/.exec(t);
+    const share = /^nila:share:(\w+?)_(\w+):([GC][A-Z2-7]{55})$/.exec(t);
     if (share) { onFound({ who: share[3], plan: share[1], token: share[2] }); return; }
     if (shareOnly) { setError('Scan the crop share QR (a Ready crop share in Assets).'); return; }
     const g = addressFromQr(t);
@@ -213,7 +213,7 @@ function ScanAny({ onBack }) {
     if (/^NILA:[WN]:/i.test(t) || /^nila:cash:/i.test(t)) { setLane({ kind: 'payout', text: t }); return; }
     setBusy(true);
     try {
-      const share = /^nila:share:(\w+?)_(\w+):(G[A-Z2-7]{55})$/.exec(t);
+      const share = /^nila:share:(\w+?)_(\w+):([GC][A-Z2-7]{55})$/.exec(t);
       if (share) {
         const hex = tokenHex(share[2]);
         const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(hex)]).catch(() => null);
@@ -274,7 +274,7 @@ function ToMembersFrom({ member }) {
 // crop share QR first, then the count. From her G2 they come as #/cash/<action>/<her Stellar address>.
 const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw', share: 'share', scan: 'scan' };
 const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
-const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/(G[A-Z2-7]{55})/) || [])[1];
+const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/([GC][A-Z2-7]{55})/) || [])[1];
 
 export default function CashDesk({ initial }) {
   const [view, setView] = useState(OPEN[initial]);

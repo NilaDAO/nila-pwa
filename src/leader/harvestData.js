@@ -43,7 +43,7 @@ export function useSetPrice() {
   const set = useCallback(async (family, inrPerKg) => {
     setState({ status: 'busy' });
     try {
-      await invokeContract({ cfg, source: s.stellarAddress, signHash: s.signHash, contractName: 'crop_calendar', fn: 'set_price',
+      await invokeContract({ cfg, source: s.senderAddress, account: s.stellarAddress, signHash: s.signHash, contractName: 'crop_calendar', fn: 'set_price',
         args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.u32(family), sv.u32(Math.round(inrPerKg * 100))] });
       await qc.invalidateQueries({ queryKey: ['stellar', 'cropPrices'] });
       setState({ status: 'done' });

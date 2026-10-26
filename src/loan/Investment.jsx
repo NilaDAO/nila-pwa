@@ -109,7 +109,7 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
   const mode = pick ?? (pending || canClaim ? 'withdraw' : 'invest');
   const collect = async () => {
     setError(undefined);
-    try { setDesk(await signDeskCode({ cfg, signer: s.stellarAddress, signHash: s.signHash, kind: 'W' })); } catch (e) { setError(e.message); }
+    try { setDesk(await signDeskCode({ cfg, signer: s.senderAddress, signHash: s.signHash, kind: 'W' })); } catch (e) { setError(e.message); }
   };
   if (desk) {
     return <DeskQr title="Your withdrawal" qr={desk.qr} until={desk.until} onBack={() => setDesk(undefined)}

@@ -2,6 +2,7 @@
 // and assembled here against the public RPC from /stellar/config, signed with her Privy Stellar wallet
 // (a 32-byte hash), then fee-bumped by the node (POST /stellar/feebump; she holds no XLM) and followed on
 // the RPC until it lands. Reads are simulations with no signature.
+import { signAccountEntries } from './account';
 import { Account, Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
 
 const API = process.env.REACT_APP_API_BASE_URL;
@@ -83,6 +84,14 @@ async function feeBump(xdr) {
   return body.hash;
 }
 
+/** The address an authorization entry signs for (legacy and CAP-71 address credentials). */
+const entryAddress = (a) => {
+  const c = typeof a.credentials === 'function' ? a.credentials() : a.credentials;
+  const ac = typeof c.address === 'function' ? c.address() : (c.address || c.addressV2);
+  const sc = typeof ac.address === 'function' ? ac.address() : ac.address;
+  return Address.fromScAddress(sc).toString();
+};
+
 /** The RPC comes from the node's config: sign only the call she asked for. One op from her own account,
  * the same contract, function and arguments, and auth only by her account as source (no entry that
  * would sign for another address). */
@@ -108,14 +117,14 @@ export async function txStatus(cfg, hash) {
 /** Her call: build → simulate → sign (her Privy wallet) → node fee-bump → wait. Returns { hash, result }. */
 /** A Nila contract by name, or 'usdc': the USDC Stellar asset contract (a leader's USDC send, 22 Oct). */
 export function contractId(cfg, name) {
-  if (name === 'usdc') {
-    const [code, issuer] = (cfg.usdc_asset || ':').split(':');
+  if (name === 'usdc' || name === 'nin') {
+    const [code, issuer] = ((name === 'usdc' ? cfg.usdc_asset : cfg.nin_asset) || ':').split(':');
     return code && issuer ? new Asset(code, issuer).contractId(cfg.passphrase) : undefined;
   }
   return cfg.contracts[name];
 }
 
-export async function invokeContract({ cfg, source, signHash, contractName, fn, args, auth, onSent }) {
+export async function invokeContract({ cfg, source, account, signHash, contractName, fn, args, auth, onSent }) {
   const s = server(cfg);
   const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
@@ -128,15 +137,25 @@ export async function invokeContract({ cfg, source, signHash, contractName, fn, 
   const build = (op) => new TransactionBuilder(new Account(acct.accountId(), acct.sequenceNumber()), { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
     .addOperation(op).setTimeout(300).build();
   let op = new Contract(id).call(fn, ...args);
-  if (given.length) {
+  // `account`: her smart account (26 Oct), which the call names; `source` (her Privy key's plain account) sends it.
+  // The account's entries the simulation records are signed with the same key (Signature::Ed25519).
+  const mine = account && account !== source;
+  let signed = [];
+  if (given.length || mine) {
     const sim = await s.simulateTransaction(build(op));
     if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
-    const own = (sim.result?.auth || []).filter((a) => credType(a) === 'sorobanCredentialsSourceAccount');
+    const recorded = sim.result?.auth || [];
+    let own = recorded.filter((a) => credType(a) === 'sorobanCredentialsSourceAccount');
+    if (mine) {
+      const forAccount = recorded.filter((a) => credType(a) !== 'sorobanCredentialsSourceAccount' && entryAddress(a) === account);
+      signed = await signAccountEntries(cfg, forAccount, account, signHash, 'Ed25519', sim.latestLedger + 120);
+      own = [...own, ...signed];
+    }
     op = Operation.invokeContractFunction({ contract: id, function: fn, args, auth: [...own, ...given] });
   }
   const raw = build(op);
   const tx = await s.prepareTransaction(raw);           // simulate + footprint + resource fee + auth
-  checkPrepared(raw, tx, source, given);
+  checkPrepared(raw, tx, source, [...given, ...signed]);
   tx.addSignature(source, b64(await signHash(tx.hash())));
   const hash = await feeBump(tx.toXDR());
   onSent?.(hash);

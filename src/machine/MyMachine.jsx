@@ -46,7 +46,7 @@ const LABELS = ['Front left', 'Front', 'Front right', 'Left', null, 'Right', 'Ba
 /** A scanned voucher code (compact, 23 Oct): her address, units, expiry and signature; the share is found among her
  *  vouchers by the signature, and the full authorization entry is rebuilt. Throws a plain reason. */
 export async function parseVoucherCode(cfg, text) {
-  const c = readVoucherCode(text);
+  const c = readVoucherCode(text, cfg);
   const latest = (await server(cfg).getLatestLedger()).sequence;
   if (c.exp <= latest) throw new Error('This code has expired. Ask the member to make a new one.');
   const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(c.member)]).catch(() => []);

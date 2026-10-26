@@ -110,7 +110,7 @@ export function useUnionMembers(api) {
       }
       const by = new Map();
       const get = (key) => {
-        if (!by.has(key)) by.set(key, { key, address: key.startsWith('G') ? key : '', name: '', phone: '', lands: new Set(), loans: [], places: [], fields: [], note: '' });
+        if (!by.has(key)) by.set(key, { key, address: /^[GC]/.test(key) ? key : '', name: '', phone: '', lands: new Set(), loans: [], places: [], fields: [], note: '' });
         return by.get(key);
       };
       const border = borderClient(s);
@@ -226,4 +226,4 @@ export function useLoanDues(loans) {
 }
 
 /** Her wallet QR (A1a: a Stellar address, possibly as a stellar: / web+stellar: URI) → that address. */
-export const addressFromQr = (text) => (String(text || '').match(/G[A-Z2-7]{55}/) || [])[0] || '';
+export const addressFromQr = (text) => (String(text || '').match(/[GC][A-Z2-7]{55}/) || [])[0] || '';

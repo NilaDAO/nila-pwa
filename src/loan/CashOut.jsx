@@ -157,7 +157,7 @@ export default function CashOut({ onBack, kycOnly }) {
 
   const collect = async (amt) => {
     setError(undefined);
-    try { setDesk({ ...(await signDeskCode({ cfg, signer: me, signHash: s.signHash, kind: 'N', amount: BigInt(amt) * NIN })), amount: amt }); } catch (e) { setError(e.message); }
+    try { setDesk({ ...(await signDeskCode({ cfg, signer: s.senderAddress, signHash: s.signHash, kind: 'N', amount: BigInt(amt) * NIN })), amount: amt }); } catch (e) { setError(e.message); }
   };
   const reclaim = (e) => {
     patch(e.hash, { reclaimed: true });    // taken back, not paid: never shown as #paid once it is gone

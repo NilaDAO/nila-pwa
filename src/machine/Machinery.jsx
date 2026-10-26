@@ -78,7 +78,7 @@ export default function Machinery({ onBack }) {
     setBusy(true); setLost(undefined);
     try {
       // The compact code (23 Oct): her address, the units, the expiry ledger and her signature only.
-      const { qr: entry, until } = await signVoucherCode({ cfg, signer: s.stellarAddress, signHash: s.signHash, token: v.token, units, ledgers: TERM });
+      const { qr: entry, until } = await signVoucherCode({ cfg, signer: s.senderAddress, signHash: s.signHash, token: v.token, units, ledgers: TERM });
       // hours: the units she signed for; work: the hours of that machine they pay for.
       const c = { entry, token: v.token, hours: units, work: h, type: rate?.type, used: v.used, until };
       save(c);
