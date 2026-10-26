@@ -51,7 +51,7 @@ function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
 
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
-function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) => z }) {
+function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) => z, acceptLabel = 'Accept the plan' }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
@@ -135,7 +135,7 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
           ? `Area ${areaNo(n.zone)}${n.slot ? `, ${SEASON[n.slot] || n.slot}` : ''}${n.crop ? ` (${n.crop.replace(/_/g, ' ')})` : ''}: ${n.why}`
           : n.why || n.reason || JSON.stringify(n))).join('; ')}</Notice>
       )}
-      {!readOnly && <Primary disabled={checked.size < zones.length} onClick={onAccept}>Accept the plan</Primary>}
+      {!readOnly && <Primary disabled={checked.size < zones.length} onClick={onAccept}>{acceptLabel}</Primary>}
       {/* CP10: change it — a new version that follows her (Renew plan is on CP9). */}
       {!readOnly && onChange && <button type="button" onClick={onChange} style={{ ...secondaryBtn, width: '100%', marginTop: 8 }}>Change my plan</button>}
     </>
@@ -203,6 +203,11 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       await mint.run(plan.id);
       qc.invalidateQueries({ queryKey: qkPlan.plan(landId) });
     } catch (e) { setError(e.message); }
+  };
+  // The member's scan is the acceptance (26 Oct): no CP11 conditions step in assist mode.
+  const toTerms = () => {
+    if (!forLand) { setStep('terms'); return; }
+    if (sessionUntil > Date.now() / 1000 + 10) makeMine(); else setScanToAccept(true);
   };
   const when = useRef(new Date());
   const revise = useRevisePlan();
@@ -303,6 +308,12 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       rows: [['Crop shares', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Member', forLand?.label || `Land ${landId}`]],
       reason: (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
     return <TxScreens tx={tx} network="Polygon" onClose={() => { window.location.hash = '#/members'; }} onRetry={() => mint.run(plan.id)} />;
+  }
+  if (scanToAccept) {
+    return (
+      <StartHelp member={forLand.account} label={forLand.label} onBack={() => setScanToAccept(false)}
+        onStarted={async () => { setScanToAccept(false); await makeMine(); }} />
+    );
   }
   if (!titlesKnown || current.isLoading) return <Loading />;
   if (titles.data && !titles.data.length && !stellarTitle) {
@@ -464,14 +475,16 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {area ? (
           <AreaCard plan={plan} zone={area} name={`Area ${areaNo(area)}`} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
             accepted={checked.has(area)} total={zones.length} done={checked.size} readOnly={readOnly}
-            nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => pickArea(next)} onAll={() => setStep('terms')}
+            nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => pickArea(next)} onAll={toTerms} acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined}
             onBack={() => pickArea(null)}
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
             onCrop={(r) => { setChangeNote(`Area ${areaNo(area)}, ${SEASON[r.slot]}: instead of ${r.name}, `); setStep('change'); }}
             onRemove={() => setRemoving(area)} />
         ) : (
-          <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={readOnly} />
+          <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={toTerms} onChange={() => setStep('change')} readOnly={readOnly}
+            acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined} />
         )}
+        {forLand && error && <p style={{ color: C.coral }}>{error}</p>}
         {removing && (() => {
           // CP10 remove-area confirm (21 Oct): the node removes it by code (no Claude call); the same line goes into her
           // Change my plan draft, so Claude hears of it with her next change.
@@ -523,12 +536,6 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       if (forLand) { await makeMine(); return; }
       try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
     };
-    if (scanToAccept) {
-      return (
-        <StartHelp member={forLand.account} label={forLand.label} onBack={() => setScanToAccept(false)}
-          onStarted={async () => { setScanToAccept(false); await makeMine(); }} />
-      );
-    }
     return (
       <Sheet map={map} landName={name} title="Before you accept your crop plan" onBack={back('plan')} scroll>
         <MoneyChart plan={plan} />

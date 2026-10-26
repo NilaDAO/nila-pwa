@@ -86,7 +86,7 @@ export function SlideBar({ label, onPrev, onNext, prevLabel, nextLabel }) {
 const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear() - y0) * 12 + t.getMonth() - 9 + (t.getDate() - 1) / 31; };
 
 /** The area card (an area picked): her year as bars, sales, Back and Accept Area N. */
-export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly }) {
+export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, acceptLabel = 'Accept the plan' }) {
   const seasons = plan.plan.seasons || [];
   // A row merged with other areas (same crop that season) counts here by this area's share of its acres.
   const own = area?.area_m2 ? area.area_m2 / 4046.86 : null;
@@ -181,7 +181,7 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
         <button type="button" onClick={onBack} style={{ ...btn, background: C.raised, color: C.text }}>Back</button>
         {!readOnly && !accepted && <button type="button" onClick={onAccept} style={{ ...btn, background: C.accent, color: C.ink }}>Accept {name}</button>}
         {!readOnly && accepted && nextName && <button type="button" onClick={onNext} style={{ ...btn, background: C.accent, color: C.ink }}>Next: {nextName}</button>}
-        {!readOnly && accepted && !nextName && <button type="button" onClick={onAll} style={{ ...btn, background: C.accent, color: C.ink }}>Accept the plan</button>}
+        {!readOnly && accepted && !nextName && <button type="button" onClick={onAll} style={{ ...btn, background: C.accent, color: C.ink }}>{acceptLabel}</button>}
         {/* Remove this area (21 Oct): left-over bits leave the plan; a confirm first (CropPlanFlow). */}
         {!readOnly && onRemove && total > 1 && (
           <button type="button" onClick={onRemove} aria-label={`Remove ${name} from your plan`} style={{ ...btn, flex: 'none', width: 44, padding: 0, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
