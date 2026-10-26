@@ -6,7 +6,7 @@
  *   #/expired         F9 #expired: the link was used, voided or is older than 30 minutes
  *   (F14 is gone, 26 Oct: the leader takes her field points on the leader's phone; after F9 the phone opens F1)
  *   #/home            (26 Oct, simplified) no land title yet: the pending screen; the title ready and not seen yet:
- *                     #/property; then the asset list (26 Oct): F1/F11/F12 as rows (the Help QR is the right softkey on every screen): invested, crop
+ *                     #/property; then the asset list (26 Oct): F1/F11/F12 as rows (the QR is the right softkey on every screen): invested, crop
  *                     shares, machine hours, crop plan, land, messages (read only; no nIN rows: members hold no nIN)
  *   #/help            the help QR as large as the screen allows (A2: a leader acts for her for 5 minutes, session.js)
  *   #/property        the land title is ready: one image of the screen's exact size showing the property; OK → home
@@ -57,7 +57,7 @@
   // a leader from anywhere; the route turns it off for F9, the property image and the QR itself.
   var qrKey = false;
   function screen(html, l, c, r, title) {
-    if (qrKey) r = ['Help QR', function () { go('#/help'); }];
+    if (qrKey) r = ['QR', function () { go('#/help'); }];
     hd.textContent = title || 'Nila';
     main.innerHTML = html;
     keys = { SoftLeft: l && l[1], Enter: c && c[1], SoftRight: r && r[1] };
@@ -352,7 +352,7 @@
     });
   }
 
-  /** The asset list: Help QR first (it opens the QR as large as the screen allows), then F1/F11/F12 as rows. */
+  /** The asset list: F1/F11/F12 as rows (the QR is the right softkey). */
   function assetsHome(d) {
     var me = d.me, shares = me.shares || [];
     var rows = [{ t: 'Invested', s: 'Union investment', v: inr(d.invested), go: null }];
@@ -442,19 +442,22 @@
         var a = tsOf(x.sow) * 1000, b = tsOf(x.harvest) * 1000;
         if (a && a <= Date.now() && (!b || b >= Date.now())) String(x.area || '').split(' + ').forEach(function (n) { now[n] = x.name || x.crop; });
       });
-      var centre = t.areas[0] && t.areas[0].centre;
-      menu('land', 'My land', '<div class="map"><p class="muted" id="mapmsg">\u2026</p></div>', t.areas.map(function (z) {
+      // Her property with its areas outlined (26 Oct; /keypad/land, as the full-screen image), then the areas, and the
+      // trees and water sources once they can be registered (not built yet: the rows say none).
+      var rows = t.areas.map(function (z) {
         return { t: 'Area ' + z.n + ' \u00b7 ' + z.acres + ' acres', s: now[z.n] ? now[z.n] + ' now' : '', go: function () { go('#/land/' + z.n); } };
-      }), back, ['Open', function () { var z = t.areas[focus.land || 0]; if (z) go('#/land/' + z.n); }]);
-      if (centre) {
-        signed('map', { lat: centre[0], lng: centre[1], acc: 60 }).then(function (q) {
-          var box = main.querySelector('.map'); if (!box) return;
-          var img = new Image(); img.width = 220; img.height = 150; img.alt = 'Satellite image of your land';
-          img.onload = function () { box.innerHTML = ''; box.appendChild(img); };
-          img.onerror = function () { var m = document.getElementById('mapmsg'); if (m) m.textContent = 'No map image right now.'; };
-          img.src = API + '/keypad/map?p=' + encodeURIComponent(q.p) + '&s=' + encodeURIComponent(q.s);
-        });
-      }
+      });
+      rows.push({ t: 'Trees', s: (d.me.trees || []).length ? d.me.trees.length + ' registered' : 'None registered yet', go: null });
+      rows.push({ t: 'Water', s: (d.me.water || []).length ? d.me.water.length + ' sources' : 'No water source registered yet', go: null });
+      menu('land', 'My land', '<div class="map"><p class="muted" id="mapmsg">\u2026</p></div>', rows, back,
+        ['Open', function () { var r2 = rows[focus.land || 0]; if (r2 && r2.go) r2.go(); }]);
+      signed('land', { w: 220, h: 150 }).then(function (q) {
+        var box = main.querySelector('.map'); if (!box) return;
+        var img = new Image(); img.width = 220; img.height = 150; img.alt = 'Satellite image of your land';
+        img.onload = function () { box.innerHTML = ''; box.appendChild(img); };
+        img.onerror = function () { var m = document.getElementById('mapmsg'); if (m) m.textContent = 'No map image right now.'; };
+        img.src = API + '/keypad/land?p=' + encodeURIComponent(q.p) + '&s=' + encodeURIComponent(q.s);
+      });
     });
   }
   function area(n) {
@@ -495,7 +498,7 @@
   function help() {
     screen('<div class="qr qr-big" id="qr"><p class="muted" style="color:#121212">Making your help QR\u2026</p></div>' +
       '<p class="muted small" id="left" style="text-align:center">Show this to your leader</p>',
-      ['Back', function () { go('#/home'); }], ['New', function () { helpCache = null; help(); }], null, 'Help QR');
+      ['Back', function () { go('#/home'); }], ['New', function () { helpCache = null; help(); }], null, 'QR');
     helpQr();
   }
 
