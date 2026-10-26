@@ -217,10 +217,9 @@
     else if (watch !== null && navigator.geolocation) navigator.geolocation.clearWatch(watch);
     watch = null;
   }
+  // Accuracy only (26 Oct): latitude and longitude mean nothing to her.
   function rows(f, colour) {
-    return '<div class="rows"><div class="row"><span class="muted">Latitude</span><b>' + (f ? deg(f.lat) : '…') + '</b></div>' +
-      '<div class="row"><span class="muted">Longitude</span><b>' + (f ? deg(f.lng) : '…') + '</b></div>' +
-      '<div class="row"><span class="muted">Accuracy</span><b style="color:' + colour + '">' +
+    return '<div class="rows"><div class="row"><span class="muted">Accuracy</span><b style="color:' + colour + '">' +
       (f ? '± ' + Math.round(f.acc) + ' m' : '…') + '</b></div></div>';
   }
   // The accuracy circle (board: wide and coral while finding her, small and yellow when ready).
@@ -235,14 +234,14 @@
     stopGps(); fix = null;
     screen('<p class="muted" style="margin:0">Field ' + fieldNo() + '</p><h1>Stand in the middle of your field.</h1>' +
       '<div class="card"><b>nila.land wants to know your location</b><p class="muted" style="margin:0">The phone asks this once. Press Allow.</p></div>',
-      ['Deny', function () { go('#/fields/denied'); }], ['Allow', function () { go('#/fields/search'); }], null, 'Your field');
+      ['Deny', function () { go('#/fields/denied'); }], ['Allow', function () { go('#/fields/search'); }], null, 'Register your land');
   }
 
   function searching() {
     var f = fix;
     screen('<h1>Field ' + fieldNo() + ' · finding you…</h1>' + circle(f ? f.acc : 44, '#E69283') + rows(f, '#E69283') +
       '<p class="muted">Stay still in the open, away from trees.</p>',
-      ['Cancel', function () { stopGps(); go('#/fields'); }], null, null, 'Your field');
+      ['Cancel', function () { stopGps(); go('#/fields'); }], null, null, 'Register your land');
   }
 
   function onFix(lat, lng, acc) {
@@ -290,9 +289,9 @@
 
   function ready() {
     if (!fix) { go('#/fields'); return; }
-    screen('<h1>Field ' + fieldNo() + ' · ready</h1>' + circle(fix.acc, '#D4CF5A') + rows(fix, '#D4CF5A') +
-      '<p class="muted">Under 20 m: press OK to check it on the map.</p>',
-      ['Cancel', function () { go('#/fields'); }], ['OK', function () { go('#/fields/check'); }], null, 'Your field');
+    screen('<h1>Field ' + fieldNo() + ' · location found</h1>' + circle(fix.acc, '#D4CF5A') + rows(fix, '#D4CF5A') +
+      '<p class="muted">Good enough (under 20 m). Press OK to see the spot on the map.</p>',
+      ['Cancel', function () { go('#/fields'); }], ['OK', function () { go('#/fields/check'); }], null, 'Register your land');
   }
 
   function check() {
@@ -300,7 +299,7 @@
     var f = fix;
     screen('<h1 style="margin-bottom:4px">Is the dot in your field?</h1><div class="map"><p class="muted" id="mapmsg">…</p></div>' +
       '<p class="muted small">Satellite image · circle = ± ' + Math.round(f.acc) + ' m</p><p id="msg" class="err"></p>',
-      ['No, again', function () { go('#/fields/search'); }], ['Send', function () { sendField(f); }], null, 'Your field');
+      ['No, again', function () { go('#/fields/search'); }], ['Send', function () { sendField(f); }], null, 'Register your land');
     signed('map', { lat: f.lat, lng: f.lng, acc: f.acc }).then(function (q) {
       var box = main.querySelector('.map');
       if (!box || fix !== f) return;
@@ -335,16 +334,17 @@
     var last = null;
     try { last = JSON.parse(stored('nila.lite.last') || 'null'); } catch (e) { last = null; }
     if (!last) { go('#/fields'); return; }
-    screen('<h1>Field ' + last.n + ' sent</h1><p>' + deg(last.lat) + ', ' + deg(last.lng) + ' · ± ' + Math.round(last.acc) + ' m</p>' +
-      '<p class="muted">Another field? Walk to it and press Next. All fields now: the land title cannot change later.</p>',
-      ['Done', function () { store('nila.lite.done', '1'); go('#/done'); }], null, ['Next', function () { go('#/fields'); }], 'Your field');
+    screen('<h1>Field ' + last.n + ' sent</h1><p class="muted">Accuracy ± ' + Math.round(last.acc) + ' m</p>' +
+      '<p class="muted">Another field? Walk to it and press Next field. Send every field now: the land title cannot change later. ' +
+      'No more fields? Press All sent.</p>',
+      ['All sent', function () { store('nila.lite.done', '1'); go('#/done'); }], null, ['Next field', function () { go('#/fields'); }], 'Register your land');
   }
 
   function denied() {
     stopGps();
     screen('<h1>No location</h1><p class="muted">Location is off or blocked. Turn it on in Settings, Location, then try again. ' +
       'Or your leader takes it on the leader phone.</p>',
-      ['Later', function () { go('#/fields'); }], ['Retry', function () { go('#/fields/search'); }], null, 'Your field');
+      ['Later', function () { go('#/fields'); }], ['Retry', function () { go('#/fields/search'); }], null, 'Register your land');
   }
 
   // After Done: F13 #pending (her land, once the leader has checked the borders) is not built yet.
@@ -352,7 +352,7 @@
     var n = parseInt(stored('nila.lite.fields'), 10) || 0;
     screen('<h1>Your fields are sent</h1><p>' + n + (n === 1 ? ' field' : ' fields') + '</p>' +
       '<p class="muted">Your union leader checks the borders. Nila sends you an SMS when your land title is ready.</p>',
-      ['Home', function () { go('#/home'); }], null, ['Add a field', function () { store('nila.lite.done', ''); go('#/fields'); }], 'Your fields');
+      ['Home', function () { go('#/home'); }], null, ['Add a field', function () { store('nila.lite.done', ''); go('#/fields'); }], 'Register your land');
   }
 
   // ---- F1–F13: her own things, read only (26 Oct) ----
