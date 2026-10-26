@@ -11,6 +11,7 @@ import { usePlanClient } from '../plan/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useUnionOffers } from '../anchor/hooks';
 import { useBorderJobs } from '../border/hooks';
+import { useKeypadMembers } from '../keypad/hooks';
 import { memberName } from '../border/LeaderBorder';
 import { C, FONT } from '../shell/tokens';
 import ListRow, { ListSection, ScreenHeader } from '../shell/ListRow';
@@ -62,6 +63,7 @@ export default function LeaderTasks({ go }) {
   const todo = useLeaderTodo(api, cash);
   const offers = useUnionOffers().data || [];
   const borders = useBorderJobs().data || [];
+  const keypads = useKeypadMembers().data || [];
   const lp = useLpStatus().data;
   const ownReady = (useMyShares().data || []).some((x) => x.ready);
   const [q, setQ] = useState('');
@@ -77,6 +79,13 @@ export default function LeaderTasks({ go }) {
   }
   for (const j of borders.filter((x) => x.status !== 'minted')) {
     items.unshift({ key: `border-${j.id}`, title: 'Check field borders', who: `${memberName(j)} · ${j.fields} fields`, to: `tasks/border/${j.id}`, ready: j.status === 'ready' });
+  }
+  // A keypad member with no fields yet (26 Oct): the leader takes the field points on the leader's phone (R5–R7),
+  // once the member's phone is set up from the link; before that the row opens the member's progress (L14 #sent).
+  for (const m of keypads.filter((x) => x.phone_type === 'keypad' && !x.job)) {
+    items.unshift(m.device
+      ? { key: `border-pts-${m.id}`, title: 'Take field points', who: m.name, to: `tasks/member/${m.id}/points`, ready: true }
+      : { key: `border-link-${m.id}`, title: 'Set up a keypad phone', who: `${m.name} · waiting for the link`, to: `tasks/member/${m.id}` });
   }
   const shown = items.filter((t) => !q || `${t.title} ${t.who}`.toLowerCase().includes(q.toLowerCase()));
   const row = (t, i) => {

@@ -30,4 +30,10 @@ export function useKeypadMember(id) {
   return useQuery({ queryKey: qkKeypad.member(id), enabled: !!api && !!id, queryFn: () => api.member(id), refetchInterval: 5_000 });
 }
 
+/** L1 To do (26 Oct): the union's keypad members, for the rows "Take field points" and "Set up the phone". */
+export function useKeypadMembers() {
+  const api = useKeypadClient();
+  return useQuery({ queryKey: ['oracle', 'keypad', 'members'], enabled: !!api, queryFn: () => api.list().then((x) => x.members || []), refetchInterval: 30_000 });
+}
+
 export { useKeypadClient };
