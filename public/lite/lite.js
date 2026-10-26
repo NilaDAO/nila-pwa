@@ -79,11 +79,11 @@
       req.onerror = function () { fail(req.error); };
     });
   }
-  function keep(pair) {
+  function keep(pair, polygonKey) {
     return idb().then(function (db) {
       return new Promise(function (ok, fail) {
         var tx = db.transaction('keys', 'readwrite');
-        tx.objectStore('keys').put({ pair: pair, at: Date.now() }, 'device');
+        tx.objectStore('keys').put({ pair: pair, polygon: polygonKey, at: Date.now() }, 'device');
         tx.oncomplete = function () { ok(); };
         tx.onerror = function () { fail(tx.error); };
         tx.onabort = function () { fail(tx.error); };
@@ -101,8 +101,11 @@
     for (var i = 0; i < e.length; i++) a[i] = e.charCodeAt(i);
     return a;
   }
-  /** A new device key (not extractable), kept on this phone; its public key and its signature over the link. */
+  /** A new device key (not extractable), kept on this phone; its public key and its signature over the link, with the
+   *  Polygon address the phone makes for her crop shares (26 Oct, option C: the key stays on this phone, only the
+   *  address is used: L12 mints her FoodTokens to it). */
   function makeKey(code) {
+    var poly = window.NilaPolygon.newKey();
     var c = window.crypto && window.crypto.subtle;
     if (!c) return Promise.reject(new Error('This phone cannot make a key (no secure connection).'));
     var algo = { name: 'ECDSA', namedCurve: 'P-256' };
@@ -113,9 +116,9 @@
     }).then(function (der) {
       spki = b64(der);
       return c.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, pair.privateKey,
-        utf8('nila-keypad-register\n' + code + '\n' + spki));
+        utf8('nila-keypad-register\n' + code + '\n' + spki + '\n' + poly.address));
     }).then(function (sig) {
-      return keep(pair).then(function () { return { device_key: spki, sig: b64(sig) }; });
+      return keep(pair, poly.priv).then(function () { return { device_key: spki, sig: b64(sig), polygon: poly.address }; });
     });
   }
 
@@ -169,7 +172,7 @@
     var msg = document.getElementById('msg');
     if (msg) msg.textContent = '';
     makeKey(code).then(function (k) {
-      return call('POST', '/keypad/l/' + code + '/finish', { device_key: k.device_key, sig: k.sig });
+      return call('POST', '/keypad/l/' + code + '/finish', { device_key: k.device_key, sig: k.sig, polygon: k.polygon });
     }).then(function (out) {
       busy = false;
       try {
