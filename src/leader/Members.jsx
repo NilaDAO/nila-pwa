@@ -39,7 +39,8 @@ export default function Members({ go }) {
   const { map } = useLeaderMap('members');
   // No S1 here (22 Oct): the card shows at once; grey rows until the first list, the phone's copy meanwhile.
   const waiting = !members.data;
-  const needle = q.trim().toLowerCase();
+  // A pasted help QR or address finds the member by account (26 Oct).
+  const needle = (addressFromQr(q.trim()) || q.trim()).toLowerCase();
   // A member holds a land title (24 Oct); people still onboarding (keypad link, fields sent, title on its way) are
   // listed under "Joining"; anyone else (no title and no onboarding, e.g. a test borrower) is not listed.
   const match = (m) => !needle || [m.label, m.name, m.phone, m.address, ...m.lands.map(String)].some((v) => String(v || '').toLowerCase().includes(needle));
@@ -90,7 +91,7 @@ export default function Members({ go }) {
         {scan && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <CameraView mode="qr" onText={onQr} />
-            <span style={{ color: C.muted }}>Scan the QR on the member's Assets screen (their account number).</span>
+            <span style={{ color: C.muted }}>Scan the member's QR (help QR or account number).</span>
           </div>
         )}
         {msg && <span style={{ color: C.coral, fontWeight: 700 }}>{msg}</span>}

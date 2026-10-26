@@ -18,6 +18,7 @@ import { recordFields, shapeToFields } from '../plan/titleFields';
 import { useNilaSigner } from '../wallet/signer';
 import { opensOf } from '../loan/MyShares';
 import { keptGet, keptPut } from '../shell/kept';
+import { accountOfQr } from '../stellar/session';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -84,7 +85,8 @@ export function useUnionMembers(api) {
   const acct = s?.stellarAddress || '';
   return useQuery({
     queryKey: ['stellar', 'unionMembers', cfg?.union], enabled: !!api && !!s?.signHash && !!cfg?.contracts?.fund_core,
-    staleTime: 2 * 60_000,
+    // Asked again every minute (26 Oct): only the rows changed since (cheap), so a removed or new member shows soon.
+    staleTime: 2 * 60_000, refetchInterval: 60_000,
     placeholderData: () => (cfg?.union && acct ? readKept(acct, cfg.union) : undefined),
     queryFn: async () => {
       // The node's compact members list (map-centred lane, 23 Oct): one row per member, with its crop shares (25 Oct);
@@ -226,4 +228,5 @@ export function useLoanDues(loans) {
 }
 
 /** Her wallet QR (A1a: a Stellar address, possibly as a stellar: / web+stellar: URI) → that address. */
-export const addressFromQr = (text) => (String(text || '').match(/[GC][A-Z2-7]{55}/) || [])[0] || '';
+// An address QR, a pasted address, or the member's help QR (26 Oct: the one QR at the office carries the account).
+export const addressFromQr = (text) => accountOfQr(text) || (String(text || '').match(/[GC][A-Z2-7]{55}/) || [])[0] || '';
