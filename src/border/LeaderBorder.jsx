@@ -213,7 +213,8 @@ function Done({ job, onField, onBack, onAdd }) {
       )}
       {!st && !job.polygon && (
         // A keypad member's job carries the phone's Polygon address from F9 (26 Oct); a job started before has none.
-        <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>This keypad phone has no Polygon address yet. Send the member a new app link (L14), then the fields again.</p>
+        // Points taken before the member opened the SMS link: the phone's address joins the job when it is set up (26 Oct).
+        <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>The member's phone is not set up yet: the land title is minted to it. Ask the member to open the app link from the SMS; you can mint right after.</p>
       )}
       {!st && <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim()) || !job.polygon} style={{ ...btn(true), flex: 'none' }}
         onClick={() => { setStarted(true); setClosed(false); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }}>Mint land title</button>}
