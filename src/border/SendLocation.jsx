@@ -148,7 +148,7 @@ export function PointsStep({ evm, onDone, forName, onBack }) {
       : undefined;
   const wait = unnamed || busy;
   return (
-    <MapFrame header={forName ? `Fields of ${forName}` : undefined} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} pan={pan} onCenter={setCentre} info={info}
+    <MapFrame header={forName ? `Fields of ${forName}` : undefined} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
       selected={selected} onSelect={setSelected}>
       <div style={cardTitle}>{forName
         ? (n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field')
