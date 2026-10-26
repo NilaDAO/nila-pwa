@@ -137,7 +137,9 @@ export default function AddMember({ id, go }) {
   const [type, setType] = useState('keypad');
   const ok = name.trim() && phoneOk(phone);
   const submit = () => send.mutate({ name: name.trim(), phone: phoneValue(phone), phoneType: type, unionName: union.name, leaderName: union.rep },
-    { onSuccess: (m) => go(`tasks/member/${m.id}`) });
+    // A keypad member (26 Oct): all in one go at the farm — the link is sent and the leader goes straight on to the
+    // field points (R5–R7 on the leader's phone); a member who already has fields goes to the progress screen.
+    { onSuccess: (m) => go(m.phone_type === 'keypad' && !m.job ? `tasks/member/${m.id}/points` : `tasks/member/${m.id}`) });
   return (
     <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: 'Add a member', onBack: () => go('tasks'), onSettings: () => go('settings') }}>
@@ -157,7 +159,7 @@ export default function AddMember({ id, go }) {
             </div>
             <Notice kind="info">Do this at the farm. A smartphone member sends the location of each field from their phone; for a keypad phone you take them on your phone. No phone of their own? A family member's phone works. No phone, no account.</Notice>
             {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
-            <Primary disabled={!ok || send.isPending} onClick={submit}>Send app link</Primary>
+            <Primary disabled={!ok || send.isPending} onClick={submit}>{type === 'keypad' ? 'Send app link and take field points' : 'Send app link'}</Primary>
           </Card>
         </>
       )}
