@@ -77,7 +77,8 @@ function useKeypadAccount(m) {
     if (!m?.device || !m?.signer || deployed.data !== false || tried.current === m.account || !s?.ready) return;
     tried.current = m.account;
     invokeContract({ cfg, source: s.senderAddress, signHash: s.signHash, contractName: 'account_factory', fn: 'create',
-      args: [signerVal(Uint8Array.from(m.signer.match(/../g).map((x) => parseInt(x, 16))))] })
+      // The account's address follows from the member's first phone key (26 Oct): it is created with that key.
+      args: [signerVal(Uint8Array.from((m.first_signer || m.signer).match(/../g).map((x) => parseInt(x, 16))))] })
       .then(() => deployed.refetch()).catch((e) => { console.error('[L14] account not created', e); tried.current = undefined; });
   }, [m, deployed.data, s, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
   return !!deployed.data;
@@ -104,6 +105,10 @@ function Sent({ id, go }) {
             <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for the member' : 'The link no longer works: send it again')} />
             <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
             {m.account && <Step done={accountMade} title="Account made" sub={accountMade ? `${m.account.slice(0, 4)}…${m.account.slice(-4)}` : 'Making it…'} />}
+            {m.first_signer && m.signer && m.first_signer !== m.signer && (
+              // NOT BUILT (26 Oct): the recovery that puts the new phone's key on the account (SMS key + one leader).
+              <Notice kind="warn">This is a new phone. It reads the member's account, but cannot show a working help QR until the account's key is recovered (not built yet).</Notice>
+            )}
             <Step done={!!m.job} title="Field points taken" sub={m.job ? `${(m.fields || []).length} field${(m.fields || []).length === 1 ? '' : 's'}` : 'On your phone, at the farm'} />
             <Notice kind="info">Pin Nila to the apps menu: on the member's phone, in the browser, Options → Pin to Apps Menu.</Notice>
           </>
