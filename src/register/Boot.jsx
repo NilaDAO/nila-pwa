@@ -179,6 +179,26 @@ export function NotFoundPage() {
   );
 }
 
+/** A keypad phone or a window that small (26 Oct, DESIGN GAP: no board): one link to Nila lite. /lite/index.html, not
+ *  /lite/: a server's SPA fallback may answer the directory with this app's own index.html. Focused at once, so the
+ *  keypad's centre key opens it. */
+export function FeaturePhone() {
+  return (
+    <div style={{ ...ground, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
+        <img src={LOGO} alt="Nila" style={{ width: 40, height: 40 }} />
+        <span role="heading" aria-level="1" style={{ ...h1, marginTop: 0 }}>This phone uses Nila lite</span>
+        <span style={{ ...sub, fontSize: 12 }}>Nila lite is made for keypad phones.</span>
+        {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+        <a href={`${process.env.PUBLIC_URL || ''}/lite/index.html`} autoFocus
+          style={{ ...btnPrimary, alignSelf: 'stretch', marginTop: 12, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>
+          Open Nila lite
+        </a>
+      </div>
+    </div>
+  );
+}
+
 /** S6: not on a phone: a QR code of this page and Copy link. */
 export function NotMobile() {
   const [svg, setSvg] = useState('');
