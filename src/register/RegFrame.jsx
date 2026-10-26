@@ -4,7 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { C, FONT } from '../shell/tokens';
 import FieldScene from './FieldScene';
-import FieldMap, { useFieldMapLoaded } from './FieldMap';
+import FieldMap, { useFieldMapLoaded, usePinY } from './FieldMap';
 import useSheetDrag from '../shell/useSheetDrag';
 
 const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
@@ -109,19 +109,20 @@ export const fieldInput = { display: 'block', width: '100%', height: 44, borderR
 /** R5–R7: the satellite map (FieldMap) once Google Maps is loaded; until then, offline or without a key, the scene. */
 function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect }) {
   const { ok } = useFieldMapLoaded();
+  const pinY = usePinY(ok && pan);
   if (!ok) return <FieldGround points={points} />;
   return (
     <>
-      <FieldMap points={map} me={me} pan={pan} onCenter={onCenter} start={start} selected={selected} onSelect={onSelect} />
-      {pan && <PanPin />}
+      <FieldMap points={map} me={me} pan={pan} onCenter={onCenter} start={start} selected={selected} onSelect={onSelect} pinY={pinY} />
+      {pan && <PanPin y={pinY} />}
     </>
   );
 }
 
-/** Choose on the map: the pin at the map's centre marks where her point goes. */
-function PanPin() {
+/** Choose on the map: the pin in the middle of the map above the card marks where the point goes (26 Oct). */
+function PanPin({ y }) {
   return (
-    <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 2 }}>
+    <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top: y != null ? y : '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 2 }}>
       <svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="rgba(212,166,52,0.25)" />
         <circle cx="22" cy="22" r="9" fill="#D4A634" stroke="#121212" strokeWidth="3" /></svg>
     </div>
@@ -200,7 +201,7 @@ export function MapFrame({ header, map = [], me = null, start = null, info = INF
 function DragCard({ onLowered, children }) {
   const { ref, style, handle } = useSheetDrag(onLowered);
   return (
-    <div ref={ref} style={{ position: 'relative', zIndex: 4, ...style }}>
+    <div ref={ref} data-reg-card="" style={{ position: 'relative', zIndex: 4, ...style }}>
     <div className="nila-motion" style={{ animation: anim.drop, position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
       boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '10px 22px 18px',
       display: 'flex', flexDirection: 'column', gap: 14 }}>
