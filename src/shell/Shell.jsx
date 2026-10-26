@@ -239,7 +239,7 @@ export default function Shell({ leader }) {
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
   // The leader app is the member app, extended (notes leader-missing): her Crop plan tab is her own plan (CP13 with
   // the leader tab bar); the union's plans to approve (L12) open from L1's To do.
-  else if (view === 'crop') body = <CropPlanFlow />;
+  else if (view === 'crop') body = <CropPlanFlow self={leader} />;   // a leader makes their own plan (never assist)
   else if (view === 'approvals' && leader) body = <LeaderPlans key={readArg() || 'one'} planId={readArg()} onBack={() => go('tasks')} />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
   else if (view === 'loan') body = <LeaderLoan key={readArg()} initial={readArg()} />;

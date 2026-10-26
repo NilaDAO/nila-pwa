@@ -165,7 +165,7 @@ function AssistPlan({ map, name, waiting }) {
   );
 }
 
-export default function CropPlanFlow({ forLand } = {}) {
+export default function CropPlanFlow({ forLand, self = false } = {}) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const titles = useLandTitles(forLand ? undefined : s?.evmAddress);
@@ -281,7 +281,7 @@ export default function CropPlanFlow({ forLand } = {}) {
   }
   // Assist mode (26 Oct): the member's phone makes no crop plan; the leader makes it with the member at the office, in a
   // session from the member's help QR. Until the plan is approved the phone says so and shows the help QR.
-  if (!forLand && assisted() && !approved) return <AssistPlan map={map} name={name} waiting={plan?.status === 'accepted'} />;
+  if (!forLand && !self && assisted() && !approved) return <AssistPlan map={map} name={name} waiting={plan?.status === 'accepted'} />;
   const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');
   const back = (to) => () => setStep(to);
 
@@ -534,7 +534,7 @@ export default function CropPlanFlow({ forLand } = {}) {
         onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
       return (
         <Sheet map={map} landName={name} bar={bar}>
-          <ActivePlan plan={plan} areaNo={areaNo} season={shown} shares={myShares.data} assist={assisted()}
+          <ActivePlan plan={plan} areaNo={areaNo} season={shown} shares={myShares.data} assist={!self && assisted()}
             canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
             onExtend={async () => {
               setError(undefined);

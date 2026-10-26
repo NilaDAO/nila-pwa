@@ -198,12 +198,13 @@ const dayOf = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'nu
 
 /** Tasks → Scan her QR (executive decision 26 Oct: one QR at the office, every mode): the member's help QR starts the
  *  session and opens the member's G2, where the leader invests, repays, uses a crop share or pays out. */
-function ScanAny({ onBack }) {
+function ScanAny({ onBack, plan }) {
   const api = usePlanClient();
   const union = useUnionMembers(api);
   return <StartHelp onBack={onBack} onStarted={(who) => {
     const m = (union.data || []).find((x) => x.address === who);
-    window.location.replace(m ? `#/members/${m.route}` : '#/members');
+    // Tasks → Make a crop plan (26 Oct): straight on to the member's crop plan, in the session.
+    window.location.replace(m ? (plan ? `#/memberplan/${m.route}` : `#/members/${m.route}`) : '#/members');
   }} />;
 }
 
@@ -216,7 +217,7 @@ function ToMembersFrom({ member }) {
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
 // Her own actions start from her QR (executive decision 24 Oct, as Pay out cash): a task without her scans her wallet or
 // crop share QR first, then the count. From her G2 they come as #/cash/<action>/<her Stellar address>.
-const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw', share: 'share', scan: 'scan' };
+const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw', share: 'share', scan: 'scan', scanplan: 'scanplan' };
 const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
 const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/([GC][A-Z2-7]{55})/) || [])[1];
 
@@ -231,6 +232,7 @@ export default function CashDesk({ initial }) {
   const [found, setFound] = useState();
   const toTasks = () => window.location.replace('#/tasks');
   if (view === 'scan') return <ScanAny onBack={toTasks} />;
+  if (view === 'scanplan') return <ScanAny plan onBack={toTasks} />;
   if (!member && !found && (view === 'invest' || view === 'repay')) {
     return <ScanHer title={view === 'invest' ? 'Invest' : 'Repay'} onBack={toTasks} onFound={setFound}
       note={view === 'invest' ? 'Scan the member\'s wallet QR, then count the cash.' : 'Scan the member\'s wallet QR or the crop share QR of the loan, then count the cash.'} />;
