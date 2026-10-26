@@ -6,8 +6,9 @@ import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { makeSessionQr } from '../stellar/session';
-import { Sheet, muted, Primary } from '../plan/ui';
-import { C } from '../shell/tokens';
+import { muted, Primary } from '../plan/ui';
+import MapCard from '../shell/MapCard';
+import { C, FONT } from '../shell/tokens';
 import { QrCircle } from './AssetParts';
 
 /** `note`: what the leader will do (repay, invest, collect…); `onBack` when opened from a page (not the Scan tab). */
@@ -33,14 +34,16 @@ export default function HelpQr({ note, onBack } = {}) {
     return () => { lock?.release().catch(() => {}); };
   }, []);
   const over = qr && now > qr.until;
+  // The map-view standard (26 Oct): a full-height map card with its drag line, the title and settings in its header.
   return (
-    <Sheet landName="Nila" title="Your help QR" onBack={onBack}>
+    <MapCard header={{ title: 'Your help QR', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}
+      style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
       {qr && !over && <QrCircle img={img} alt="Your help QR" />}
-      <p style={{ ...muted, textAlign: 'center' }}>
+      <p style={{ ...muted, textAlign: 'center', margin: 0 }}>
         {over ? 'This QR has expired.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop share, start or collect a withdrawal.'}
       </p>
-      {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
+      {error && <p style={{ color: C.coral, textAlign: 'center', margin: 0 }}>{error}</p>}
       {(over || error) && <Primary onClick={make}>Make a new QR</Primary>}
-    </Sheet>
+    </MapCard>
   );
 }
