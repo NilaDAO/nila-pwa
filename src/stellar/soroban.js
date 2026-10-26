@@ -2,7 +2,7 @@
 // and assembled here against the public RPC from /stellar/config, signed with her Privy Stellar wallet
 // (a 32-byte hash), then fee-bumped by the node (POST /stellar/feebump; she holds no XLM) and followed on
 // the RPC until it lands. Reads are simulations with no signature.
-import { signAccountEntries } from './account';
+import { signAccountEntries, signatureVal } from './account';
 import { Account, Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
 
 const API = process.env.REACT_APP_API_BASE_URL;
@@ -96,6 +96,8 @@ const entryAddress = (a) => {
  * the same contract, function and arguments, and auth only by her account as source (no entry that
  * would sign for another address). */
 // stellar-sdk 17 exposes XDR fields as properties (union: `.type`); older builds as methods (`.switch()`).
+const randomNonce = () => xdr.Int64.fromString(String(BigInt.asIntN(64,
+  BigInt(`0x${[...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('')}`))));
 const credType = (a) => (typeof a.credentials === 'function' ? a.credentials().switch().name : a.credentials?.type);
 
 function checkPrepared(raw, tx, source, given = []) {
@@ -121,10 +123,12 @@ export function contractId(cfg, name) {
     const [code, issuer] = ((name === 'usdc' ? cfg.usdc_asset : cfg.nin_asset) || ':').split(':');
     return code && issuer ? new Asset(code, issuer).contractId(cfg.passphrase) : undefined;
   }
+  // A contract by its id (a member's smart account, 26 Oct).
+  if (/^C[A-Z2-7]{55}$/.test(name)) return name;
   return cfg.contracts[name];
 }
 
-export async function invokeContract({ cfg, source, account, signHash, contractName, fn, args, auth, onSent }) {
+export async function invokeContract({ cfg, source, account, signHash, contractName, fn, args, auth, session, onSent }) {
   const s = server(cfg);
   const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
@@ -141,7 +145,7 @@ export async function invokeContract({ cfg, source, account, signHash, contractN
   // The account's entries the simulation records are signed with the same key (Signature::Ed25519).
   const mine = account && account !== source;
   let signed = [];
-  if (given.length || mine) {
+  if (given.length || mine || session) {
     const sim = await s.simulateTransaction(build(op));
     if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
     const recorded = sim.result?.auth || [];
@@ -150,6 +154,26 @@ export async function invokeContract({ cfg, source, account, signHash, contractN
       const forAccount = recorded.filter((a) => credType(a) !== 'sorobanCredentialsSourceAccount' && entryAddress(a) === account);
       signed = await signAccountEntries(cfg, forAccount, account, signHash, 'Ed25519', sim.latestLedger + 120);
       own = [...own, ...signed];
+    }
+    // A leader session (A2, 26 Oct): the member's entries are signed Leader(<this leader's account>); the leader's
+    // account approves each one inside the member's check (require_auth_for_args of its payload), an entry of its own.
+    if (session) {
+      const ledger = sim.latestLedger + 120;
+      for (const e of recorded.filter((a) => credType(a) !== 'sorobanCredentialsSourceAccount' && entryAddress(a) === session)) {
+        let payload;
+        signed.push(await authorizeEntry(e, async (_p, pl) => { payload = pl; return { signatureScVal: signatureVal('Leader', account), address: session }; },
+          ledger, cfg.passphrase, session));
+        const nested = new xdr.SorobanAuthorizationEntry({
+          credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(new xdr.SorobanAddressCredentials({
+            address: new Address(account).toScAddress(), nonce: randomNonce(), signatureExpirationLedger: ledger, signature: xdr.ScVal.scvVoid() })),
+          rootInvocation: new xdr.SorobanAuthorizedInvocation({
+            function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(new xdr.InvokeContractArgs({
+              contractAddress: new Address(session).toScAddress(), functionName: '__check_auth', args: [nativeToScVal(Buffer.from(payload), { type: 'bytes' })] })),
+            subInvocations: [] }),
+        });
+        signed.push(...(await signAccountEntries(cfg, [nested], account, signHash, 'Ed25519', ledger)));
+      }
+      own = [...own, ...signed.filter((e) => !own.includes(e))];
     }
     op = Operation.invokeContractFunction({ contract: id, function: fn, args, auth: [...own, ...given] });
   }

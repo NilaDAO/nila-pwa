@@ -16,11 +16,11 @@ export function useSorobanTx() {
   const [tx, setTx] = useState({ status: 'idle' });
   const last = useRef(null);
   const run = useCallback(async (params) => {
-    const { label, rows = [], contractName, fn, args, auth, invalidate = [], hold = false } = params;
+    const { label, rows = [], contractName, fn, args, auth, session, invalidate = [], hold = false } = params;
     last.current = { params, hash: null, sentAt: 0 };
     setTx({ status: 'pending', label, rows });
     try {
-      const out = await invokeContract({ cfg, source: s.senderAddress, account: s.stellarAddress, signHash: s.signHash, contractName, fn, args, auth,
+      const out = await invokeContract({ cfg, source: s.senderAddress, account: s.stellarAddress, signHash: s.signHash, contractName, fn, args, auth, session,
         onSent: (hash) => { last.current = { params, hash, sentAt: Date.now() }; setTx((t) => ({ ...t, hash })); } });
       invalidate.forEach((k) => qc.invalidateQueries({ queryKey: k }));
       setTx({ status: 'success', label, rows, hash: out.hash, when: new Date(), result: out.result, hold });

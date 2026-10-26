@@ -21,7 +21,7 @@ import { Card, QrCircle } from './AssetParts';
 import CameraView from '../shell/CameraView';
 import ConfirmShare from './ConfirmShare';
 import { th } from '../machine/hooks';
-import { LeaderLoan, MemberTask } from './LoanScreens';
+import { LeaderLoan } from './LoanScreens';
 import { NIN } from './request';
 import { readTask } from './taskCode';
 import { C, FONT } from '../shell/tokens';
@@ -133,7 +133,9 @@ function ShareScan({ x, onBack }) {
   const read = useMemo(() => async (text) => {
     setError(undefined);
     try {
-      // The leader's request (A1, 26 Oct): for this member and this share.
+      // The leader's request (A1, 26 Oct): for this member and this share. Assist mode reads no QR: the leader helps
+      // in a session from the member's help QR (Help tab).
+      if (assisted()) throw new Error('Show your help QR (Help tab): your leader uses the crop share for you.');
       const r = readTask(text);
       if (r.task !== 'D') throw new Error('This request is not for a crop share. Scan it from the Scan tab.');
       if (r.member !== s?.stellarAddress) throw new Error('This request is for another member.');
@@ -143,8 +145,6 @@ function ShareScan({ x, onBack }) {
   }, [cfg, s, x.token_id]);
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   const name = rowOf(x)?.name || x.crop.replace(/_/g, ' ');
-  // Assist mode (26 Oct): the member's phone answers with a signed QR; the leader's app submits the draw.
-  if (req && assisted()) return <MemberTask r={req} onBack={() => setReq(undefined)} />;
   if (req) {
     const cash = Number(BigInt(req.cash) / NIN);
     const confirm = () => tx.run({

@@ -24,6 +24,8 @@ import { useNilaSigner } from '../wallet/signer';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
 import WithdrawStart from '../loan/WithdrawStart';
+import CameraView from '../shell/CameraView';
+import { readSessionQr, setSession, useSessionUntil } from '../stellar/session';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -101,6 +103,9 @@ export default function MemberStatus({ id, go }) {
   const [act, setAct] = useState();          // 'invest': the row shows the count choice
   const [step, setStep] = useState();        // 'count' (C6)
   const [noPhotos, setNoPhotos] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [helpError, setHelpError] = useState();
+  const helpUntil = useSessionUntil(m?.address);
   const labels = useMemo(() => {
     // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
     // A financed share grows too (23 Oct): its draw is the start, whatever the plan's sowing date says.
@@ -143,6 +148,28 @@ export default function MemberStatus({ id, go }) {
   const p = inv.data;
   const withdrawing = !!p && (BigInt(p.pending_shares ?? 0) > 0n || BigInt(p.claimable_shares ?? 0) > 0n);
   const free = p ? Math.max(0, n(p.free) - (BigInt(p.locked ?? 0) > 0n ? 1 : 0)) : 0;
+  // Help (A2, 26 Oct): the member's help QR starts a 5-minute session in which this leader acts for the member.
+  if (scanning) {
+    return (
+      <MapCard map={<span />} header={{ title: `Help · ${m.label}`, onBack: () => setScanning(false) }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+        <CameraView mode="qr" onText={(t) => {
+          let q;
+          try { q = readSessionQr(t); } catch (e) { setHelpError(e.message); setScanning(false); return; }
+          if (q.member !== m.address) { setHelpError("This is another member's help QR."); setScanning(false); return; }
+          setScanning(false); setHelpError(undefined);
+          tx.run({ label: `Help ${m.label}`, rows: [['For', '5 minutes']], contractName: q.member, fn: 'start_session', args: q.args, auth: [q.entry],
+            invalidate: [] }).then((out) => { if (out) setSession(q.member, Number(out.result || 0) || Math.floor(Date.now() / 1000) + 300); });
+        }} />
+        <p style={{ color: C.muted, textAlign: 'center' }}>Scan the help QR on the member's phone.</p>
+      </MapCard>
+    );
+  }
+  const payOut = () => tx.run({
+    label: `Pay out the withdrawal · ${m.label}`, rows: [['Member', m.label]],
+    contractName: 'fund_core', fn: 'claim_junior_cash', session: m.address,
+    args: [sv.address(cfg.union), sv.address(m.address), sv.address(s.stellarAddress), sv.i128(0n)],
+    invalidate: [['stellar', 'investment'], ['stellar', 'unionCash']],
+  });
   if (step === 'withdraw') {
     return <WithdrawStart cfg={cfg} member={m.address} label={m.label} free={free} tx={tx} onBack={() => setStep()}
       map={m.record ? <AreaMap record={m.record} /> : <span />} />;
@@ -179,6 +206,15 @@ export default function MemberStatus({ id, go }) {
         {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
         {!m.record && <Row k="Status" v={m.note || 'No land title yet'} />}
       </div>
+      {m.address && (
+        <Section title="Help" right={helpUntil ? `until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}>
+          {/* Assist and keypad members (A2, 26 Oct): their help QR lets this leader act for them for 5 minutes. */}
+          <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setScanning(true)}>
+            {helpUntil ? 'Helping this member · scan again' : 'Help this member · scan their QR'}
+          </button>
+          {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
+        </Section>
+      )}
       {m.loans.length > 0 && (
         <Section title="Lending" right={`${inr(owed)} owed now`}>
           {loan?.due ? <Row k="Repay" v={`${inr(loan.left)} · ${month(loan.due * 1000)}`} tone={loan.overdue ? C.coral : undefined} /> : null}
@@ -203,8 +239,8 @@ export default function MemberStatus({ id, go }) {
           {!act ? (
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
-              {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
-                onClick={() => (withdrawing ? go('cash/payout') : setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
+              {invested > 0 && <button type="button" style={btn(withdrawing || (free >= 1 && helpUntil > 0))} disabled={!withdrawing && (free < 1 || !helpUntil)}
+                onClick={() => (withdrawing ? (helpUntil ? payOut() : go('cash/payout')) : setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
             </div>
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
