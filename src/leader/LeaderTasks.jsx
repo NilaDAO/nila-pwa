@@ -18,7 +18,9 @@ import ListRow, { ListSection, ScreenHeader } from '../shell/ListRow';
 import MapCard from '../shell/MapCard';
 import { BanknoteIcon, CalendarIcon, CropIcon, PayOutIcon, PinIcon, RepayIcon, RupeeIcon, TractorIcon, UserPlusIcon } from '../shell/icons';
 import { useKnownMembers, useLeaderTodo, useUnionCash } from './hooks';
-import { useUnionMembers } from './unionMembers';
+import { addressFromQr, useUnionMembers } from './unionMembers';
+import CameraView from '../shell/CameraView';
+import DeskCard from '../shell/DeskCard';
 import { ReadyShareRows, useMyShares } from '../loan/MyShares';
 
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
@@ -43,21 +45,26 @@ export function PickMember({ title, onPick, onBack, onScan }) {
   );
 }
 
-/** Tasks → Make a crop plan (26 Oct): who is it for? The union's members with a land title; the plan is made with
- *  the member and the member's help QR is scanned only at the end, to accept it. */
+/** Tasks → Make a crop plan (26 Oct): the leader scans the member's QR to find the member (no session yet: making the
+ *  plan takes longer than 5 minutes; the QR is scanned again at the end, to accept it). */
 export function PlanFor({ go }) {
   const api = usePlanClient();
   const members = useUnionMembers(api);
-  const list = (members.data || []).filter((m) => m.titleId || m.lands?.length);
+  const [error, setError] = useState();
+  const [tries, setTries] = useState(0);
+  const onText = (t) => {
+    const a = addressFromQr(t);
+    const m = a && (members.data || []).find((x) => x.address === a);
+    if (!m) { setError(a ? 'Not a member of your union.' : 'This is not a member\'s QR.'); setTries((x) => x + 1); return; }
+    if (!(m.titleId || m.lands?.length)) { setError('This member has no land title yet.'); setTries((x) => x + 1); return; }
+    go(`memberplan/${m.route}`);
+  };
   return (
-    <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
-      header={{ title: 'Make a crop plan', onBack: () => go('tasks'), onSettings: () => go('settings') }}>
-      <ListSection title="Who is it for?">
-        {!members.data && <li style={{ color: C.muted, padding: '12px 0' }}>…</li>}
-        {list.map((m, i) => <ListRow key={m.key} first={i === 0} icon={CropIcon} title={m.label} sub={`Land ${m.titleId || m.lands[0]}`} onClick={() => go(`memberplan/${m.route}`)} />)}
-        {members.data && !list.length && <li style={{ color: C.muted, padding: '12px 0' }}>No members with a land title yet.</li>}
-      </ListSection>
-    </MapCard>
+    <DeskCard title="Make a crop plan" onBack={() => go('tasks')}>
+      <CameraView key={tries} mode="qr" onText={onText} />
+      <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>Scan the member's QR. You make the plan together; at the end the member shows the QR again to accept it.</p>
+      {error && <p style={{ color: C.coral, margin: 0 }}>{error}</p>}
+    </DeskCard>
   );
 }
 
@@ -65,7 +72,7 @@ export function PlanFor({ go }) {
 // "Scan an LP code" has no board row (LP scan, P9): it keeps the cash icon.
 const START = [
   ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon],
-    ['Make a crop plan', 'With a member; the member\'s QR at the end', 'tasks/planfor', CropIcon]]],
+    ['Make a crop plan', 'Scan the member\'s QR', 'tasks/planfor', CropIcon]]],
   // One scan for her (executive decision 24 Oct): the QR says which kind, the chain picks invest, withdraw, use or
   // repay. Her G2 in Members stays a second way in.
   ['Cash', [['Scan a member QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
