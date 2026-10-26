@@ -151,7 +151,13 @@ export default function MemberStatus({ id, go }) {
   const withdrawing = !!p && (BigInt(p.pending_shares ?? 0) > 0n || BigInt(p.claimable_shares ?? 0) > 0n);
   const free = p ? Math.max(0, n(p.free) - (BigInt(p.locked ?? 0) > 0n ? 1 : 0)) : 0;
   // Help (A2, 26 Oct): the member's help QR starts a 5-minute session in which this leader acts for the member.
-  if (scanning) return <StartHelp member={m.address} label={m.label} onBack={() => setScanning(false)} onStarted={() => setScanning(false)} />;
+  // No generic Help button (26 Oct): an action that needs the member's consent asks for the member's QR itself, then
+  // goes on (withdraw, pay out, pay out nIN); one scan covers 5 minutes of them.
+  if (scanning) {
+    return <StartHelp member={m.address} label={`${scanning.what} · ${m.label}`} onBack={() => setScanning(false)}
+      onStarted={() => { const then = scanning.then; setScanning(false); then(); }} />;
+  }
+  const withQr = (what, then) => () => (helpUntil > Date.now() / 1000 + 10 ? then() : setScanning({ what, then }));
   // An identity-checked member's nIN (a machine owner's income), paid out in cash in the session (26 Oct).
   const ninOut = () => tx.run({
     label: `Pay out nIN · ${m.label}`, rows: [['Hand over', `₹${Math.floor(nin.data || 0).toLocaleString('en-IN')} in cash`]],
@@ -201,22 +207,18 @@ export default function MemberStatus({ id, go }) {
         {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
         {!m.record && <Row k="Status" v={m.note || 'No land title yet'} />}
       </div>
-      {m.address && (
-        <Section title="Help" right={helpUntil ? `until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}>
-          {/* Assist and keypad members (A2, 26 Oct): their help QR lets this leader act for them for 5 minutes. */}
-          <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setScanning(true)}>
-            {helpUntil ? 'Helping this member · scan again' : 'Help this member · scan their QR'}
-          </button>
+      {m.recordHash && (
+        // The member's crop plan (26 Oct): made with the member without a session; the member's QR accepts it at the end.
+        <Section title="Crop plan" right={helpUntil ? `QR scanned · until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}>
+          <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>
           {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
-          {/* Assist mode (26 Oct): the leader makes the member's crop plan with the member, in the session. */}
-          {helpUntil > 0 && m.recordHash && (
-            <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make the crop plan</button>
-          )}
-          {helpUntil > 0 && nin.data >= 1 && (
-            <button type="button" style={{ ...btn(tx.ready), flex: 'none', width: '100%' }} disabled={!tx.ready} onClick={ninOut}>
-              Pay out {Math.floor(nin.data).toLocaleString('en-IN')} nIN in cash
-            </button>
-          )}
+        </Section>
+      )}
+      {m.address && nin.data >= 1 && (
+        <Section title="nIN">
+          <button type="button" style={{ ...btn(tx.ready), flex: 'none', width: '100%' }} disabled={!tx.ready} onClick={withQr('Pay out nIN', ninOut)}>
+            Pay out {Math.floor(nin.data).toLocaleString('en-IN')} nIN in cash · scan their QR
+          </button>
         </Section>
       )}
       {m.loans.length > 0 && (
@@ -243,8 +245,8 @@ export default function MemberStatus({ id, go }) {
           {!act ? (
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
-              {invested > 0 && <button type="button" style={btn(withdrawing || (free >= 1 && helpUntil > 0))} disabled={!withdrawing && (free < 1 || !helpUntil)}
-                onClick={() => (withdrawing ? (helpUntil ? payOut() : go('cash/payout')) : setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
+              {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
+                onClick={withdrawing ? withQr('Pay out the withdrawal', payOut) : withQr('Withdraw', () => setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
             </div>
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
