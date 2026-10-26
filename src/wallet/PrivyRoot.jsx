@@ -72,8 +72,12 @@ function SignerBridge({ children }) {
 
   // Silent Privy login with her key; logout follows the Cognito session.
   const busy = useRef(false);
+  // After a failed login, wait before the next try (26 Oct): every re-render tried again at once, and a rate-limited
+  // wallet (Privy 429) stayed limited. 1 minute after a failure, 5 after a 429; a timer makes the one retry.
+  const retryAt = useRef(0);
+  const [, setRetryTick] = useState(0);
   useEffect(() => {
-    if (!ready || busy.current) return;
+    if (!ready || busy.current || Date.now() < retryAt.current) return;
     const evm = linkedEvm(user);
     if (authenticated && (!session.active || (evmWallet && evm.length && !evm.includes(evmWallet.address.toLowerCase())))) {
       busy.current = true;
@@ -95,7 +99,13 @@ function SignerBridge({ children }) {
       }
       setError(undefined);
     })()
-      .catch((e) => { console.error('[privy] silent login failed', e); setError(e.message); })
+      .catch((e) => {
+        console.error('[privy] silent login failed', e);
+        setError(e.message);
+        const wait = /429|too many requests/i.test(`${e?.message} ${e?.cause?.message || ''}`) ? 300_000 : 60_000;
+        retryAt.current = Date.now() + wait;
+        setTimeout(() => setRetryTick((x) => x + 1), wait + 100);
+      })
       .finally(() => { busy.current = false; });
   }, [ready, authenticated, user, session, evmWallet, generateSiweMessage, loginWithSiwe, logout]);
 
