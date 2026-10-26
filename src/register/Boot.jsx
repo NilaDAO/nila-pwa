@@ -189,7 +189,6 @@ export function FeaturePhone() {
         <img src={LOGO} alt="Nila" style={{ width: 40, height: 40 }} />
         <span role="heading" aria-level="1" style={{ ...h1, marginTop: 0 }}>This phone uses Nila lite</span>
         <span style={{ ...sub, fontSize: 12 }}>Nila lite is made for keypad phones.</span>
-        {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
         <a href={`${process.env.PUBLIC_URL || ''}/lite/index.html`} autoFocus
           style={{ ...btnPrimary, alignSelf: 'stretch', marginTop: 12, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>
           Open Nila lite
