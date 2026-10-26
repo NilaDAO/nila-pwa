@@ -122,6 +122,7 @@ export function useUnionMembers(api) {
         border.jobs().then((r) => r || []).catch(() => []),
         api.unionLoans().then((r) => r.loans || []).catch(() => []),
       ]);
+      const keyOf = Object.fromEntries(keypad.filter((k) => k.device && k.account).map((k) => [`keypad:${k.id}`, k.account]));
       const hexes = loanList.map((l) => String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'));
       const [, , fts] = await Promise.all([
         // Titles: the membership, and each property on the map from its field record.
@@ -133,7 +134,8 @@ export function useUnionMembers(api) {
         })),
         Promise.all(jobs.map(async (j) => {
           if (!j.member) return;
-          const m = get(j.member); m.name = m.name || j.farm || j.name || ''; m.job = j.id;
+          // A keypad member is one row under the phone's account once it is set up (26 Oct), not a "Joining" twin.
+          const m = get(keyOf[j.member] || j.member); m.name = m.name || j.farm || j.name || ''; m.job = j.id;
           if (!m.lands.size) m.note = `Fields sent · ${j.fields} field${j.fields === 1 ? '' : 's'} · borders ${j.status === 'minting' ? 'done, title on its way' : 'to check'}`;
           const full = await border.job(j.id).catch(() => null);
           const pts = (full?.job || full)?.fields || [];
@@ -144,7 +146,7 @@ export function useUnionMembers(api) {
         hexes.length ? readFoodTokens(cfg, cfg.union, hexes).catch(() => ({})) : {},
       ]);
       for (const k of keypad) {
-        const m = get(`keypad:${k.id}`); m.name = m.name || k.name || ''; m.phone = k.phone || '';
+        const m = get(k.device && k.account ? k.account : `keypad:${k.id}`); m.name = m.name || k.name || ''; m.phone = k.phone || '';
         if (!m.lands.size) m.note = k.device ? 'Keypad phone set up' : k.link?.opened ? 'Opened the app link' : 'App link sent';
       }
       // Loans: what is left and whether it is overdue, from the loan inside its crop share (one batched read).
