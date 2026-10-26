@@ -9,7 +9,7 @@
 import { Loading } from '../register/Boot';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Primary, muted } from '../plan/ui';
+import { CheckRow, Primary, muted } from '../plan/ui';
 import MapCard from '../shell/MapCard';
 import { C, FONT, R } from '../shell/tokens';
 import { useAnchorInfo, useLpStatus, useSep10Token, useUsdcTrustline } from './hooks';
@@ -127,7 +127,7 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
             <h2 style={{ fontSize: 16 }}>We need one more thing</h2>
             {Object.values(k1.data.provided_fields).filter((f) => f.error).map((f) => <p key={f.description} style={{ color: C.coral }}>{f.error}</p>)}
           </>
-        ) : <p style={muted}>{leader ? 'Needed for union leaders.' : 'Needed to become an LP.'}</p>}
+        ) : !leader && <p style={muted}>Needed to become an LP.</p>}
         <h2 style={{ fontSize: 14, marginTop: 16 }}>Your details</h2>
         {FIELDS.filter(([k]) => asked.includes(k)).map(([k, label, type]) => (
           <label key={k} style={{ display: 'block' }}>
@@ -157,10 +157,9 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
         )}
         {selfieError && <p style={{ color: C.coral }}>{selfieError}</p>}
         {!needs && (
-          <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, margin: '8px 0' }}>
-            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} aria-label="I agree to the check" />
-            <span>I agree that Nila checks my phone and location during this check.</span>
-          </label>
+          <CheckRow on={consent} onClick={() => setConsent((v) => !v)} style={{ margin: '8px 0' }}>
+            I agree that Nila checks my phone and location during this check.
+          </CheckRow>
         )}
         <p style={muted}>Nila keeps this data for 5 years, as the law requires. Members of your union do not see it.</p>
         {error && <p style={{ color: C.coral }}>{error}</p>}

@@ -208,3 +208,20 @@ export function Notice({ kind = 'warn', title, children }) {
     </div>
   );
 }
+
+/** The option row as a checkbox (Comp06, kind checkbox; CP11 "I have read these conditions"): raised, radius 12,
+ *  min height 52, bold text, the box on the right; checked: 2 px accent inner border and an accent box with a tick. */
+export function CheckRow({ on, onClick, children, style }) {
+  return (
+    <button type="button" role="checkbox" aria-checked={on} onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 52, padding: '12px 16px', boxSizing: 'border-box', border: 0, borderRadius: 12,
+      background: C.raised, fontFamily: 'inherit', fontSize: 14, lineHeight: 1.5, color: C.text, cursor: 'pointer',
+      boxShadow: on ? `inset 0 0 0 2px ${C.accent}` : 'none', ...style }}>
+      <span style={{ flex: 1, minWidth: 0, textAlign: 'left', fontWeight: 700 }}>{children}</span>
+      <span aria-hidden="true" style={{ width: 20, height: 20, flexShrink: 0, boxSizing: 'border-box', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: on ? C.accent : 'transparent', border: `2px solid ${on ? C.accent : C.muted}` }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={on ? C.ink : 'transparent'} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+      </span>
+    </button>
+  );
+}

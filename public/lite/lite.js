@@ -5,9 +5,11 @@
  *                     signature is her consent)
  *   #/expired         F9 #expired: the link was used, voided or is older than 30 minutes
  *   (F14 is gone, 26 Oct: the leader takes her field points on the leader's phone; after F9 the phone opens F1)
- *   #/help            the help QR (A2, 26 Oct): lets a leader of the union act for her for 5 minutes (session.js)
- *   #/home            F1: value invested, then Help QR, My assets, My crop plan, My land, Messages (26 Oct; read only)
- *   #/assets          F11: invested, crop shares, machine hours, land title (no nIN rows: members hold no nIN)
+ *   #/home            (26 Oct, simplified) no land title yet: the pending screen; the title ready and not seen yet:
+ *                     #/property; then the assets screen: the help QR as large as the screen allows (A2: a leader acts
+ *                     for her for 5 minutes, session.js), and under it F1/F11/F12 as rows: invested, crop shares,
+ *                     machine hours, crop plan, land, messages (read only; no nIN rows: members hold no nIN)
+ *   #/property        the land title is ready: one image of the screen's exact size showing the property; OK → home
  *   #/share/<token>   F7: one crop share (lent, repay, repaid, by when; or ready to use, with the help QR)
  *   #/plan, #/plan/<i>  F12: the crop plan's seasons per area, and one season
  *   #/land, #/land/<n>  F13: her land title's areas (map image, corners); #pending before the title
@@ -199,6 +201,7 @@
 
   // F14 is gone (26 Oct, executive decision): the leader takes her field points on the leader's phone (L14).
   function stored(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* no storage */ } }
 
   // ---- F1–F13: her own things, read only (26 Oct) ----
 
@@ -267,6 +270,7 @@
     }
     var open = function () { var r = rows[f]; if (r && r.go) r.go(); };
     screen(html, left, centre === undefined ? (rows.length ? ['Select', open] : null) : centre, right, title);
+    if (id === 'home') helpQr();   // the help QR is part of the home screen's head: kept while the focus moves
     keys.ArrowDown = function () { if (f < rows.length - 1) { focus[id] = f + 1; menu(id, title, head, rows, left, centre, right); } };
     keys.ArrowUp = function () { if (f > 0) { focus[id] = f - 1; menu(id, title, head, rows, left, centre, right); } };
     var el = main.querySelector('.focus');
@@ -279,47 +283,72 @@
     load().then(draw, function (e) { var m = document.getElementById('msg'); if (m) m.textContent = (e && e.message) || 'No connection. Try again.'; });
   }
 
+  /** #/home: pending until the land title exists, the property once, then the assets screen. */
   function home() {
-    var draw = function (d) {
-      var me = d.me, shares = me.shares || [];
-      var owed = 0, firstDue = 0;
-      shares.forEach(function (x) { var i = shareInfo(d, x); if (i.m && i.m.left > 0) { owed += i.m.atDue; firstDue = firstDue ? Math.min(firstDue, i.due) : i.due; } });
-      var next = shares.filter(function (x) { return x.state === 'ready' || x.state === 'early'; })
-        .sort(function (a, b) { return tsOf(a.sow) - tsOf(b.sow); })[0];
-      var t = me.title;
-      menu('home', 'Nila', '<p class="muted small" style="margin:0">Invested</p><h1 style="font-size:20px;margin:0 0 6px">' + inr(d.invested) + '</h1>', [
-        { t: 'Help QR', s: 'Your leader acts for you', go: function () { go('#/help'); } },
-        { t: 'My assets', s: owed ? 'Repay ' + inr(owed) + ' by ' + part(firstDue) : 'Investment, crop shares', go: function () { go('#/assets'); } },
-        { t: 'My crop plan', s: next ? 'Next: sow ' + (next.name || next.crop) + ' by ' + part(tsOf(next.sow)) : (shares.length ? 'All seasons' : 'No plan yet'), go: function () { go('#/plan'); } },
-        { t: 'My land', s: t ? t.areas.length + (t.areas.length === 1 ? ' area' : ' areas') : 'Waiting for your land title', go: function () { go('#/land'); } },
-        { t: 'Messages', s: (me.messages || []).length + ' from Nila', go: function () { go('#/messages'); } },
-      ], null, undefined, ['Refresh', function () { data = null; home(); }]);
-    };
-    if (data) draw(data); else withData('Nila', draw);
+    withData('Nila', function (d) {
+      if (!d.me.title) { pending(d); return; }
+      if (!stored('nila.lite.seen.' + d.me.title.title_id)) { go('#/property'); return; }
+      assetsHome(d);
+    });
   }
 
-  function assets() {
-    withData('My assets', function (d) {
-      var rows = [{ t: 'Invested', s: 'Union investment', v: inr(d.invested), go: null }];
-      var hours = 0;
-      (d.me.shares || []).forEach(function (x) {
-        var i = shareInfo(d, x);
-        hours += i.hours;
-        if (i.m && i.m.left > 0) rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 repay by ' + part(i.due), v: inr(i.m.atDue), go: function () { go('#/share/' + hexKey(x.token)); } });
-        else if (x.state === 'ready') rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 ready to use', v: inr(x.cash), go: function () { go('#/share/' + hexKey(x.token)); } });
+  function pending(d) {
+    var f = (d.me.pending && d.me.pending.fields) || [];
+    screen('<h1>Waiting for your land title</h1>' +
+      (f.length ? '<p>' + f.length + (f.length === 1 ? ' field' : ' fields') + ' with your union leader</p>' : '') +
+      '<p class="muted">Your union leader maps your fields and makes your land title. You get an SMS when it is ready.</p>',
+      null, null, ['Refresh', function () { data = null; home(); }], 'Nila');
+  }
+
+  /** #/property: the land title is ready; the property on one image of this screen's exact size. */
+  function property() {
+    withData('Nila', function (d) {
+      if (!d.me.title) { go('#/home'); return; }
+      var w = window.innerWidth || 240, h = window.innerHeight || 320;
+      document.body.className = 'full';
+      var ok = function () {
+        document.body.className = '';
+        store('nila.lite.seen.' + d.me.title.title_id, '1');
+        go('#/home');
+      };
+      screen('<div class="full-img"><p class="muted" id="mapmsg">Your land title is ready</p></div>', null, ['OK', ok], null, 'Your land');
+      signed('land', { w: w, h: h }).then(function (q) {
+        var box = main.querySelector('.full-img'); if (!box) return;
+        var img = new Image(); img.width = w; img.height = h; img.alt = 'Your land';
+        img.onload = function () { box.innerHTML = ''; box.appendChild(img); };
+        img.onerror = function () { var m = document.getElementById('mapmsg'); if (m) m.textContent = 'Your land title is ready. No map image right now.'; };
+        img.src = API + '/keypad/land?p=' + encodeURIComponent(q.p) + '&s=' + encodeURIComponent(q.s);
       });
-      if (hours > 0) rows.push({ t: 'Machine hours', s: 'Voucher \u00b7 any machine', v: (Math.round(hours * 10) / 10) + ' h', go: null });
-      var t = d.me.title;
-      var acres = t ? t.areas.reduce(function (a, z) { return a + z.acres; }, 0) : 0;
-      rows.push({ t: 'Land title', s: t ? t.areas.length + ' areas \u00b7 ' + (Math.round(acres * 10) / 10) + ' acres \u00b7 map' : 'Not ready yet', v: t ? '1' : '', go: function () { go('#/land'); } });
-      menu('assets', 'My assets', '', rows, ['Back', function () { go('#/home'); }], ['Open', function () { var r = rows[focus.assets || 0]; if (r && r.go) r.go(); }]);
     });
+  }
+
+  /** The assets screen: the help QR first and as large as the screen allows, then F1/F11/F12 as rows. */
+  function assetsHome(d) {
+    var me = d.me, shares = me.shares || [];
+    var rows = [{ t: 'Invested', s: 'Union investment', v: inr(d.invested), go: null }];
+    var hours = 0;
+    shares.forEach(function (x) {
+      var i = shareInfo(d, x);
+      hours += i.hours;
+      if (i.m && i.m.left > 0) rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 repay by ' + part(i.due), v: inr(i.m.atDue), go: function () { go('#/share/' + hexKey(x.token)); } });
+      else if (x.state === 'ready') rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 ready to use', v: inr(x.cash), go: function () { go('#/share/' + hexKey(x.token)); } });
+    });
+    if (hours > 0) rows.push({ t: 'Machine hours', s: 'Voucher \u00b7 any machine', v: (Math.round(hours * 10) / 10) + ' h', go: null });
+    var next = shares.filter(function (x) { return x.state === 'ready' || x.state === 'early'; })
+      .sort(function (a, b) { return tsOf(a.sow) - tsOf(b.sow); })[0];
+    rows.push({ t: 'My crop plan', s: next ? 'Next: sow ' + (next.name || next.crop) + ' by ' + part(tsOf(next.sow)) : (shares.length ? 'All seasons' : 'No plan yet'), go: function () { go('#/plan'); } });
+    var t = me.title, acres = t.areas.reduce(function (a, z) { return a + z.acres; }, 0);
+    rows.push({ t: 'My land', s: t.areas.length + (t.areas.length === 1 ? ' area' : ' areas') + ' \u00b7 ' + (Math.round(acres * 10) / 10) + ' acres', go: function () { go('#/land'); } });
+    rows.push({ t: 'Messages', s: (me.messages || []).length + ' from Nila', go: function () { go('#/messages'); } });
+    var head = '<div class="qr qr-big" id="qr"><p class="muted" style="color:#121212">Making your help QR\u2026</p></div>' +
+      '<p class="muted small" id="left" style="text-align:center">Show this to your leader</p>';
+    menu('home', 'Nila', head, rows, null, undefined, ['New QR', function () { data = null; helpCache = null; home(); }]);
   }
 
   function share(token) {
     withData('My crop share', function (d) {
       var x = (d.me.shares || []).filter(function (y) { return hexKey(y.token) === token; })[0];
-      var back = ['Back', function () { go('#/assets'); }];
+      var back = ['Back', function () { go('#/home'); }];
       if (!x) { screen('<p class="muted">This crop share is not in your plan.</p>', back, null, null, 'My crop share'); return; }
       var i = shareInfo(d, x), h = '<h1>' + esc(x.name || x.crop) + ' \u00b7 Area ' + esc(x.area) + '</h1><div class="rows">';
       if (i.m) {
@@ -327,9 +356,9 @@
           row('Repaid', inr(i.m.repaid)) + row('Repay by', part(i.due)) + '</div><p class="muted small">Repay at the union office, in cash.</p>';
       } else {
         h += row('Cash up to', inr(x.cash)) + row(x.state === 'early' ? 'From' : 'Use by', part(x.state === 'early' ? x.open : x.final)) +
-          '</div><p class="muted small">To use it, go to your union office and show your help QR to your leader.</p>';
+          '</div><p class="muted small">To use it, go to your union office and show your help QR (the home screen) to your leader.</p>';
       }
-      screen(h, back, i.m ? null : ['Help QR', function () { go('#/help'); }], null, 'My crop share');
+      screen(h, back, null, null, 'My crop share');
     });
   }
   function row(k, v) { return '<div class="row"><span class="muted">' + esc(k) + '</span><b>' + esc(v) + '</b></div>'; }
@@ -433,23 +462,33 @@
 
   // ---- the help QR (A2): her leader acts for her for 5 minutes ----
 
-  var helpTimer = null;
-  function help() {
+  var helpTimer = null, helpCache = null;   // the QR stays on screen while the rows move (5 minutes)
+  /** Fills #qr and #left with a fresh help QR (made once per 5 minutes; the list redraws keep it). */
+  function helpQr() {
+    var box = document.getElementById('qr');
+    var show = function (q) {
+      var b2 = document.getElementById('qr'); if (!b2) return;
+      b2.innerHTML = q.svg;
+      var left = function () { return Math.max(0, q.until - Math.floor(Date.now() / 1000)); };
+      var tick = function () {
+        var el = document.getElementById('left');
+        if (!el) { clearInterval(helpTimer); helpTimer = null; return; }
+        el.textContent = left() > 0 ? 'Show this to your leader \u00b7 ' + left() + ' s' : 'Expired: press New QR';
+      };
+      if (helpTimer) clearInterval(helpTimer);
+      tick(); helpTimer = setInterval(tick, 1000);
+    };
+    if (helpCache && helpCache.until - Math.floor(Date.now() / 1000) > 20) { show(helpCache); return; }
     var account = stored('nila.lite.account');
-    if (helpTimer) { clearInterval(helpTimer); helpTimer = null; }
-    var back = ['Back', function () { go('#/home'); }];
-    if (!account) {
-      screen('<h1>Not ready yet</h1><p class="muted">Your account is not set up on this phone. Ask your union leader to send a new link.</p>',
-        back, null, null, 'Help QR');
-      return;
-    }
-    screen('<p class="muted">Making your QR…</p><p id="msg" class="err"></p>', back, null, null, 'Help QR');
+    var fail = function (msg) { var el = document.getElementById('left'); if (el) { el.className = 'err small'; el.textContent = msg; } };
+    if (!box) return;
+    if (!account) { fail('Your account is not set up on this phone. Ask your union leader to send a new link.'); return; }
     var cfg;
     call('GET', '/stellar/config').then(function (c) {
       cfg = c;
       // The latest ledger, for the signature's expiry (the phone's own clock ends the QR after 5 minutes).
       return fetch(c.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (r) { return r.json(); });
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (res) { return res.json(); });
     }).then(function (l) {
       return loadKey().then(function (pair) {
         if (!pair) throw new Error('This phone has no key. Ask your union leader for a new link.');
@@ -458,19 +497,10 @@
       });
     }).then(function (q) {
       return window.NilaQR.svg(q.qr, { margin: 1, errorCorrectionLevel: 'L' }).then(function (svg) {
-        var left = function () { return Math.max(0, q.until - Math.floor(Date.now() / 1000)); };
-        screen('<div class="qr">' + svg + '</div><p class="muted" id="left">Show this to your leader · ' + left() + ' s</p>',
-          back, ['New', help], null, 'Help QR');
-        helpTimer = setInterval(function () {
-          var el = document.getElementById('left');
-          if (!el) { clearInterval(helpTimer); helpTimer = null; return; }
-          el.textContent = left() > 0 ? 'Show this to your leader · ' + left() + ' s' : 'Expired: press New';
-        }, 1000);
+        helpCache = { svg: svg, until: q.until };
+        show(helpCache);
       });
-    }, function (e) {
-      var msg = document.getElementById('msg');
-      if (msg) msg.textContent = (e && e.message) || 'Could not make the QR. Try again.';
-    });
+    }, function (e) { fail((e && e.message) || 'Could not make the QR. Try again.'); });
   }
 
   function open(code, then) {
@@ -483,13 +513,13 @@
 
   function route() {
     var h = location.hash, m;
+    if (h !== '#/property') document.body.className = '';
     if ((m = /^#\/l\/([0-9A-Z]+)$/.exec(h))) { open(m[1], function () { welcome(m[1]); }); return; }
     if (h === '#/expired') { expired(); return; }
     var member = stored('nila.lite.member');
     if (!member) { expired(); return; }
-    if (h === '#/help') { help(); return; }
+    if (h === '#/property') { property(); return; }
     if (h === '#/home') { home(); return; }
-    if (h === '#/assets') { assets(); return; }
     if ((m = /^#\/share\/([0-9a-f]+)$/.exec(h))) { share(m[1]); return; }
     if (h === '#/plan') { plan(); return; }
     if ((m = /^#\/plan\/(\d+)$/.exec(h))) { season(parseInt(m[1], 10)); return; }

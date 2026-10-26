@@ -33,3 +33,14 @@ p { margin: 0 0 8px; }
 .item { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 32px; padding: 4px 8px; margin: 0 -8px; }
 .item small { font-size: 12px; color: #94A3B8; }
 .item.focus small { color: #121212; }
+
+/* The home screen's help QR (26 Oct): as large as the screen allows, edge to edge, on white for the leader's camera. */
+.qr-big { width: auto; margin: -8px -10px 4px; padding: 8px; box-sizing: border-box; }
+.qr-big p { text-align: center; padding: 40px 0; margin: 0; }
+
+/* #/property: the land title is ready; the image fills the screen exactly, the softkey bar sits over it. */
+body.full #hd { display: none; }
+body.full #main { padding: 0; overflow: hidden; }
+body.full #sk { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); }
+.full-img { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: #1F2733; }
+.full-img img { display: block; }

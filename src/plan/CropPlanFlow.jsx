@@ -9,7 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT } from '../shell/tokens';
 import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
-import { Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
+import { CheckRow, Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { BasisDrawer, Drawer, InfoButton } from './Drawer';
 import { useMintCropShares } from './mint';
 import MoneyChart from './MoneyChart';
@@ -506,16 +506,7 @@ export default function CropPlanFlow({ forLand } = {}) {
         )}
         <Notice title="Estimates, not guarantees">Yield, sales and cash flow are estimated from your field record and can contain errors. Vouchers and cash depend on available funds: Nila and your union cannot guarantee them.</Notice>
         <Notice kind="info" title="Amounts can be changed">You can change your cash and voucher amounts together with your union leaders.</Notice>
-        <button type="button" role="checkbox" aria-checked={read} aria-label="I have read these conditions" onClick={() => setRead((r) => !r)} style={{
-          display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 52, padding: '12px 16px', boxSizing: 'border-box', border: 0, borderRadius: 12,
-          background: C.raised, fontFamily: 'inherit', fontSize: 14, lineHeight: 1.5, color: C.text, cursor: 'pointer', marginTop: 14,
-          boxShadow: read ? `inset 0 0 0 2px ${C.accent}` : 'none' }}>
-          <span style={{ flex: 1, minWidth: 0, textAlign: 'left', fontWeight: 700 }}>I have read these conditions</span>
-          <span aria-hidden="true" style={{ width: 20, height: 20, flexShrink: 0, boxSizing: 'border-box', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: read ? C.accent : 'transparent', border: `2px solid ${read ? C.accent : C.muted}` }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={read ? C.ink : 'transparent'} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-          </span>
-        </button>
+        <CheckRow on={read} onClick={() => setRead((r) => !r)} style={{ marginTop: 14 }}>I have read these conditions</CheckRow>
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <button type="button" disabled={!read || accept.isPending} aria-disabled={!read} onClick={go} style={{
           width: '100%', height: 44, border: 0, borderRadius: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, padding: '0 24px', marginTop: 14,
