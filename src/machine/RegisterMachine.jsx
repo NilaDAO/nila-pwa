@@ -18,11 +18,13 @@ import { Card, CardTitle } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
 import { PARTS, useRates } from './hooks';
 import MapCard from '../shell/MapCard';
+import { addressFromQr } from '../leader/unionMembers';
 
 // Walk order (machines/photos.py LABELS): Front first, then round. Grid: 3×3 with the machine in the middle.
 const WALK = ['Front', 'Front right', 'Right', 'Back right', 'Back', 'Back left', 'Left', 'Front left'];
 const GRID = ['Front left', 'Front', 'Front right', 'Left', null, 'Right', 'Back left', 'Back', 'Back right'];
-const isG = (a) => /^G[A-Z2-7]{55}$/.test(a || '');
+// A member's account (26 Oct: smart accounts are C…; plain keys G…).
+const isAccount = (a) => /^[GC][A-Z2-7]{55}$/.test(a || '');
 const MAX_SIDE = 1280;
 const svg = (d, color, size = 20) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>;
 const CheckMark = ({ color = C.accent }) => svg(<path d="M20 6 9 17l-5-5" />, color);
@@ -70,7 +72,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
     setTo(own);
     setError(undefined); setBusy(true);
     try {
-      if (!isG(own)) throw new Error('That QR is not a member wallet. Scan the owner\'s wallet QR.');
+      if (!isAccount(own)) throw new Error('That QR is not a member\'s QR. Scan the owner\'s QR.');
       // A machine owner is paid in nIN (prepay and dues), so the owner needs the anchor's identity check first (K1,
       // executive decision 24 Oct), a union machine's leader included.
       if (!(await readContract(cfg, 'fx_pool', 'id_checked', [sv.address(own)]).catch(() => false))) {
@@ -99,7 +101,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   if (scanning) {
     return page('Register a machine', () => setScanning(false), (
       <Card label="Scan the owner's wallet QR">
-        <CameraView mode="qr" title="Scan the owner's wallet QR" onText={(t) => { setScanning(false); register(t.match(/G[A-Z2-7]{55}/)?.[0]); }} />
+        <CameraView mode="qr" title="Scan the owner's QR" onText={(t) => { setScanning(false); register(addressFromQr(t)); }} />
       </Card>
     ));
   }
@@ -190,7 +192,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
           <>
             <Primary disabled={!rate || !tx.ready || !api || !s?.stellarAddress} onClick={() => register(s.stellarAddress)}>Union machine: register to me</Primary>
             <button type="button" disabled={!rate || !tx.ready || !api} onClick={() => setScanning(true)}
-              style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>A member's machine: scan their wallet QR</button>
+              style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>A member's machine: scan their QR</button>
           </>
         )}
       </Card>
