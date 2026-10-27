@@ -84,6 +84,12 @@ export default function MemberStatus({ id, go }) {
   const planId = shares.data?.[found?.address]?.planId;
   const plan = useQuery({ queryKey: ['plan', 'byId', planId], enabled: !!api && !!planId, staleTime: 5 * 60_000,
     queryFn: () => api.plan(planId) });
+  // The refresh icon (27 Oct): the members list, this member's crop shares on-chain and the plan again; it turns meanwhile.
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try { await Promise.all([members.refetch(), shares.refetch(), planId ? plan.refetch() : null]); } finally { setRefreshing(false); }
+  };
   // Her open loans: the node's list, plus any drawn share it does not hold yet (read from the share on-chain).
   const loans = useMemo(() => {
     if (!found) return undefined;
@@ -201,7 +207,8 @@ export default function MemberStatus({ id, go }) {
   const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} /> : <span />;
   const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>;
   return (
-    <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings') }}
+    <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings'), busy: refreshing,
+      onRefresh: refresh }}
       style={{ fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5 }}>
       {/* The card's 22 px side padding (MapCard takes the sheet's padding back for screens with cards of their own). */}
       <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>

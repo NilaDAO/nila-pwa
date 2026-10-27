@@ -59,7 +59,8 @@ export function ScreenHeader(props) {
 }
 
 /** ScreenHeader's row alone: also the header inside a map card (map-central trial, MapCard). */
-export function HeaderRow({ title, onBack, onSettings, settings = true }) {
+/** onRefresh (27 Oct, G2): the refresh icon (as on Harvests) left of Settings; `busy` while it reloads. */
+export function HeaderRow({ title, onBack, onSettings, settings = true, onRefresh, busy = false }) {
   return (
     <div style={{ position: 'relative', height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT, color: C.text }}>
       {onBack && (
@@ -70,7 +71,18 @@ export function HeaderRow({ title, onBack, onSettings, settings = true }) {
         </span>
       )}
       <h1 style={{ margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{title}</h1>
-      {settings && <span style={{ position: 'absolute', right: 0, top: 0 }}><SettingsButton onClick={onSettings} /></span>}
+      {(settings || onRefresh) && (
+        <span style={{ position: 'absolute', right: 0, top: 0, display: 'flex', gap: 8 }}>
+          {onRefresh && (
+            <RoundButton label="Refresh" onClick={busy ? undefined : onRefresh}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                style={busy ? { animation: 'nila-spin 1s linear infinite' } : undefined}><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
+              {busy && <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>}
+            </RoundButton>
+          )}
+          {settings && <SettingsButton onClick={onSettings} />}
+        </span>
+      )}
     </div>
   );
 }
