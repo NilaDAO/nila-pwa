@@ -54,7 +54,7 @@ export const isSessionQr = (text) => (text || '').trim().toUpperCase().startsWit
 export function readSessionQr(text) {
   let b;
   try { b = fromB32((text || '').trim().toUpperCase().slice(PREFIX.length)); } catch { b = null; }
-  if (!isSessionQr(text) || !b || b.length !== LEN || !KINDS[b[0]]) throw new Error('This is not a member's Nila QR.');
+  if (!isSessionQr(text) || !b || b.length !== LEN || !KINDS[b[0]]) throw new Error("This is not a member's Nila QR.");
   const d = new DataView(b.buffer);
   const member = StrKey.encodeContract(Buffer.from(b.slice(1, 33)));
   const notAfter = Number(d.getBigUint64(33));

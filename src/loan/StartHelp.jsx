@@ -18,13 +18,13 @@ export default function StartHelp({ member, label, onBack, onStarted }) {
     try { q = readSessionQr(t); } catch (e) { setError(e.message); setTries((x) => x + 1); return; }
     if (member && q.member !== member) { setError("This is another member's QR."); setTries((x) => x + 1); return; }
     setError(undefined);
-    const out = await tx.run({ label: `Help ${label || 'the member'}`, rows: [['For', '5 minutes']], contractName: q.member, fn: 'start_session',
+    const out = await tx.run({ label: `Act for ${label || 'the member'}`, rows: [['For', '5 minutes']], contractName: q.member, fn: 'start_session',
       args: q.args, auth: [q.entry], invalidate: [] });
     if (out) { setSession(q.member, Number(out.result || 0) || Math.floor(Date.now() / 1000) + 300); tx.reset(); onStarted(q.member); }
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   return (
-    <DeskCard title={label ? `Help · ${label}` : 'Scan her QR'} onBack={onBack}>
+    <DeskCard title={label ? `Scan the QR · ${label}` : "Scan the member's QR"} onBack={onBack}>
       <CameraView key={tries} mode="qr" onText={read} />
       <p style={muted}>Scan the QR on the member's phone. You can then act for the member for 5 minutes.</p>
       {error && <p style={{ color: C.coral }}>{error}</p>}
