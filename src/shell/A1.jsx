@@ -12,7 +12,7 @@ import { useTitleCount } from '../register/titles';
 import { useInvestment, useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { ShareRows, useMyLand, useMyShares } from '../loan/MyShares';
-import { loadVoucherCode, th, typeName, useMyMachine, useVouchers } from '../machine/hooks';
+import { loadVoucherCode, ta, typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
 import { UnionRows, useLeaderSlides } from '../leader/UnionCards';
@@ -231,14 +231,14 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         ) : lp?.trustline && (
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="For cash offers as an LP" value={lp.usdc.toFixed(2)} valueSub="" onClick={onOffers} />
         )}
-        {/* Vouchers under their own label (any voucher kind; machine hours today, 23 Oct): one row for her machine
-            vouchers, all her crop shares' hours left together, in tractor hours; no crop named. */}
+        {/* Vouchers under their own label (any voucher kind; machine work today): one row for her machine vouchers,
+            all her crop shares' work left together, in tractor acres (27 Oct); no crop named. */}
         {vouchers.data?.length > 0 && (
           <>
             <span style={label}>Vouchers</span>
             <Row label="Open machine vouchers" icon={<MachineryTile />} title="Machine vouchers"
-              sub={vOpen ? `Open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'In tractor hours'}
-              value={`${th(vouchers.data.reduce((a, v) => a + v.left, 0))} h`} valueSub="" onClick={onMachinery} />
+              sub={vOpen ? `Open code · ${Math.max(0, Math.floor((vOpen.until - Date.now() / 1000) / 3600))} h left` : 'In tractor acres'}
+              value={`${ta(vouchers.data.reduce((a, v) => a + v.left, 0))} ac`} valueSub="" onClick={onMachinery} />
           </>
         )}
         {/* Her crop shares last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}

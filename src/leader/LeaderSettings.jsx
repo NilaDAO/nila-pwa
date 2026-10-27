@@ -59,9 +59,9 @@ export default function LeaderSettings({ onBack, onIdCheck, onIdLeader, onOffers
       <Card title="Voucher prices">
         <Text>Each category follows the market price. The union sets a factor per item. New factors need the signers.</Text>
         <div style={{ height: 1, background: C.raised, margin: '4px 0' }} />
-        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>Machine hours</span>
+        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>Machine prices</span>
         {rates.isLoading && <Text>…</Text>}
-        {(rates.data || []).map((r) => <Row key={r.type} k={r.name} v={`${inr(r.total)} /h`} />)}
+        {(rates.data || []).map((r) => <Row key={r.type} k={r.name} v={`${inr(r.total)} /acre`} />)}
         {rates.isSuccess && !rates.data.length && <Text>No machine prices set for the union yet.</Text>}
         <CardButton>Propose new factors</CardButton>
       </Card>

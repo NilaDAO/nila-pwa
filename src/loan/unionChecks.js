@@ -2,7 +2,7 @@
 // "Loan limit of the union"), read from the contracts. HARD caps: the ones fund_core.draw_loan enforces —
 // - cash: the union's max_loan (₹10,000) and the junior cash above its reserve
 //   (claimable × (1 + safety_bp) + safety_floor; ReserveStop / InsufficientCash);
-// - machine hours: free senior money ÷ the prepaid part per hour (NoSeniorBacking);
+// - machine work: free senior money ÷ the value of a tractor acre (NoSeniorBacking);
 // - with the union's switch on, the attested amount and hours of her token (AboveFoodToken);
 // - blockers: lending on hold (LendingOnHold), her investment below the gate (BelowGate), too many open
 //   loans (TooManyLoans).
@@ -34,7 +34,7 @@ export function useUnionChecks(member) {
         readContract(cfg, 'fund_core', 'union_treasury', u),
         readContract(cfg, 'fx_pool', 'cash_at_hand', u).catch(() => 0n),
         // A voucher hour is lent at the tractor hour's whole value (26 Oct), out of free senior money.
-        cfg.contracts.machinery ? readContract(cfg, 'machinery', 'value_per_tractor_hour', u).catch(() => 0n) : 0n,
+        cfg.contracts.machinery ? readContract(cfg, 'machinery', 'value_per_tractor_acre', u).catch(() => 0n) : 0n,
         readContract(cfg, 'fund_core', 'on_hold', u),
         readContract(cfg, 'fund_core', 'position', um),
         readContract(cfg, 'fund_core', 'loans_of', um),
@@ -57,8 +57,8 @@ export function useUnionChecks(member) {
         maxLoan,
         // Whole rupees: the request is in whole rupees.
         cashCap: Math.max(0, Math.floor(Math.min(maxLoan, num(lendable)))),
-        // No machine rate set for the union → no machine hours can be granted yet.
-        // In units (centi tractor hours, 23 Oct): the senior money free for the value of tractor hours.
+        // No machine price set for the union → no machine work can be granted yet.
+        // In units (centi tractor acres, 27 Oct): the senior money free for the value of tractor acres.
         hoursCap: ph > 0 ? Math.max(0, Math.floor((seniorFree * 100) / ph)) : 0,
         valuePerHour: ph,
         enforceToken: !!uc.enforce_token_amount,
@@ -89,7 +89,7 @@ export function checkRows(c, cash, hours, caps = capsFor(c)) {
   const short = cash - c.onHand;
   return [
     ['Cash on hand', short > 0 ? `₹${Math.round(c.onHand).toLocaleString('en-IN')} · ₹${Math.round(short).toLocaleString('en-IN')} short` : `₹${Math.round(c.onHand).toLocaleString('en-IN')} · enough`, short > 0],
-    ['Seed and machine stock', hours <= caps.hours ? 'Enough' : `${(Math.floor(caps.hours / 10) / 10).toFixed(1)} tractor h at most`, hours > caps.hours],
+    ['Seed and machine stock', hours <= caps.hours ? 'Enough' : `${(Math.floor(caps.hours / 10) / 10).toFixed(1)} tractor acres at most`, hours > caps.hours],
     ['Loan limit of the union', cash <= caps.cash ? 'Within' : `₹${Math.round(caps.cash).toLocaleString('en-IN')} at most`, cash > caps.cash],
   ];
 }

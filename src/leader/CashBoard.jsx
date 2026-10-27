@@ -305,7 +305,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
             {/* Members, not titles (23 Oct): one member can hold several land titles; G1 counts the same way. */}
             <Row k="Members" v={members.data ? members.data.filter((m) => m.lands.length).length : '—'} />
             <Row k="Cash working (on loans)" v={book ? inr(book.loans.reduce((t, l) => t + l.outstanding, 0)) : '…'} />
-            <Row k="Vouchers" v={book ? `${Math.round(book.loans.reduce((t, l) => t + (l.hours || 0), 0) * 10) / 10} tractor hours` : '…'} />
+            <Row k="Vouchers" v={book ? `${Math.round(book.loans.reduce((t, l) => t + (l.hours || 0), 0) * 10) / 10} tractor acres` : '…'} />
             <Row k="Rainy day fund" v={inr(cash.rainy)} />
           </div>
           {adjust && <Adjust key={adjust} cash={cash} dir={adjust} onClose={() => setAdjust(null)} />}

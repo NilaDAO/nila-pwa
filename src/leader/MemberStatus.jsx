@@ -292,7 +292,7 @@ export default function MemberStatus({ id, go }) {
                   </span>
                   {st.more && (
                     <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
-                      background: C.raised, color: C.text, boxShadow: `inset 0 0 0 1px ${C.muted}`, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Add hours</button>
+                      background: C.raised, color: C.text, boxShadow: `inset 0 0 0 1px ${C.muted}`, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Add machine work</button>
                   )}
                   {st.take ? (
                     <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',

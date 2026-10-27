@@ -193,10 +193,10 @@ function eventRows(events, me, shareLabel) {
       case 'loan_repaid': if (share) row(`Loan repaid · ${share}`, 'Cash at union office', `−₹${nin(BigInt(e.v.principal_paid || 0) + BigInt(e.v.interest_paid || 0))}`); break;
       case 'loan_overdue': if (share) row(`Repayment overdue · ${share}`, 'Your crop share', ''); break;
       // Vouchers in centi tractor hours, hours worked in hundredths of an hour (23 Oct).
-      case 'voucher_granted': if (has(e.v.member) || share) row('Machinery voucher', 'From your union', `+${(Number(e.v.hours) / 100).toFixed(1)} tractor h`); break;
+      case 'voucher_granted': if (has(e.v.member) || share) row('Machinery voucher', 'From your union', `+${(Number(e.v.units ?? e.v.hours) / 100).toFixed(1)} tractor ac`); break;
       case 'voucher_claimed':
-        if (has(e.v.owner)) row('Machine job done', 'Your machine', `+${(Number(e.v.hours) / 100).toFixed(1)} h`);
-        else if (share) row(`Machine job · ${share}`, 'Machinery voucher', `−${(Number(e.v.units ?? e.v.hours) / 100).toFixed(1)} tractor h`);
+        if (has(e.v.owner)) row('Machine job done', 'Your machine', e.v.acres != null ? `+${(Number(e.v.acres) / 100).toFixed(2)} ac` : `+${(Number(e.v.hours) / 100).toFixed(1)} h`);
+        else if (share) row(`Machine job · ${share}`, 'Machinery voucher', `−${(Number(e.v.units ?? e.v.hours) / 100).toFixed(1)} tractor ac`);
         break;
       case 'dues_collected': if (has(e.topics[2])) row('Machine dues collected', 'From your union', `+₹${nin(e.v.amount)}`); break;
       case 'machine_registered': if (has(e.v.owner)) row('Machine registered', 'By your leader', '+1'); break;

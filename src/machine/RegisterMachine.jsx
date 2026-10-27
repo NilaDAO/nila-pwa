@@ -54,7 +54,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   const [type, setType] = useState();
   const [picking, setPicking] = useState(false);
   const [photos, setPhotos] = useState({});
-  const [hours, setHours] = useState(40);
+  const [hours, setHours] = useState(20);   // acres a week (27 Oct)
   const [error, setError] = useState();
   const [busy, setBusy] = useState(false);
   const [shooting, setShooting] = useState();
@@ -81,7 +81,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
       const { photos_hash: ph } = await api.machinePhotos(WALK.map((l) => ({ content_type: photos[l].content_type, data_b64: photos[l].data_b64 })));
       setBusy(false);
       await tx.run({
-        label: 'Register a machine', rows: [['Machine', rate.name], ['Hours a week', `${hours} h`], ['Owner', `${own.slice(0, 4)}…${own.slice(-4)}`]],
+        label: 'Register a machine', rows: [['Machine', rate.name], ['Acres a week', `${hours} ac`], ['Owner', `${own.slice(0, 4)}…${own.slice(-4)}`]],
         contractName: 'machinery', fn: 'register_machine',
         args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.address(own), sv.u32(rate.type), sv.u32(hours), sv.bytes32(ph)],
         invalidate: [['stellar', 'machines']],
@@ -119,13 +119,13 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
           <div style={{ background: C.raised, borderRadius: R.button, overflow: 'hidden' }}>
             <button type="button" aria-expanded={picking} onClick={() => setPicking(!picking)} style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left' }}>
               <span style={{ flexGrow: 1, fontWeight: 700 }}>{rate.name}</span>
-              <span style={{ color: C.muted }}>{inr(rate.total)} an hour</span>
+              <span style={{ color: C.muted }}>{inr(rate.total)} an acre</span>
               <span style={{ display: 'flex', transform: picking ? 'rotate(180deg)' : 'none' }}>{svg(<path d="m6 9 6 6 6-6" />, C.muted)}</span>
             </button>
             {picking && (rates.data || []).filter((r) => r.type !== rate.type).map((r) => (
               <button key={r.type} type="button" onClick={() => { setType(r.type); setPicking(false); }}
                 style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left', borderTop: `1px solid ${C.ink}`, borderRadius: 0 }}>
-                <span style={{ flexGrow: 1 }}>{r.name}</span><span style={{ color: C.muted }}>{inr(r.total)} an hour</span>
+                <span style={{ flexGrow: 1 }}>{r.name}</span><span style={{ color: C.muted }}>{inr(r.total)} an acre</span>
               </button>
             ))}
           </div>
@@ -159,23 +159,23 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
         )}
       </Card>
       {rate && (
-        <Card label="Price an hour" style={{ gap: 12 }}>
-          <CardTitle right={<span style={{ fontSize: 16, fontWeight: 700 }}>{inr(rate.total)}</span>}>Price an hour</CardTitle>
+        <Card label="Price an acre" style={{ gap: 12 }}>
+          <CardTitle right={<span style={{ fontSize: 16, fontWeight: 700 }}>{inr(rate.total)}</span>}>Price an acre</CardTitle>
           <span style={sub}>The current voucher rate</span>
           {PARTS.map(([k, label]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, lineHeight: 1.5, fontWeight: 700 }}><span>{label}</span><span>{inr(rate.parts[k])}</span></div>
           ))}
         </Card>
       )}
-      <Card label="Hours a week" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <Card label="Acres a week" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Hours a week</span>
+          <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Acres a week</span>
           <span style={sub}>Available for jobs</span>
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button type="button" aria-label="Less hours" style={b} onClick={() => setHours(Math.max(1, hours - 1))}>−</button>
-          <span style={{ ...field, width: 92, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', fontSize: 16, fontWeight: 700 }}>{hours}<span style={{ color: C.muted, fontWeight: 400, fontSize: 14 }}>h</span></span>
-          <button type="button" aria-label="More hours" style={b} onClick={() => setHours(Math.min(70, hours + 1))}>+</button>
+          <button type="button" aria-label="Fewer acres" style={b} onClick={() => setHours(Math.max(1, hours - 1))}>−</button>
+          <span style={{ ...field, width: 92, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', fontSize: 16, fontWeight: 700 }}>{hours}<span style={{ color: C.muted, fontWeight: 400, fontSize: 14 }}>ac</span></span>
+          <button type="button" aria-label="More acres" style={b} onClick={() => setHours(Math.min(500, hours + 1))}>+</button>
         </span>
       </Card>
       <Card label="Owner's duties" style={{ gap: 12 }}>

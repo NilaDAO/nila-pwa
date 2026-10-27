@@ -97,7 +97,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   }
   const r = rowOf(x) || {};
   const name = r.name || x.crop.replace(/_/g, ' ');
-  const fodder = !x.share.loan_amount && x.share.hours;
+  const fodder = !x.share.loan_amount && (x.share.acres_work ?? x.share.hours);
   const nAreas = areasOf(record).length;
   // The share's area in the crop's colour with the crop as its label; the other areas keep "Area n". A merged share
   // (same crop on several areas, 21 Oct) colours each of its areas.
@@ -135,7 +135,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
     // A4a: not active yet. Cash is the attested cash part (the plan's, before the attestation); machine hours at the plan's rate.
     const cash = x.ft ? num(x.ft.amount) : Number(x.share.loan_amount || 0);
     // Attested hours are voucher units (centi tractor hours, 23 Oct); before the attestation, the plan's machine hours.
-    const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.hours || 0);
+    const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.acres_work ?? x.share.hours ?? 0);   // tractor acres (27 Oct)
     const vouchers = Number(r.finance?.voucher_value || 0);
     // Its window (25 Oct): ready from a week before its sowing window, used by its last sowing day.
     const until = x.final ? new Date(x.final * 1000) : x.share.final_date ? new Date(x.share.final_date) : null;
@@ -160,7 +160,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
           </div>
           {hours > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}>
-              <TractorIcon color={C.gold} /><span style={{ flexGrow: 1, color: C.muted }}>Machine hours · {x.ft ? `${hours.toFixed(1)} tractor h` : `${hours} h`}</span><b>{vouchers ? inr(vouchers) : '—'}</b>
+              <TractorIcon color={C.gold} /><span style={{ flexGrow: 1, color: C.muted }}>Machine work · {x.ft ? `${hours.toFixed(1)} tractor ac` : `${hours} ac`}</span><b>{vouchers ? inr(vouchers) : '—'}</b>
             </div>
           )}
         </div>
@@ -198,7 +198,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
       {open && <Primary onClick={() => setRepayQr(true)}>Repay at the office</Primary>}
       {canAdd && (
         <button type="button" onClick={() => setAdding(true)} style={{ width: '100%', height: 44, marginTop: 8, borderRadius: 12, border: 0, background: C.raised,
-          color: C.text, fontWeight: 700, fontSize: 14, fontFamily: 'inherit', cursor: 'pointer' }}>Add machine hours</button>
+          color: C.text, fontWeight: 700, fontSize: 14, fontFamily: 'inherit', cursor: 'pointer' }}>Add machine work</button>
       )}
       <div style={line} />
       <h2 style={{ fontSize: 16, fontWeight: 700, margin: '12px 0 0' }}>Field notes</h2>
