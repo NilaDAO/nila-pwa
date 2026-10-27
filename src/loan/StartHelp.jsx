@@ -16,7 +16,7 @@ export default function StartHelp({ member, label, onBack, onStarted }) {
   const read = async (t) => {
     let q;
     try { q = readSessionQr(t); } catch (e) { setError(e.message); setTries((x) => x + 1); return; }
-    if (member && q.member !== member) { setError("This is another member's help QR."); setTries((x) => x + 1); return; }
+    if (member && q.member !== member) { setError("This is another member's QR."); setTries((x) => x + 1); return; }
     setError(undefined);
     const out = await tx.run({ label: `Help ${label || 'the member'}`, rows: [['For', '5 minutes']], contractName: q.member, fn: 'start_session',
       args: q.args, auth: [q.entry], invalidate: [] });
@@ -26,7 +26,7 @@ export default function StartHelp({ member, label, onBack, onStarted }) {
   return (
     <DeskCard title={label ? `Help · ${label}` : 'Scan her QR'} onBack={onBack}>
       <CameraView key={tries} mode="qr" onText={read} />
-      <p style={muted}>Scan the help QR on the member's phone. You can then act for the member for 5 minutes.</p>
+      <p style={muted}>Scan the QR on the member's phone. You can then act for the member for 5 minutes.</p>
       {error && <p style={{ color: C.coral }}>{error}</p>}
     </DeskCard>
   );

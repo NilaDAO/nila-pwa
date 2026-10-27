@@ -36,9 +36,9 @@ export default function HelpQr({ note, onBack } = {}) {
   const over = qr && now > qr.until;
   // The map-view standard (26 Oct): a full-height map card with its drag line, the title and settings in its header.
   return (
-    <MapCard header={{ title: 'Your help QR', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}
+    <MapCard header={{ title: 'Your QR', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}
       style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {!over && !error && <QrCircle img={qr ? img : undefined} alt="Your help QR" />}
+      {!over && !error && <QrCircle img={qr ? img : undefined} alt="Your QR" />}
       <p style={{ ...muted, textAlign: 'center', margin: 0 }}>
         {over ? 'This QR has expired.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop share, start or collect a withdrawal.'}
       </p>

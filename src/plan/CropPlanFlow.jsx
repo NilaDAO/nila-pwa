@@ -164,8 +164,8 @@ function AssistPlan({ map, name, waiting }) {
   return (
     <Sheet map={map} landName={name} title={waiting ? 'Your crop plan is with your leader' : 'Your crop plan'}>
       <p style={muted}>{waiting ? 'Your leader checks it and approves it. Your crop shares come after that.'
-        : 'Your union leader makes your crop plan with you at the union office. At the end you show your help QR to accept it.'}</p>
-      {!waiting && <Primary onClick={() => setQr(true)}>Show your help QR</Primary>}
+        : 'Your union leader makes your crop plan with you at the union office. At the end you show your QR to accept it.'}</p>
+      {!waiting && <Primary onClick={() => setQr(true)}>Show your QR</Primary>}
     </Sheet>
   );
 }
