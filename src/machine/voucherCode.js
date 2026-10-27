@@ -55,12 +55,12 @@ export async function signVoucherCode({ cfg, signer, signHash, token, units, led
 export function readVoucherCode(text, cfg) {
   const t = (text || '').trim().toUpperCase();
   let b;
-  try { if (!t.startsWith(PREFIX)) throw new Error(); b = fromB32(t.slice(PREFIX.length)); } catch { throw new Error('This is not a Nila voucher code.'); }
+  try { if (!t.startsWith(PREFIX)) throw new Error(); b = fromB32(t.slice(PREFIX.length)); } catch { throw new Error('This is not a machine-hours QR. The member makes one under Machine hours (keypad) or Machine vouchers (phone).'); }
   if (b.length === LEN_KEYPAD && b[0] === 2) {
     const k = new DataView(b.buffer);
     return { member: StrKey.encodeContract(Buffer.from(b.slice(1, 33))), p256: true, units: k.getUint32(33), exp: k.getUint32(37), sig: b.slice(41) };
   }
-  if (b.length !== LEN) throw new Error('This is not a Nila voucher code.');
+  if (b.length !== LEN) throw new Error('This is not a machine-hours QR. The member makes one under Machine hours (keypad) or Machine vouchers (phone).');
   const d = new DataView(b.buffer);
   const key = StrKey.encodeEd25519PublicKey(Buffer.from(b.slice(0, 32)));
   return { member: cfg ? memberOf(cfg, key) : key, key, units: d.getUint32(32), exp: d.getUint32(36), sig: b.slice(40) };

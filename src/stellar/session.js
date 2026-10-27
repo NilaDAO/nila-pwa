@@ -63,6 +63,15 @@ export function readSessionQr(text) {
   return { member, notAfter, args: [nativeToScVal(BigInt(notAfter), { type: 'u64' })], entry: entry.toXDR('base64') };
 }
 
+/** A member's QR's phone (27 Oct): 'keypad' (P-256 device key), 'phone' (Privy key), or '' when it is not one. */
+export function sessionQrPhone(text) {
+  try {
+    if (!isSessionQr(text)) return '';
+    const b = fromB32((text || '').trim().toUpperCase().slice(PREFIX.length));
+    return b && b.length === LEN ? ({ 1: 'phone', 2: 'keypad' }[b[0]] || '') : '';
+  } catch { return ''; }
+}
+
 /** The member's account from a help QR, without checking its time (26 Oct): any screen that finds a member by
  *  address (the member search, a scan) also takes the help QR. '' when it is not one. */
 export function accountOfQr(text) {

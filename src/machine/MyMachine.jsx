@@ -21,6 +21,7 @@ import { C, FONT, R } from '../shell/tokens';
 import { Card, CardTitle, KV } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
 import { HOLD_REASONS, PARTS, TRACTOR, centi, hoursFor, saveJob, th, typeName, unitsOf, useMyMachine, useOwnerDues, useRates } from './hooks';
+import { sessionQrPhone } from '../stellar/session';
 import MapCard from '../shell/MapCard';
 
 const svgT = (size, color) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" /></svg>;
@@ -198,6 +199,10 @@ function Claim({ machine, rate, tractor, onBack }) {
   const read = async (text) => {
     setError(undefined);
     try {
+      // The member's own QR (the one for the office) is not a voucher (27 Oct): say how to make the right one.
+      const phone = sessionQrPhone(text);
+      if (phone === 'keypad') throw new Error('This is the member\'s office QR, not a machine-hours QR. On the keypad phone: open Machine hours, type the hours of this job, press Show QR, and scan that.');
+      if (phone === 'phone') throw new Error('This is the member\'s office QR, not a machine-hours QR. On their phone: Assets → Machine vouchers, enter the hours of this job, Make code, and scan that.');
       const c = await parseVoucherCode(cfg, text);
       const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(c.token)]);
       if (!v || v.void || v.member !== c.member) throw new Error('This voucher is not open any more.');
