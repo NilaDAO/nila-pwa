@@ -4,6 +4,7 @@
  *                     makes its device key and registers it (no PIN, executive decision 22 Oct: the device key's
  *                     signature is her consent)
  *   #/expired         F9 #expired: the link was used, voided or is older than 30 minutes
+ *   (any other route) once set up but opened in the browser: "Add Nila to your apps" (27 Oct, mandatory; ?app=1 = pinned)
  *   (F14 is gone, 26 Oct: the leader takes her field points on the leader's phone; after F9 the phone opens F1)
  *   #/home            (26 Oct, simplified) no land title yet: the pending screen; the title ready and not seen yet:
  *                     #/property; then the asset list (26 Oct): F1/F11/F12 as rows (the QR is the right softkey on every screen): invested, crop
@@ -718,6 +719,39 @@
     }, fail);
   }
 
+  // ---- Add to your apps (27 Oct, executive decision: mandatory, keypad only) ----
+  // Nila must be opened from the phone's Apps menu, not from the browser: the manifests' start page carries `?app=1`
+  // (manifest.webapp launch_path, manifest.json start_url), so a start from the pinned icon is known and remembered.
+  // The SMS link and #/expired still open in the browser (the link opens there first). Desktop tests on a local host
+  // may skip it; never elsewhere.
+  if (/[?&]app=1(&|$)/.test(location.search)) store('nila.lite.pinned', '1');
+  function devHost() {
+    var h = location.hostname;
+    return h === 'localhost' || h === '127.0.0.1' || /\.localhost$/.test(h) || location.port === '5175';
+  }
+  function pinned() {
+    if (stored('nila.lite.pinned')) return true;
+    try { if (devHost() && sessionStorage.getItem('nila.lite.pinskip')) return true; } catch (e) { /* no storage */ }
+    return false;
+  }
+  function pinScreen(msg) {
+    var steps = '<h1>Add Nila to your apps</h1><p class="small">Do this once. Then always open Nila from your Apps menu.</p>' +
+      '<ol class="steps"><li>Press <b>Options</b> (the right key) in the browser.</li><li>Choose <b>Pin to Apps menu</b>.</li>' +
+      '<li>Close the browser and open <b>Nila</b> from your Apps menu.</li></ol>' + (msg ? '<p class="small hint">' + esc(msg) + '</p>' : '');
+    var add = null;
+    if (navigator.mozApps && navigator.mozApps.install) {
+      add = ['Add', function () {
+        try {
+          var req = navigator.mozApps.install(location.protocol + '//' + location.host + '/lite/manifest.webapp');
+          req.onsuccess = function () { pinScreen('Added. Now open Nila from your Apps menu.'); };
+          req.onerror = function () { pinScreen('Could not add it here: use the steps above.'); };
+        } catch (e) { pinScreen('Could not add it here: use the steps above.'); }
+      }];
+    }
+    screen(steps, devHost() ? ['Skip', function () { try { sessionStorage.setItem('nila.lite.pinskip', '1'); } catch (e) { /* no storage */ } go('#/home'); }] : null,
+      add, null, 'Nila');
+  }
+
   function route() {
     var h = location.hash, m;
     if (h !== '#/property') document.body.className = '';
@@ -726,6 +760,8 @@
     if (h === '#/expired') { expired(); return; }
     var member = stored('nila.lite.member');
     if (!member) { qrKey = false; expired(); return; }
+    // Set up, but opened in the browser: add Nila to the apps first (no other screen until it is opened from there).
+    if (!pinned()) { pinScreen(); return; }
     qrKey = h !== '#/property' && h !== '#/help';
     if (h === '#/property') { property(); return; }
     if (h === '#/help') { help(); return; }
