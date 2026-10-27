@@ -383,14 +383,16 @@
       var x = (d.me.shares || []).filter(function (y) { return hexKey(y.token) === token; })[0];
       var back = ['Back', function () { go('#/home'); }];
       if (!x) { screen('<p class="muted">This crop share is not in your plan.</p>', back, null, null, 'My crop share'); return; }
-      var i = shareInfo(d, x), h = '<h1>' + esc(x.name || x.crop) + ' \u00b7 Area ' + esc(x.area) + '</h1>' +
-        (x.area ? '<div class="map" id="areamap"><p class="muted">\u2026</p></div>' : '') + '<div class="rows">';
+      // Under the area picture (27 Oct): what to do with it, as the crop plan's explainer, in a lighter grey.
+      var i = shareInfo(d, x), what = i.m ? 'Repay at the union office, in cash.' : 'To use it, go to your union office and show your QR to your leader.';
+      var h = '<h1>' + esc(x.name || x.crop) + ' \u00b7 Area ' + esc(x.area) + '</h1>' +
+        (x.area ? '<div class="map" id="areamap"><p class="muted">\u2026</p></div>' : '') + '<p class="small hint">' + what + '</p><div class="rows">';
       if (i.m) {
         h += row('Lent', inr(i.m.lent)) + (i.hours ? row('Machine hours', (Math.round(i.hours * 10) / 10) + ' h') : '') + row('You repay', inr(i.m.atDue)) +
-          row('Repaid', inr(i.m.repaid)) + row('Repay by', part(i.due)) + '</div><p class="muted small">Repay at the union office, in cash.</p>';
+          row('Repaid', inr(i.m.repaid)) + row('Repay by', part(i.due)) + '</div>';
       } else {
         h += row('Cash up to', inr(x.cash)) + row(x.state === 'early' ? 'From' : 'Use by', part(x.state === 'early' ? x.open : x.final)) +
-          '</div><p class="muted small">To use it, go to your union office and show your QR to your leader.</p>';
+          '</div>';
       }
       screen(h, back, null, null, 'My crop share');
       if (x.area) areaImage(d, x.area).then(function (url) {
@@ -425,7 +427,7 @@
   function areaVersion(d) {
     var t = d.me.title || {}, ids = {};
     (d.me.shares || []).forEach(function (x) { if (x.plan_id) ids[String(x.plan_id).slice(0, 8)] = 1; });
-    return String(t.record_hash || '').slice(2, 12) + '.' + Object.keys(ids).sort().join('-');
+    return 'e' + String(t.record_hash || '').slice(2, 12) + '.' + Object.keys(ids).sort().join('-');   // e: Esri pictures (27 Oct)
   }
   function areaKey(d, a) { return AREA + areaVersion(d) + '.' + String(a).replace(/\s/g, ''); }
   function dropOldAreas(d) {

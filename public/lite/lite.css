@@ -50,3 +50,4 @@ body.full #sk { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(
 /* invest / withdraw steps */
 .steps { margin: 4px 0 0; padding-left: 22px; }
 .steps li { margin: 0 0 6px; }
+.hint { color: #CBD5E1; }
