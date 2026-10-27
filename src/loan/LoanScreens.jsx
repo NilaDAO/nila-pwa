@@ -30,6 +30,7 @@ import ConfirmShare from './ConfirmShare';
 import { opensOf } from './MyShares';
 
 const FLAG_DRAWN = 8;
+const FLAG_ENDED = 2 | 4;   // defaulted or closed
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 
 function Stepper({ label, value, set, step, min = 0, max, fmt }) {
@@ -102,6 +103,8 @@ export function LeaderLoan({ initial }) {
       ? shares.data?.find((y) => y.token_id === initToken || tokenHex(y.token_id) === initToken)
       : shares.data?.find(isReady));
     if (!x) return;
+    // Taken up already (27 Oct): only machine hours are added, from 0.
+    if (Number(x.ft?.loan?.flags ?? 0) & FLAG_DRAWN) { setPick(x.token_id); setCash(0); setMach({}); return; }
     setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0));
     const ms = Object.values(planRow(plan, x.share)?.finance?.machines || {}).filter((m) => m.type && m.hours > 0);
     setMach(Object.fromEntries(ms.map((m) => [m.type, Math.ceil(m.hours)])));
@@ -153,9 +156,14 @@ export function LeaderLoan({ initial }) {
   const final = Number(sel?.ft?.final_date || 0);
   const opens = opensOf(sel?.ft);
   const tooLate = !!sel?.ft && (sel.ft.lapsed || (final > 0 && Date.now() / 1000 > final));
+  // More machine hours on a share already taken up (executive decision 27 Oct): draw_loan again with cash 0, until
+  // its last draw date, while its loan is open.
+  const more = !!sel?.ft && !!(Number(sel.ft.loan?.flags ?? 0) & FLAG_DRAWN);
+  const ended = more && !!(Number(sel.ft.loan?.flags ?? 0) & FLAG_ENDED);
   // Its window opens a week before its sowing window (25 Oct; fund_core NotOpenYet before it).
-  const tooEarly = !!sel?.ft && !tooLate && Date.now() / 1000 < opens;
-  const blocked = [...(tooLate ? ['Too late for this cycle: the last day to use this crop share has passed.'] : []),
+  const tooEarly = !!sel?.ft && !more && !tooLate && Date.now() / 1000 < opens;
+  const blocked = [...(tooLate ? [more ? 'Too late: hours can be added until the last day to use this crop share.' : 'Too late for this cycle: the last day to use this crop share has passed.'] : []),
+    ...(ended ? ['This crop share\'s loan is closed: no hours can be added.'] : []),
     ...(tooEarly ? [`Not open yet: this crop share can be used from ${new Date(opens * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.`] : []),
     ...(checks.data?.blocked || [])];
   // The voucher is debt too (26 Oct): interest on cash and vouchers together.
@@ -174,29 +182,29 @@ export function LeaderLoan({ initial }) {
     const nm = `${row?.name || sel.crop}`;
     const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
     const draw = () => tx.run({
-      label: `Crop share ${nm}`, rows: [['Cash', inr(cash)], ...(hours ? [['Machine vouchers', `${th(hours)} tractor hours`]] : []), ['For', `${nm} · Area ${ar}`]],
+      label: more ? `More machine hours · ${nm}` : `Crop share ${nm}`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${th(hours)} tractor hours`]] : []), ['For', `${nm} · Area ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan',
       args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
       invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
     });
-    return <ConfirmShare own cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
+    return <ConfirmShare own more={more} cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
   }
   if (own && sel && helping) {
     const nm = `${row?.name || sel.crop}`;
     const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
     const draw = () => tx.run({
-      label: `Crop share ${nm} · for the member`, rows: [['Cash', inr(cash)], ...(hours ? [['Machine vouchers', `${th(hours)} tractor hours`]] : []), ['For', `${nm} · Area ${ar}`]],
+      label: more ? `More machine hours · ${nm} · for the member` : `Crop share ${nm} · for the member`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${th(hours)} tractor hours`]] : []), ['For', `${nm} · Area ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan', session: sel.ft.member,
       args: [sv.address(cfg.union), sv.address(sel.ft.member), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
       invalidate: [['oracle', 'shares'], ['stellar', 'unionChecks']],
     });
-    return <ConfirmShare forMember cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
+    return <ConfirmShare forMember more={more} cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
   }
   // Board LeaderRedeem, without its crop share list (23 Oct: the share comes picked): one card with the share, the
   // steppers, total / interest / repay and the union checks. No seed row: seed is paid as cash (P5).
   const name = sel ? `${row?.name || sel.crop} · Area ${Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1}` : '';
   // Cash is lent from member money only (junior, above its reserve); the plan's cash above that is shown, not lent.
-  const notCovered = sel && checks.data ? Math.max(0, Math.round(sel.share.loan_amount || 0) - caps.cash) : 0;
+  const notCovered = sel && checks.data && !more ? Math.max(0, Math.round(sel.share.loan_amount || 0) - caps.cash) : 0;
   const rows = checkRows(checks.data, cash, hours, caps);
   // L11 #short, automatic (25 Oct): when the office has less cash than this crop share, the gap goes to the union's
   // LPs as a Bring when the leader shows the QR (or takes up an own share); fx_pool adds it to an open Bring no LP
@@ -218,14 +226,15 @@ export function LeaderLoan({ initial }) {
   const line = { height: 1, background: C.raised };
   return (
     <MapCard map={memberMap} header={{ title: `Land ${plan.land_id}`, onBack: () => window.history.back() }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <Card label="Crop share request">
+      <Card label={more ? 'More machine hours' : 'Crop share request'}>
         {(shares.isLoading || (sel && !checks.data && !checks.isError)) && <SkeletonRows rows={6} />}
         {shares.data && !sel && <span style={muted}>None of their crop shares is ready.</span>}
         {sel && (checks.data || checks.isError) && (
           <>
-            <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>Ready</span>}>{name}</CardTitle>
+            <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>{more ? 'Taken up' : 'Ready'}</span>}>{name}</CardTitle>
+            {more && <span style={muted}>Add machine hours to this crop share: owed from today, with interest, like the vouchers at the take-up.</span>}
             {checks.isError && <span style={{ color: C.coral }}>Could not read the union. Try again.</span>}
-            {checks.data && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
+            {checks.data && !more && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
             {/* Cash above member money: only a sold batch's prepayment could fund it. DESIGN GAP: no on-chain record of
                 sold-batch prepayments on Stellar yet, so the chip is ₹0. */}
             {notCovered > 0 && (
@@ -247,7 +256,7 @@ export function LeaderLoan({ initial }) {
             <div style={line} />
             <KV k="Total" v={inr(cash + value)} />
             {rateBp != null && <KV k="Interest" v={`${rateBp / 100}% a year`} />}
-            {repay != null && <KV k="Repay" v={`${inr(repay)} · about end of ${monthYear(row.finance.due)}`} />}
+            {repay != null && !more && <KV k="Repay" v={`${inr(repay)} · about end of ${monthYear(row.finance.due)}`} />}
             <div style={line} />
             {rows.map(([k, v, bad]) => <KV key={k} k={k} v={v} color={bad ? C.coral : C.text} />)}
             {blocked.map((b) => <span key={b} style={{ color: C.coral, fontSize: 14 }}>{b}</span>)}
@@ -256,7 +265,7 @@ export function LeaderLoan({ initial }) {
               ? <span style={muted}>Not enough cash at the office: your LPs are asked to bring {inr(gap)} when you {mine ? 'take it up' : 'show the QR'}.</span>
               : <span style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</span>)}
             {error && <span style={{ color: C.coral }}>{error}</span>}
-            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's QR"}</Primary>
+            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || (more && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{more ? (mine ? 'Add the hours' : helping ? 'Add the hours for the member' : "Scan the member's QR") : mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's QR"}</Primary>
             {helping && <span style={muted}>You can act for this member until {new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.</span>}
           </>
         )}

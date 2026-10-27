@@ -39,7 +39,9 @@ const fromLabel = (ts) => `From ${new Date(ts * 1000).toLocaleDateString('en-GB'
 // once drawn and no loan is open any more. Harvested / Sold need the harvest and sales data (later).
 function stateOf(x, loans) {
   const loan = loans.find((l) => l.token === x.token);
-  if (loan) return loan.overdue ? { label: 'Overdue', bg: 'rgba(230,146,131,0.18)', fg: C.coral } : { label: 'Financed', bg: C.ink, fg: C.muted };
+  // Taken up and before its last draw date (27 Oct): machine hours can still be added.
+  const more = !!loan && !loan.overdue && (!x.final || Date.now() / 1000 <= x.final);
+  if (loan) return loan.overdue ? { label: 'Overdue', bg: 'rgba(230,146,131,0.18)', fg: C.coral } : { label: 'Financed', bg: C.ink, fg: C.muted, more };
   if (x.drawn) return { label: 'Repaid', bg: C.ink, fg: C.text };
   if (x.lapsed) return { label: 'Not used · lapsed', bg: C.ink, fg: C.muted };   // past its last draw date (25 Oct)
   if (x.ready) return { take: true };
@@ -281,6 +283,10 @@ export default function MemberStatus({ id, go }) {
                     <span style={{ fontWeight: 700 }}>{x.crop}</span>
                     <span style={{ color: C.muted }}>Area {x.area}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
                   </span>
+                  {st.more && (
+                    <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
+                      background: C.raised, color: C.text, boxShadow: `inset 0 0 0 1px ${C.muted}`, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Add hours</button>
+                  )}
                   {st.take ? (
                     <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
                       background: C.accent, color: C.ink, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Take up</button>
