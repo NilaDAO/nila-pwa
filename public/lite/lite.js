@@ -374,6 +374,7 @@
     // The total at the top (26 Oct): what is invested less what is owed on crop shares now.
     var head = '<div class="total"><small class="muted">Total balance</small><div class="big">' + esc(inr(d.invested - owed)) + '</div>' +
       (owed > 0 ? '<small class="muted">Invested ' + esc(inr(d.invested)) + ' \u00b7 owed ' + esc(inr(owed)) + '</small>' : '') + '</div>';
+    if (me.title) setTimeout(function () { keepAreas(d); }, 500);
     menu('home', 'Nila', head, rows, ['Refresh', function () { data = null; home(); }], undefined, null);
   }
 
@@ -382,7 +383,8 @@
       var x = (d.me.shares || []).filter(function (y) { return hexKey(y.token) === token; })[0];
       var back = ['Back', function () { go('#/home'); }];
       if (!x) { screen('<p class="muted">This crop share is not in your plan.</p>', back, null, null, 'My crop share'); return; }
-      var i = shareInfo(d, x), h = '<h1>' + esc(x.name || x.crop) + ' \u00b7 Area ' + esc(x.area) + '</h1><div class="rows">';
+      var i = shareInfo(d, x), h = '<h1>' + esc(x.name || x.crop) + ' \u00b7 Area ' + esc(x.area) + '</h1>' +
+        (x.area ? '<div class="map" id="areamap"><p class="muted">\u2026</p></div>' : '') + '<div class="rows">';
       if (i.m) {
         h += row('Lent', inr(i.m.lent)) + (i.hours ? row('Machine hours', (Math.round(i.hours * 10) / 10) + ' h') : '') + row('You repay', inr(i.m.atDue)) +
           row('Repaid', inr(i.m.repaid)) + row('Repay by', part(i.due)) + '</div><p class="muted small">Repay at the union office, in cash.</p>';
@@ -391,6 +393,10 @@
           '</div><p class="muted small">To use it, go to your union office and show your QR to your leader.</p>';
       }
       screen(h, back, null, null, 'My crop share');
+      if (x.area) areaImage(d, x.area).then(function (url) {
+        var box = document.getElementById('areamap'); if (!box) return;
+        box.innerHTML = '<img width="220" height="150" alt="Area ' + esc(x.area) + '" src="' + url + '">';
+      }, function () { var box = document.getElementById('areamap'); if (box) box.innerHTML = '<p class="muted small">No picture right now.</p>'; });
     });
   }
   /** #/invested: invest or withdraw, each a list of steps (both at the union office, with the QR). */
@@ -413,6 +419,51 @@
     screen('<h1>' + esc(st[0]) + '</h1><ol class="steps">' + st[1].map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>',
       ['Back', function () { go('#/invested'); }], null, null, st[0]);
   }
+  // ---- area pictures (26 Oct): one per crop share's area, kept on the phone; made again when the plan or its areas
+  // change (the key holds the record and the plan ids), older ones removed ----
+  var AREA = 'nila.lite.area.';
+  function areaVersion(d) {
+    var t = d.me.title || {}, ids = {};
+    (d.me.shares || []).forEach(function (x) { if (x.plan_id) ids[String(x.plan_id).slice(0, 8)] = 1; });
+    return String(t.record_hash || '').slice(2, 12) + '.' + Object.keys(ids).sort().join('-');
+  }
+  function areaKey(d, a) { return AREA + areaVersion(d) + '.' + String(a).replace(/\s/g, ''); }
+  function dropOldAreas(d) {
+    var keep = AREA + areaVersion(d) + '.', gone = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(AREA) === 0 && k.indexOf(keep) !== 0) gone.push(k);
+      }
+      gone.forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) { /* no storage */ }
+  }
+  /** The picture of area(s) `a` ("1 + 2") as a data URL: kept, else fetched once (220 × 150) and kept. */
+  function areaImage(d, a) {
+    var k = areaKey(d, a), had = stored(k);
+    if (had) return Promise.resolve(had);
+    return signed('land', { w: 220, h: 150, a: String(a) }).then(function (q) {
+      return fetch(API + '/keypad/land?p=' + encodeURIComponent(q.p) + '&s=' + encodeURIComponent(q.s));
+    }).then(function (r) {
+      if (!r.ok) throw new Error('no picture');
+      return r.blob();
+    }).then(function (b) {
+      return new Promise(function (ok, fail) {
+        var fr = new FileReader();
+        fr.onload = function () { store(k, fr.result); ok(fr.result); };
+        fr.onerror = fail;
+        fr.readAsDataURL(b);
+      });
+    });
+  }
+  /** After the asset list: every crop share's area picture, one after the other (so they are there offline). */
+  function keepAreas(d) {
+    dropOldAreas(d);
+    var seen = {}, list = [];
+    (d.me.shares || []).forEach(function (x) { if (x.area && !seen[x.area]) { seen[x.area] = 1; list.push(x.area); } });
+    list.reduce(function (p, a) { return p.then(function () { return areaImage(d, a).catch(function () {}); }); }, Promise.resolve());
+  }
+
   function row(k, v) { return '<div class="row"><span class="muted">' + esc(k) + '</span><b>' + esc(v) + '</b></div>'; }
 
   function sortedShares(d) { return (d.me.shares || []).slice().sort(function (a, b) { return tsOf(a.sow) - tsOf(b.sow); }); }
