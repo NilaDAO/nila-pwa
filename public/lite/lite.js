@@ -4,6 +4,7 @@
  *                     makes its device key and registers it (no PIN, executive decision 22 Oct: the device key's
  *                     signature is her consent)
  *   #/expired         F9 #expired: the link was used, voided or is older than 30 minutes
+ *   (any other route) once set up but opened in the browser: "Add Nila to your apps" (27 Oct, mandatory; ?app=1 = pinned)
  *   (F14 is gone, 26 Oct: the leader takes her field points on the leader's phone; after F9 the phone opens F1)
  *   #/home            (26 Oct, simplified) no land title yet: the pending screen; the title ready and not seen yet:
  *                     #/property; then the asset list (26 Oct): F1/F11/F12 as rows (the QR is the right softkey on every screen): invested, crop
@@ -12,7 +13,7 @@
  *   #/property        the land title is ready: one image of the screen's exact size showing the property; OK → home
  *   #/share/<token>   F7: one crop share (lent, repay, repaid, by when; or ready to use, with the help QR)
  *   #/plan, #/plan/<i>  F12: the crop plan's seasons per area, and one season
- *   #/land, #/land/<n>  F13: her land title's areas (map image, corners); #pending before the title
+ *   #/land, #/land/<n>  F13: her land title's areas (a picture per area), an area's earlier crops; #pending before the title
  *   #/messages(/<i>)  F8: the SMS Nila sent her
  * Reads (26 Oct): her investment, loans and vouchers on-chain from the phone (chain.js, the public Stellar RPC); her
  * plan, title areas, pending fields and SMS from the node (/keypad/me, signed), as the app reads its plan and record.
@@ -591,33 +592,52 @@
         var a = tsOf(x.sow) * 1000, b = tsOf(x.harvest) * 1000;
         if (a && a <= Date.now() && (!b || b >= Date.now())) String(x.area || '').split(' + ').forEach(function (n) { now[n] = x.name || x.crop; });
       });
-      // Her property with its areas outlined (26 Oct; /keypad/land, as the full-screen image), then the areas, and the
-      // trees and water sources once they can be registered (not built yet: the rows say none).
+      // The picture follows the focused row (27 Oct): an area's own picture (that area outlined, the rest dimmed; kept on
+      // the phone), the whole property on the other rows. The menu redraws the screen on every move, so the picture is
+      // put back after each redraw. An area opens its last crops (from the node: the keypad never loads the record).
       var rows = t.areas.map(function (z) {
-        return { t: 'Area ' + z.n + ' \u00b7 ' + z.acres + ' acres', s: now[z.n] ? now[z.n] + ' now' : '', go: function () { go('#/land/' + z.n); } };
+        var has = z.history && z.history.length;
+        return { t: 'Area ' + z.n + ' \u00b7 ' + z.acres + ' acres', s: now[z.n] ? now[z.n] + ' now' : (has ? 'Earlier crops' : ''), area: z.n,
+          go: has ? function () { go('#/land/' + z.n); } : null };
       });
       rows.push({ t: 'Trees', s: (d.me.trees || []).length ? d.me.trees.length + ' registered' : 'None registered yet', go: null });
       rows.push({ t: 'Water', s: (d.me.water || []).length ? d.me.water.length + ' sources' : 'No water source registered yet', go: null });
+      var fill = function () {
+        var r = rows[Math.min(focus.land || 0, rows.length - 1)], a = r && r.area ? String(r.area) : '';
+        picture(d, a, a ? 'Satellite image of area ' + a : 'Satellite image of your land');
+      };
+      var wrap = function () {
+        var dn = keys.ArrowDown, up = keys.ArrowUp;
+        keys.ArrowDown = function () { dn(); wrap(); fill(); };
+        keys.ArrowUp = function () { up(); wrap(); fill(); };
+      };
       menu('land', 'My land', '<div class="map"><p class="muted" id="mapmsg">\u2026</p></div>', rows, back,
         ['Open', function () { var r2 = rows[focus.land || 0]; if (r2 && r2.go) r2.go(); }]);
-      signed('land', { w: 220, h: 150 }).then(function (q) {
-        var box = main.querySelector('.map'); if (!box) return;
-        var img = new Image(); img.width = 220; img.height = 150; img.alt = 'Satellite image of your land';
-        img.onload = function () { box.innerHTML = ''; box.appendChild(img); };
-        img.onerror = function () { var m = document.getElementById('mapmsg'); if (m) m.textContent = 'No map image right now.'; };
-        img.src = API + '/keypad/land?p=' + encodeURIComponent(q.p) + '&s=' + encodeURIComponent(q.s);
-      });
+      wrap(); fill();
     });
   }
+  /** Puts area `a`'s picture ('' = the property) into the screen's .map box, from the phone's copy when it has one. */
+  function picture(d, a, alt) {
+    areaImage(d, a).then(function (url) {
+      var box = main.querySelector('.map'); if (!box) return;
+      box.innerHTML = '<img width="220" height="150" alt="' + esc(alt) + '" src="' + url + '">';
+    }, function () { var m = document.getElementById('mapmsg'); if (m) m.textContent = 'No map image right now.'; });
+  }
+  /** #/land/<n>: the area's picture and its last crops (newest first), from the field record on the node. */
   function area(n) {
     withData('My land', function (d) {
       var t = d.me.title, z = t && t.areas.filter(function (a) { return a.n === n; })[0];
       if (!z) { go('#/land'); return; }
-      var other = t.areas.filter(function (a) { return a.n !== n; })[0];
-      var h = '<h1>Area ' + z.n + ' \u00b7 ' + z.acres + ' acres</h1><p class="muted small" style="margin:0">Corners (latitude, longitude)</p><div class="rows">';
-      z.corners.forEach(function (c, k) { h += row(String(k + 1), c[0].toFixed(5) + ', ' + c[1].toFixed(5)); });
-      h += '</div>' + (z.centre ? '<p class="small">Centre ' + z.centre[0].toFixed(5) + ', ' + z.centre[1].toFixed(5) + '</p>' : '') + '<p class="muted small">From the land title</p>';
-      screen(h, ['Back', function () { go('#/land'); }], null, other ? ['Area ' + other.n, function () { go('#/land/' + other.n); }] : null, 'My land');
+      var others = t.areas.filter(function (a) { return a.n !== n && a.history && a.history.length; });
+      var month = function (ym) { var p = String(ym || '').split('-'); return p.length === 2 ? MON[parseInt(p[1], 10) - 1] + ' ' + p[0] : ''; };
+      var h = '<h1>Area ' + z.n + ' \u00b7 ' + z.acres + ' acres</h1><div class="map"><p class="muted" id="mapmsg">\u2026</p></div>' +
+        '<p class="small hint">Earlier crops on this area</p><div class="rows">';
+      (z.history || []).forEach(function (c) {
+        h += row(c.crop.charAt(0).toUpperCase() + c.crop.slice(1), month(c.sos) + ' \u2013 ' + (c.eos ? month(c.eos) : 'now'));
+      });
+      h += '</div><p class="muted small">From your field record</p>';
+      screen(h, ['Back', function () { go('#/land'); }], null, others.length ? ['Area ' + others[0].n, function () { go('#/land/' + others[0].n); }] : null, 'My land');
+      picture(d, String(z.n), 'Satellite image of area ' + z.n);
     });
   }
 
@@ -699,6 +719,39 @@
     }, fail);
   }
 
+  // ---- Add to your apps (27 Oct, executive decision: mandatory, keypad only) ----
+  // Nila must be opened from the phone's Apps menu, not from the browser: the manifests' start page carries `?app=1`
+  // (manifest.webapp launch_path, manifest.json start_url), so a start from the pinned icon is known and remembered.
+  // The SMS link and #/expired still open in the browser (the link opens there first). Desktop tests on a local host
+  // may skip it; never elsewhere.
+  if (/[?&]app=1(&|$)/.test(location.search)) store('nila.lite.pinned', '1');
+  function devHost() {
+    var h = location.hostname;
+    return h === 'localhost' || h === '127.0.0.1' || /\.localhost$/.test(h) || location.port === '5175';
+  }
+  function pinned() {
+    if (stored('nila.lite.pinned')) return true;
+    try { if (devHost() && sessionStorage.getItem('nila.lite.pinskip')) return true; } catch (e) { /* no storage */ }
+    return false;
+  }
+  function pinScreen(msg) {
+    var steps = '<h1>Add Nila to your apps</h1><p class="small">Do this once. Then always open Nila from your Apps menu.</p>' +
+      '<ol class="steps"><li>Press <b>Options</b> (the right key) in the browser.</li><li>Choose <b>Pin to Apps menu</b>.</li>' +
+      '<li>Close the browser and open <b>Nila</b> from your Apps menu.</li></ol>' + (msg ? '<p class="small hint">' + esc(msg) + '</p>' : '');
+    var add = null;
+    if (navigator.mozApps && navigator.mozApps.install) {
+      add = ['Add', function () {
+        try {
+          var req = navigator.mozApps.install(location.protocol + '//' + location.host + '/lite/manifest.webapp');
+          req.onsuccess = function () { pinScreen('Added. Now open Nila from your Apps menu.'); };
+          req.onerror = function () { pinScreen('Could not add it here: use the steps above.'); };
+        } catch (e) { pinScreen('Could not add it here: use the steps above.'); }
+      }];
+    }
+    screen(steps, devHost() ? ['Skip', function () { try { sessionStorage.setItem('nila.lite.pinskip', '1'); } catch (e) { /* no storage */ } go('#/home'); }] : null,
+      add, null, 'Nila');
+  }
+
   function route() {
     var h = location.hash, m;
     if (h !== '#/property') document.body.className = '';
@@ -707,6 +760,8 @@
     if (h === '#/expired') { expired(); return; }
     var member = stored('nila.lite.member');
     if (!member) { qrKey = false; expired(); return; }
+    // Set up, but opened in the browser: add Nila to the apps first (no other screen until it is opened from there).
+    if (!pinned()) { pinScreen(); return; }
     qrKey = h !== '#/property' && h !== '#/help';
     if (h === '#/property') { property(); return; }
     if (h === '#/help') { help(); return; }
