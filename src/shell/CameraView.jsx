@@ -19,7 +19,7 @@ const corner = (pos) => {
   };
 };
 
-export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false, title, hint }) {
+export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false, title, hint, facing = 'environment' }) {
   const box = useRef();
   const video = useRef();
   const [id] = useState(() => `nila-cam-${++seq}`);
@@ -44,11 +44,11 @@ export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false,
   useEffect(() => {
     if (mode !== 'photo') return undefined;
     let live = true; let stream;
-    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } })
+    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } } })
       .then((s) => { if (!live) { s.getTracks().forEach((t) => t.stop()); return; } stream = s; if (video.current) { video.current.srcObject = s; video.current.play().catch(() => {}); } })
       .catch(() => { if (live) setDenied(true); });
     return () => { live = false; stream?.getTracks().forEach((t) => t.stop()); };
-  }, [mode]);
+  }, [mode, facing]);
 
   const shoot = async () => {
     const v = video.current;
@@ -68,7 +68,7 @@ export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false,
         <style>{`#${id} video{width:100%!important;height:100%!important;object-fit:cover}#${id}{width:100%;height:100%}#${id} img,#${id} > div:not(:first-child){display:none!important}`}</style>
         {mode === 'qr'
           ? <div id={id} ref={box} aria-label="Camera view" style={{ width: '100%', height: '100%' }} />
-          : <video ref={video} playsInline muted aria-label="Camera view" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+          : <video ref={video} playsInline muted aria-label="Camera view" style={{ width: '100%', height: '100%', objectFit: 'cover', transform: facing === 'user' ? 'scaleX(-1)' : undefined }} />}
         {['tl', 'tr', 'bl', 'br'].map((p) => <span key={p} aria-hidden="true" style={corner(p)} />)}
       </div>
       {mode === 'photo' && (

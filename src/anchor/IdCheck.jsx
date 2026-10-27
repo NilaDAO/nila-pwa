@@ -13,6 +13,7 @@ import { CheckRow, Primary, muted } from '../plan/ui';
 import MapCard from '../shell/MapCard';
 import { C, FONT, R } from '../shell/tokens';
 import { useAnchorInfo, useLpStatus, useSep10Token, useUsdcTrustline } from './hooks';
+import CameraView from '../shell/CameraView';
 import { getCustomer, putConsent, putCustomer } from './sep';
 
 const MAX_SIDE = 1280;
@@ -43,6 +44,7 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
   const trust = useUsdcTrustline();
   const [vals, setVals] = useState({});
   const [selfie, setSelfie] = useState();
+  const [shooting, setShooting] = useState(false);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState();
@@ -139,21 +141,28 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
         ))}
         {asked.includes('proof_of_liveness') && <h2 style={{ fontSize: 14, marginTop: 8 }}>Selfie</h2>}
         {asked.includes('proof_of_liveness') && (
-          <label style={{ display: 'block', background: C.raised, borderRadius: 12, padding: 12, marginBottom: 10 }}>
-            <span style={{ fontWeight: 700 }}>{selfie ? 'Selfie taken' : 'Take a selfie'}</span>
-            <span style={{ ...muted, display: 'block' }}>We check it is really you, live.</span>
-            {selfie && <img src={selfie.url} alt="Your selfie" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: R.round, marginTop: 8 }} />}
-            <input aria-label="Take a selfie" type="file" accept="image/*" capture="user" style={{ display: 'none' }}
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
+          // The app's own camera, front facing (27 Oct): a file input opens the file picker on a computer.
+          shooting ? (
+            <div style={{ background: C.raised, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+              <CameraView mode="photo" facing="user" title="Take a selfie" hint="Look into the camera." onPhoto={async (blob) => {
+                setShooting(false);
                 try {
-                  const blob = await selfieBlob(f);
+                  const b = await selfieBlob(blob);
                   if (selfie?.url) URL.revokeObjectURL(selfie.url);
-                  setSelfie({ blob, url: URL.createObjectURL(blob) }); setSelfieError(undefined);
+                  setSelfie({ blob: b, url: URL.createObjectURL(b) }); setSelfieError(undefined);
                 } catch { setSelfieError('That photo could not be read. Take it again.'); }
               }} />
-          </label>
+              <button type="button" onClick={() => setShooting(false)} style={{ display: 'block', margin: '4px auto 0', border: 0, background: 'transparent',
+                color: C.muted, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setShooting(true)} style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, color: C.text,
+              fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', background: C.raised, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+              <span style={{ fontWeight: 700 }}>{selfie ? 'Selfie taken · take it again' : 'Take a selfie'}</span>
+              <span style={{ ...muted, display: 'block' }}>We check it is really you, live.</span>
+              {selfie && <img src={selfie.url} alt="Your selfie" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: R.round, marginTop: 8 }} />}
+            </button>
+          )
         )}
         {selfieError && <p style={{ color: C.coral }}>{selfieError}</p>}
         {!needs && (
