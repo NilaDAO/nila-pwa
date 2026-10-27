@@ -22,7 +22,8 @@ import { Loading } from '../register/Boot';
 import { areasOf, useFieldRecord } from '../plan/record';
 import { C } from '../shell/tokens';
 import { BanknoteIcon, TractorIcon } from '../shell/icons';
-import { amount, rowOf, useMyLand, useMyShares } from './MyShares';
+import { amount, assisted, rowOf, useMyLand, useMyShares } from './MyShares';
+import AddHours from './AddHours';
 import { tapRule } from '../plan/mapTap';
 import { shareOn } from '../shell/MapStage';
 import { currentSeason } from '../plan/ActivePlan';
@@ -81,6 +82,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   const s = useNilaSigner();
   // #/cropshare/<token>/qr (A1's repay card, step 2): open on the QR.
   const [repayQr, setRepayQr] = useState(() => /\/qr$/.test(window.location.hash));
+  const [adding, setAdding] = useState(false);
   const { data: cfg } = useStellarConfig();
   const vb = useQuery({ queryKey: ['stellar', 'voucherBook', token], enabled: !!cfg && !!token, staleTime: 30_000,
     queryFn: () => readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(tokenHex(token))]).catch(() => null) });
@@ -175,6 +177,9 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   const l = x.ft.loan || {};
   const open = !(Number(l.flags ?? 0) & FLAG_CLOSED);
   // One QR at the office (executive decision 26 Oct): the help QR; the leader counts the cash and records the repayment.
+  // More machine hours (27 Oct, self mode): until its last draw date, while the loan is open and not overdue.
+  const canAdd = open && !(Number(l.flags ?? 0) & FLAG_OVERDUE) && !assisted() && (!x.final || Date.now() / 1000 <= x.final);
+  if (adding && canAdd) return <AddHours token={x.token_id} name={`${name} · Area ${x.area}`} map={map} onBack={() => setAdding(false)} />;
   if (repayQr) return <HelpQr onBack={() => setRepayQr(false)} note="Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment." />;
   // What is left: the cash part and the voucher's value, with interest (26 Oct: the voucher is debt from the draw).
   const left = Number(owedOf(l, vb.data)) / 1e7;
@@ -191,6 +196,10 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
         {(num(l.principal) > 0 || vb.data) && <Row k="Loan" v={`${inr(num(l.principal) + (vb.data ? num(vb.data.value) : 0))}${left > 0 ? ` · ${inr(Math.ceil(left))} to repay` : ''}`} strong />}
       </div>
       {open && <Primary onClick={() => setRepayQr(true)}>Repay at the office</Primary>}
+      {canAdd && (
+        <button type="button" onClick={() => setAdding(true)} style={{ width: '100%', height: 44, marginTop: 8, borderRadius: 12, border: 0, background: C.raised,
+          color: C.text, fontWeight: 700, fontSize: 14, fontFamily: 'inherit', cursor: 'pointer' }}>Add machine hours</button>
+      )}
       <div style={line} />
       <h2 style={{ fontSize: 16, fontWeight: 700, margin: '12px 0 0' }}>Field notes</h2>
       <p style={{ ...muted, margin: '0 0 12px' }}>Your notes help your leader plan the harvest.</p>
