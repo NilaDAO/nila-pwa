@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, server, sv } from '../stellar/soroban';
-import { matchToken, readVoucherCode, voucherEntry } from './voucherCode';
+import { matchToken, matchTokenP256, readVoucherCode, voucherEntry } from './voucherCode';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
@@ -51,7 +51,8 @@ export async function parseVoucherCode(cfg, text) {
   const latest = (await server(cfg).getLatestLedger()).sequence;
   if (c.exp <= latest) throw new Error('This code has expired. Ask the member to make a new one.');
   const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(c.member)]).catch(() => []);
-  const token = matchToken(cfg, c, (ids || []).map((id) => Buffer.from(id).toString('hex')));
+  const hexes = (ids || []).map((id) => Buffer.from(id).toString('hex'));
+  const token = c.p256 ? await matchTokenP256(cfg, c, hexes) : matchToken(cfg, c, hexes);
   if (!token) throw new Error('No voucher of this member matches this code.');
   return { entry: voucherEntry(cfg, c, token), member: c.member, token, signed: c.units };
 }

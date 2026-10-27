@@ -364,7 +364,7 @@
       if (i.m && i.m.left > 0) rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 repay by ' + part(i.due), v: inr(i.m.atDue), go: function () { go('#/share/' + hexKey(x.token)); } });
       else if (x.state === 'ready') rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 ready to use', v: inr(x.cash), go: function () { go('#/share/' + hexKey(x.token)); } });
     });
-    if (hours > 0) rows.push({ t: 'Machine hours', s: 'Voucher \u00b7 any machine', v: (Math.round(hours * 10) / 10) + ' h', go: null });
+    if (hours > 0) rows.push({ t: 'Machine hours', s: 'Pay a machine owner', v: (Math.round(hours * 10) / 10) + ' h', go: function () { go('#/hours'); } });
     var next = shares.filter(function (x) { return x.state === 'ready' || x.state === 'early'; })
       .sort(function (a, b) { return tsOf(a.sow) - tsOf(b.sow); })[0];
     rows.push({ t: 'My crop plan', s: next ? 'Next: sow ' + (next.name || next.crop) + ' by ' + part(tsOf(next.sow)) : (shares.length ? 'All seasons' : 'No plan yet'), go: function () { go('#/plan'); } });
@@ -401,6 +401,76 @@
       }, function () { var box = document.getElementById('areamap'); if (box) box.innerHTML = '<p class="muted small">No picture right now.</p>'; });
     });
   }
+  // ---- machine hours (27 Oct): she types the hours, her phone shows a QR the machine owner scans ----
+  // The QR is her own signed authorization of machinery.claim for this voucher, up to those hours, once, for 2 days
+  // (session.js voucher): the owner gets no session and cannot act for her account.
+  var VOUCHER_LEDGERS = 34560;   // 48 hours of 5-second ledgers
+  function voucherList(d) {
+    var out = [];
+    (d.me.shares || []).forEach(function (x) {
+      var left = d.vouchers[hexKey(x.token)] || 0;
+      if (left > 0) out.push({ x: x, left: left });
+    });
+    for (var k in d.vouchers) {
+      if (d.vouchers.hasOwnProperty(k) && d.vouchers[k] > 0 && !out.some(function (v) { return hexKey(v.x.token) === k; })) out.push({ x: { token: k }, left: d.vouchers[k] });
+    }
+    return out;
+  }
+  function hoursOf(units) { return Math.round(units / 10) / 10; }
+  /** #/hours: her vouchers with hours left; one goes straight to typing the hours. */
+  function machineHours() {
+    withData('Machine hours', function (d) {
+      var list = voucherList(d);
+      if (list.length === 1) { go('#/hours/' + hexKey(list[0].x.token)); return; }
+      menu('hours', 'Machine hours', '<p class="small">Pay a machine owner with your machine hours. Choose the crop share.</p>',
+        list.map(function (v) {
+          return { t: (v.x.name || v.x.crop || 'Crop share') + (v.x.area ? ' \u00b7 Area ' + v.x.area : ''), s: hoursOf(v.left) + ' h left',
+            go: function () { go('#/hours/' + hexKey(v.x.token)); } };
+        }), ['Back', function () { go('#/home'); }], list.length ? undefined : null, null);
+      if (!list.length) main.innerHTML += '<p class="muted">No machine hours left.</p>';
+    });
+  }
+  /** #/hours/<token>: she types the hours the job may take (whole tractor hours, up to what is left), then OK. */
+  function hoursEntry(tok) {
+    withData('Machine hours', function (d) {
+      var left = d.vouchers[tok] || 0, typed = '';
+      var back = ['Back', function () { go('#/home'); }];
+      if (left <= 0) { screen('<p class="muted">No machine hours left on this crop share.</p>', back, null, null, 'Machine hours'); return; }
+      var max = Math.floor(left / 100);
+      var draw = function (err) {
+        var n = parseInt(typed || '0', 10);
+        screen('<p class="small">How many hours may the machine owner work? You have ' + hoursOf(left) + ' h left.</p>' +
+          '<div class="entry">' + (typed ? esc(typed) : '<span class="muted">0</span>') + ' h</div>' +
+          '<p class="muted small">Type the hours with the number keys.</p>' + (err ? '<p class="err small">' + esc(err) + '</p>' : ''),
+          back, n > 0 ? ['Show QR', function () { make(n); }] : null, null, 'Machine hours');
+        keys.digit = function (k) { if (typed.length < 3) { typed = (typed + k).replace(/^0+/, ''); draw(); } };
+        keys.Backspace = function () { if (typed) { typed = typed.slice(0, -1); draw(); } else go('#/home'); };
+      };
+      var make = function (n) {
+        if (n > max) { draw('At most ' + max + ' h.'); return; }
+        busy = true;
+        screen('<div class="qr qr-big" id="qr"><p class="muted" style="color:#121212">Making your QR\u2026</p></div>', null, null, null, 'Machine hours');
+        var cfg = d.cfg;
+        fetch(cfg.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (r) { return r.json(); }).then(function (l) {
+          return loadKey().then(function (pair) {
+            if (!pair) throw new Error('This phone has no key. Ask your union leader for a new link.');
+            return window.NilaSession.voucher({ passphrase: cfg.passphrase, machinery: cfg.contracts.machinery, union: cfg.union,
+              account: d.me.account, token: hexBytes(tok), units: n * 100, ledger: l.result.sequence, ledgers: VOUCHER_LEDGERS },
+            function (payload) { return window.crypto.subtle.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, pair.privateKey, payload); });
+          });
+        }).then(function (q) {
+          return window.NilaQR.svg(q.qr, { margin: 1, errorCorrectionLevel: 'L' });
+        }).then(function (svg) {
+          busy = false;
+          screen('<div class="qr qr-big">' + svg + '</div><p class="small hint" style="text-align:center">Up to ' + n + ' h \u00b7 valid 2 days. Show this to the machine owner.</p>',
+            ['Back', function () { go('#/home'); }], ['Done', function () { go('#/home'); }], null, 'Machine hours');
+        }, function (e) { busy = false; draw((e && e.message) || 'Could not make the QR. Try again.'); });
+      };
+      draw();
+    });
+  }
+
   /** #/invested: invest or withdraw, each a list of steps (both at the union office, with the QR). */
   function invested() {
     withData('Invested', function (d) {
@@ -643,6 +713,8 @@
     if (h === '#/home') { home(); return; }
     if ((m = /^#\/share\/([0-9a-f]+)$/.exec(h))) { share(m[1]); return; }
     if (h === '#/invested') { invested(); return; }
+    if (h === '#/hours') { machineHours(); return; }
+    if ((m = /^#\/hours\/([0-9a-f]{64})$/.exec(h))) { hoursEntry(m[1]); return; }
     if ((m = /^#\/invested\/(in|out)$/.exec(h))) { steps(m[1]); return; }
     if (h === '#/plan') { plan(); return; }
     if ((m = /^#\/plan\/(\d+)$/.exec(h))) { season(parseInt(m[1], 10)); return; }

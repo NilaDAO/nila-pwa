@@ -51,3 +51,4 @@ body.full #sk { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(
 .steps { margin: 4px 0 0; padding-left: 22px; }
 .steps li { margin: 0 0 6px; }
 .hint { color: #CBD5E1; }
+.entry { font-size: 28px; font-weight: 700; text-align: center; padding: 10px 0; }

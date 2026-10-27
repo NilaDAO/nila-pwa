@@ -1,4 +1,4 @@
-/* Nila lite: the help QR (A2, executive decision 26 Oct). Plain ES5 (KaiOS 2.5 / Gecko 48: no BigInt, no async).
+/* Nila lite: the help QR (A2, executive decision 26 Oct) and the machine-hours voucher QR (27 Oct). Plain ES5 (KaiOS 2.5 / Gecko 48: no BigInt, no async).
  * The member's device key (ECDSA P-256) signs the authorization of `start_session(not_after)` on the member's own
  * smart account; the leader's app sends it, then acts for the member for 5 minutes. Same QR as the app's
  * src/stellar/session.js:
@@ -80,5 +80,40 @@
     });
   }
 
-  window.NilaSession = { make: make, preimage: preimage, lowS: lowS };
+  /** An ScAddress: an account (G…, type 0, Ed25519 key) or a contract (C…, type 1). */
+  function scAddress(a) {
+    return a.charAt(0) === 'G' ? concat([u32(0), u32(0), fromB32(a).subarray(1, 33)]) : concat([u32(1), contractBytes(a)]);
+  }
+
+  /** The XDR preimage of a machine-hours voucher (27 Oct): machinery.claim's own authorization of
+   *  (union, token, max units), nonce = the expiry ledger (as the app's src/machine/voucherCode.js). */
+  function claimPreimage(networkId, machinery, union, token, units, exp) {
+    var fn = ascii('claim');
+    return concat([
+      u32(9), networkId, u64(exp), u32(exp),
+      u32(0),                                   // SOROBAN_AUTHORIZED_FUNCTION_TYPE_CONTRACT_FN
+      u32(1), contractBytes(machinery),         // SC_ADDRESS_TYPE_CONTRACT
+      u32(fn.length), fn, new Uint8Array((4 - (fn.length % 4)) % 4),
+      u32(3),                                   // args: union, token, max units
+      u32(18), scAddress(union),                // SCV_ADDRESS
+      u32(13), u32(32), token,                  // SCV_BYTES (32)
+      u32(3), u32(units),                       // SCV_U32
+      u32(0),                                   // no sub-invocations
+    ]);
+  }
+
+  /** The voucher QR for a machine owner: NILA:V:<base32: kind 2 | account 32 | units 4 | expiry ledger 4 | signature
+   *  64> (the app's 104-byte form is the Ed25519 one without kind and account). cfg: { passphrase, machinery, union,
+   *  account, token (32 bytes), units, ledger (latest), ledgers (validity) }. */
+  function voucher(cfg, sign) {
+    var exp = cfg.ledger + cfg.ledgers;
+    return sha256(ascii(cfg.passphrase)).then(function (networkId) {
+      return sha256(claimPreimage(networkId, cfg.machinery, cfg.union, cfg.token, cfg.units, exp));
+    }).then(function (payload) { return sign(payload); }).then(function (sig) {
+      var b = concat([new Uint8Array([2]), contractBytes(cfg.account), u32(cfg.units), u32(exp), lowS(new Uint8Array(sig))]);
+      return { qr: 'NILA:V:' + toB32(b), exp: exp };
+    });
+  }
+
+  window.NilaSession = { make: make, preimage: preimage, lowS: lowS, voucher: voucher, claimPreimage: claimPreimage };
 })();
