@@ -107,13 +107,13 @@ export const fieldInput = { display: 'block', width: '100%', height: 44, borderR
   fontSize: 16, color: '#F1F5F9', border: 0, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', flexShrink: 0 };
 
 /** R5–R7: the satellite map (FieldMap) once Google Maps is loaded; until then, offline or without a key, the scene. */
-function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect }) {
+function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect, shapes }) {
   const { ok } = useFieldMapLoaded();
   const pinY = usePinY(ok && pan);
   if (!ok) return <FieldGround points={points} />;
   return (
     <>
-      <FieldMap points={map} me={me} pan={pan} onCenter={onCenter} start={start} selected={selected} onSelect={onSelect} pinY={pinY} />
+      <FieldMap points={map} me={me} pan={pan} onCenter={onCenter} start={start} selected={selected} onSelect={onSelect} pinY={pinY} shapes={shapes} />
       {pan && <PanPin y={pinY} />}
     </>
   );
@@ -149,7 +149,7 @@ export function MapStage({ header = 'Mint your land title', children }) {
       <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#4a6632', display: 'flex', flexDirection: 'column',
         fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
         <style>{MOTION_CSS}</style>
-        <MapOrScene map={view.map} points={view.map.length} me={view.me} start={view.start} pan={view.pan} onCenter={onCenter}
+        <MapOrScene map={view.map} points={view.map.length} me={view.me} start={view.start} shapes={view.shapes} pan={view.pan} onCenter={onCenter}
           selected={view.selected} onSelect={onSelect} />
         <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 160, pointerEvents: 'none',
           background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)' }} />
@@ -180,10 +180,10 @@ export function MapStage({ header = 'Mint your land title', children }) {
 
 /** A step on the map screen: tells the stage what to show and renders its card (and an optional overlay). Outside a
  *  MapStage it brings its own stage. */
-export function MapFrame({ header, map = [], me = null, start = null, info = INFO_R5, overlay, pan = false, onCenter, selected = null, onSelect, children }) {
+export function MapFrame({ header, map = [], me = null, start = null, shapes = null, info = INFO_R5, overlay, pan = false, onCenter, selected = null, onSelect, children }) {
   const ctx = useContext(MapCtx);
-  const key = JSON.stringify([header, map, me, start, info, pan, selected]);
-  useEffect(() => { if (ctx) ctx.setView({ header, map, me, start, info, pan, selected }); }, [ctx, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const key = JSON.stringify([header, map, me, start, shapes, info, pan, selected]);
+  useEffect(() => { if (ctx) ctx.setView({ header, map, me, start, shapes, info, pan, selected }); }, [ctx, key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (ctx) { ctx.centre.current = onCenter; ctx.select.current = onSelect; } }, [ctx, onCenter, onSelect]);
   const card = (
     <>
@@ -192,7 +192,7 @@ export function MapFrame({ header, map = [], me = null, start = null, info = INF
     </>
   );
   if (ctx) return card;
-  return <MapStage header={header}><StandaloneView view={{ header, map, me, start, info, pan, selected }} onCenter={onCenter} onSelect={onSelect}>{card}</StandaloneView></MapStage>;
+  return <MapStage header={header}><StandaloneView view={{ header, map, me, start, shapes, info, pan, selected }} onCenter={onCenter} onSelect={onSelect}>{card}</StandaloneView></MapStage>;
 }
 
 /** The map card with the standard drag line (map cards): drag down lowers the card — never off the screen, the top

@@ -69,7 +69,9 @@ const WifiOff = () => (
  *  "Next point" and stores it. "Take a second point": when she cannot stand in the middle of the field, a second point
  *  and the field's point becomes the middle of the two. The name input shows only for a new point or a selected one (then with the remove button next to it).
  *  "All my fields have a point" ends it (executive decisions 20 Oct). */
-export function PointsStep({ evm, onDone, forName, onBack }) {
+export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shapes = null }) {
+  // startAt / shapes (28 Oct): adding points to an open border job starts "Choose on the map" on a point the job
+  // already has, and draws its accepted fields.
   // forName (26 Oct): the leader takes a keypad member's points on the leader's phone; the texts name the member.
   const online = useOnline();
   const [q, setQ] = useState(() => readPoints(evm));
@@ -95,7 +97,7 @@ export function PointsStep({ evm, onDone, forName, onBack }) {
   };
   // Demo only (localhost + chain 31337 + flag): "Choose on the map" starts in Viriyur, Tamil Nadu (the union's
   // place), not at the laptop's location; a real build starts where she is.
-  const choose = () => { save({ ...q, pan: true }); if (DEMO_COGNITO) setMe(DEMO_START); else if (!me) fix(setMe); };
+  const choose = () => { save({ ...q, pan: true }); if (startAt) setMe(startAt); else if (DEMO_COGNITO) setMe(DEMO_START); else if (!me) fix(setMe); };
   useEffect(() => {
     let live = true;
     navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (live && r.state === 'granted') share(); }).catch(() => {});
@@ -152,7 +154,7 @@ export function PointsStep({ evm, onDone, forName, onBack }) {
       : undefined;
   const wait = unnamed || busy;
   return (
-    <MapFrame header={forName ? `Fields of ${forName}` : undefined} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
+    <MapFrame header={forName ? `Fields of ${forName}` : undefined} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
       selected={selected} onSelect={setSelected}>
       <div style={cardTitle}>{forName
         ? (n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field')

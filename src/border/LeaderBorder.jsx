@@ -306,7 +306,9 @@ function AddPoints({ job, onDone }) {
   });
   if (add.isPending) return <Loading />;
   if (add.error) return <ErrorFull title="The points were not added" text={add.error.message} primary="Try again" onPrimary={() => add.mutate()} secondary="Back to all fields" onSecondary={onDone} />;
-  return <PointsStep evm={key} forName={memberName(job)} onDone={() => add.mutate()} onBack={onDone} />;
+  const pts = job.fields.map((f) => f.moved || f.point).filter(Boolean);
+  const accepted = job.fields.filter((f) => f.accepted).map((f) => f.shapes?.find((s) => s.id === f.accepted)?.geometry || f.accepted_shape?.geometry).filter(Boolean);
+  return <PointsStep evm={key} forName={memberName(job)} onDone={() => add.mutate()} onBack={onDone} startAt={pts.at(-1) || null} shapes={accepted} />;
 }
 
 /** tasks/border/<id>[/<field> | /add] */
