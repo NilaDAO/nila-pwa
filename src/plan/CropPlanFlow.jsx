@@ -27,6 +27,7 @@ import { assisted, useMyShares } from '../loan/MyShares';
 import HelpQr from '../loan/HelpQr';
 import StartHelp from '../loan/StartHelp';
 import { useSessionUntil } from '../stellar/session';
+import { useMyBorderJob } from '../border/hooks';
 import { unionCentre } from '../leader/unionMap';
 import { useUnionMembers } from '../leader/unionMembers';
 
@@ -309,6 +310,10 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const planApi = usePlanClient();
   const unionMembers = useUnionMembers(self && !record ? planApi : null);
   const noLandMap = <AreaMap record={null} center={unionCentre(unionMembers.data)} />;
+  // Her field points already with the union (28 Oct): the title is minted from that border job (L2a–L4), never by
+  // registering again.
+  const myJob = useMyBorderJob();
+  const openJob = myJob.data && myJob.data.status !== 'failed' && myJob.data.status !== 'minted' ? myJob.data : null;
   const titlesKnown = !!forLand || (!titles.isLoading && (onPolygon || stellarTitles.isFetched));
   // Plain loading (titles, plan, record not fetched yet) is S1 (executive decision 21 Oct); CP1's pending card is only
   // for a record that is really not there yet.
@@ -332,10 +337,14 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const busy = titles.isFetching || stellarTitles.isFetching;
     return (
       <Sheet map={noLandMap} landName={name} title="No land title yet">
-        <p style={muted}>Your crop plan starts when your land title is ready.</p>
+        <p style={muted}>{openJob
+          ? (self ? 'Your field points are with the union. Check the borders and mint your land title.' : 'Your field points are with the union. Your leader mints your land title.')
+          : 'Your crop plan starts when your land title is ready.'}</p>
         {(titles.isError || stellarTitles.isError) && <p style={{ ...muted, color: C.coral }}>Your land title could not be loaded.</p>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-          <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>
+          {openJob
+            ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>{openJob.status === 'ready' ? 'Check borders and mint' : 'See my fields'}</Primary>
+            : <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
           <button type="button" onClick={refresh} disabled={busy} style={{ height: 44, borderRadius: 12, border: `1px solid ${C.muted}`,
             background: 'transparent', color: C.text, fontFamily: FONT, fontSize: 16, fontWeight: 700 }}>{busy ? 'Refreshing…' : 'Refresh'}</button>
         </div>
