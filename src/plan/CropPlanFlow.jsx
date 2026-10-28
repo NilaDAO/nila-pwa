@@ -24,6 +24,8 @@ import { AreaCard, SEASON, SlideBar, TapLine, fmtKg, rowsInSeason, seasonLabel, 
 import ActivePlan, { currentSeason } from './ActivePlan';
 import { shareOn } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
+import RoundButton from '../shell/RoundButton';
+import { RefreshIcon } from '../shell/icons';
 import HelpQr from '../loan/HelpQr';
 import StartHelp from '../loan/StartHelp';
 import { useSessionUntil } from '../stellar/session';
@@ -338,7 +340,12 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // Assist mode (28 Oct): the member mints nothing; the leader takes the field points and mints the land title.
     const helped = !self && assisted();
     return (
-      <Sheet map={noLandMap} landName="No land title yet">
+      <Sheet map={noLandMap} landName="No land title yet" actions={(
+        <RoundButton label="Refresh" onClick={busy ? undefined : refresh}>
+          <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
+          <span style={{ display: 'flex', animation: busy ? 'nila-spin 900ms linear infinite' : 'none' }}><RefreshIcon color={C.text} /></span>
+        </RoundButton>
+      )}>
         <p style={muted}>{openJob
           ? (self ? 'Your field points are with the union. Check the borders and mint your land title.' : 'Your field points are with the union. Your leader mints your land title.')
           : helped ? 'Your leader takes the field points at your farm and mints your land title. Your crop plan starts when it is ready.'
@@ -348,8 +355,6 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           {openJob
             ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>{openJob.status === 'ready' ? 'Check borders and mint' : 'See my fields'}</Primary>
             : !helped && <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
-          <button type="button" onClick={refresh} disabled={busy} style={{ height: 44, borderRadius: 12, border: `1px solid ${C.muted}`,
-            background: 'transparent', color: C.text, fontFamily: FONT, fontSize: 16, fontWeight: 700 }}>{busy ? 'Refreshing…' : 'Refresh'}</button>
         </div>
       </Sheet>
     );

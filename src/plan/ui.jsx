@@ -8,7 +8,8 @@ import { SettingsButton } from '../shell/RoundButton';
 /** head: header buttons in place of Back / name / Settings. top: the card's top (px) when it opens. onSwipe(±1): a
  *  sideways swipe on the card (A4/A5's ‹ asset › bar). */
 /** full (map-central): the card takes the whole screen height, rising from where A1's card stands. */
-export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered, noSettings }) {
+/** actions: round buttons (RoundButton) in the header row, left of Settings (28 Oct: Refresh on the no-title card). */
+export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered, noSettings, actions }) {
   const drag = useSheetDrag(onLowered, resetKey, startLow);   // the drag line as on R5 (all map screens, 21 Oct)
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell the one map behind the tabs
   // (shell/MapStage) draws this sheet's map, so it is never mounted again between screens.
@@ -62,13 +63,15 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       window.removeEventListener('scroll', paint, { capture: true }); window.removeEventListener('resize', paint); ro?.disconnect();
     };
   }); // eslint-disable-line react-hooks/exhaustive-deps
+  const sideW = 40 + (actions ? 48 : 0);
   const headRow = inShell && (
     <div ref={headRef} data-sheet-head style={{ position: 'sticky', top: 0, zIndex: 3, background: GRADIENT, backgroundRepeat: 'no-repeat', margin: '0 -22px 8px', padding: '4px 22px 12px' }}>
       {ownHead || (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          {onBack ? <button type="button" aria-label="Back" onClick={onBack} style={btnIn}>←</button> : <span style={{ width: 40 }} />}
+          {/* Both sides as wide as the wider one, so the title stays in the middle. */}
+          <span style={{ display: 'flex', width: sideW }}>{onBack && <button type="button" aria-label="Back" onClick={onBack} style={btnIn}>←</button>}</span>
           <span style={{ flexGrow: 1, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{inTitle || ''}</span>
-          {noSettings ? <span style={{ width: 40 }} /> : <SettingsButton />}
+          <span style={{ display: 'flex', gap: 8, width: sideW, justifyContent: 'flex-end' }}>{actions}{!noSettings && <SettingsButton />}</span>
         </div>
       )}
     </div>
