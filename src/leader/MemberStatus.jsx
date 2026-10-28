@@ -218,7 +218,7 @@ export default function MemberStatus({ id, go }) {
             the record's areas are only for the crops on the map. "—" when the record lists none. */}
         {m.record && <Row k="Fields" v={fields.length || '—'} />}
         {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
-        {!m.record && <Row k="Status" v={m.note || 'No land title yet'} />}
+        {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
       </div>
       {m.recordHash && !m.shares.length && (
         // The member's crop plan (26 Oct): made with the member without a session; the member's QR accepts it at the end.
