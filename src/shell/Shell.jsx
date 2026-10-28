@@ -223,6 +223,12 @@ export default function Shell({ leader }) {
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
   }
 
+  // "Mint a new land title" on the Crop plan's no-title card (28 Oct): R5–R14 for anyone signed in, leader included.
+  if (view === 'crop' && readArg() === 'register') {
+    const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
+    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
+  }
+
   let body;
   if (view === 'assets') {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}

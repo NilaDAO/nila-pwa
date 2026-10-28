@@ -8,7 +8,7 @@ import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT } from '../shell/tokens';
-import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
+import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanClient, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { CheckRow, Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { Sheet as BaseSheet } from './ui';
 import { BasisDrawer, Drawer, InfoButton } from './Drawer';
@@ -27,6 +27,8 @@ import { assisted, useMyShares } from '../loan/MyShares';
 import HelpQr from '../loan/HelpQr';
 import StartHelp from '../loan/StartHelp';
 import { useSessionUntil } from '../stellar/session';
+import { unionCentre } from '../leader/unionMap';
+import { useUnionMembers } from '../leader/unionMembers';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -303,6 +305,10 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
 
   // While her titles load (the Stellar list also waits for her signer), CP1's pending sheet — never "No land title"
   // before both chains have answered.
+  // No title yet (28 Oct): the satellite map on the union's land behind the card, never an empty screen.
+  const planApi = usePlanClient();
+  const unionMembers = useUnionMembers(self && !record ? planApi : null);
+  const noLandMap = <AreaMap record={null} center={unionCentre(unionMembers.data)} />;
   const titlesKnown = !!forLand || (!titles.isLoading && (onPolygon || stellarTitles.isFetched));
   // Plain loading (titles, plan, record not fetched yet) is S1 (executive decision 21 Oct); CP1's pending card is only
   // for a record that is really not there yet.
@@ -322,7 +328,19 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   }
   if (!titlesKnown || current.isLoading) return <Loading />;
   if (titles.data && !titles.data.length && !stellarTitle) {
-    return <Sheet map={map} landName={name} title="No land title yet"><p style={muted}>Your crop plan starts when your land title is ready.</p></Sheet>;
+    const refresh = () => { titles.refetch(); stellarTitles.refetch(); };
+    const busy = titles.isFetching || stellarTitles.isFetching;
+    return (
+      <Sheet map={noLandMap} landName={name} title="No land title yet">
+        <p style={muted}>Your crop plan starts when your land title is ready.</p>
+        {(titles.isError || stellarTitles.isError) && <p style={{ ...muted, color: C.coral }}>Your land title could not be loaded.</p>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+          <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>
+          <button type="button" onClick={refresh} disabled={busy} style={{ height: 44, borderRadius: 12, border: `1px solid ${C.muted}`,
+            background: 'transparent', color: C.text, fontFamily: FONT, fontSize: 16, fontWeight: 700 }}>{busy ? 'Refreshing…' : 'Refresh'}</button>
+        </div>
+      </Sheet>
+    );
   }
   // Assist mode (26 Oct): the member's phone makes no crop plan; the leader makes it with the member at the office, in a
   // session from the member's help QR. Until the plan is approved the phone says so and shows the help QR.
