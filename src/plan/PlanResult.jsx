@@ -188,12 +188,23 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
             const label = c.kind === 'bare' ? 'Bare soil' : c.kind === 'mulch' ? 'Mulch' : short.charAt(0).toUpperCase() + short.slice(1);
             const fill = c.kind === 'bare' ? `repeating-linear-gradient(45deg, ${C.coral} 0 3px, transparent 3px 6px)`
               : `repeating-linear-gradient(45deg, ${c.colour || '#7FB069'} 0 3px, rgba(127,176,105,0.25) 3px 6px)`;
+            // A soil cover is advice (21 Oct): a crop may be picked in its season instead (28 Oct); the pick replaces it.
+            const slot = (c.slots || [])[0];
+            const rowKey = `soil-${c.from}`;
+            const pick = slot && picked[slot] && !rows.some((r) => r.slot === slot) ? cropOf(picked[slot]) : null;
+            const can = !readOnly && !!onCrop && !!slot && !rows.some((r) => r.slot === slot);
             return (
-              <div key={`soil-${c.from}`} title={c.name} style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30 }}>
-                <span style={{ width: CL - 8, marginRight: 8, fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: C.text }}>{label}</span>
+              <div key={rowKey} style={open === rowKey ? { background: C.raised, borderRadius: 12, margin: '4px -10px', padding: '2px 10px 10px' } : undefined}>
+              <button type="button" title={c.name} disabled={!can} onClick={() => setOpen(open === rowKey ? null : rowKey)} aria-label={`Change ${label}`} aria-expanded={open === rowKey}
+                style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30, padding: 0, border: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: can ? 'pointer' : 'default' }}>
+                <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: C.text }}>{pick ? pick.name : label}</span>
                 <span style={{ position: 'relative', flexGrow: 1, height: 14 }}>
-                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: fill }} />
+                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: pick ? pick.colour || C.muted : fill }} />
                 </span>
+              </button>
+              {open === rowKey && (
+                <CropSelect crops={sortedCrops(crops)} current={slot && picked[slot]} disabled={changing} onPick={(key) => onCrop({ slot }, key)} />
+              )}
               </div>
             );
           })}
