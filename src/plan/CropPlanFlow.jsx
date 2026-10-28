@@ -333,6 +333,15 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         onStarted={async () => { setScanToAccept(false); await makeMine(); }} />
     );
   }
+  // The Privy login failed (busy, 429): no Stellar wallet, so her titles cannot be read; say so instead of S1's
+  // "Loading is slow" until PrivyRoot's next try (1–5 minutes).
+  if (!titlesKnown && s?.error && !s?.ready) {
+    return (
+      <Sheet map={noLandMap} landName="Connecting your wallet">
+        <p style={muted}>Your wallet did not connect: the login service is busy. Nila tries again by itself in a few minutes; keep the app open.</p>
+      </Sheet>
+    );
+  }
   if (!titlesKnown || current.isLoading) return <Loading />;
   if (titles.data && !titles.data.length && !stellarTitle) {
     const refresh = () => { titles.refetch(); stellarTitles.refetch(); };
