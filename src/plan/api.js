@@ -64,6 +64,8 @@ export function planClient(signer) {
     // P10 / O15: the union's loan list (the async list) and C2's event search, one window per tap.
     unionLoans: () => call('GET', '/stellar/union/loans'),
     unionTitles: () => call('GET', '/stellar/union/titles'),
+    // G2 Remove member (28 Oct): the node burns the member's Stellar title (no crop shares, no investment).
+    removeMember: (titleId) => call('POST', '/stellar/union/remove', { title_id: Number(titleId) }),
     // The compact members list (map-centred lane, 23 Oct): one row per member; 404 until the node has it.
     // since (25 Oct): the change counter of the list kept on the phone; only the rows changed after it come back.
     unionMembers: (since) => call('GET', since ? `/stellar/union/members?since=${since}` : '/stellar/union/members'),

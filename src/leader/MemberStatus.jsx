@@ -6,7 +6,8 @@
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Card, CardButton, ConfirmCard, Text } from '../shell/SettingsParts';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
@@ -320,7 +321,42 @@ export default function MemberStatus({ id, go }) {
           <Row k="Record" v={<span style={{ color: C.accent }}>{`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`}</span>} />
         </Section>
       )}
+      <RemoveMember m={m} inv={inv} go={go} />
       </div>
     </MapCard>
   );
 }
+
+/** G2 Remove member (executive decision 28 Oct; the look of Settings → Reset account): the node burns the member's land
+ *  title on Stellar, which ends the membership. Only with no crop share and no investment; nIN, USDC and vouchers stay
+ *  in the member's wallet. */
+function RemoveMember({ m, inv, go }) {
+  const api = usePlanClient();
+  const qc = useQueryClient();
+  const [ask, setAsk] = useState(false);
+  const titleId = m.titleId || [...(m.lands || [])][0];
+  const rm = useMutation({
+    mutationFn: () => api.removeMember(titleId),
+    onSuccess: () => { setAsk(false); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
+  });
+  if (!titleId) return null;
+  const p = inv.data;
+  const investment = p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
+  const why = m.shares.length ? 'The member has crop shares.'
+    : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
+      : investment > 0 ? 'The member has an investment: pay it out first.' : null;
+  return (
+    <Card title="Remove member">
+      <Text>Burns the member's land title, which ends the membership of the union. nIN, USDC and vouchers stay in the member's wallet.</Text>
+      {why && <Text style={{ color: C.gold }}>{why}</Text>}
+      <CardButton color={C.coral} onClick={why ? undefined : () => setAsk(true)}>Remove member</CardButton>
+      {rm.error && <Text style={{ color: C.coral }}>{rm.error.message}</Text>}
+      {ask && (
+        <ConfirmCard ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending}
+          onCancel={() => setAsk(false)} onOk={() => rm.mutate()}
+          warn={`Remove ${m.label} from the union? The land title ${titleId} is burned; this cannot be undone. To join again the member needs a new land title.`} />
+      )}
+    </Card>
+  );
+}
+
