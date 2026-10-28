@@ -115,7 +115,12 @@ function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect,
   // No map (offline, or a key the site is not allowed to use, 28 Oct): "Choose on the map" takes the start spot as the
   // point, so the fields can still be sent (else Save this location waits for a centre that never comes).
   const here = start || me;
-  useEffect(() => { if (!ok && pan && here && onCenter) onCenter({ lat: here.lat, lng: here.lng }); }, [ok, pan, here?.lat, here?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (ok || !pan || !here || !onCenter) return undefined;
+    // A tick later: the step's own handler (MapFrame) is connected after this effect runs.
+    const t = setTimeout(() => onCenter({ lat: here.lat, lng: here.lng }), 0);
+    return () => clearTimeout(t);
+  }, [ok, pan, here?.lat, here?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ok) return <FieldGround points={points} />;
   return (
     <>
