@@ -157,7 +157,14 @@ async function answer(c, init) {
     const out = c.list.map((m, i) => ({ jsonrpc: '2.0', id: m.id, ...(find(c.keys[i])?.rpc || neutralRpc(m, c.keys[i])) }));
     return reply(c.batch ? out : out[0]);
   }
-  const hit = find(c.keys[0]) || (c.kind === 'node' && c.method === 'POST' ? sameRequest(c.keys[0], init) : null);
+  // A land's plan (28 Oct): as before any plan was made, until this visitor made one for that land in this session;
+  // then the plan the recording made (static-fixtures.mjs keeps both, the later one as '<key> @made').
+  if (c.kind === 'node' && c.method === 'POST' && /^node POST \/plan\/jobs /.test(c.keys[0])) {
+    try { const b = JSON.parse(init.body || '{}'); if (b.land_id != null) sessionStorage.setItem(`nila.demo.made.${b.land_id}`, '1'); } catch { /* none */ }
+  }
+  const land = /^node GET \/plan\/land\/(\d+)/.exec(c.keys[0]);
+  let made = false; try { made = !!land && sessionStorage.getItem(`nila.demo.made.${land[1]}`) === '1'; } catch { /* none */ }
+  const hit = (made && find(`${c.keys[0]} @made`)) || find(c.keys[0]) || (c.kind === 'node' && c.method === 'POST' ? sameRequest(c.keys[0], init) : null);
   if (hit) return reply(hit.body, hit.status, hit.ct);
   if (c.kind === 'get' && !c.keys[0].startsWith('horizon ')) return null;   // another site (tiles, images): the network
   miss(c.keys[0]);
