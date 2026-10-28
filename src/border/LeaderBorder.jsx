@@ -3,18 +3,17 @@
 // state picks the board: drawing → L2a (#retry-fN when a field is drawn again), ready → L2, a field → L3, every
 // field accepted or left out → L4 (mint). Data: the node's border job (O16). DESIGN GAP: no member names in the
 // app (the farm name or a short address stands in).
-import { cloneElement, useCallback, useEffect, useState } from 'react';
+import { cloneElement, useCallback, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { C, FONT, R, SHADOW } from '../shell/tokens';
+import { C, FONT, R } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
-import useSheetDrag from '../shell/useSheetDrag';
 import { acres, shapeFor } from './api';
 import BorderMap, { ShapeThumb } from './BorderMap';
 import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
 import { TxScreens } from '../stellar/TxStatus';
-import { Notice } from '../plan/ui';
+import { Notice, Sheet } from '../plan/ui';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
@@ -23,38 +22,17 @@ const btn = (primary) => ({ flex: 1, height: 44, borderRadius: R.button, border:
   background: primary ? C.accent : C.raised, color: primary ? C.ink : C.text });
 const DONE = ['accepted', 'left_out'];
 
-// The map fills the screen behind the card (26 Oct, as the other map screens): dragging the card down shows more map,
-// never a blank space. The card starts at 40 % of the screen and reaches at least the bottom.
+// The map fills the screen behind the card; the card is the app's one map card (plan/ui.jsx Sheet, 28 Oct): header row
+// inside the card, drag line, clear of the tab bar. It starts at 40 % of the screen.
 const TOP = 0.4;
 
-function Frame({ name, onBack, backLabel, map, children }) {
-  const drag = useSheetDrag();   // the drag line as on R5 (all map screens, 21 Oct)
-  const full = map ? cloneElement(map, { height: '100%', fitBottom: Math.round(window.innerHeight * (1 - TOP)) }) : null;
-  // The card's bottom padding clears the tab bar, so the shell's own padding would show map under the card at the end
-  // of the scroll: off while this screen is open (as the plan sheets, plan/ui.jsx).
-  useEffect(() => {
-    const shell = document.querySelector('[data-testid="shell"]');
-    if (!shell) return undefined;
-    const was = shell.style.paddingBottom;
-    shell.style.paddingBottom = '0px';
-    return () => { shell.style.paddingBottom = was; };
-  }, []);
-  const btnIn = { width: 40, height: 40, borderRadius: R.round, background: C.raised, border: 0, color: C.text, fontSize: 20, flexShrink: 0 };
+function Frame({ name, onBack, map, children }) {
+  const top = Math.round(window.innerHeight * TOP);
+  const shown = map ? cloneElement(map, { fitBottom: window.innerHeight - top }) : null;
   return (
-    <div style={{ fontFamily: FONT, color: C.text, position: 'relative' }}>
-      <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>{full}</div>
-      <div aria-hidden="true" style={{ height: `${TOP * 100}vh`, pointerEvents: 'none' }} />
-      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', minHeight: `${(1 - TOP) * 100}vh`, boxSizing: 'border-box', position: 'relative', zIndex: 5, padding: '14px 22px 104px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW, ...drag.style }}>
-        {drag.handle}
-        {/* The header is a row inside the card, sticky while the card scrolls (as every map card, 21 Oct). */}
-        <div style={{ position: 'sticky', top: 0, zIndex: 3, background: C.ink, margin: '-12px -22px 0', padding: '8px 22px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button type="button" aria-label={backLabel} onClick={onBack} style={btnIn}>←</button>
-          <h1 style={{ flexGrow: 1, margin: 0, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{name}</h1>
-          <span style={{ width: 40 }} />
-        </div>
-        {children}
-      </div>
-    </div>
+    <Sheet map={shown} title={name} onBack={onBack} top={top + 24} noSettings>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{children}</div>
+    </Sheet>
   );
 }
 
@@ -85,7 +63,7 @@ const AddRow = ({ onClick }) => (
 function Fetch({ job, onBack, onAdd }) {
   const again = job.fields.find((f) => f.state === 'drawing' && f.round > 0);
   return (
-    <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
+    <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} drawing active={again?.n} />}>
       <Head title={again ? `Drawing field ${again.n} again` : 'Finding field borders'} sub="Drawing shapes, please wait" />
       {job.fields.map((f) => (
@@ -129,7 +107,7 @@ function Plan({ job, onField, onBack, onAdd }) {
   const drawing = job.fields.filter((f) => f.state === 'drawing');
   const waiting = job.fields.filter((f) => f.state === 'ready' && job.plan?.[String(f.n)]);
   return (
-    <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
+    <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} onField={onField} plots={job.plots || []} plotOn={plotId} onPlot={setPlotId} />}>
       {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
       <Head title={`${open.length} fields · proposed plan`} sub="Accept the plan, or tap a field to check it" />
@@ -190,7 +168,7 @@ function Check({ job, n, onDone, onBack }) {
   const holds = chosen?.holds?.length || 0;
   const moved = Object.keys(plan || {}).filter((k) => Number(k) !== n && plan[k] !== job.plan?.[k]);
   return (
-    <Frame name={memberName(job)} backLabel="Back to all fields" onBack={onBack}
+    <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={plan} active={n} shapeOverride={sel} onField={() => {}} />}>
       <Head title={`Field ${n}`} sub={memberName(job)} />
       <div role="group" aria-label={`Shapes for field ${n}`} style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
@@ -256,7 +234,7 @@ function Done({ job, onField, onBack, onAdd }) {
       onRetry={() => { mint.reset(); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }} />;
   }
   return (
-    <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
+    <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} plots={st ? [] : job.plots || []} plotOn={plotId} onPlot={st ? undefined : setPlotId} />}>
       {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
       <Head title={`${ok.length} fields · all accepted`} sub={`Total ${total.toFixed(2)} acres`} />

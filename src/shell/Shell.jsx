@@ -22,6 +22,7 @@ import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
 import { ReadyShareRows, TakeUp, rowOf, useMyShares } from '../loan/MyShares';
 import MapStage from './MapStage';
+import { ShellLookCtx } from './stageCtx';
 import { HarvestGroup, HarvestList } from '../leader/Harvests';
 import MapCard from './MapCard';
 import { SlideBar } from '../plan/PlanResult';
@@ -153,6 +154,13 @@ function TitleWait({ titleCount, s }) {
 
 export default function Shell({ leader }) {
   const s = useNilaSigner();
+  // What the open screens ask of the shell under them (useShellLook): no bottom padding, no gradient, taps through.
+  const [looks, setLooks] = useState(() => new Map());
+  const lookApi = useMemo(() => ({
+    add: (id, l) => setLooks((m) => new Map(m).set(id, l)),
+    remove: (id) => setLooks((m) => { const n = new Map(m); n.delete(id); return n; }),
+  }), []);
+  const look = [...looks.values()].reduce((a, l) => ({ flush: a.flush || l.flush, clear: a.clear || l.clear, through: a.through || l.through }), {});
   useEffect(loadInter, []);
   // The page behind the app is the gradient's top colour, so a scroll past either end never shows a white bar.
   useEffect(() => {
@@ -288,8 +296,10 @@ export default function Shell({ leader }) {
   return (
     // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.
     // The map stage lies under the shell (map-central trial): a map sheet makes the shell see-through while it is open.
+    <ShellLookCtx.Provider value={lookApi}>
     <MapStage>
-      <div style={{ minHeight: '100vh', background: GRADIENT, paddingBottom: TAB_BAR_HEIGHT + 16, position: 'relative', zIndex: 1 }} data-testid="shell">
+      <div style={{ minHeight: '100vh', background: look.clear ? 'transparent' : GRADIENT, paddingBottom: look.flush ? 0 : TAB_BAR_HEIGHT + 16,
+        pointerEvents: look.through ? 'none' : undefined, position: 'relative', zIndex: 1 }} data-testid="shell">
         {/* One card per screen (24 Oct): a new screen gets a fresh card, so a header button (Tasks, Settings, History)
             opens it raised; only a bottom-bar tab keeps a lowered card down (keepLowOnTab). */}
         <Fragment key={view}>{body}</Fragment>
@@ -297,5 +307,6 @@ export default function Shell({ leader }) {
         <BottomTabBar tabs={tabs} active={active} onSelect={(v) => { keepLowOnTab(); resetA1Scroll(); go(v); }} />
       </div>
     </MapStage>
+    </ShellLookCtx.Provider>
   );
 }

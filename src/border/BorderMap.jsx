@@ -24,6 +24,7 @@ export default function BorderMap(props) {
   const { ok } = useFieldMapLoaded();
   return ok ? <GoogleBorderMap {...props} /> : <LeafletBorderMap {...props} />;
 }
+BorderMap.ownMap = true;   // not the shell's land map: a Sheet draws it behind its card (plan/ui.jsx)
 
 // maxZoom 20: satellite imagery stops there in rural Tamil Nadu (zoom 22 tiles answer 404); no + / − buttons.
 const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, zoomControl: false, maxZoom: 20, gestureHandling: 'greedy', tilt: 0,
