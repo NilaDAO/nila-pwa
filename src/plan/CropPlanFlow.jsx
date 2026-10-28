@@ -290,10 +290,16 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     if (!ss?.length) return {};
     const i = Math.min(season, ss.length - 1);
     const rows = rowsInSeason(ss, i);
+    // Crops picked and not sent yet (28 Oct): the area shows the picked crop, in its colour.
+    const slotNow = ss[i].slot;
+    const pickedHere = (z) => pending[z]?.[slotNow] && (catalogue.data?.crops || []).find((c) => c.key === pending[z][slotNow]);
     // A merged row (same crop on several areas, 21 Oct): its harvest on the first area's chip, "with Area n" on the others.
-    const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, { text: r.name,
+    const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, pickedHere(z) ? { text: pickedHere(z).name, sub: 'changed',
+      colour: pickedHere(z).colour, acc: false } : { text: r.name,
       sub: r.off_catalogue ? 'not in the crop list' : z !== zonesOf(r)[0] ? `with Area ${areaNo(zonesOf(r)[0])}` : fmtKg(r.kg),
       colour: r.colour, acc: checked.has(z) }]));
+    // An area with no crop that season but a pick for it.
+    for (const z of Object.keys(pending)) if (!out[z] && pickedHere(z)) out[z] = { text: pickedHere(z).name, sub: 'changed', colour: pickedHere(z).colour };
     // A soil cover in this season (no bare soil in the dry months, 21 Oct), where no crop is on the area then.
     const slot = ss[i].slot;
     for (const c of plan.plan.soil_cover || []) {
@@ -304,7 +310,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
     return out;
-  }, [plan, season, checked, areaNo]);
+  }, [plan, season, checked, areaNo, pending, catalogue.data]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).

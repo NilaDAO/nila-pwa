@@ -104,15 +104,15 @@ export function CropSelect({ label, crops, current, currentName, disabled, onPic
   return (
     <div role="group" aria-label={`Crop${label ? ` for ${label}` : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0 2px' }}>
       {label && <span style={{ fontSize: 14, fontWeight: 700 }}>{label}{!current && <span style={{ color: C.muted, fontWeight: 400 }}> · no crop</span>}</span>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {/* The month selector's style (CP intake, 28 Oct): a grid of buttons in the crop's colour; the crop now is full,
+          the others faded; no ring. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         {list.map((c) => {
           const on = c.key === current;
-          // Each chip in its crop's colour, as its bar (28 Oct); the crop now has a white ring.
           return (
             <button key={c.key} type="button" disabled={disabled} aria-pressed={on} onClick={() => { if (!on) onPick(c.key); }}
-              style={{ height: 32, padding: '0 12px', borderRadius: R.round, border: 0, background: c.colour || C.muted,
-                boxShadow: on ? `0 0 0 2px ${C.ink}, 0 0 0 4px ${C.text}` : 'none', margin: on ? '0 4px' : 0,
-                color: lightBg(c.colour) ? C.ink : C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: on || disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+              style={{ minHeight: 44, padding: '4px 6px', borderRadius: 12, border: 0, background: c.colour || C.muted, opacity: disabled ? 0.3 : on ? 1 : 0.45,
+                color: lightBg(c.colour) ? C.ink : C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, lineHeight: 1.2, cursor: on || disabled ? 'default' : 'pointer' }}>
               {c.name}
             </button>
           );
