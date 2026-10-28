@@ -165,7 +165,7 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
               {open === rowKey && (
                 // The crop list for this area in this season: picking one sends the change (a new plan version).
                 <CropSelect crops={list} current={picked[r.slot] || r.crop} currentName={r.name} disabled={changing}
-                  onPick={(key) => { setOpen(null); onCrop(r, key); }} />
+                  onPick={(key) => onCrop(r, key)} />
               )}
               </div>
             );

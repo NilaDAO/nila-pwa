@@ -101,7 +101,7 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
                   {[...zones].sort((a, b) => Number(areaNo(a)) - Number(areaNo(b))).map((z) => {
                     const r = s.rows.find((x) => zonesOf(x).includes(z));
                     return <CropSelect key={z} label={`Area ${areaNo(z)}`} crops={sortedCrops(crops)} current={pending[z]?.[s.slot] || r?.crop} currentName={r?.name} disabled={changing}
-                      onPick={(key) => { setOpen(null); onCrop(z, s.slot, key); }} />;
+                      onPick={(key) => onCrop(z, s.slot, key)} />;
                   })}
                 </td></tr>
               )}
