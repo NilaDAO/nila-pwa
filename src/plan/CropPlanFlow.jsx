@@ -336,7 +336,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const refresh = () => { titles.refetch(); stellarTitles.refetch(); };
     const busy = titles.isFetching || stellarTitles.isFetching;
     return (
-      <Sheet map={noLandMap} landName={name} title="No land title yet">
+      <Sheet map={noLandMap} landName="No land title yet">
         <p style={muted}>{openJob
           ? (self ? 'Your field points are with the union. Check the borders and mint your land title.' : 'Your field points are with the union. Your leader mints your land title.')
           : 'Your crop plan starts when your land title is ready.'}</p>
