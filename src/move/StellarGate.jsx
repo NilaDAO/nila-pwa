@@ -7,7 +7,9 @@
 // - A moved wallet ('stellar'): Stellar mode (never today's Polygon app).
 // "Every start" is a cold start: sessionStorage clears when the app is closed from the task switcher.
 // Loaded only with Privy on; otherwise the app is unchanged.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useIsLeader } from '../hooks/useLoadFunds.ts';
+import { UNIONS_ONE, saveUnionRecord } from '../register/Registration';
 import { useDataContext } from '../utils/NavigationContext';
 import { useNilaSigner } from '../wallet/signer';
 import MoveFlow, { LeaderStart } from './MoveFlow';
@@ -37,8 +39,31 @@ export default function StellarGate({ children }) {
   useEffect(() => { setMode(readMode(addr)); }, [addr]);
   const choose = (m) => { try { sessionStorage.setItem(modeKey(addr), m); } catch { /* private mode */ } setMode(m); };
 
-  // A Stellar wallet: a union leader (Init union.leader, set at R9 from the Polygon RolesRegistry) gets the leader app.
-  if (db?.chain === STELLAR_CHAIN) return signer ? <Shell leader={Boolean(db?.union?.leader)} /> : <Holding />;
+  // The leader role from the chain too (28 Oct): the Init record R9 wrote is missing after a reset or a login that
+  // skips R9, which opened a leader in the member app. Asked until the roles contract answers; a yes is written back.
+  const { isLeader } = useIsLeader({ address: addr });
+  const isLeaderRef = useRef(isLeader);
+  isLeaderRef.current = isLeader;
+  const [chainLeader, setChainLeader] = useState(false);
+  useEffect(() => {
+    if (!addr || db?.union?.leader) return undefined;
+    let live = true;
+    (async () => {
+      for (let i = 0; i < 20 && live; i++) {
+        let r;
+        try { r = await isLeaderRef.current(UNIONS_ONE().polygon, addr); } catch { r = undefined; }
+        if (r !== undefined) {
+          if (r && live) { setChainLeader(true); await saveUnionRecord(async () => true, UNIONS_ONE(), addr).catch(() => {}); }
+          return;
+        }
+        await new Promise((ok) => setTimeout(ok, 500));
+      }
+    })();
+    return () => { live = false; };
+  }, [addr, db?.union?.leader]);
+
+  // A Stellar wallet: a union leader (Init union.leader from R9, or the RolesRegistry now) gets the leader app.
+  if (db?.chain === STELLAR_CHAIN) return signer ? <Shell leader={Boolean(db?.union?.leader) || chainLeader} /> : <Holding />;
   if (!signer || db?.chain !== '137') return children;
   if (mode === 'old') return children;
   if (db?.union?.leader) {

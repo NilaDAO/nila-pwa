@@ -188,6 +188,10 @@ export default function Shell({ leader }) {
   const legacy = useLegacyBalances(s?.evmAddress);
   // Her land title on Polygon or on Stellar (src/register/titles.js) decides registration.
   const titleCount = useTitleCount(s?.evmAddress, s?.stellarAddress);
+  // No land title (28 Oct): the app opens on the Crop plan, where the title is minted; a link to another tab stays.
+  useEffect(() => {
+    if (!titleCount.loading && titleCount.count === 0 && !readTab()) window.location.hash = '#/crop';
+  }, [titleCount.loading, titleCount.count]);
   const qc = useQueryClient();
   const [retry, setRetry] = useState();
   const again = async () => {
