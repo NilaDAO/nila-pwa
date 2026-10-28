@@ -86,6 +86,14 @@ export function SlideBar({ label, onPrev, onNext, prevLabel, nextLabel }) {
 const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear() - y0) * 12 + t.getMonth() - 9 + (t.getDate() - 1) / 31; };
 
 /** The area card (an area picked): her year as bars, sales, Back and Accept Area N. */
+// Ink on a light crop colour, white on a dark one (black gram's grey, Cumbu Napier's green).
+const lightBg = (hex) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return true;
+  const n = parseInt(m[1], 16);
+  return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 140;
+};
+
 export const sortedCrops = (crops) => (crops || []).slice().sort((a, b) => a.name.localeCompare(b.name));
 
 /** One area's crop in one season, picked from the catalogue (28 Oct): the crops as chips inside the row itself, which
@@ -104,7 +112,7 @@ export function CropSelect({ label, crops, current, currentName, disabled, onPic
             <button key={c.key} type="button" disabled={disabled} aria-pressed={on} onClick={() => { if (!on) onPick(c.key); }}
               style={{ height: 32, padding: '0 12px', borderRadius: R.round, border: 0, background: c.colour || C.muted,
                 boxShadow: on ? `0 0 0 2px ${C.ink}, 0 0 0 4px ${C.text}` : 'none', margin: on ? '0 4px' : 0,
-                color: C.ink, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: on || disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+                color: lightBg(c.colour) ? C.ink : C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: on || disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
               {c.name}
             </button>
           );
