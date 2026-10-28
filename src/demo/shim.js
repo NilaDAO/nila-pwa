@@ -117,6 +117,21 @@ export const demoQr = () => {
 /** Her Stellar address, from the fixtures (the static build has no Privy). */
 export const stellarOf = async (evm) => { await loaded; return fx.__users && Object.values(fx.__users).find((u) => u.address.toLowerCase() === String(evm).toLowerCase())?.stellar; };
 
+// A node POST whose body differs from every recording (28 Oct: the visitor's own answers, e.g. a crop plan's questions):
+// the last recorded POST to the same path for the same land (land_id, else plan_id), else to the same path.
+const ID_KEYS = ['land_id', 'plan_id', 'title_id'];
+function sameRequest(key, init) {
+  const path = key.split(' ').slice(0, 3).join(' ');
+  let body = {}; try { body = JSON.parse(typeof init.body === 'string' ? init.body : '{}') || {}; } catch { body = {}; }
+  const id = ID_KEYS.find((k) => body[k] != null);
+  const pool = { ...(fx['*'] || {}), ...(fx[who()] || {}) };
+  const same = Object.keys(pool).filter((k) => k.split(' ').slice(0, 3).join(' ') === path);
+  const byId = id ? same.filter((k) => { try { return JSON.parse(k.split(' ').slice(3).join(' ') || '{}')[id] === body[id]; } catch { return false; } }) : [];
+  const pick = (byId.length ? byId : same).slice(-1)[0];
+  if (pick) console.warn(`[demo-static] ${path}: answered as recorded for ${id ? `${id} ${body[id]}` : 'the same path'}`);
+  return pick ? pool[pick] : null;
+}
+
 function neutralRpc(m, key) {
   miss(key);
   if (m.method === 'getLedgerEntries') return { result: { entries: [], latestLedger: 1 } };
@@ -142,7 +157,7 @@ async function answer(c, init) {
     const out = c.list.map((m, i) => ({ jsonrpc: '2.0', id: m.id, ...(find(c.keys[i])?.rpc || neutralRpc(m, c.keys[i])) }));
     return reply(c.batch ? out : out[0]);
   }
-  const hit = find(c.keys[0]);
+  const hit = find(c.keys[0]) || (c.kind === 'node' && c.method === 'POST' ? sameRequest(c.keys[0], init) : null);
   if (hit) return reply(hit.body, hit.status, hit.ct);
   if (c.kind === 'get' && !c.keys[0].startsWith('horizon ')) return null;   // another site (tiles, images): the network
   miss(c.keys[0]);
