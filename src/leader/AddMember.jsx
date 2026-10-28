@@ -17,6 +17,7 @@ import { Card, CardButton, Row, Text } from '../shell/SettingsParts';
 import { useUnionInfo } from '../shell/SettingsParts';
 import { Notice, Primary } from '../plan/ui';
 import { useInviteLink, useKeypadClient, useKeypadMember } from '../keypad/hooks';
+import { useSendFieldPoints } from '../border/hooks';
 import { PointsStep, clearPoints, readPoints } from '../border/SendLocation';
 import { Loading } from '../register/Boot';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
@@ -181,4 +182,26 @@ export function KeypadPoints({ id, go }) {
     );
   }
   return <PointsStep evm={key} forName={m?.name || 'the member'} onDone={done} onBack={() => go(`tasks/member/${id}`)} />;
+}
+
+/** The leader's own land title (28 Oct, executive decision): one flow on the leader's phone, as for a keypad member —
+ *  the field points (R5–R7), then straight to the borders and the mint (L2a–L4) of the job they start. */
+export function LeaderOwnPoints({ go }) {
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const evm = s?.evmAddress;
+  const send = useSendFieldPoints();
+  const done = () => send.mutate({ points: readPoints(evm).points, farm: (readPoints(evm).farm || '').trim(), union: cfg?.union },
+    { onSuccess: (job) => { clearPoints(evm); go(`tasks/border/${job.id}`); } });
+  if (send.isPending) return <Loading />;
+  if (send.error) {
+    return (
+      <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}
+        header={{ title: 'Field points', onBack: () => go('crop') }}>
+        <Text style={{ color: C.coral }}>{send.error.message}</Text>
+        <Primary onClick={done}>Try again</Primary>
+      </MapCard>
+    );
+  }
+  return <PointsStep evm={evm} onDone={done} onBack={() => go('crop')} />;
 }

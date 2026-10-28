@@ -28,7 +28,13 @@ import { MapFrame, MapStage, anim, btnDisabled, btnPrimary, btnSecondary, cardTi
 const UNIONS = [{ name: 'Mother Theresa Union', rep: 'Mrs. Rosalie Susairaj', polygon: '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070',
   location: [11.878671, 78.964561] }];
 // No R13 any more (26 Oct): every member starts in assist mode; the identity check or Settings switches to self.
-const STEPS = ['points', 'sheet', 'union', 'notify', 'done'];
+// After the code (28 Oct, executive decision): R9 union and R10 updates, then straight to the Crop plan; the field
+// points (R5–R8 → R14) start from its "Mint a new land title" (#/crop/register), never before the app.
+const START_STEPS = ['union', 'notify'];
+const FIELD_STEPS = ['points', 'sheet', 'done'];
+const onboardedKey = (evm) => `nila.reg.onboarded.${(evm || '').toLowerCase()}`;
+export const onboarded = (evm) => { try { return localStorage.getItem(onboardedKey(evm)) === '1'; } catch { return false; } };
+const markOnboarded = (evm) => { try { localStorage.setItem(onboardedKey(evm), '1'); } catch { /* not kept */ } };
 
 // Her union per wallet, on the phone (notes reg-recover: a recover skips R9 when it is there). The leader flag is
 // checked again on the chain at every recover, never taken from here.
@@ -205,7 +211,7 @@ export function NotifyStep({ evm, onDone }) {
 }
 
 /** R14: sends the points saved on the phone (now, or once online), then waits for the title. */
-function DoneStep({ evm, reg, onTitle, onRestart }) {
+function DoneStep({ evm, reg, onTitle, onRestart, cfgUnion }) {
   const online = useOnline();
   const mine = useMyBorderJob();
   const send = useSendFieldPoints();
@@ -214,61 +220,39 @@ function DoneStep({ evm, reg, onTitle, onRestart }) {
   useEffect(() => {
     if (online && pending && !send.isPending && !send.isSuccess && !send.isError && !mine.isLoading
       && !(mine.data && mine.data.status !== 'failed')) {
-      send.mutate({ points: q.points, farm: (q.farm || '').trim(), union: reg.union?.address }, { onSuccess: () => clearPoints(evm) });
+      send.mutate({ points: q.points, farm: (q.farm || '').trim(), union: reg.union?.address || cfgUnion }, { onSuccess: () => clearPoints(evm) });
     }
-  }, [online, pending, send, mine.isLoading, mine.data, q, reg, evm]);
-  useEffect(() => { if (mine.data?.status === 'minted') { clearDemoNew(evm); onTitle(); } }, [mine.data, onTitle, evm]);
-  // A union leader does not wait on R14: once her points are with the node the app opens as the leader app.
-  // A union leader does not wait on R14: once her points are with the node she goes on in the leader app (her own
-  // title waits for a border check like any member's). Marked per wallet, so the shell does not bring her back here.
-  // A reload, not onTitle (28 Oct): the shell's leader flag comes from the union record read at start (StellarGate),
-  // so without one the shell still sees a member and brings her straight back to R14.
+  }, [online, pending, send, mine.isLoading, mine.data, q, reg, evm, cfgUnion]);
+  // Once her points are with the node, back to the Crop plan (28 Oct): its card says the union mints the title (a
+  // leader checks and mints there), so nobody waits on R14.
   useEffect(() => {
-    if (reg.union?.leader && !pending && mine.data) {
-      markPointsSent(evm); clearDemoNew(evm);
-      window.location.hash = '#/crop';
-      window.location.reload();
-    }
-  }, [reg.union, pending, mine.data, evm]);
-  // Saved as a member at R9 but a leader on the chain (28 Oct): ask again every few seconds; once the roles registry
-  // says leader, write the union record again and reload, so the app opens as the leader app.
-  const { isLeader } = useIsLeader({ address: evm });
-  const isLeaderRef = useRef(isLeader);
-  isLeaderRef.current = isLeader;
-  useEffect(() => {
-    const u = unionByPolygon(reg.union?.polygon);
-    if (reg.union?.leader || !u || pending || !mine.data) return undefined;
-    let live = true;
-    const ask = async () => {
-      const leader = await saveUnionRecord((x, a) => isLeaderRef.current(x, a), u, evm);
-      if (!live || !leader) return;
-      live = false;
-      markPointsSent(evm); clearDemoNew(evm);
-      window.location.hash = '#/crop';
-      window.location.reload();
-    };
-    ask();
-    const t = setInterval(ask, 3000);
-    return () => { live = false; clearInterval(t); };
-  }, [reg.union, pending, mine.data, evm]);
+    if (!pending && mine.data && mine.data.status !== 'failed') { markPointsSent(evm); clearDemoNew(evm); onTitle(); }
+  }, [pending, mine.data, evm, onTitle]);
   const failed = mine.data?.status === 'failed' && !pending;
   return <Waiting job={failed ? mine.data : null} sending={pending && !online} error={send.error?.message}
     onRetry={failed ? onRestart : () => send.reset()} />;
 }
 
-export default function Registration({ onTitle }) {
+export default function Registration({ onTitle, fields = false }) {
   const s = useNilaSigner();
   const evm = s?.evmAddress;
   const { data: cfg } = useStellarConfig();
   const mine = useMyBorderJob();
   const [reg, setReg] = useState(() => readReg(evm));
   const save = (v) => { const next = { ...reg, ...v }; setReg(next); writeReg(evm, next); };
-  // A job already with the union (open or minted) means registration is done on this or another phone.
-  const open = mine.data && mine.data.status !== 'failed';
-  const step = open ? 'done' : (STEPS.includes(reg.step) ? reg.step : 'points');
-  const next = (extra = {}) => save({ ...extra, step: STEPS[STEPS.indexOf(step) + 1] });
+  const steps = fields ? FIELD_STEPS : START_STEPS;
+  // Fields: a job already with the union (open or minted) means its points are in.
+  const open = fields && mine.data && mine.data.status !== 'failed';
+  const step = open ? 'done' : (steps.includes(reg.step) ? reg.step : steps[0]);
+  const next = (extra = {}) => save({ ...extra, step: steps[steps.indexOf(step) + 1] });
+  // The start ends after R10: a reload, so the shell reads the union record R9 wrote (leader or member, StellarGate).
+  const started = () => { markOnboarded(evm); clearDemoNew(evm); save({ step: FIELD_STEPS[0] }); window.location.hash = '#/crop'; window.location.reload(); };
 
   if (mine.isLoading) return <Loading />;
+  if (!fields) {
+    if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={(union) => next({ union })} />;
+    return <NotifyStep evm={evm} onDone={started} />;
+  }
   // R5–R8: one map screen; the stage stays mounted, only the card changes (no remount of the map).
   if (step === 'points' || step === 'sheet') {
     return (
@@ -277,8 +261,5 @@ export default function Registration({ onTitle }) {
       </MapStage>
     );
   }
-  if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={(union) => next({ union })} />;
-  if (step === 'mode') return <ModeStep rep={reg.union?.rep} onDone={() => next()} />;
-  if (step === 'notify') return <NotifyStep evm={evm} onDone={() => next()} />;
-  return <DoneStep evm={evm} reg={reg} onTitle={onTitle} onRestart={() => { clearPoints(evm); save({ step: 'points' }); }} />;
+  return <DoneStep evm={evm} reg={reg} cfgUnion={cfg?.union} onTitle={onTitle} onRestart={() => { clearPoints(evm); save({ step: 'points' }); }} />;
 }

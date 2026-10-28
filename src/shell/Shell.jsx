@@ -34,10 +34,10 @@ import Settings from './Settings';
 import LeaderTasks, { PlanFor } from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
-import AddMember, { KeypadPoints } from '../leader/AddMember';
+import AddMember, { KeypadPoints, LeaderOwnPoints } from '../leader/AddMember';
 import { KeypadAccounts } from '../keypad/hooks';
 import LeaderBorder from '../border/LeaderBorder';
-import Registration, { pointsSent } from '../register/Registration';
+import Registration, { onboarded } from '../register/Registration';
 import { BootLoading } from '../register/Boot';
 import RegFrame from '../register/RegFrame';
 import { TITLE_KEYS, useTitleCount } from '../register/titles';
@@ -218,15 +218,16 @@ export default function Shell({ leader }) {
   if (titleCount.loading) return <TitleWait titleCount={titleCount} s={s} />;
   // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
   // A leader who has sent her field points works in the leader app while her title waits (no R14 loop).
-  if (!(leader && pointsSent(s?.evmAddress)) && (demoNew(s?.evmAddress) || (titleCount.count === 0 && s?.privyNew === true))) {
+  // 28 Oct: the start is R9 + R10 only, once per wallet; then the app (the field points come from the Crop plan).
+  if (!onboarded(s?.evmAddress) && (demoNew(s?.evmAddress) || (titleCount.count === 0 && s?.privyNew === true))) {
     const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
   }
 
   // "Mint a new land title" on the Crop plan's no-title card (28 Oct): R5–R14 for anyone signed in, leader included.
-  if (view === 'crop' && readArg() === 'register') {
+  if (view === 'crop' && readArg() === 'register' && !leader) {
     const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
-    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
+    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration fields onTitle={onTitle} /></div>;
   }
 
   let body;
@@ -247,6 +248,7 @@ export default function Shell({ leader }) {
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
   // The leader app is the member app, extended (notes leader-missing): her Crop plan tab is her own plan (CP13 with
   // the leader tab bar); the union's plans to approve (L12) open from L1's To do.
+  else if (view === 'crop' && leader && readArg() === 'register') body = <LeaderOwnPoints go={go} />;
   else if (view === 'crop') body = <CropPlanFlow self={leader} />;   // a leader makes their own plan (never assist)
   else if (view === 'approvals' && leader) body = <LeaderPlans key={readArg() || 'one'} planId={readArg()} onBack={() => go('tasks')} />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
