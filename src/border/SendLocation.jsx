@@ -154,7 +154,7 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
       : undefined;
   const wait = unnamed || busy;
   return (
-    <MapFrame header={forName ? `Fields of ${forName}` : undefined} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
+    <MapFrame header={forName ? `Fields of ${forName}` : undefined} onBack={onBack} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
       selected={selected} onSelect={setSelected}>
       <div style={cardTitle}>{forName
         ? (n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field')
@@ -221,7 +221,6 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
         ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
         : <button type="button" style={btnSecondary} onClick={choose}>Choose on the map</button>)}
       {n > 0 && <button type="button" style={busy || second ? btnDisabled : btnSecondary} disabled={busy || second} onClick={finish}>{forName ? 'All fields have a point' : 'All my fields have a point'}</button>}
-      {onBack && <button type="button" style={btnSecondary} onClick={onBack}>Back</button>}
     </MapFrame>
   );
 }
