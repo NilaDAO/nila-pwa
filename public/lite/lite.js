@@ -348,7 +348,8 @@
         var img = new Image(); img.width = w; img.height = h; img.alt = 'Your land';
         img.onload = function () { box.innerHTML = ''; box.appendChild(img); };
         img.onerror = function () { var m = document.getElementById('mapmsg'); if (m) m.textContent = 'Your land title is ready. No map image right now.'; };
-        img.src = API + '/keypad/land?p=' + encodeURIComponent(q.p) + '&s=' + encodeURIComponent(q.s);
+        // The hosted static demo (static.js): the picture is a file of the site.
+        img.src = window.NILA_LITE_STATIC ? '/lite/demo-land.jpg' : API + '/keypad/land?p=' + encodeURIComponent(q.p) + '&s=' + encodeURIComponent(q.s);
       });
     });
   }
