@@ -7,8 +7,8 @@
 // - A moved wallet ('stellar'): Stellar mode (never today's Polygon app).
 // "Every start" is a cold start: sessionStorage clears when the app is closed from the task switcher.
 // Loaded only with Privy on; otherwise the app is unchanged.
-import { useEffect, useRef, useState } from 'react';
-import { useIsLeader } from '../hooks/useLoadFunds.ts';
+import { useEffect, useState } from 'react';
+import { useLeader, writeLeaderFlag } from '../shell/leader';
 import { UNIONS_ONE, saveUnionRecord } from '../register/Registration';
 import { useDataContext } from '../utils/NavigationContext';
 import { useNilaSigner } from '../wallet/signer';
@@ -39,34 +39,17 @@ export default function StellarGate({ children }) {
   useEffect(() => { setMode(readMode(addr)); }, [addr]);
   const choose = (m) => { try { sessionStorage.setItem(modeKey(addr), m); } catch { /* private mode */ } setMode(m); };
 
-  // The leader role from the chain too (28 Oct): the Init record R9 wrote is missing after a reset or a login that
-  // skips R9, which opened a leader in the member app. Asked until the roles contract answers; a yes is written back.
-  const { isLeader } = useIsLeader({ address: addr });
-  const isLeaderRef = useRef(isLeader);
-  isLeaderRef.current = isLeader;
-  const [chainLeader, setChainLeader] = useState(false);
-  useEffect(() => {
-    if (!addr || db?.union?.leader) return undefined;
-    let live = true;
-    (async () => {
-      for (let i = 0; i < 20 && live; i++) {
-        let r;
-        try { r = await isLeaderRef.current(UNIONS_ONE().polygon, addr); } catch { r = undefined; }
-        if (r !== undefined) {
-          if (r && live) { setChainLeader(true); await saveUnionRecord(async () => true, UNIONS_ONE(), addr).catch(() => {}); }
-          return;
-        }
-        await new Promise((ok) => setTimeout(ok, 500));
-      }
-    })();
-    return () => { live = false; };
-  }, [addr, db?.union?.leader]);
+  // The leader flag: shell/leader.js (the RolesRegistry; the Init record only while it has not answered). A yes the
+  // record lacks is written back with the union (as R9), a no corrects a record that says leader.
+  const record = db?.union;
+  const saveRecord = (l) => (record ? writeLeaderFlag(record)(l) : l ? saveUnionRecord(async () => true, UNIONS_ONE(), addr) : Promise.resolve());
+  const { leader } = useLeader(record?.address || UNIONS_ONE().polygon, addr, record?.leader, saveRecord);
 
-  // Which app: shell/start.js. A Stellar wallet's leader app: Init union.leader (R9) or the RolesRegistry now.
-  const open = appToOpen({ chain: db?.chain, signer: !!signer, leader: Boolean(db?.union?.leader), mode });
+  // Which app: shell/start.js.
+  const open = appToOpen({ chain: db?.chain, signer: !!signer, leader, mode });
   if (open === 'holding') return <Holding />;
   if (open === 'old') return children;
-  if (open === 'app') return <Shell leader={Boolean(db?.union?.leader) || chainLeader} />;
+  if (open === 'app') return <Shell leader={leader} />;
   if (open === 'leaderStart') return <LeaderStart onOld={() => choose('old')} onNew={() => { signer.stellarSetup?.run(); choose('new'); }} />;
   return <MoveFlow onMoved={() => window.location.reload()} onRepay={() => choose('old')} />;
 }

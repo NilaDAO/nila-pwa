@@ -8,9 +8,9 @@
 // the phone); R9 lists today's one union from /stellar/config, its name and leader from the app (no union names on
 // the node yet), and 'Filter on my region' changes nothing with one union. Recover (only the missing R9 / R13 / R10)
 // is src/register/RecoverSteps.jsx.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
-import { useIsLeader } from '../hooks/useLoadFunds.ts';
+import { checkLeader } from '../shell/leader';
 import { setDBitem } from '../utils/db';
 import { useNilaSigner } from '../wallet/signer';
 import { subscribeUser } from '../features/apis/pushManager';
@@ -144,22 +144,12 @@ function Choice({ checked, onClick, title, sub, icon }) {
 export function UnionStep({ union, evm, onDone }) {
   const [pick, setPick] = useState(0);
   const [busy, setBusy] = useState(false);
-  const { isLeader } = useIsLeader({ address: evm });
-  // isLeader answers undefined until its roles contract is loaded (28 Oct: a leader was saved as a member and waited
-  // on R14): read through a ref and ask again until there is an answer, as RecoverSteps does.
-  const isLeaderRef = useRef(isLeader);
-  isLeaderRef.current = isLeader;
   // As today's union step (components/Forms/memberUnion.js): the union goes into Init with the leader check on
   // the Polygon RolesRegistry, so a leader opens the leader app.
   const saveUnion = async () => {
     setBusy(true);
     const u = UNIONS[pick];
-    let leader;
-    for (let i = 0; i < 16; i++) {
-      leader = await saveUnionRecord((x, a) => isLeaderRef.current(x, a), u, evm);
-      if (leader !== undefined) break;
-      await new Promise((ok) => setTimeout(ok, 500));
-    }
+    const leader = await saveUnionRecord(checkLeader, u, evm);   // shell/leader.js retries until the chain answers
     setBusy(false);
     onDone({ ...u, address: union, leader: !!leader });
   };

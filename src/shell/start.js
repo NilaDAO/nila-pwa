@@ -5,14 +5,17 @@
 
 /**
  * Which app opens (StellarGate). chain: the Init record's chain ('stellar', '137' or none); signer: whether the
- * signer is ready; leader: the Init union record says leader; mode: this start's choice ('old' | 'new' | null).
- * → 'app' (the Stellar app, Shell) | 'holding' (waits for the signer) | 'old' (today's Polygon app)
+ * signer is ready; leader: true / false, or undefined while not known yet (shell/leader.js); mode: this start's
+ * choice ('old' | 'new' | null).
+ * → 'app' (the Stellar app, Shell) | 'holding' (waits for the signer, or for the leader flag: a leader never opens
+ *   the member app first) | 'old' (today's Polygon app)
  *   | 'leaderStart' (a Polygon leader picks the app) | 'move' (a Polygon member moves to Stellar).
  */
 export function appToOpen({ chain, signer, leader, mode }) {
-  if (chain === 'stellar') return signer ? 'app' : 'holding';
+  if (chain === 'stellar') return signer && leader !== undefined ? 'app' : 'holding';
   if (!signer || chain !== '137') return 'old';
   if (mode === 'old') return 'old';
+  if (leader === undefined) return 'holding';
   if (leader) return mode === 'new' ? 'app' : 'leaderStart';
   return 'move';
 }
