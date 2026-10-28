@@ -99,10 +99,12 @@ export function CropSelect({ label, crops, current, currentName, disabled, onPic
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {list.map((c) => {
           const on = c.key === current;
+          // Each chip in its crop's colour, as its bar (28 Oct); the crop now has a white ring.
           return (
             <button key={c.key} type="button" disabled={disabled} aria-pressed={on} onClick={() => { if (!on) onPick(c.key); }}
-              style={{ height: 32, padding: '0 12px', borderRadius: R.round, border: on ? `2px solid ${C.accent}` : 0, background: on ? 'transparent' : C.ink,
-                color: on ? C.accent : C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: on || disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+              style={{ height: 32, padding: '0 12px', borderRadius: R.round, border: 0, background: c.colour || C.muted,
+                boxShadow: on ? `0 0 0 2px ${C.ink}, 0 0 0 4px ${C.text}` : 'none', margin: on ? '0 4px' : 0,
+                color: C.ink, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: on || disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
               {c.name}
             </button>
           );
@@ -118,7 +120,7 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
   // picked (28 Oct): crops chosen on this area's rows, not sent yet (slot → crop key); the accept button then reads
   // Update crop plan and sends them all (onUpdate).
   const changed = Object.keys(picked).length > 0;
-  const nameOf = (key) => (crops || []).find((c) => c.key === key)?.name || key;
+  const cropOf = (key) => (crops || []).find((c) => c.key === key);
   const [open, setOpen] = useState(null);   // the season row whose crop list is open
   const seasons = plan.plan.seasons || [];
   // A row merged with other areas (same crop that season) counts here by this area's share of its acres.
@@ -157,9 +159,9 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
               <div key={rowKey} style={open === rowKey ? { background: C.raised, borderRadius: 12, margin: '4px -10px', padding: '2px 10px 10px' } : undefined}>
               <button type="button" disabled={readOnly || !onCrop} onClick={() => setOpen(open === rowKey ? null : rowKey)} aria-label={`Change ${r.name}`} aria-expanded={open === rowKey}
                 style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30, padding: 0, border: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: readOnly ? 'default' : 'pointer' }}>
-                <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: picked[r.slot] ? C.accent : C.text }}>{picked[r.slot] ? nameOf(picked[r.slot]) : r.name}</span>
+                <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{picked[r.slot] ? cropOf(picked[r.slot])?.name || picked[r.slot] : r.name}</span>
                 <span style={{ position: 'relative', flexGrow: 1, height: 14 }}>
-                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: r.colour || C.muted }} />
+                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: (picked[r.slot] && cropOf(picked[r.slot])?.colour) || r.colour || C.muted }} />
                 </span>
               </button>
               {open === rowKey && (
