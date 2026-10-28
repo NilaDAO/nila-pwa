@@ -2,7 +2,7 @@
 // CP12 waiting for the leader (nila-design boards CropPlanIntro … CropPlanPending-590i). Copy from the
 // boards; DESIGN GAPs: no map yet (P4c), no suggested crops on CP4 (no source), CP9 shows the
 // engine's one explanation text (16 Oct), CP6/CP5 answers mapped to numbers/keys in hooks.js.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bouncing } from '../register/RegFrame';
 import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,7 +20,7 @@ import { useTitleName } from './hooks';
 import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import CropsStep from './CropsStep';
-import { AreaCard, SEASON, SlideBar, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
+import { AreaCard, CropSelect, SEASON, SlideBar, sortedCrops, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
 import { shareOn } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
@@ -57,7 +57,7 @@ function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
 
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
-function PlanView({ plan, checked, onAccept, readOnly, areaNo = (z) => z, acceptLabel = 'Accept the plan' }) {
+function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, areaNo = (z) => z, acceptLabel = 'Accept the plan' }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
@@ -71,6 +71,7 @@ function PlanView({ plan, checked, onAccept, readOnly, areaNo = (z) => z, accept
   const above = seasons.reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.cash_above_cap || 0), 0), 0);
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance.due)).sort().pop();
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
+  const [open, setOpen] = useState(null);   // the season whose areas' crops are open
   return (
     <>
       {!readOnly && <TapLine done={checked.size} total={zones.length} />}
@@ -86,11 +87,24 @@ function PlanView({ plan, checked, onAccept, readOnly, areaNo = (z) => z, accept
             const sows = new Set(s.rows.map((r) => r.sow).filter(Boolean));
             const by = (p.shares || []).filter((sh) => sows.has(sh.from_date) && sh.final_date).map((sh) => sh.final_date).sort().pop();
             return (
-              <tr key={s.slot} style={{ borderTop: `1px solid ${C.raised}` }}>
-                <td style={{ padding: '8px 0' }}><b>{SEASON[s.slot]}</b></td>
+              <Fragment key={s.slot}>
+              {/* A tap on the season opens its areas' crops (28 Oct, replaces Change my plan): one list per area. */}
+              <tr onClick={!readOnly && onCrop ? () => setOpen(open === s.slot ? null : s.slot) : undefined} aria-expanded={open === s.slot}
+                style={{ borderTop: `1px solid ${C.raised}`, cursor: !readOnly && onCrop ? 'pointer' : 'default' }}>
+                <td style={{ padding: '8px 0' }}><b>{SEASON[s.slot]}</b>{!readOnly && onCrop && <span style={{ color: C.muted }}> {open === s.slot ? '▴' : '▾'}</span>}</td>
                 <td>{by ? new Date(by).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{inr(cash)}</td>
               </tr>
+              {open === s.slot && (
+                <tr><td colSpan={3} style={{ paddingBottom: 8 }}>
+                  {zones.map((z) => {
+                    const r = s.rows.find((x) => zonesOf(x).includes(z));
+                    return <CropSelect key={z} label={`Area ${areaNo(z)}`} crops={sortedCrops(crops)} current={r?.crop} currentName={r?.name} disabled={changing}
+                      onPick={(key) => { setOpen(null); onCrop(z, s.slot, key); }} />;
+                  })}
+                </td></tr>
+              )}
+              </Fragment>
             );
           })}
           {p.trees?.discount > 0 && (
@@ -371,6 +385,15 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   if (!forLand && !self && assisted() && !approved) return <AssistPlan map={map} name={name} waiting={plan?.status === 'accepted'} />;
   const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');
   const back = (to) => () => setStep(to);
+  // A crop picked for one area in one season (28 Oct, replaces Change my plan's free text): a new version with that
+  // crop there; the node re-plans around it (her change is followed unless a hard fact refuses it).
+  const changeCrop = async (zone, slot, key) => {
+    setError(undefined);
+    try {
+      const res = await revise.mutateAsync({ planId: plan.id, note: '', changes: { [zone]: { [slot]: key } } });
+      setAfterMake('plan'); setJobId(res.job_id); setStep('making');
+    } catch (e) { setError(e.message); }
+  };
 
   if (at === 'record') {
     // CP1 / CP2 (boards CropPlanPending, CropPlanPending-n9mn-kewp). DESIGN GAPs: no "Main issues" (the
@@ -534,19 +557,11 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
             nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => pickArea(next)} onAll={toTerms} acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined}
             onBack={() => pickArea(null)}
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
-            crops={catalogue.data?.crops} changing={revise.isPending}
-            onCrop={async (r, key) => {
-              // A season row's crop picked from the list (28 Oct, replaces Change my plan's free text): a new version
-              // with that crop on this area in that season; the node re-plans around it (her change is followed).
-              setError(undefined);
-              try {
-                const res = await revise.mutateAsync({ planId: plan.id, note: '', changes: { [area]: { [r.slot]: key } } });
-                setAfterMake('plan'); setJobId(res.job_id); setStep('making');
-              } catch (e) { setError(e.message); }
-            }}
+            crops={catalogue.data?.crops} changing={revise.isPending} onCrop={(r, key) => changeCrop(area, r.slot, key)}
             onRemove={() => setRemoving(area)} />
         ) : (
           <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={toTerms} readOnly={readOnly}
+            crops={catalogue.data?.crops} changing={revise.isPending} onCrop={changeCrop}
             acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined} />
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}

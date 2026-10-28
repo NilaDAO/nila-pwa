@@ -86,6 +86,25 @@ export function SlideBar({ label, onPrev, onNext, prevLabel, nextLabel }) {
 const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear() - y0) * 12 + t.getMonth() - 9 + (t.getDate() - 1) / 31; };
 
 /** The area card (an area picked): her year as bars, sales, Back and Accept Area N. */
+export const sortedCrops = (crops) => (crops || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+
+/** One area's crop in one season, picked from the catalogue (28 Oct): the change is sent once a different crop is
+ *  picked. current: the crop now (none: an empty season). */
+export function CropSelect({ label, crops, current, currentName, disabled, onPick }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 8px', fontSize: 14, color: C.muted }}>
+      <span style={{ whiteSpace: 'nowrap', minWidth: 64 }}>{label}</span>
+      <select aria-label={`Crop for ${label}`} disabled={disabled || !crops.length} defaultValue={current || ''}
+        onChange={(e) => { if (e.target.value && e.target.value !== current) onPick(e.target.value); }}
+        style={{ flexGrow: 1, minWidth: 0, height: 40, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 14, padding: '0 10px' }}>
+        {!current && <option value="" disabled>No crop</option>}
+        {current && !crops.some((c) => c.key === current) && <option value={current}>{currentName || current}</option>}
+        {crops.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+      </select>
+    </label>
+  );
+}
+
 /** crops: the catalogue's crops for the season rows' list; onCrop(row, cropKey): that crop instead on this area in that
  *  row's season; changing: a change is being sent. */
 export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, acceptLabel = 'Accept the plan' }) {
@@ -121,7 +140,7 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
           {rows.map((r) => {
             const s0 = Math.max(0, Math.min(12, at(r.sow))); const s1 = Math.max(s0 + 0.3, Math.min(12, at(r.harvest)));
             const rowKey = `${r.slot}-${r.crop}`;
-            const list = (crops || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+            const list = sortedCrops(crops);
             return (
               <Fragment key={rowKey}>
               <button type="button" disabled={readOnly || !onCrop} onClick={() => setOpen(open === rowKey ? null : rowKey)} aria-label={`Change ${r.name}`} aria-expanded={open === rowKey}
@@ -133,15 +152,8 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
               </button>
               {open === rowKey && (
                 // The crop list for this area in this season: picking one sends the change (a new plan version).
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 8px', fontSize: 14, color: C.muted }}>
-                  <span style={{ whiteSpace: 'nowrap' }}>{SEASON[r.slot] || r.slot}</span>
-                  <select aria-label={`Crop for ${SEASON[r.slot] || r.slot}`} disabled={changing || !list.length} defaultValue={r.crop}
-                    onChange={(e) => { if (e.target.value && e.target.value !== r.crop) { setOpen(null); onCrop(r, e.target.value); } }}
-                    style={{ flexGrow: 1, height: 40, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 14, padding: '0 10px' }}>
-                    {!list.some((c) => c.key === r.crop) && <option value={r.crop}>{r.name}</option>}
-                    {list.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
-                  </select>
-                </label>
+                <CropSelect label={SEASON[r.slot] || r.slot} crops={list} current={r.crop} currentName={r.name} disabled={changing}
+                  onPick={(key) => { setOpen(null); onCrop(r, key); }} />
               )}
               </Fragment>
             );
