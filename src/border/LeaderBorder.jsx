@@ -3,7 +3,7 @@
 // state picks the board: drawing → L2a (#retry-fN when a field is drawn again), ready → L2, a field → L3, every
 // field accepted or left out → L4 (mint). Data: the node's border job (O16). DESIGN GAP: no member names in the
 // app (the farm name or a short address stands in).
-import { cloneElement, useCallback, useState } from 'react';
+import { cloneElement, useCallback, useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
@@ -19,7 +19,6 @@ import { Notice } from '../plan/ui';
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
 export const memberName = (job) => job?.farm || job?.name || short(job?.polygon || job?.member);
-const pill = { background: 'rgba(18,18,18,0.85)', borderRadius: R.round, boxShadow: SHADOW };
 const btn = (primary) => ({ flex: 1, height: 44, borderRadius: R.button, border: 0, fontWeight: 700, fontSize: 14, fontFamily: FONT,
   background: primary ? C.accent : C.raised, color: primary ? C.ink : C.text });
 const DONE = ['accepted', 'left_out'];
@@ -31,16 +30,28 @@ const TOP = 0.4;
 function Frame({ name, onBack, backLabel, map, children }) {
   const drag = useSheetDrag();   // the drag line as on R5 (all map screens, 21 Oct)
   const full = map ? cloneElement(map, { height: '100%', fitBottom: Math.round(window.innerHeight * (1 - TOP)) }) : null;
+  // The card's bottom padding clears the tab bar, so the shell's own padding would show map under the card at the end
+  // of the scroll: off while this screen is open (as the plan sheets, plan/ui.jsx).
+  useEffect(() => {
+    const shell = document.querySelector('[data-testid="shell"]');
+    if (!shell) return undefined;
+    const was = shell.style.paddingBottom;
+    shell.style.paddingBottom = '0px';
+    return () => { shell.style.paddingBottom = was; };
+  }, []);
+  const btnIn = { width: 40, height: 40, borderRadius: R.round, background: C.raised, border: 0, color: C.text, fontSize: 20, flexShrink: 0 };
   return (
     <div style={{ fontFamily: FONT, color: C.text, position: 'relative' }}>
       <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>{full}</div>
-      <button type="button" aria-label={backLabel} onClick={onBack} style={{ ...pill, position: 'fixed', zIndex: 6, left: 8, top: 12, width: 40, height: 40, border: 0, color: C.text, fontSize: 20 }}>←</button>
-      <h1 style={{ position: 'fixed', zIndex: 6, left: 56, right: 56, top: 12, margin: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
-        <span style={{ ...pill, padding: '0 14px', height: 40, display: 'flex', alignItems: 'center', fontSize: 16, fontWeight: 700 }}>{name}</span>
-      </h1>
       <div aria-hidden="true" style={{ height: `${TOP * 100}vh`, pointerEvents: 'none' }} />
-      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', minHeight: `${(1 - TOP) * 100}vh`, boxSizing: 'border-box', position: 'relative', zIndex: 5, padding: '14px 22px 24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW, ...drag.style }}>
+      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', minHeight: `${(1 - TOP) * 100}vh`, boxSizing: 'border-box', position: 'relative', zIndex: 5, padding: '14px 22px 104px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW, ...drag.style }}>
         {drag.handle}
+        {/* The header is a row inside the card, sticky while the card scrolls (as every map card, 21 Oct). */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 3, background: C.ink, margin: '-12px -22px 0', padding: '8px 22px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button type="button" aria-label={backLabel} onClick={onBack} style={btnIn}>←</button>
+          <h1 style={{ flexGrow: 1, margin: 0, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{name}</h1>
+          <span style={{ width: 40 }} />
+        </div>
         {children}
       </div>
     </div>
