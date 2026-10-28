@@ -221,9 +221,15 @@ function DoneStep({ evm, reg, onTitle, onRestart }) {
   // A union leader does not wait on R14: once her points are with the node the app opens as the leader app.
   // A union leader does not wait on R14: once her points are with the node she goes on in the leader app (her own
   // title waits for a border check like any member's). Marked per wallet, so the shell does not bring her back here.
+  // A reload, not onTitle (28 Oct): the shell's leader flag comes from the union record read at start (StellarGate),
+  // so without one the shell still sees a member and brings her straight back to R14.
   useEffect(() => {
-    if (reg.union?.leader && !pending && mine.data) { markPointsSent(evm); clearDemoNew(evm); onTitle(); }
-  }, [reg.union, pending, mine.data, evm, onTitle]);
+    if (reg.union?.leader && !pending && mine.data) {
+      markPointsSent(evm); clearDemoNew(evm);
+      window.location.hash = '#/crop';
+      window.location.reload();
+    }
+  }, [reg.union, pending, mine.data, evm]);
   // Saved as a member at R9 but a leader on the chain (28 Oct): ask again every few seconds; once the roles registry
   // says leader, write the union record again and reload, so the app opens as the leader app.
   const { isLeader } = useIsLeader({ address: evm });
