@@ -13,7 +13,7 @@ import { CheckRow, Choice, Notice, Primary, Sheet, Steps, inr, muted } from './u
 import { Sheet as BaseSheet } from './ui';
 import { BasisDrawer, Drawer, InfoButton } from './Drawer';
 import { useMintCropShares } from './mint';
-import { TxScreens } from '../stellar/TxStatus';
+import { NoticeScreen, TxScreens } from '../stellar/TxStatus';
 import MoneyChart from './MoneyChart';
 import { areasOf, summarize, useFieldRecord } from './record';
 import { useTitleName } from './hooks';
@@ -378,6 +378,15 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // CP1 / CP2 (boards CropPlanPending, CropPlanPending-n9mn-kewp). DESIGN GAPs: no "Main issues" (the
     // oracle detects none yet, design Q20), no "Add your trees and water sources" row (A5 not built).
     if (field.isLoading) return <Loading />;
+    // The leader with a member (forLand): the member's help QR is already scanned and a 5-minute session would run
+    // out long before the record (up to an hour), so an N-board says to try again later and closes itself (28 Oct).
+    if (!record && forLand) {
+      return (
+        <NoticeScreen title="The field record is not ready yet" onClose={forLand.onClose}
+          text="Nila is still building this member's field record from the satellite images. This can take up to an hour. Make the crop plan later; the member shows their QR again then."
+          rows={[['Member', forLand.label || name], ['Land title', String(forLand.landId)]]} />
+      );
+    }
     if (!record) return <Pending map={map} name={name} error={field.error} />;
     const sum = summarize(record);
     return (

@@ -84,7 +84,9 @@ function MemberPlan({ route }) {
   const api = usePlanClient();
   const m = (useUnionMembers(api).data || []).find((x) => x.route === route);
   if (!m) return <BootLoading />;
-  return <CropPlanFlow forLand={{ landId: Number(m.titleId || m.lands[0]), recordHash: m.recordHash, evm: m.polygon, account: m.address, label: m.label }} />;
+  // Close (a notice that cannot be finished now): back where the leader came from (Tasks or the member's G2).
+  const onClose = () => { if (window.history.length > 1) window.history.back(); else window.location.hash = '#/tasks'; };
+  return <CropPlanFlow forLand={{ landId: Number(m.titleId || m.lands[0]), recordHash: m.recordHash, evm: m.polygon, account: m.address, label: m.label, onClose }} />;
 }
 
 function TasksView({ leader, go }) {
