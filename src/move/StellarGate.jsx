@@ -16,7 +16,7 @@ import MoveFlow, { LeaderStart } from './MoveFlow';
 import Shell from '../shell/Shell';
 import RegFrame from '../register/RegFrame';
 import { BootLoading } from '../register/Boot';
-import { STELLAR_CHAIN } from './hooks';
+import { appToOpen } from '../shell/start';
 
 // This start only, per wallet: 'old' (today's app) or 'new' (Stellar, leaders).
 const modeKey = (addr) => `nila.start:${(addr || '').toLowerCase()}`;
@@ -62,13 +62,11 @@ export default function StellarGate({ children }) {
     return () => { live = false; };
   }, [addr, db?.union?.leader]);
 
-  // A Stellar wallet: a union leader (Init union.leader from R9, or the RolesRegistry now) gets the leader app.
-  if (db?.chain === STELLAR_CHAIN) return signer ? <Shell leader={Boolean(db?.union?.leader) || chainLeader} /> : <Holding />;
-  if (!signer || db?.chain !== '137') return children;
-  if (mode === 'old') return children;
-  if (db?.union?.leader) {
-    if (mode === 'new') return <Shell leader />;
-    return <LeaderStart onOld={() => choose('old')} onNew={() => { signer.stellarSetup?.run(); choose('new'); }} />;
-  }
+  // Which app: shell/start.js. A Stellar wallet's leader app: Init union.leader (R9) or the RolesRegistry now.
+  const open = appToOpen({ chain: db?.chain, signer: !!signer, leader: Boolean(db?.union?.leader), mode });
+  if (open === 'holding') return <Holding />;
+  if (open === 'old') return children;
+  if (open === 'app') return <Shell leader={Boolean(db?.union?.leader) || chainLeader} />;
+  if (open === 'leaderStart') return <LeaderStart onOld={() => choose('old')} onNew={() => { signer.stellarSetup?.run(); choose('new'); }} />;
   return <MoveFlow onMoved={() => window.location.reload()} onRepay={() => choose('old')} />;
 }

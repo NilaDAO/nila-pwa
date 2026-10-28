@@ -23,6 +23,7 @@ import MyMachine from '../machine/MyMachine';
 import { ReadyShareRows, TakeUp, rowOf, useMyShares } from '../loan/MyShares';
 import MapStage from './MapStage';
 import { ShellLookCtx } from './stageCtx';
+import { firstTab, screenToOpen } from './start';
 import { HarvestGroup, HarvestList } from '../leader/Harvests';
 import MapCard from './MapCard';
 import { SlideBar } from '../plan/PlanResult';
@@ -198,8 +199,10 @@ export default function Shell({ leader }) {
   const titleCount = useTitleCount(s?.evmAddress, s?.stellarAddress);
   // No land title (28 Oct): the app opens on the Crop plan, where the title is minted; a link to another tab stays.
   useEffect(() => {
-    if (!titleCount.loading && titleCount.count === 0 && !readTab()) window.location.hash = '#/crop';
-  }, [titleCount.loading, titleCount.count]);
+    if (!readTab() && firstTab({ titles: titleCount }) === 'crop') window.location.hash = '#/crop';
+  }, [titleCount.loading, titleCount.count]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The start steps end without a reload (28 Oct): the shell reads onboarded() again.
+  const [, setStarted] = useState(0);
   const qc = useQueryClient();
   const [retry, setRetry] = useState();
   const again = async () => {
@@ -227,20 +230,17 @@ export default function Shell({ leader }) {
   // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
   // A leader is also a member (notes leader-missing): the same gate applies to her; with a title she never sees it.
   // Until her titles are known she sees the registration ground, not a flash of the tab bar.
-  if (titleCount.loading) return <TitleWait titleCount={titleCount} s={s} />;
-  // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
-  // A leader who has sent her field points works in the leader app while her title waits (no R14 loop).
-  // 28 Oct: the start is R9 + R10 only, once per wallet; then the app (the field points come from the Crop plan).
-  if (!onboarded(s?.evmAddress) && (demoNew(s?.evmAddress) || (titleCount.count === 0 && s?.privyNew === true))) {
-    const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
-    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
+  // Which screen: shell/start.js (titles loading, the start steps R9 + R10 once per wallet, a member's field points, a tab).
+  const screen = screenToOpen({ titles: titleCount, onboarded: onboarded(s?.evmAddress), demoNew: demoNew(s?.evmAddress),
+    privyNew: s?.privyNew, tab: view, arg: readArg(), leader });
+  if (screen === 'titleWait') return <TitleWait titleCount={titleCount} s={s} />;
+  const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
+  if (screen === 'start') {
+    const onStarted = () => { go('crop'); setStarted((n) => n + 1); };
+    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} onStarted={onStarted} /></div>;
   }
-
-  // "Mint a new land title" on the Crop plan's no-title card (28 Oct): R5–R14 for anyone signed in, leader included.
-  if (view === 'crop' && readArg() === 'register' && !leader) {
-    const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
-    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration fields onTitle={onTitle} /></div>;
-  }
+  // "Mint a new land title" on the Crop plan's no-title card (28 Oct): a member's R5–R14, full screen.
+  if (screen === 'fields') return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration fields onTitle={onTitle} /></div>;
 
   let body;
   if (view === 'assets') {

@@ -233,7 +233,7 @@ function DoneStep({ evm, reg, onTitle, onRestart, cfgUnion }) {
     onRetry={failed ? onRestart : () => send.reset()} />;
 }
 
-export default function Registration({ onTitle, fields = false }) {
+export default function Registration({ onTitle, onStarted, fields = false }) {
   const s = useNilaSigner();
   const evm = s?.evmAddress;
   const { data: cfg } = useStellarConfig();
@@ -245,8 +245,9 @@ export default function Registration({ onTitle, fields = false }) {
   const open = fields && mine.data && mine.data.status !== 'failed';
   const step = open ? 'done' : (steps.includes(reg.step) ? reg.step : steps[0]);
   const next = (extra = {}) => save({ ...extra, step: steps[steps.indexOf(step) + 1] });
-  // The start ends after R10: a reload, so the shell reads the union record R9 wrote (leader or member, StellarGate).
-  const started = () => { markOnboarded(evm); clearDemoNew(evm); save({ step: FIELD_STEPS[0] }); window.location.hash = '#/crop'; window.location.reload(); };
+  // The start ends after R10 (28 Oct: no reload): the shell opens the Crop plan; the leader app comes from the
+  // chain's roles (StellarGate), so the union record R9 wrote need not be read again.
+  const started = () => { markOnboarded(evm); clearDemoNew(evm); save({ step: FIELD_STEPS[0] }); onStarted?.(); };
 
   if (mine.isLoading) return <Loading />;
   if (!fields) {
