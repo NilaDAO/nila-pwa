@@ -57,7 +57,7 @@ function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
 
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
-function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) => z, acceptLabel = 'Accept the plan' }) {
+function PlanView({ plan, checked, onAccept, readOnly, areaNo = (z) => z, acceptLabel = 'Accept the plan' }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
@@ -142,8 +142,7 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
           : n.why || n.reason || JSON.stringify(n))).join('; ')}</Notice>
       )}
       {!readOnly && <Primary disabled={checked.size < zones.length} onClick={onAccept}>{acceptLabel}</Primary>}
-      {/* CP10: change it — a new version that follows her (Renew plan is on CP9). */}
-      {!readOnly && onChange && <button type="button" onClick={onChange} style={{ ...secondaryBtn, width: '100%', marginTop: 8 }}>Change my plan</button>}
+      {/* CP10: a crop is changed on its season row in the area card (28 Oct; Renew plan is on CP9). */}
     </>
   );
 }
@@ -226,7 +225,6 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     setError();
     try { await discard.mutateAsync(current.data.id); setCrops(new Set()); setRole(); setCows(); setMonths([]); setFarmCash(''); setJobId(); setStep(null); } catch (e) { setError(e.message); }
   };
-  const [changeNote, setChangeNote] = useState('');
   // An approved plan whose crop shares are already on her wallet opens on "made", not on "Make".
   const approvedId = current.data?.approval?.decision === 'approve' ? current.data.id : undefined;
   const checkMinted = mint.check;
@@ -536,23 +534,29 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
             nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => pickArea(next)} onAll={toTerms} acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined}
             onBack={() => pickArea(null)}
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
-            onCrop={(r) => { setChangeNote(`Area ${areaNo(area)}, ${SEASON[r.slot]}: instead of ${r.name}, `); setStep('change'); }}
+            crops={catalogue.data?.crops} changing={revise.isPending}
+            onCrop={async (r, key) => {
+              // A season row's crop picked from the list (28 Oct, replaces Change my plan's free text): a new version
+              // with that crop on this area in that season; the node re-plans around it (her change is followed).
+              setError(undefined);
+              try {
+                const res = await revise.mutateAsync({ planId: plan.id, note: '', changes: { [area]: { [r.slot]: key } } });
+                setAfterMake('plan'); setJobId(res.job_id); setStep('making');
+              } catch (e) { setError(e.message); }
+            }}
             onRemove={() => setRemoving(area)} />
         ) : (
-          <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={toTerms} onChange={() => setStep('change')} readOnly={readOnly}
+          <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={toTerms} readOnly={readOnly}
             acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined} />
         )}
-        {forLand && error && <p style={{ color: C.coral }}>{error}</p>}
+        {error && <p style={{ color: C.coral }}>{error}</p>}
         {removing && (() => {
-          // CP10 remove-area confirm (21 Oct): the node removes it by code (no Claude call); the same line goes into her
-          // Change my plan draft, so Claude hears of it with her next change.
+          // CP10 remove-area confirm (21 Oct): the node removes it by code (no Claude call).
           const label = `Area ${areaNo(removing)}`;
           const remove = async () => {
             setError(undefined);
             try {
               const r = await revise.mutateAsync({ planId: plan.id, note: '', changes: {}, remove: [removing] });
-              const line = `Remove ${label} from my plan: it is a left-over bit.`;
-              setChangeNote((n) => (n.includes(line) ? n : `${n.trim() ? `${n.trim()}\n` : ''}${line}`));
               setChecked((c) => { const n = new Set(c); n.delete(removing); return n; });
               setRemoving(null); pickArea(null); setAfterMake('plan'); setJobId(r.job_id); setStep('making');
             } catch (e) { setError(e.message); setRemoving(null); }
@@ -565,23 +569,6 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
             </Drawer>
           );
         })()}
-      </Sheet>
-    );
-  }
-  if (at === 'change' && plan) {
-    // DESIGN GAP: the board changes crops on the map (P4c); here she says what to change (/revise, her
-    // suggestion is followed unless a hard fact refuses it, LOAN_RULES §5).
-    const go = async () => {
-      setError(undefined);
-      try { const r = await revise.mutateAsync({ planId: plan.id, note: changeNote }); setJobId(r.job_id); setStep('making'); } catch (e) { setError(e.message); }
-    };
-    return (
-      <Sheet map={map} landName={name} title={forLand ? 'Change the plan' : 'Change my plan'} onBack={back('plan')}>
-        <p style={muted}>Tell us what to change and why. Your plan follows you unless a fact rules it out, and it says why.</p>
-        <textarea aria-label="What to change" value={changeNote} maxLength={1000} onChange={(e) => setChangeNote(e.target.value)}
-          style={{ width: '100%', minHeight: 100, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 14 }} />
-        {error && <p style={{ color: C.coral }}>{error}</p>}
-        <Primary disabled={!changeNote.trim() || revise.isPending} onClick={go}>Make my new plan</Primary>
       </Sheet>
     );
   }

@@ -1,8 +1,8 @@
 // CP10 (board CropPlanQ3-xdlz): the map is the list. The bar on top of the card switches seasons (overview) or
 // slides through her areas (an area picked); the area card shows her year as bars, its sales, and Accept Area N.
 // Spec: nila-design notes/page-member.md "cp-result". DESIGN GAPs, not built: Split this area and Merge with other
-// areas (no node call yet), changing a crop on the bars (a tap opens Change my plan with the crop named instead).
-import { useRef } from 'react';
+// areas (no node call yet). A crop is changed on its season row (28 Oct): a tap opens a list of the catalogue's crops.
+import { Fragment, useRef, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
 import { Notice, inr, muted } from './ui';
 
@@ -86,7 +86,10 @@ export function SlideBar({ label, onPrev, onNext, prevLabel, nextLabel }) {
 const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear() - y0) * 12 + t.getMonth() - 9 + (t.getDate() - 1) / 31; };
 
 /** The area card (an area picked): her year as bars, sales, Back and Accept Area N. */
-export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, acceptLabel = 'Accept the plan' }) {
+/** crops: the catalogue's crops for the season rows' list; onCrop(row, cropKey): that crop instead on this area in that
+ *  row's season; changing: a change is being sent. */
+export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, acceptLabel = 'Accept the plan' }) {
+  const [open, setOpen] = useState(null);   // the season row whose crop list is open
   const seasons = plan.plan.seasons || [];
   // A row merged with other areas (same crop that season) counts here by this area's share of its acres.
   const own = area?.area_m2 ? area.area_m2 / 4046.86 : null;
@@ -117,14 +120,30 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
         <div style={{ position: 'relative' }}>
           {rows.map((r) => {
             const s0 = Math.max(0, Math.min(12, at(r.sow))); const s1 = Math.max(s0 + 0.3, Math.min(12, at(r.harvest)));
+            const rowKey = `${r.slot}-${r.crop}`;
+            const list = (crops || []).slice().sort((a, b) => a.name.localeCompare(b.name));
             return (
-              <button key={`${r.slot}-${r.crop}`} type="button" disabled={readOnly} onClick={() => onCrop?.(r)} aria-label={`Change ${r.name}`}
+              <Fragment key={rowKey}>
+              <button type="button" disabled={readOnly || !onCrop} onClick={() => setOpen(open === rowKey ? null : rowKey)} aria-label={`Change ${r.name}`} aria-expanded={open === rowKey}
                 style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30, padding: 0, border: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: readOnly ? 'default' : 'pointer' }}>
                 <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
                 <span style={{ position: 'relative', flexGrow: 1, height: 14 }}>
                   <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: r.colour || C.muted }} />
                 </span>
               </button>
+              {open === rowKey && (
+                // The crop list for this area in this season: picking one sends the change (a new plan version).
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 8px', fontSize: 14, color: C.muted }}>
+                  <span style={{ whiteSpace: 'nowrap' }}>{SEASON[r.slot] || r.slot}</span>
+                  <select aria-label={`Crop for ${SEASON[r.slot] || r.slot}`} disabled={changing || !list.length} defaultValue={r.crop}
+                    onChange={(e) => { if (e.target.value && e.target.value !== r.crop) { setOpen(null); onCrop(r, e.target.value); } }}
+                    style={{ flexGrow: 1, height: 40, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 14, padding: '0 10px' }}>
+                    {!list.some((c) => c.key === r.crop) && <option value={r.crop}>{r.name}</option>}
+                    {list.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+                  </select>
+                </label>
+              )}
+              </Fragment>
             );
           })}
           {/* Soil covers (no bare soil in the dry months, 21 Oct): hatched bars, never a crop for sale. */}
