@@ -126,8 +126,18 @@ function neutralRpc(m, key) {
   return { error: { code: -32000, message: `demo: not recorded (${m.method})` } };
 }
 
+// A fresh demo number (__users[phone].demo_new, 1111111111 in the hosted demo, 28 Oct) registers again on every login
+// and nothing it does is kept: its field-points job shows only after it sent points in this session.
+const SENT = 'nila.demo.sent';
+const freshNow = () => Object.values(fx.__users || {}).some((u) => u.demo_new && u.address.toLowerCase() === who());
+
 async function answer(c, init) {
   await loaded;
+  if (c.kind === 'node' && freshNow()) {
+    if (c.method === 'POST' && /^node POST \/border\/points/.test(c.keys[0])) { try { sessionStorage.setItem(SENT, '1'); } catch { /* none */ } }
+    let sent = false; try { sent = sessionStorage.getItem(SENT) === '1'; } catch { /* none */ }
+    if (!sent && /^node GET \/border\/mine/.test(c.keys[0])) return reply({ job: null });
+  }
   if (c.kind === 'rpc') {
     const out = c.list.map((m, i) => ({ jsonrpc: '2.0', id: m.id, ...(find(c.keys[i])?.rpc || neutralRpc(m, c.keys[i])) }));
     return reply(c.batch ? out : out[0]);
@@ -159,7 +169,7 @@ async function cognito(op, b) {
   if (op === 'InitiateAuth') return ok({ ChallengeName: 'CUSTOM_CHALLENGE', Session: `demo-${phone}`, ChallengeParameters: { USERNAME: phone } });
   if (op === 'RespondToAuthChallenge') {
     if (String(b.ChallengeResponses?.ANSWER) !== '000000') return fail('NotAuthorizedException', 'Incorrect username or password.');
-    try { localStorage.setItem(`nila.demo.salt.${phone}`, b.ClientMetadata?.salt || ''); } catch { /* none */ }
+    try { localStorage.setItem(`nila.demo.salt.${phone}`, b.ClientMetadata?.salt || ''); sessionStorage.removeItem(SENT); } catch { /* none */ }
     setWho(u.address);
     return ok({ AuthenticationResult: { AccessToken: token(phone, 'access'), RefreshToken: token(phone, 'refresh'), IdToken: token(phone, 'id'), ExpiresIn: 3600, TokenType: 'Bearer' }, ChallengeParameters: {} });
   }
