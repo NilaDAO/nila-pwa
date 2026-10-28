@@ -8,7 +8,6 @@ import { C, FONT, R } from '../shell/tokens';
 import { DEMO_COGNITO } from '../utils/demoMode';
 import RegFrame, { Bouncing, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
-const MAX = 6;
 const DEMO_START = { lat: 11.88720, lng: 78.96594, acc: 0 };   // Viriyur, TN: among the real fields of the node's records
 const EMPTY = { points: [], farm: '', finish: false };
 // Per account: on a shared phone (assisted mode) one member's points never go out under the next member's login.
@@ -103,7 +102,7 @@ export function PointsStep({ evm, onDone, forName, onBack }) {
     return () => { live = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const add = (pt) => { save({ ...q, points: [...q.points, pt].slice(0, MAX) }); setName(''); };
+  const add = (pt) => { save({ ...q, points: [...q.points, pt] }); setName(''); };
   const saveHere = () => {
     setError(null);
     if (pan) { if (centre) add({ lat: centre.lat, lng: centre.lng, acc: 0, manual: true, ts: Math.floor(Date.now() / 1000) }); return; }
@@ -210,7 +209,7 @@ export function PointsStep({ evm, onDone, forName, onBack }) {
         ? <button type="button" style={busy || (pan && !centre) ? btnDisabled : btnPrimary} disabled={busy || (pan && !centre)} onClick={secondPoint}>Save the opposite point</button>
         : unnamed && name.trim()
         ? <button type="button" style={btnPrimary} onClick={storeName}>Next point</button>
-        : n < MAX && (ready
+        : (ready
           ? <button type="button" style={wait ? btnDisabled : btnPrimary} disabled={wait} onClick={saveHere}>Save this location</button>
           : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>)}
       {unnamed && !q.points[n - 1].two && (second
