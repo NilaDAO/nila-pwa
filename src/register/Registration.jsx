@@ -8,7 +8,7 @@
 // the phone); R9 lists today's one union from /stellar/config, its name and leader from the app (no union names on
 // the node yet), and 'Filter on my region' changes nothing with one union. Recover (only the missing R9 / R13 / R10)
 // is src/register/RecoverSteps.jsx.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
 import { useIsLeader } from '../hooks/useLoadFunds.ts';
 import { setDBitem } from '../utils/db';
@@ -139,12 +139,21 @@ export function UnionStep({ union, evm, onDone }) {
   const [pick, setPick] = useState(0);
   const [busy, setBusy] = useState(false);
   const { isLeader } = useIsLeader({ address: evm });
+  // isLeader answers undefined until its roles contract is loaded (28 Oct: a leader was saved as a member and waited
+  // on R14): read through a ref and ask again until there is an answer, as RecoverSteps does.
+  const isLeaderRef = useRef(isLeader);
+  isLeaderRef.current = isLeader;
   // As today's union step (components/Forms/memberUnion.js): the union goes into Init with the leader check on
   // the Polygon RolesRegistry, so a leader opens the leader app.
   const saveUnion = async () => {
     setBusy(true);
     const u = UNIONS[pick];
-    const leader = await saveUnionRecord(isLeader, u, evm);
+    let leader;
+    for (let i = 0; i < 16; i++) {
+      leader = await saveUnionRecord((x, a) => isLeaderRef.current(x, a), u, evm);
+      if (leader !== undefined) break;
+      await new Promise((ok) => setTimeout(ok, 500));
+    }
     setBusy(false);
     onDone({ ...u, address: union, leader: !!leader });
   };
@@ -215,6 +224,27 @@ function DoneStep({ evm, reg, onTitle, onRestart }) {
   useEffect(() => {
     if (reg.union?.leader && !pending && mine.data) { markPointsSent(evm); clearDemoNew(evm); onTitle(); }
   }, [reg.union, pending, mine.data, evm, onTitle]);
+  // Saved as a member at R9 but a leader on the chain (28 Oct): ask again every few seconds; once the roles registry
+  // says leader, write the union record again and reload, so the app opens as the leader app.
+  const { isLeader } = useIsLeader({ address: evm });
+  const isLeaderRef = useRef(isLeader);
+  isLeaderRef.current = isLeader;
+  useEffect(() => {
+    const u = unionByPolygon(reg.union?.polygon);
+    if (reg.union?.leader || !u || pending || !mine.data) return undefined;
+    let live = true;
+    const ask = async () => {
+      const leader = await saveUnionRecord((x, a) => isLeaderRef.current(x, a), u, evm);
+      if (!live || !leader) return;
+      live = false;
+      markPointsSent(evm); clearDemoNew(evm);
+      window.location.hash = '#/crop';
+      window.location.reload();
+    };
+    ask();
+    const t = setInterval(ask, 3000);
+    return () => { live = false; clearInterval(t); };
+  }, [reg.union, pending, mine.data, evm]);
   const failed = mine.data?.status === 'failed' && !pending;
   return <Waiting job={failed ? mine.data : null} sending={pending && !online} error={send.error?.message}
     onRetry={failed ? onRestart : () => send.reset()} />;
