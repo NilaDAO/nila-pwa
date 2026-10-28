@@ -335,16 +335,19 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   if (titles.data && !titles.data.length && !stellarTitle) {
     const refresh = () => { titles.refetch(); stellarTitles.refetch(); };
     const busy = titles.isFetching || stellarTitles.isFetching;
+    // Assist mode (28 Oct): the member mints nothing; the leader takes the field points and mints the land title.
+    const helped = !self && assisted();
     return (
       <Sheet map={noLandMap} landName="No land title yet">
         <p style={muted}>{openJob
           ? (self ? 'Your field points are with the union. Check the borders and mint your land title.' : 'Your field points are with the union. Your leader mints your land title.')
-          : 'Your crop plan starts when your land title is ready.'}</p>
+          : helped ? 'Your leader takes the field points at your farm and mints your land title. Your crop plan starts when it is ready.'
+            : 'Your crop plan starts when your land title is ready.'}</p>
         {(titles.isError || stellarTitles.isError) && <p style={{ ...muted, color: C.coral }}>Your land title could not be loaded.</p>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
           {openJob
             ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>{openJob.status === 'ready' ? 'Check borders and mint' : 'See my fields'}</Primary>
-            : <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
+            : !helped && <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
           <button type="button" onClick={refresh} disabled={busy} style={{ height: 44, borderRadius: 12, border: `1px solid ${C.muted}`,
             background: 'transparent', color: C.text, fontFamily: FONT, fontSize: 16, fontWeight: 700 }}>{busy ? 'Refreshing…' : 'Refresh'}</button>
         </div>
