@@ -2,7 +2,7 @@
 // slides through her areas (an area picked); the area card shows her year as bars, its sales, and Accept Area N.
 // Spec: nila-design notes/page-member.md "cp-result". DESIGN GAPs, not built: Split this area and Merge with other
 // areas (no node call yet). A crop is changed on its season row (28 Oct): a tap opens a list of the catalogue's crops.
-import { Fragment, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
 import { Notice, inr, muted } from './ui';
 
@@ -88,20 +88,27 @@ const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear
 /** The area card (an area picked): her year as bars, sales, Back and Accept Area N. */
 export const sortedCrops = (crops) => (crops || []).slice().sort((a, b) => a.name.localeCompare(b.name));
 
-/** One area's crop in one season, picked from the catalogue (28 Oct): the change is sent once a different crop is
- *  picked. current: the crop now (none: an empty season). */
+/** One area's crop in one season, picked from the catalogue (28 Oct): the crops as chips inside the row itself, which
+ *  grows to hold them (no list over the map); the crop now is marked. A tap on another crop sends the change.
+ *  label: a line above the chips (the overview's "Area N"). */
 export function CropSelect({ label, crops, current, currentName, disabled, onPick }) {
+  const list = current && !crops.some((c) => c.key === current) ? [{ key: current, name: currentName || current }, ...crops] : crops;
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 8px', fontSize: 14, color: C.muted }}>
-      <span style={{ whiteSpace: 'nowrap', minWidth: 64 }}>{label}</span>
-      <select aria-label={`Crop for ${label}`} disabled={disabled || !crops.length} defaultValue={current || ''}
-        onChange={(e) => { if (e.target.value && e.target.value !== current) onPick(e.target.value); }}
-        style={{ flexGrow: 1, minWidth: 0, height: 40, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 14, padding: '0 10px' }}>
-        {!current && <option value="" disabled>No crop</option>}
-        {current && !crops.some((c) => c.key === current) && <option value={current}>{currentName || current}</option>}
-        {crops.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
-      </select>
-    </label>
+    <div role="group" aria-label={`Crop${label ? ` for ${label}` : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0 2px' }}>
+      {label && <span style={{ fontSize: 14, fontWeight: 700 }}>{label}{!current && <span style={{ color: C.muted, fontWeight: 400 }}> · no crop</span>}</span>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {list.map((c) => {
+          const on = c.key === current;
+          return (
+            <button key={c.key} type="button" disabled={disabled} aria-pressed={on} onClick={() => { if (!on) onPick(c.key); }}
+              style={{ height: 32, padding: '0 12px', borderRadius: R.round, border: on ? `2px solid ${C.accent}` : 0, background: on ? 'transparent' : C.ink,
+                color: on ? C.accent : C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: on || disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+              {c.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -142,7 +149,8 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
             const rowKey = `${r.slot}-${r.crop}`;
             const list = sortedCrops(crops);
             return (
-              <Fragment key={rowKey}>
+              // Open, the row itself grows and holds the crops (28 Oct): a raised box around the bar and the chips.
+              <div key={rowKey} style={open === rowKey ? { background: C.raised, borderRadius: 12, margin: '4px -10px', padding: '2px 10px 10px' } : undefined}>
               <button type="button" disabled={readOnly || !onCrop} onClick={() => setOpen(open === rowKey ? null : rowKey)} aria-label={`Change ${r.name}`} aria-expanded={open === rowKey}
                 style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30, padding: 0, border: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: readOnly ? 'default' : 'pointer' }}>
                 <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
@@ -152,10 +160,10 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
               </button>
               {open === rowKey && (
                 // The crop list for this area in this season: picking one sends the change (a new plan version).
-                <CropSelect label={SEASON[r.slot] || r.slot} crops={list} current={r.crop} currentName={r.name} disabled={changing}
+                <CropSelect crops={list} current={r.crop} currentName={r.name} disabled={changing}
                   onPick={(key) => { setOpen(null); onCrop(r, key); }} />
               )}
-              </Fragment>
+              </div>
             );
           })}
           {/* Soil covers (no bare soil in the dry months, 21 Oct): hatched bars, never a crop for sale. */}

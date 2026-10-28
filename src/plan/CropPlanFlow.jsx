@@ -90,13 +90,14 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
               <Fragment key={s.slot}>
               {/* A tap on the season opens its areas' crops (28 Oct, replaces Change my plan): one list per area. */}
               <tr onClick={!readOnly && onCrop ? () => setOpen(open === s.slot ? null : s.slot) : undefined} aria-expanded={open === s.slot}
-                style={{ borderTop: `1px solid ${C.raised}`, cursor: !readOnly && onCrop ? 'pointer' : 'default' }}>
-                <td style={{ padding: '8px 0' }}><b>{SEASON[s.slot]}</b>{!readOnly && onCrop && <span style={{ color: C.muted }}> {open === s.slot ? '▴' : '▾'}</span>}</td>
+                style={{ borderTop: `1px solid ${C.raised}`, cursor: !readOnly && onCrop ? 'pointer' : 'default', background: open === s.slot ? C.raised : undefined }}>
+                <td style={{ padding: open === s.slot ? '8px 0 8px 10px' : '8px 0', borderRadius: open === s.slot ? '12px 0 0 0' : undefined }}><b>{SEASON[s.slot]}</b>{!readOnly && onCrop && <span style={{ color: C.muted }}> {open === s.slot ? '▴' : '▾'}</span>}</td>
                 <td>{by ? new Date(by).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{inr(cash)}</td>
+                <td style={{ textAlign: 'right', paddingRight: open === s.slot ? 10 : 0, borderRadius: open === s.slot ? '0 12px 0 0' : undefined }}>{inr(cash)}</td>
               </tr>
               {open === s.slot && (
-                <tr><td colSpan={3} style={{ paddingBottom: 8 }}>
+                // The season row itself grows (28 Oct): its areas' crops in the same raised box, no list over the map.
+                <tr style={{ background: C.raised }}><td colSpan={3} style={{ padding: '0 10px 10px', borderRadius: '0 0 12px 12px' }}>
                   {[...zones].sort((a, b) => Number(areaNo(a)) - Number(areaNo(b))).map((z) => {
                     const r = s.rows.find((x) => zonesOf(x).includes(z));
                     return <CropSelect key={z} label={`Area ${areaNo(z)}`} crops={sortedCrops(crops)} current={r?.crop} currentName={r?.name} disabled={changing}
