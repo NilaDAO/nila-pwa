@@ -114,7 +114,11 @@ export function CropSelect({ label, crops, current, currentName, disabled, onPic
 
 /** crops: the catalogue's crops for the season rows' list; onCrop(row, cropKey): that crop instead on this area in that
  *  row's season; changing: a change is being sent. */
-export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, acceptLabel = 'Accept the plan' }) {
+export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, picked = {}, onUpdate, acceptLabel = 'Accept the plan' }) {
+  // picked (28 Oct): crops chosen on this area's rows, not sent yet (slot → crop key); the accept button then reads
+  // Update crop plan and sends them all (onUpdate).
+  const changed = Object.keys(picked).length > 0;
+  const nameOf = (key) => (crops || []).find((c) => c.key === key)?.name || key;
   const [open, setOpen] = useState(null);   // the season row whose crop list is open
   const seasons = plan.plan.seasons || [];
   // A row merged with other areas (same crop that season) counts here by this area's share of its acres.
@@ -153,14 +157,14 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
               <div key={rowKey} style={open === rowKey ? { background: C.raised, borderRadius: 12, margin: '4px -10px', padding: '2px 10px 10px' } : undefined}>
               <button type="button" disabled={readOnly || !onCrop} onClick={() => setOpen(open === rowKey ? null : rowKey)} aria-label={`Change ${r.name}`} aria-expanded={open === rowKey}
                 style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30, padding: 0, border: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: readOnly ? 'default' : 'pointer' }}>
-                <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+                <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: picked[r.slot] ? C.accent : C.text }}>{picked[r.slot] ? nameOf(picked[r.slot]) : r.name}</span>
                 <span style={{ position: 'relative', flexGrow: 1, height: 14 }}>
                   <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: r.colour || C.muted }} />
                 </span>
               </button>
               {open === rowKey && (
                 // The crop list for this area in this season: picking one sends the change (a new plan version).
-                <CropSelect crops={list} current={r.crop} currentName={r.name} disabled={changing}
+                <CropSelect crops={list} current={picked[r.slot] || r.crop} currentName={r.name} disabled={changing}
                   onPick={(key) => { setOpen(null); onCrop(r, key); }} />
               )}
               </div>
@@ -218,9 +222,10 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
         <button type="button" onClick={onBack} style={{ ...btn, background: C.raised, color: C.text }}>Back</button>
-        {!readOnly && !accepted && <button type="button" onClick={onAccept} style={{ ...btn, background: C.accent, color: C.ink }}>Accept {name}</button>}
-        {!readOnly && accepted && nextName && <button type="button" onClick={onNext} style={{ ...btn, background: C.accent, color: C.ink }}>Next: {nextName}</button>}
-        {!readOnly && accepted && !nextName && <button type="button" onClick={onAll} style={{ ...btn, background: C.accent, color: C.ink }}>{acceptLabel}</button>}
+        {!readOnly && changed && <button type="button" disabled={changing} onClick={onUpdate} style={{ ...btn, background: C.accent, color: C.ink, opacity: changing ? 0.5 : 1 }}>{changing ? 'Updating…' : 'Update crop plan'}</button>}
+        {!readOnly && !changed && !accepted && <button type="button" onClick={onAccept} style={{ ...btn, background: C.accent, color: C.ink }}>Accept {name}</button>}
+        {!readOnly && !changed && accepted && nextName && <button type="button" onClick={onNext} style={{ ...btn, background: C.accent, color: C.ink }}>Next: {nextName}</button>}
+        {!readOnly && !changed && accepted && !nextName && <button type="button" onClick={onAll} style={{ ...btn, background: C.accent, color: C.ink }}>{acceptLabel}</button>}
         {/* Remove this area (21 Oct): left-over bits leave the plan; a confirm first (CropPlanFlow). */}
         {!readOnly && onRemove && total > 1 && (
           <button type="button" onClick={onRemove} aria-label={`Remove ${name} from your plan`} style={{ ...btn, flex: 'none', width: 44, padding: 0, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

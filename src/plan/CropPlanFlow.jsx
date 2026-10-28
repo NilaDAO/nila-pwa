@@ -57,7 +57,7 @@ function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
 
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
-function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, areaNo = (z) => z, acceptLabel = 'Accept the plan' }) {
+function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, acceptLabel = 'Accept the plan' }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
@@ -100,7 +100,7 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
                 <tr style={{ background: C.raised }}><td colSpan={3} style={{ padding: '0 10px 10px', borderRadius: '0 0 12px 12px' }}>
                   {[...zones].sort((a, b) => Number(areaNo(a)) - Number(areaNo(b))).map((z) => {
                     const r = s.rows.find((x) => zonesOf(x).includes(z));
-                    return <CropSelect key={z} label={`Area ${areaNo(z)}`} crops={sortedCrops(crops)} current={r?.crop} currentName={r?.name} disabled={changing}
+                    return <CropSelect key={z} label={`Area ${areaNo(z)}`} crops={sortedCrops(crops)} current={pending[z]?.[s.slot] || r?.crop} currentName={r?.name} disabled={changing}
                       onPick={(key) => { setOpen(null); onCrop(z, s.slot, key); }} />;
                   })}
                 </td></tr>
@@ -156,7 +156,9 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
           ? `Area ${areaNo(n.zone)}${n.slot ? `, ${SEASON[n.slot] || n.slot}` : ''}${n.crop ? ` (${n.crop.replace(/_/g, ' ')})` : ''}: ${n.why}`
           : n.why || n.reason || JSON.stringify(n))).join('; ')}</Notice>
       )}
-      {!readOnly && <Primary disabled={checked.size < zones.length} onClick={onAccept}>{acceptLabel}</Primary>}
+      {!readOnly && (Object.keys(pending).length
+        ? <Primary disabled={changing} onClick={onUpdate}>{changing ? 'Updating…' : 'Update crop plan'}</Primary>
+        : <Primary disabled={checked.size < zones.length} onClick={onAccept}>{acceptLabel}</Primary>)}
       {/* CP10: a crop is changed on its season row in the area card (28 Oct; Renew plan is on CP9). */}
     </>
   );
@@ -261,6 +263,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [removing, setRemoving] = useState(null);   // the area asked to remove (CP10 confirm)
   const [afterMake, setAfterMake] = useState('why');
   const [jobId, setJobId] = useState();
+  const [pending, setPending] = useState({});   // crops picked, not sent yet (CP10, 28 Oct)
   const [madeId, setMadeId] = useState();   // the plan the last job made: CP9 waits until the latest plan is that one
   const [error, setError] = useState();
   const [read, setRead] = useState(false);
@@ -386,13 +389,22 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   if (!forLand && !self && assisted() && !approved) return <AssistPlan map={map} name={name} waiting={plan?.status === 'accepted'} />;
   const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');
   const back = (to) => () => setStep(to);
-  // A crop picked for one area in one season (28 Oct, replaces Change my plan's free text): a new version with that
-  // crop there; the node re-plans around it (her change is followed unless a hard fact refuses it).
-  const changeCrop = async (zone, slot, key) => {
+  // Crops picked for an area in a season (28 Oct, replaces Change my plan's free text) wait in `pending` (zone → slot →
+  // crop key); Update crop plan sends them all as one new version, and the node re-plans around them (her change is
+  // followed unless a hard fact refuses it). Picking the crop the plan has drops the pick.
+  const changeCrop = (zone, slot, key) => setPending((p0) => {
+    const row = (plan?.plan?.seasons || []).find((x) => x.slot === slot)?.rows.find((r) => zonesOf(r).includes(zone));
+    const z = { ...(p0[zone] || {}) };
+    if (row?.crop === key) delete z[slot]; else z[slot] = key;
+    const next = { ...p0, [zone]: z };
+    if (!Object.keys(z).length) delete next[zone];
+    return next;
+  });
+  const updatePlan = async () => {
     setError(undefined);
     try {
-      const res = await revise.mutateAsync({ planId: plan.id, note: '', changes: { [zone]: { [slot]: key } } });
-      setAfterMake('plan'); setJobId(res.job_id); setStep('making');
+      const res = await revise.mutateAsync({ planId: plan.id, note: '', changes: pending });
+      setPending({}); setAfterMake('plan'); setJobId(res.job_id); setStep('making');
     } catch (e) { setError(e.message); }
   };
 
@@ -559,10 +571,11 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
             onBack={() => pickArea(null)}
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
             crops={catalogue.data?.crops} changing={revise.isPending} onCrop={(r, key) => changeCrop(area, r.slot, key)}
+            picked={pending[area] || {}} onUpdate={updatePlan}
             onRemove={() => setRemoving(area)} />
         ) : (
           <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={toTerms} readOnly={readOnly}
-            crops={catalogue.data?.crops} changing={revise.isPending} onCrop={changeCrop}
+            crops={catalogue.data?.crops} changing={revise.isPending} onCrop={changeCrop} pending={pending} onUpdate={updatePlan}
             acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined} />
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}
