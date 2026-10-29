@@ -1,63 +1,45 @@
 import { useState, useRef, useCallback } from 'react';
-import { useNavContext, useViewModeContext } from '../utils/NavigationContext';
-import { useHardReload } from './useHardReload.js';
+import { useNavContext, useViewModeContext, useDataContext, DEFAULT_VIEW } from '../utils/NavigationContext';
 
 // swipe to close/open cards
 
 const useTouch = () => {
-    const MAX_PULL = 45;
     const startYRef = useRef(0);
-    const [pullY, setPullY] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(true);
     const { navRef,tokenview,setTokenview,cardView,setCardView} = useViewModeContext()
     const {ix,setIx, setCardIx,prevIx} = useNavContext()
-    const hardReload = useHardReload();
+    const { setView } = useDataContext()
 
     const handleTouchStart = useCallback((e) => {
         startYRef.current = e.touches[0].clientY;
         setIsDragging(true);
     }, []);
 
-    const handleTouchMove = useCallback((e) => {
-        if (!e.touches?.length) return;
-        const delta = e.touches[0].clientY - startYRef.current;
-        if (delta <= 0) {
-            setPullY(prev => prev !== 0 ? 0 : prev);
-            return;
-        }
-        setPullY(Math.min(MAX_PULL, Math.round(delta)));
+    const handleTouchMove = useCallback(() => {
+        // swipe gesture is evaluated on touch end — no per-move state
     }, []);
 
     const handleTouchEnd = useCallback((e) => {
         const endY = e.changedTouches[0].clientY;
         const startY = startYRef.current;
-        if (pullY >= MAX_PULL) {
-            hardReload();
-            setPullY(0);
-            setIsDragging(false);
-            return;
-        }
         if (endY - startY > 25 && !tokenview) { // remove touch on views (funds/assets), that would make scroll very hard
             if (ix === 2 && cardView === 'default') {
                 setCardView('mapview');
-                setPullY(0);
                 setIsDragging(false);
                 return;
             }
             setIsCollapsed(true)
             setIx(null)
             setTokenview(false)
-            setPullY(0);
             setIsDragging(false);
             return
         }
         if (startY - endY > 50) {
             setIsCollapsed(false)
         }
-        setPullY(0);
         setIsDragging(false);
-    }, [pullY, tokenview, cardView, ix, hardReload, setIx, setTokenview, setCardView]);
+    }, [tokenview, cardView, ix, setIx, setTokenview, setCardView]);
 
     const handleToggleView = useCallback((index) => {
         // back to home
@@ -86,6 +68,17 @@ const useTouch = () => {
         }
     }, [ix, setIx, setCardIx, setTokenview, setCardView, navRef, prevIx]);
 
+    // Plan 044 §5.4 — the one entry point. Every caller that opens the field
+    // map (cultivation card, tab button, asset "view field") routes through
+    // this so the view state + nav history are always consistent.
+    const enterFieldView = useCallback(({ mode = 'overview', focus = null, focusZone = null, focusName = null, i = null } = {}) => {
+        setView({ ...DEFAULT_VIEW, mode, focus, focusZone, focusName });
+        setCardView('mapview');
+        setIx(2);
+        setCardIx(i);
+        prevIx.current = { ix: 2, i };
+    }, [setView, setCardView, setIx, setCardIx, prevIx]);
+
     const handleCollapse = useCallback((ix) => {
         if (ix === 5){
             setIx(null)
@@ -103,9 +96,9 @@ const useTouch = () => {
         handleTouchMove,
         handleTouchEnd,
         handleToggleView,
+        enterFieldView,
         handleCollapse,
         isCollapsed,
-        pullY,
         isDragging,
     };
   };

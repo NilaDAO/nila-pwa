@@ -8,6 +8,13 @@
   --text: #000000;
   --safe-top: env(safe-area-inset-top, 0px);
 }
+/* A card whose content opts out of the wrapper's drop-shadow — e.g. the pulsing
+   CultivationCardSkeleton, whose static shadow can't fade with animate-pulse.
+   Driven entirely by the marker class on the element itself. */
+.shadow-bottom:has(.no-card-shadow) {
+  box-shadow: none;
+}
+
 /* Hide scrollbar for Chrome, Safari, and Opera */
 ::-webkit-scrollbar {
   display: none;

@@ -30,11 +30,17 @@ export const decryptPrivateKey = async (encryptedKey, salt) => {
 
 export const handleGetEncryptedPrivateKey = async (db) => {
 try {
+    // Local dev override: if a local_pk was injected (by nila local inject-wallet),
+    // skip Cognito entirely and return it directly.
+    if (db['local_pk']) {
+        return db['local_pk'];
+    }
+
     const refresh_token = db['refresh_token']
     const jwt_token = db['jwt_token']
 
     if (isTokenExpired(jwt_token)) {
-        // refresh token 
+        // refresh token
         const response = await refreshSession(refresh_token)
         // set new jwt
         await updateItem({ id: 'jwt_token', value: response.AccessToken },'Init'); // temporary jwt token

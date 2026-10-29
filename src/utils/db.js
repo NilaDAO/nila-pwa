@@ -1,14 +1,17 @@
 import { openDB,deleteDB } from 'idb';
 
 const DB_NAME = 'APPDB';
-const STORE_NAME = 'Init';
 
 const initDB = async () => {
-  return openDB(DB_NAME, 1, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
+  return openDB(DB_NAME, 2, {
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
         db.createObjectStore('Init', { keyPath: 'id', autoIncrement: true });
         db.createObjectStore('FarmData', { keyPath: 'id', autoIncrement: true });
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore('ActiveLoans', { keyPath: 'id', autoIncrement: true });
+        db.createObjectStore('Contacts', { keyPath: 'id', autoIncrement: true });
       }
     },
   });
@@ -49,7 +52,9 @@ export const deleteItem = async (id,STORE) => {
 
 export const deleteAllItems = async () => {
   console.log('delete DB')
-  return deleteDB(DB_NAME);
+  await deleteDB(DB_NAME);
+  // Logout: Privy (if on) drops its session too. Same name as AUTH_EVENT in wallet/session.js.
+  window.dispatchEvent(new Event('nila:auth-changed'));
 }
 
 // A tiny helper to read, create or update a db

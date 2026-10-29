@@ -43,3 +43,12 @@ amplifytools.xcconfig
 .secret-*
 **.sample
 #amplify-do-not-edit-end
+
+# local secrets and dev files (untracked 2026-10-08)
+devNotes.txt
+localhost-key.pem
+localhost-cert.pem
+.env.production
+.env.mainnet-local
+.env.local.bak
+.env.local.hardhat

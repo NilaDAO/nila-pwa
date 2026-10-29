@@ -1,39 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useDataContext, useViewModeContext } from '../../utils/NavigationContext.js';
 import { useSendTokens } from "../../hooks/useWallet.ts";
+import { useContactBook } from '../../hooks/useContactBook';
 import { ClaimButton, SlideToggle, IndividualExchangeButton } from '../UI/buttons.js';
+import ContactPicker from '../UI/ContactPicker';
 import QR from "../UI/qrCode";
 import QRScanner from "../UI/qrScan.js";
 
 const FEE = 0.998; // 0.2% fee
-
-export const ContactBook = ({data, onSelect, selected}) => {
-    // on each scan, we add a new contact to the list.
-    // NOT YET IMPLENTED
-
-    return (
-    <div className="flex flex-col my-6 items-center">
-        <div className="px-2 py-6 dark:text-white">Select a contact:</div>
-        <div className="overflow-y-auto ">
-            {data.map((item, index) => (
-            <div 
-                key={index}
-                onClick={() => onSelect(index)}
-                className={`py-4 px-2 border-b dark:border-slate-400 last:border-none cursor-pointer transition-colors ${
-                    selected && selected.address === item.address
-                      ? "bg-gray-400 dark:bg-slate-800"
-                      : index % 2 === 0
-                      ? "bg-gray-200 dark:bg-slate-800"
-                      : ""
-                  }`}>
-                <span className="font-semibold dark:text-white">{item.name}</span> 
-                <span className="font-semibold dark:text-white">- {item.address.substring(0,7) + '...'}</span>
-            </div>
-            ))}
-        </div>
-    </div>
-    )
-}
 
 const QrCode = ({ amount,setConfirm,db}) => (
     <div className="flex flex-col w-[98vw] p-6 justify-center bg-gray-200 dark:bg-slate-800 aspect-square rounded-full ">
@@ -161,6 +135,7 @@ const SendReceiveAssets = ({handleOpenForm }) => {
   const { db, tokenData, selectedAsset }          = useDataContext()
   const { setTokenview }                          = useViewModeContext();
   const { sendTokens }                            = useSendTokens();
+  const { contactList, addContact, resolveName }  = useContactBook();
   const [ send_contact_acc, setSendContactAcc ]   = useState('scan')
   const [ sendTo, setSendTo ]                     = useState()
   const [ type, setType ]                         = useState(true)
@@ -179,11 +154,6 @@ const SendReceiveAssets = ({handleOpenForm }) => {
   const stepSize                                           = symbol.includes('USD') ? 1 : 100;
   const { amount, balance, handleInput, handleMax, reset } = useAmountAdjuster(initialBalance, stepSize);
   
-  const contactdata = db['union'] ? [
-      { 'name' : db?.union.rep, 'address':  db?.union.address, 'chain': db['chain']},
-      { 'name' : 'Anand', 'address': '0xaF48a2282FD8A3cCb52D17EF08FE5db7d346Dbb7', 'chain': db['chain']},
-      { 'name' : 'Carst', 'address': '0xaf7030023CF86611FfC5a71798a0f7022210F2b3', 'chain': db['chain']},
-  ] : [] //{ 'name' : '', 'address': '', 'chain': 0}
 
   const handleSend = async () => {
     // generate a code 
@@ -204,8 +174,8 @@ const SendReceiveAssets = ({handleOpenForm }) => {
     setConfirm(true)
   }
 
-  const handleSelectContactBook = (index) => {
-    setSendTo({ address: contactdata[index]?.address, name: contactdata[index]?.name })
+  const handleSelectContactBook = (address) => {
+    setSendTo({ address, name: resolveName(address) })
     setConfirm(true)
   }
 
@@ -266,11 +236,15 @@ const SendReceiveAssets = ({handleOpenForm }) => {
           </>
           :
           <>
-          <div className="flex flex-col w-auto max-w-[98vw] bg-gray-200 dark:bg-slate-800 aspect-square rounded-full justify-between p-4">
-              {send_contact_acc === 'scan' ? 
+          <div
+            className={`flex flex-col w-auto max-w-[98vw] bg-gray-200 dark:bg-slate-800 aspect-square justify-between p-4 transition-[border-radius] duration-500 ease-in-out ${
+              send_contact_acc === 'scan' ? 'rounded-full' : 'rounded-3xl'
+            }`}
+          >
+              {send_contact_acc === 'scan' ?
               <QRScanner sendTo={handleScanResults}/>
               :
-              <ContactBook data={contactdata} onSelect={handleSelectContactBook} selected={sendTo} />
+              <ContactPicker contactList={contactList} onSelect={handleSelectContactBook} selected={sendTo?.address} addContact={addContact} showAdd={false} />
               }
             </div>
             <ClaimButton disabled={false} color={'white'} handleClick={() => setSendContactAcc(send_contact_acc === 'scan' ? 'book' : 'scan')} title={send_contact_acc === 'scan' ? 'select from contact book' : 'scan a qr'} />

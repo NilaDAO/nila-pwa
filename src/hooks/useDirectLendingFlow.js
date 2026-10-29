@@ -18,7 +18,7 @@ const useLendingFlow = () => {
           'landID': LAND?.current ? LAND.current.LAND.id : 'None', // has to be a string
           'address': db?.address,
           'unionaddress': db?.union?.address,
-          'chain': db?.chain,
+          'chain': String(Number(process.env.REACT_APP_CHAIN_ID) || 137),
           'token': NILA_TOKEN,
           'selfclaimedCap': CAP ? CAP.current.toString() : 'None',
           ...(chosenRateBP != null && { 'chosenRateBP': chosenRateBP.toString() })
@@ -46,7 +46,7 @@ const useLendingFlow = () => {
           'var': form.var,
           'size_ft': props.reduce((a, n) => a + n, 0),
           'unionaddress': db?.union?.address,
-          'chain': db?.chain,
+          'chain': String(Number(process.env.REACT_APP_CHAIN_ID) || 137),
         };
         try {
             const VoucherResponse = await axios.post(voucher_url, voucher_data, {

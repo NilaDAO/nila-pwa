@@ -64,9 +64,11 @@ registerRoute(
   new StaleWhileRevalidate({ cacheName: 'app-shell' })
 );
 
-// 5️⃣ SPA navigation fallback → index.html
+// 5️⃣ SPA navigation fallback → index.html. Not for the keypad app (/lite) and its one-time links (/l/<code>):
+// they are their own small app (O17, P8).
 registerRoute(
-  ({request}) => request.mode === 'navigate',
+  // Nor for the hosted demo's start page (/start.html, 28 Oct).
+  ({request, url}) => request.mode === 'navigate' && !/^\/(lite|l)(\/|$)/.test(url.pathname) && url.pathname !== '/start.html',
   createHandlerBoundToURL('/index.html'),
 );
 

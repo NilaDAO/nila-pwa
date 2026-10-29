@@ -4,8 +4,10 @@ import axios from 'axios';                    // latest axios
 import { useHardReload } from '../../hooks/useHardReload';
 import Spinner from './spinner';
 import { ClaimButton } from './buttons';
+import { NotFoundPage } from '../../register/Boot';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL 
+const NEW_LOOK = Boolean(process.env.REACT_APP_PRIVY_APP_ID);
 
 const ErrorScreen = ({ error, errorInfo }) => {
   const hardReload = useHardReload();
@@ -21,6 +23,17 @@ const ErrorScreen = ({ error, errorInfo }) => {
     }).catch(console.error);
   }, [error, errorInfo]);
 
+  const reload = () => {
+    // Don't return the promise to ClaimButton — an error screen must never
+    // trap the user in a 'Working…' spinner. Fire the SW-aware reload and
+    // guarantee a fallback hard reload if it doesn't navigate in time.
+    Promise.resolve(hardReload()).catch(() => {});
+    setTimeout(() => window.location.reload(), 3000);
+  };
+
+  // The new app (Privy builds): the crash screen is S5 (board BootNotFound), with its Reload.
+  if (NEW_LOOK) return <NotFoundPage />;
+
   return (
     <div className="flex flex-col items-center bg-gradient-to-b dark:from-darkgrey dark:to-slate-800 from-white to-slate-100 justify-center h-screen px-12">
       <Spinner size='small' />
@@ -29,7 +42,7 @@ const ErrorScreen = ({ error, errorInfo }) => {
       <ClaimButton
         disabled={false}
         title="Reload"
-        handleClick={hardReload}
+        handleClick={reload}
         className="mt-4"
       />
     </div>

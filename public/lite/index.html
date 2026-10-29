@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <title>Nila</title>
+  <link rel="manifest" href="/lite/manifest.json">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/lite/lite.css">
+</head>
+<body>
+  <!-- Nila lite (P8, nila-design "Keypad phones"): KaiOS 2.5, 240×320, D-pad and three softkeys. Plain ES5, no
+       framework, no build step. Screens are #hash routes; every softkey is also a link. -->
+  <header id="hd">Nila</header>
+  <main id="main" tabindex="-1"></main>
+  <nav id="sk"><a id="sk-l" href="#"></a><a id="sk-c" href="#"></a><a id="sk-r" href="#"></a></nav>
+  <!-- The hosted static demo only (28 Oct): scripts/demo/static-build.sh writes its answers into static.js; empty otherwise. -->
+  <script src="/lite/static.js"></script>
+  <script src="/lite/qr.js"></script>
+  <script src="/lite/session.js"></script>
+  <script src="/lite/chain.js"></script>
+  <script src="/lite/polygon.js"></script>
+  <script src="/lite/lite.js"></script>
+</body>
+</html>

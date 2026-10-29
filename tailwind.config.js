@@ -54,13 +54,27 @@ module.exports = {
         'bottom': '0 12px 10px 0px rgba(0, 0, 0, 0.15), 0 5px 12px 2px rgba(0, 0, 0, 0.06)',
         'top': '0 -12px 10px 0px rgba(0, 0, 0, 0.15), 0 5px 12px 2px rgba(0, 0, 0, 0.06)',
       },
+      keyframes: {
+        borderFlash: {
+          '0%, 100%': { borderColor: '#E69283', boxShadow: '0 0 0 1px #E69283' },
+          '50%':      { borderColor: 'transparent', boxShadow: '0 0 0 1px transparent' },
+        },
+        iconPulse: {
+          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+          '50%':      { opacity: '0.35', transform: 'scale(1.25)' },
+        },
+      },
       animation: {
         spin: 'spin 1s linear infinite',
         'spin-slow': 'spin 3s linear infinite',
+        'border-flash': 'borderFlash 1.1s ease-in-out infinite',
+        'icon-pulse': 'iconPulse 1s ease-in-out infinite',
       },
       colors: {
         green: "#D4CF5A" ,
         green_dark: "#d4a634ff" ,
+        green_light: "#DFDB83" ,        // donate card (light theme) — slightly lighter than green
+        green_dark_light: "#DFBC67" ,   // donate card (dark theme) — slightly lighter than green_dark
         red: "#E69283",
         red_dark: "#6492b3ff",
         grey: "#979797",

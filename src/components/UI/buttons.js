@@ -114,7 +114,7 @@ const PinCodeInput = ({ handleChange, backpage }) => {
 };
 
 
-export const DisableNotifications = ({ onAdd, address }) => { 
+export const DisableNotifications = ({ onAdd, address, compact = false }) => {
   
   const handleSubscriptionSignoff = async () => {
     console.log('unsubscribe user from notifications')
@@ -132,7 +132,14 @@ export const DisableNotifications = ({ onAdd, address }) => {
     }
   }
 
-  return (
+  return compact ? (
+    <div className="flex flex-col gap-2">
+      <p className="font-bold text-xs dark:text-white text-left">Your union can send you notifications.</p>
+      <div className="flex gap-3 justify-center my-3">
+        <button onClick={handleSubscriptionSignoff} className="px-4 py-2 rounded-2xl bg-black dark:bg-white text-white dark:text-black text-xs font-bold active:scale-[0.98]">Disable</button>
+      </div>
+    </div>
+  ) : (
     <div className="flex flex-col items-center mx-6 my-6 h-full justify-center">
           <p className='b-3 dark:text-white'>Your union can send you notifications.</p>
           <ClaimButton handleClick={handleSubscriptionSignoff} title={'disable'} />
@@ -140,7 +147,7 @@ export const DisableNotifications = ({ onAdd, address }) => {
   )
 }
 
-export const EnableNotifications = ({ onAdd, address, autoResolve = true }) => { 
+export const EnableNotifications = ({ onAdd, address, autoResolve = true, compact = false }) => {
   // Optionally auto-resolve on mount (skip if caller wants to keep user on this page)
   useEffect(() => {
     if (!autoResolve) return;
@@ -191,7 +198,15 @@ export const EnableNotifications = ({ onAdd, address, autoResolve = true }) => {
     }
   };
 
-  return (
+  return compact ? (
+    <div className="flex flex-col gap-2">
+      <p className="font-bold text-xs dark:text-white text-left">Your union would like to send you updates.</p>
+      <div className="flex gap-3 justify-center my-3">
+        <button onClick={handleSubscriptionSignup} className="px-4 py-2 rounded-2xl bg-black dark:bg-white text-white dark:text-black text-xs font-bold active:scale-[0.98]">Enable</button>
+        <button onClick={handleSkipNotifications} className="px-4 py-2 rounded-2xl bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 text-black dark:text-white text-xs font-bold active:scale-[0.98]">Skip</button>
+      </div>
+    </div>
+  ) : (
     <div className="flex flex-col items-center m-12 justify-center">
       <p className='b-3 dark:text-white' >Your union would like to send you updates.</p>
       <ClaimButton handleClick={handleSubscriptionSignup} title={'enable'} />
@@ -298,12 +313,16 @@ export const IndividualExchangeButton = ({ disabled_add, disabled_remove, handle
 
   const mode = cnt >= 5 ? last : null
 
+  // primary follows the direction the user is moving; the opposite button is secondary
+  const PRIMARY = 'text-white dark:text-black bg-black dark:bg-white'
+  const SECONDARY = 'text-black dark:text-white bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600'
+
   const MinusBtn = () => (
     <div className="flex flex-col items-center">
       <button
         onClick={() => doAction(1)}
         disabled={disabled_remove}
-        className={`mb-2 ${disabled_remove ? 'opacity-20' : ''} text-white bg-black dark:bg-slate-400 font-bold rounded-full h-11 w-11 mx-1`}
+        className={`mb-2 ${disabled_remove ? 'opacity-40 cursor-not-allowed' : ''} ${last === 'add' ? SECONDARY : PRIMARY} font-bold text-xs rounded-2xl h-11 w-11 mx-1 active:scale-[0.98]`}
       >–</button>
       <p className={`text-sm ${disabled_remove ? 'opacity-40' : ''}`}>{texts.minus}</p>
     </div>
@@ -314,7 +333,7 @@ export const IndividualExchangeButton = ({ disabled_add, disabled_remove, handle
       <button
         onClick={() => doAction(0)}
         disabled={disabled_add}
-        className={`mb-2 ${disabled_add ? 'opacity-20' : ''} text-white bg-black dark:bg-slate-400 font-bold rounded-full h-11 w-11 mx-1`}
+        className={`mb-2 ${disabled_add ? 'opacity-40 cursor-not-allowed' : ''} ${last === 'remove' ? SECONDARY : PRIMARY} font-bold text-xs rounded-2xl h-11 w-11 mx-1 active:scale-[0.98]`}
       >+</button>
       <p className={`text-sm ${disabled_add ? 'opacity-40' : ''}`}>{texts.plus}</p>
     </div>
@@ -325,7 +344,7 @@ export const IndividualExchangeButton = ({ disabled_add, disabled_remove, handle
       <button
         onClick={doMax}
         hidden={mode === 'add' ? disabled_add : disabled_remove}
-        className="mb-2 text-white bg-black dark:bg-slate-400 font-bold rounded-full h-11 w-11 mx-1"
+        className="mb-2 text-white dark:text-black bg-black dark:bg-white font-bold text-xs rounded-2xl h-11 w-11 mx-1 active:scale-[0.98]"
       >
         {mode === 'add' ? '++' : '--'}
       </button>
@@ -366,6 +385,10 @@ export const ClaimButton = ({
   title,
   color,
   extrasmall,
+  compact,
+  fullWidth,
+  tooltip,
+  dataTour,
   pendingTitle = 'Working...',
   successTitle,
   successDurationMs = 1200,
@@ -400,13 +423,15 @@ export const ClaimButton = ({
   const label = showSuccess ? successTitle : pending ? pendingTitle : title;
 
   return (
-    <div className={`flex justify-center mt-4 max-h-12`}>
+    <div className={fullWidth ? 'flex flex-1' : `flex justify-center ${compact ? 'my-2' : 'mt-4'} max-h-12`}>
       <button
         hidden={hidden}
         disabled={disabled || pending}
         onClick={runClick}
         aria-busy={pending}
-        className={`mb-2 ${disabled || pending ? 'opacity-40' : ''} ${color === 'white' ? 'text-black bg-white dark:bg-slate-400' : 'text-white dark:text-black bg-black dark:bg-slate-400'} ${extrasmall ? 'text-xs' : 'text-sm'} font-bold rounded-3xl px-6 py-2 no-wrap inline-flex items-center justify-center gap-2 active:scale-[0.98]`}
+        title={tooltip}
+        data-tour={dataTour}
+        className={`mb-2 ${fullWidth ? 'w-full' : ''} ${disabled || pending ? 'opacity-40 cursor-not-allowed' : ''} ${color === 'white' ? 'text-black dark:text-white bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600' : 'text-white dark:text-black bg-black dark:bg-white'} ${compact ? 'text-xs px-4 py-2' : `${extrasmall ? 'text-xs' : 'text-sm'} px-6 py-2`} font-bold rounded-2xl no-wrap inline-flex items-center justify-center gap-2 active:scale-[0.98]`}
       >
         {pending && (
           <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -491,28 +516,30 @@ export function RateSlider({
 
   return (
     <div className='flex flex-row w-[85%] items-center' >
-      <div className="relative w-full h-16">
+      <div className="relative w-full h-10">
         {/* Track */}
-        <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-300 rounded" style={{ transform: 'translateY(-50%)' }} />
+        <div className="absolute top-1/2 left-0 w-full h-px bg-gray-300 rounded" style={{ transform: 'translateY(-50%)' }} />
         {/* Filled portion */}
         <div
-          className={`absolute top-1/2 left-0 h-1 ${color} rounded`}
+          className={`absolute top-1/2 left-0 h-px ${color} rounded`}
           style={{
             width: `${percent}%`,
             transform: 'translateY(-50%)'
           }}
         />
-        {/* Knob + label */}
+        {/* Value label */}
         <div
-          className="absolute top-5 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
+          className="absolute -top-2 transform -translate-x-1/2 text-xs font-medium text-black dark:text-white leading-none"
           style={{ left: `${percent}%` }}
         >
-          <div className='mb-1 text-sm font-medium text-black dark:text-white'>
-            {type === 'percentage' || type === 'kg' ? value?.toFixed(decimals): value}
-            {type === 'percentage' ? '%' : type === 'kg' ? 'kg' : ''}
-          </div>
-          <div className={`w-9 h-9 ${color} border border-gray-400 rounded-full shadow`} />
+          {type === 'percentage' || type === 'kg' ? value?.toFixed(decimals) : value}
+          {type === 'percentage' ? '%' : type === 'kg' ? 'kg' : ''}
         </div>
+        {/* Knob dot — centered on the track line */}
+        <div
+          className={`absolute top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 ${color} border border-gray-400 rounded-full shadow`}
+          style={{ left: `${percent}%` }}
+        />
         {/* Invisible native input to handle dragging */}
         <input
           type="range"
@@ -521,23 +548,24 @@ export function RateSlider({
           step={step}
           value={value}
           onChange={handleChange}
-          className="absolute top-1/2 left-0 w-full h-1 opacity-0 cursor-pointer"
+          className="absolute top-1/2 left-0 w-full h-px opacity-0 cursor-pointer"
           style={{ transform: 'translateY(-50%)' }}
         />
       </div>
-      <CheckCircleIcon onClick={onSet} className='w-12 h-12 mx-3 dark:text-white' />
+      <CheckCircleIcon onClick={onSet} className='w-8 h-8 mx-2 dark:text-white' />
     </div>
   );
 }
 
-export function DropdownButtonLoans({ options, onSelect, z, color }) {
+export function DropdownButtonLoans({ options, onSelect, z, color, resolveName }) {
   const [open, setOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState('');
   const ref = useRef();
 
   const formatBorrower = (loan) => {
-    if (!loan) return ''; 
-    if (loan.borrowerLabel) return loan.borrowerLabel.startsWith('0x') ? loan.borrowerLabel.slice(0, 10) : loan.borrowerLabel;
+    if (!loan) return '';
+    if (resolveName) return resolveName(loan.borrower);
+    return loan.borrower ? `${loan.borrower.slice(0, 6)}...${loan.borrower.slice(-4)}` : '';
   };
 
   const PHENOSTAGES = {
@@ -598,10 +626,19 @@ export function DropdownButtonLoans({ options, onSelect, z, color }) {
   );
 }
 
-export function DropdownButton({ options, onSelect, z, color }) {
+export function DropdownButton({ options, onSelect, z, color, compact }) {
   const [open, setOpen] = useState(false);
-  const [selectedFund, setSelectedFund] = useState('');
+  const [selectedFund, setSelectedFund] = useState(() => options?.[0]?.[1] ?? '');
   const ref = useRef();
+
+  // Pre-select the first option on mount so callers don't need to re-click
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  useEffect(() => {
+    if (options?.[0]) {
+      onSelectRef.current?.(options[0]);
+    }
+  }, []);
 
   useEffect(() => {
     const onClickOutside = e => {
@@ -613,14 +650,18 @@ export function DropdownButton({ options, onSelect, z, color }) {
     return () => document.removeEventListener('click', onClickOutside);
   }, []);
 
+  const pad = compact ? 'px-3 py-2' : 'p-4';
+  const textSize = compact ? 'text-xs' : '';
+  const iconSize = compact ? 'w-4 h-4' : 'w-7 h-7';
+
   return (
     <div ref={ref} className="relative w-full">
-      <button className={`flex p-4 flex-row w-full ${color === 'white' ? 'bg-gray-200 dark:bg-slate-800' : 'bg-black dark:bg-gray-800'} justify-between`} onClick={() => setOpen(o => !o)}>
-        <p>{selectedFund}</p>
-        {!open ? <ChevronDownIcon className="w-7 h-7" /> : <ChevronUpIcon className="w-7 h-7" />}
+      <button className={`flex ${pad} flex-row w-full rounded-xl items-center ${color === 'white' ? 'bg-gray-100 dark:bg-slate-600' : 'bg-black dark:bg-gray-800'} justify-between`} onClick={() => setOpen(o => !o)}>
+        <p className={`dark:text-white ${textSize}`}>{selectedFund}</p>
+        {!open ? <ChevronDownIcon className={iconSize} /> : <ChevronUpIcon className={iconSize} />}
       </button>
       {open && (
-        <ul className={`absolute left-0 z-${z} py-3 w-full bg-white dark:bg-gray-800 text-black`}>
+        <ul className={`absolute left-0 z-${z} py-1 w-full bg-white dark:bg-gray-800 text-black rounded-xl shadow-lg`}>
           {options.map((opt, i) => (
             <li
               key={i}
@@ -629,9 +670,9 @@ export function DropdownButton({ options, onSelect, z, color }) {
                 setOpen(false);
                 setSelectedFund(opt[1])
               }}
-              className={`pointer p-4 dark:text-white ${opt[3] && 'line-through'} `}
+              className={`cursor-pointer ${compact ? 'px-3 py-2 text-xs' : 'p-4'} dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700 ${opt[3] && 'line-through'} `}
             >
-              {opt[4] + ' ' + opt[1]}
+              {(opt[4] != null ? opt[4] + ' ' : '') + opt[1]}
             </li>
           ))}
         </ul>

@@ -1,0 +1,86 @@
+# P3 — Transition to Stellar mode: the move M1–M4 (Nov 7 release plan §4, PWA lane)
+
+Branch `t1/pwa/P3` (from `t1/pwa/P2`). Off unless `REACT_APP_PRIVY_APP_ID` is set; with the flag off the build
+is unchanged (3 JS files, 3.9 MB, no Privy, Stellar or move code; checked 16 Oct).
+
+## Decisions (executive, 16 Oct; LOAN_RULES §5 "The move")
+
+- Polygon nIN is **attested on Stellar and burned on Polygon** (oracle O10, contracts C8).
+- An **open Polygon loan blocks the move** until it is repaid in the old app.
+- **No reset**: after the chain switch the app reloads in place and opens on Stellar.
+- `custom:chain` = **`stellar`**. Existing FoodTokens are not moved; titles are attested once she is
+  paired (her account setup) and her union is vouched (the leaders' list, O1c).
+
+## What it does
+
+`StellarGate` (lazy, flag on) wraps the wallet. **Both apps ship in one build and the start decides:**
+- Polygon wallet (`chain` = 137) **with an open Polygon loan**: "Repay your loan first" + **Repay my loan**, which
+  opens today's app for this start (sessionStorage); the choice comes back at every start until the loan is closed.
+- Polygon wallet **without one**: only the move (M1–M4), full screen, no skip.
+- Moved wallet (`stellar`): an interim Stellar home until P1's bottom bar and A1 replace it.
+- Her Polygon loans are read first ("Checking your loans…"); a failed read never opens the move, but
+  "Repay my loan" is always there. Loans under ₹10 outstanding do not block (16 Oct). "Every start" means a
+  cold start (sessionStorage clears when the app is closed from the task switcher).
+- A moved wallet never sees today's Polygon app (a holding screen while the signer loads).
+- **Union leaders** (`db.union.leader`, executive decision 16 Oct): at every start, "New Nila" (Stellar; their
+  account is made on first use) or "Old loans (today's app)" — the Polygon cash desk where members repay old
+  loans. Their chain stays Polygon; their own move comes once the union's old loans are closed (not offered yet).
+
+"Move my wallet" (`useMoveWallet`), each step safe to repeat, progress in localStorage (`nila.move`),
+M4 "Try again" resumes at the failed step:
+1. Her sponsored Stellar account and wallet pair (`stellarSetup.runAsync`, P2).
+2. If she holds Polygon nIN: her Polygon key signs the move request → `POST /stellar/move/nin`. The oracle
+   burns and mints later, once her title is attested; the home shows where it is (`GET /stellar/move/{polygon}`).
+3. `custom:chain` = `stellar` in Cognito with her access/refresh token (no admin fallback), then in IndexedDB.
+
+| File | Does |
+|---|---|
+| `src/move/hooks.js` | `useLegacyBalances` (Polygon title count, nIN, USDT), `useMoveProgress`, `useMoveWallet`, `useOpenPolygonLoans` |
+| `src/move/api.js` | the move request (message must match the node's `move_message`) and its status |
+| `src/move/MoveFlow.jsx` | M1, M1b (offline), M2, M3, M4, and the repay-first state |
+| `src/move/StellarGate.jsx`, `StellarHome.jsx` | Stellar mode routing; interim home |
+| `src/App.js`, `src/Layout.js` | lazy gate around the wallet; `/p3` check route (flag on only) |
+| `src/wallet/PrivyRoot.jsx` | `stellarSetup.runAsync`, `signEvmMessage` |
+
+## Review fixes (nila-reviewer FAIL, 16 Oct)
+
+Move progress per Polygon wallet (`nila.move:<evm>`); the loan check is repeated inside the move (an M4 retry
+skips the start screen) and resets when her wallet or union changes; the nIN request is sent only when the node
+has no open or finished move for her (the node also keeps one open move per wallet); the Stellar home offers
+"Try again" when her nIN move was refused before any burn; `useErc20Balances` returns no Polygon balances for a
+moved wallet instead of failing into an empty list.
+
+## Tested (16 Oct)
+
+Flag-on build, headless at 390 px, throwaway Polygon key, local node on testnet (`APP_ENV=local`):
+`/p3` shows M1 with live Polygon reads (title 0, nIN 0); "Move my wallet" made her sponsored Stellar account
+(node: `/stellar/account` + submit 200), skipped the nIN step (0), and step 3 failed without a Cognito session
+→ M4 with `{"step":2}` saved, so "Try again" resumes at step 3.
+
+**Not tested yet:** the Cognito chain switch and the full app boot in Stellar mode (needs a Cognito test
+user: Amplify dev), and a move with Polygon nIN (needs BURNER_ROLE on a fork + C8 on testnet).
+
+## Design gaps (for the design brief)
+
+- M1: "Crop shares" row removed (existing FoodTokens are not moved, 15 Oct); the "open your wallet again"
+  note removed (no reset).
+- New start screen for an open loan: "Repay your loan first. Then you can move your wallet." + "Repay my loan"
+  (opens today's app), note "When your loan is repaid, you can move your wallet." And "Checking your loans…" /
+  "Could not check your loans. Check your internet and open the app again." No boards yet.
+- M3: no reset, so no "Recover wallet" and no "new code on WhatsApp": "Your land title and nIN are waiting."
+  + Continue, with a note that her nIN arrives after the union confirms her title.
+- Interim Stellar home: no board (P1's A1 replaces it). Its lines: "Moved nIN: No nIN to move / Waiting for your
+  union to confirm your land title / On its way / On its way (delayed) / Arrived / Part of it arrived / Did not
+  arrive" + "Try again"; holding screen "Check your internet and open the app again."
+- Leaders' start: "Which do you want to open?", **New Nila**, **Old loans (today's app)**, note "Members still repay
+  their old loans in today's app."; leader home note "Leader · new Nila. Old loans: close and reopen the app, then
+  choose Old loans." No boards.
+- The start choice is kept per wallet for this start (`nila.start:<evm>`, sessionStorage).
+- `useMoveWallet` signs with "member + Nila (+ attester)" in the design; the attester now acts later (O10).
+
+## Security note found in passing
+
+`src/utils/cognito_helpers.js` builds its Cognito client with an IAM key from `REACT_APP_NILAAPP_AWS` /
+`REACT_APP_NILAAPP_SECRET`, and `updateUserChain` falls back to `AdminUpdateUserAttributes` with it. Checked
+16 Oct: `.env.production` does not set that key, so the live bundle carries none; never set it in an env file a
+build reads. P3 never takes the admin path (no phone passed).

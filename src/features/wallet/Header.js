@@ -3,7 +3,7 @@ import { ClockIcon, DocumentIcon } from '@heroicons/react/24/outline'
 import { useDataContext, useNavContext, useViewModeContext } from '../../utils/NavigationContext'
 
 const Header = ({version, cardShrink}) => {
-    const { txIndex, setTxIndex } = useDataContext();
+    const { txIndex, setTxIndex, fieldActivity, setFieldActivity, db } = useDataContext();
     const { tokenview, setTokenview, setCardView } = useViewModeContext();
     const { ix,setIx,prevIx } = useNavContext();
 
@@ -26,6 +26,7 @@ const Header = ({version, cardShrink}) => {
         'cashCounter': 'Cash Counter',
         'transfer': 'Transfer Loans',
         'receipts': 'History',
+        'donate': 'Donate',
         'tasks': 'All Tasks'
     }
 
@@ -36,12 +37,16 @@ const Header = ({version, cardShrink}) => {
         3: 'Loan Restructuring',
         4: 'Settings',
         5: TITLES[txIndex],
+        6: 'Cash & Liquidity',
+        7: 'Orders & Post-harvest',
+        8: 'Donate',
     }
 
     const handleBack = () => {
         /**
-         * rules: 
+         * rules:
          * if tv, use previx
+         * if portfolio mode, clear it and go back to prevIx (set to 6 by UnionReserve)
          * if not tv, use null
          * tv can be set after tx or action
          */
@@ -49,8 +54,10 @@ const Header = ({version, cardShrink}) => {
             setCardView('default')
             setTokenview(false)
             setIx(prevIx.current)
-        } 
-        if (!tokenview && ix > 0){
+        } else if (fieldActivity?.portfolioMode) {
+            setFieldActivity(null);
+            setIx(prevIx.current);
+        } else if (ix > 0){
             setIx(null)
         }
     }
@@ -96,14 +103,19 @@ const Header = ({version, cardShrink}) => {
                 <>
                 { /* set different button states: QR/History/back/close/none */}
                 { (tokenview || ix > 0) && <div onClick={handleBack} className="rounded-full h-10 w-10 m-2 dark:bg-slate-400 bg-gray-300" ><ArrowLeftIcon className='text-black h-6 m-2'/></div>}
-                { (!tokenview && ix === 0 ) && 
+                { (!tokenview && ix === null ) &&
                     <div onClick={handleScanQR} className="rounded-full h-10 w-10 m-2 dark:bg-slate-400 bg-gray-300" >
                         <QrCodeIcon className='text-black h-6 m-2'/>
                     </div> }
-                { (ix === null) && <div onClick={handlePaymentHistory} className="rounded-full h-10 w-10 m-2 dark:bg-slate-400 bg-gray-300" ><ClockIcon className='text-black h-6 m-2'/></div>}
+                { (ix === 0 && !tokenview) && <div onClick={handlePaymentHistory} className="rounded-full h-10 w-10 m-2 dark:bg-slate-400 bg-gray-300" ><ClockIcon className='text-black h-6 m-2'/></div>}
                 { (ix === null) && <div onClick={handleAllTasks} className="flex flex-grow text-xs mx-6 justify-center items-center rounded-full m-2 dark:text-slate-400 dark:bg-slate-800 font-bold text-darkgrey bg-gray-100 mx-2" ><DocumentIcon className='h-3 w-3 mr-1' />All Tasks</div>}
                 { (ix === undefined) && <h3 className='font-Chains h-8 w-8 text-xl m-3'>a</h3>}
-                { cardShrink >= 0.5 && <div className="flex font-bold text-black dark:text-white m-5 items-center">{cards[ix]}</div>}
+                { ix === 2 && (fieldActivity?.portfolioMode ? db?.union?.name : (fieldActivity?.selectedFieldName || db?.farmname)) && (
+                    <div className="flex flex-grow font-bold text-white m-5 items-center justify-center truncate">
+                        {fieldActivity?.portfolioMode ? db?.union?.name : (fieldActivity?.selectedFieldName || db.farmname)}
+                    </div>
+                )}
+                { ix !== 2 && cardShrink >= 0.5 && <div className="flex font-bold text-black dark:text-white m-5 items-center">{cards[ix]}</div>}
                 </>
             :<div className='h-11 w-11' /> }
             { version !== 0 && <div className={`flex z-0 justify-center w-screen`}>

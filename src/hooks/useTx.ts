@@ -82,6 +82,28 @@ const erc20Err = new Interface([
   "error UUPSUnauthorizedCallContext()",
   "error UUPSUnsupportedProxiableUUID(bytes32 slot)",
   "error VoucherAmountTooHigh()",
+  "error BadNonce()",
+  "error BadRatio()",
+  "error MaxLoanAmount()",
+  // FOOD TOKEN ERRORS (FoodTokenUpgradeable)
+  "error NotOracle()",
+  "error BatchNotActive()",
+  "error EntirePropertyClaimed()",
+  "error FieldAlreadyClaimed()",
+  "error TokenNotFound()",
+  "error AlreadyMember()",
+  "error NotMember()",
+  "error NotCertified()",
+  "error NotLandOwner()",
+  "error NoOracleRecord()",
+  "error AlreadyHarvested()",
+  "error FieldNumberTooLarge()",
+  "error InvalidSosDate()",
+  "error SosTooOld()",
+  "error SosTooFar()",
+  // ERC20Permit ERRORS (from NilaNINV2 — bubble up through drawLoanWithVoucher)
+  "error ERC2612InvalidSigner(address signer, address owner)",
+  "error ERC2612ExpiredSignature(uint256 deadline)",
   // VIEWER ERRORS
   "error AddressEmptyCode(address target)",
   "error ECDSAInvalidSignature()",
@@ -178,7 +200,7 @@ export function useTx() {
             txTimerRef.current = null;
           }
           setStage("approval");
-          setTxMessage("Confirm this transaction in your wallet.");
+          setTxMessage("Confirming this transaction");
           opts.onPending?.();
         },
         onSubmitted: (tx) => {
@@ -228,7 +250,7 @@ export function useTx() {
           if (e?.code === "ACTION_REJECTED") {
             setTxMessage("Transaction rejected by user.");
           } else if (e?.code === "INSUFFICIENT_FUNDS") {
-            setTxMessage("Insufficient funds.");
+            setTxMessage("Request gas subsidy from Nila.");
           } else if (e?.code === "UNPREDICTABLE_GAS_LIMIT") {
             setTxMessage("Unable to estimate gas. The transaction may fail or require a manual gas limit.");
           } else {
@@ -240,7 +262,64 @@ export function useTx() {
             }
 
             if (parsed?.name) {
-              setTxMessage(`Sorry, the transaction failed because of ${parsed.name}.`);
+              console.error("Parsed revert error:", parsed.name, parsed.args);
+              let msg: string;
+              if (parsed.name === 'ERC20InsufficientBalance') {
+                // args: [account, balance, needed] — both 6-dec USDT or 18-dec nIN.
+                // Heuristic: values < 1e12 raw are USDT (6 dec), larger are nIN (18 dec).
+                const have: bigint = parsed.args[1];
+                const need: bigint = parsed.args[2];
+                const isUsdt = need < 1_000_000_000_000n;
+                const fmt = (n: bigint) => isUsdt
+                  ? (Number(n) / 1e6).toFixed(2)
+                  : (Number(n) / 1e18).toFixed(4);
+                const unit = isUsdt ? 'USDT' : 'nIN';
+                msg = `Pool has ${fmt(have)} ${unit} but needs ${fmt(need)} ${unit}. Top up the pool before confirming.`;
+              } else if (parsed.name === 'ERC20InsufficientAllowance') {
+                const have: bigint = parsed.args[1];
+                const need: bigint = parsed.args[2];
+                const isUsdt = need < 1_000_000_000_000n;
+                const fmt = (n: bigint) => isUsdt
+                  ? (Number(n) / 1e6).toFixed(2)
+                  : (Number(n) / 1e18).toFixed(4);
+                const unit = isUsdt ? 'USDT' : 'nIN';
+                msg = `Token allowance too low — approved ${fmt(have)} ${unit}, need ${fmt(need)} ${unit}. Please approve first.`;
+              } else if (parsed.name === 'BadShares') {
+                msg = 'Nothing to unbond — your shares may already be fully pending, already claimable, or the requested amount is too small.';
+              } else if (parsed.name === 'BadState') {
+                msg = 'Action not allowed in the current state — check that the maturity window or lock period has passed.';
+              } else if (parsed.name === 'InsufficientCash') {
+                msg = 'Not enough liquid cash in the pool for this withdrawal right now.';
+              } else if (parsed.name === 'NothingToClaim') {
+                msg = 'Nothing to claim yet — your unbond request may not have matured.';
+              } else if (parsed.name === 'BadRatio') {
+                msg = 'Withdrawal would breach the junior/senior ratio limit. Wait for more deposits or for loans to mature.';
+              } else if (parsed.name === 'SosTooOld') {
+                msg = 'This cycle started more than 270 days ago, so a food token can no longer be minted for it. Long-cycle crops like sugarcane will be supported once the per-crop window is enabled on the contract.';
+              } else if (parsed.name === 'InvalidSosDate') {
+                msg = 'The start-of-season date for this cycle is missing. Confirm the SOS in the field record before minting.';
+              } else if (parsed.name === 'SosTooFar') {
+                msg = 'The start-of-season date is more than a year ahead. Check the SOS in the crop plan before minting.';
+              } else if (parsed.name === 'FieldAlreadyClaimed') {
+                msg = 'This field still carries a food token for an earlier season. It is free again from that crop\'s harvest date; if no harvest has been reported yet, the field stays taken until the oracle reports it. Pick a different field, or report the harvest first.';
+              } else if (parsed.name === 'EntirePropertyClaimed') {
+                msg = 'A food token for the whole property covers this season. Individual fields are free again from that crop\'s harvest date; if no harvest has been reported yet, they stay taken until the oracle reports it.';
+              } else if (parsed.name === 'FieldNumberTooLarge') {
+                msg = 'Field number is out of range (must be 0–127). Re-select the field and try again.';
+              } else if (parsed.name === 'NotCertified') {
+                msg = 'You are not yet certified for this batch. The buyer/oracle needs to certify your batch membership before you can mint.';
+              } else if (parsed.name === 'NotLandOwner') {
+                msg = 'This land title is not held by your wallet. Mint from the wallet that owns the land NFT.';
+              } else if (parsed.name === 'NoOracleRecord') {
+                msg = 'The oracle has not yet published a record for this field. Wait for the next pipeline run and try again.';
+              } else if (parsed.name === 'BatchNotActive') {
+                msg = 'This batch is closed or its target quantity is already filled. Pick another open batch.';
+              } else if (parsed.name === 'AlreadyHarvested') {
+                msg = 'This token has already been marked harvested and cannot be re-minted.';
+              } else {
+                msg = `Sorry, the transaction failed (${parsed.name}).`;
+              }
+              setTxMessage(msg);
             } else if (e?.reason) {
               setTxMessage(`Sorry, the transaction failed: ${e.reason}`);
             } else if (e?.shortMessage) {

@@ -1,13 +1,30 @@
-import { useState,useCallback, useEffect, memo } from 'react'
+import { useState, useCallback, useEffect, useRef, memo } from 'react'
 import { GoogleMap, useJsApiLoader, Polygon } from '@react-google-maps/api';
-import { useNavContext } from '../../../utils/NavigationContext';
-import { cropColor } from '../../../utils/cropColors.js';
+import { useDataContext } from '../../../utils/NavigationContext';
+import { cropColor, normalizeCropType } from '../../../utils/cropColors.js';
+import { cropName, sameCropFamily, heldFoodTokens } from '../../../utils/foodToken.ts';
 
+const hexToRgba = (hex, alpha) => {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
+// CSS values, not a JS snapshot: window.innerHeight/screen.width were read once
+// at module load and never updated, so on iOS Safari (whose address bar
+// resizes the viewport live) the map could render taller than the actual
+// visible viewport. That inflates the page's scrollable height, which on iOS
+// Safari pins position:fixed children (the bottom Tabs bar) to the taller
+// layout viewport instead of the visible one — hiding them until you scroll.
+// var(--app-height) is the same live viewport height Layout.js already keeps
+// in sync for this exact reason.
 const containerStyle = {
-  position: 'absolute',  
+  position: 'absolute',
   zIndex: 0,
-  width: window.screen.width,
-  height: window.innerHeight
+  width: '100vw',
+  height: 'var(--app-height)',
 };
 
 const GOOGLE_MAP_LIBRARIES = ['maps','marker']
@@ -28,6 +45,18 @@ const options = {
     tilt:0,
     };
 
+// AdvancedMarkerElement requires mapId with Advanced Markers enabled in Google Cloud Console.
+// Use this wrapper — falls back to a no-op if the capability isn't available.
+function addMarkerLabel(map, position, el) {
+  if (!map?.mapCapabilities?.isAdvancedMarkersAvailable) return null;
+  try {
+    return new window.google.maps.marker.AdvancedMarkerElement({ map, position, content: el });
+  } catch (e) {
+    console.warn('[map] AdvancedMarkerElement failed:', e.message);
+    return null;
+  }
+}
+
 const centroidOf = (feature) => {
   const coords = feature.geometry.type === 'MultiPolygon'
     ? feature.geometry.coordinates.flat(2)
@@ -40,10 +69,42 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
   const [map, setMap]                       = useState(null)
   const [selectFeatures]                    = useState(false)
   const [outline, setOutline]               = useState([])
-  const { cardIx }                          = useNavContext()
+  const [portfolioOutlines, setPortfolioOutlines] = useState([])
+  const [portfolioPrevOutlines, setPortfolioPrevOutlines] = useState([])
+  const portfolioMarkersRef                 = useRef([])
+  const portfolioBoundsRef                  = useRef(null)
+  // Bounds last actually fitted to (the "no selection / show all" case only),
+  // plus the portfolioSelected value from the previous run of the fit effect
+  // below — together let that effect skip a redundant fit+pan when property
+  // metadata resolves in a later wave (IndexedDB cache, then on-chain
+  // tokenURI) but doesn't reveal anything outside what's already on screen.
+  const portfolioFittedBoundsRef            = useRef(null)
+  // The set of lids that were actually included in the last "fit all" —
+  // distinguishes "same properties, metadata just refreshed" (skip-eligible,
+  // per portfolioFittedBoundsRef above) from "the shown set itself changed"
+  // (e.g. the "Show all known properties" toggle), which must always re-fit
+  // even if the new bounds happen to be a subset of the old ones.
+  const portfolioFittedLidsRef              = useRef(null)
+  // Same class of bug as portfolioFittedBoundsRef above, but for the "fit to
+  // the selected property" branch below — that branch never got the same
+  // protection because it didn't need it until "View property outline" (or
+  // any other flow that sets portfolioSelected on open) started routing
+  // through here. Skips a redundant re-fit when the same property's
+  // metadata just refreshed (cache wave → chain wave), by tracking which
+  // lid we last actually fit to — only a genuine selection CHANGE re-fits.
+  const portfolioFittedSelectedRef          = useRef(undefined)
+  const portfolioPrevSelectedRef            = useRef(undefined)
+  const { setFieldActivity, tokenData, view } = useDataContext()
+
+  // Food token priority: user self-attested a crop; unconfirmed until oracle matches it
+  const ft            = heldFoodTokens(tokenData)[0] ?? null
+  const ftCropName    = ft ? (cropName(ft.cropCode) || null) : null
+  const ftCropColor   = ftCropName ? cropColor(ftCropName) : null
+  const satelliteCrop = fieldActivity?.activeCycle?.[0]?.crop_type?.toLowerCase() ?? null
+  const ftConfirmed   = !!(ftCropName && satelliteCrop && sameCropFamily(ftCropName, satelliteCrop))
+  const ftUnconfirmed = !!(ftCropName && !ftConfirmed)
   const features                            = fieldActivity?.geojson?.features || fieldActivity?.features || []
-  const dominant                            = fieldActivity?.dominant
-  const featureIds                          = cardIx !== null ? dominant?.[cardIx]?.geometry_indices : Array.from({length: features.length}, (_, i) => i)
+  const isSelectMode                        = view?.mode === 'select'
 
   const { isLoaded } = useJsApiLoader({
     id: 'script-loader',
@@ -55,6 +116,22 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
 
   const onLoad = useCallback((map) => setMap(map), []);
   const onUnmount = useCallback(() => setMap(null), []);
+
+  // Portfolio map-type toggle (satellite/terrain) — imperative via
+  // map.setMapTypeId rather than the static `options` object above, which
+  // is only applied once at mount by react-google-maps/api, not reactively.
+  // Resets to satellite on leaving portfolio mode — the map instance is
+  // shared with the single-property view, which should never inherit a
+  // "terrain" choice made while browsing the portfolio.
+  useEffect(() => {
+    if (!map) return;
+    map.setMapTypeId(
+      fieldActivity?.portfolioMode && fieldActivity?.portfolioMapType === 'terrain' ? 'terrain' : 'satellite'
+    );
+  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioMapType]);
+
+  // Plan 044 §5.2 — no unmount feature-restore. Features are derived from
+  // (record, tokenData, view); leaving the map and returning recomputes them.
 
   // ------------------ ACTIVITY LAYER -------------------------
   /*
@@ -76,43 +153,147 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
       setCardView('mapview')
   }, [map, fieldActivity, setCardView])
   */
-  // ------------------ outline -------------------------
+  // ------------------ outline polygons (no fit) -------------------------
+  // Build the parcel-outline shapes once per metadata change. Map fitting
+  // happens in the consolidated fit-effect below.
  useEffect(() => {
-  if (!metadata?.outline || !map) return;
-
-  const outline = metadata.outline;
-
+  if (!metadata?.outline || !map || fieldActivity?.portfolioMode) return;
   const polygons = [];
-  
-  outline.forEach((poly) => {
+  metadata.outline.forEach((poly) => {
     const latLngs = [];
-    const polyBounds = new window.google.maps.LatLngBounds();
     poly.forEach((point) => {
       const lat = Number(point.lat);
       const lng = Number(point.lng);
-      const latLng = new window.google.maps.LatLng(lat, lng);
-      latLngs.push({ lat, lng });
-      polyBounds.extend(latLng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) latLngs.push({ lat, lng });
     });
-    if (latLngs.length) polygons.push({ latLngs, bounds: polyBounds });
-  })
-  
-  // Build global bounds
-  const globalBounds = new window.google.maps.LatLngBounds();
-  polygons.forEach(({ bounds }) => globalBounds.union(bounds));
-
-  setOutline(polygons);
-  map.fitBounds(globalBounds, 20);
-  // shift center upward so polygon isn't hidden behind the bottom card
-  const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
-    const center = map.getCenter();
-    const bounds = map.getBounds();
-    const latSpan = bounds.toSpan().lat();
-    // nudge center up by ~25% of visible lat span
-    map.panTo({ lat: center.lat() - latSpan * 0.2, lng: center.lng() });
+    if (latLngs.length) polygons.push({ latLngs });
   });
-  return () => window.google.maps.event.removeListener(listener);
-}, [map, metadata]);
+  setOutline(polygons);
+}, [map, metadata, fieldActivity?.portfolioMode]);
+
+  // ------------------ map fit -------------------------
+  // Plan 044 §5.2 — refit on the two transitions that reposition the map:
+  //   • zone mode → fit to the focused cultivation's features.
+  //   • any other mode (overview/season/select, incl. "back") → fit to parcel.
+  // Re-keyed on view.mode/view.focus so season flips (view.season) DON'T refit
+  // — the user stays oriented while paging through past seasons. There is no
+  // saved-zoom restore: "back" just refits to the parcel.
+  useEffect(() => {
+    if (!map || fieldActivity?.portfolioMode) return;
+
+    const wantFeatureFit = view?.mode === 'zone' && features.length > 0;
+
+    if (wantFeatureFit) {
+      const target = new window.google.maps.LatLngBounds();
+      for (const f of features) {
+        const coords = f.geometry?.coordinates;
+        if (!coords) continue;
+        const rings = f.geometry.type === 'MultiPolygon' ? coords.flatMap(p => p) : coords;
+        for (const ring of rings) {
+          for (const pt of ring) {
+            if (Array.isArray(pt) && Number.isFinite(pt[0]) && Number.isFinite(pt[1])) {
+              target.extend(new window.google.maps.LatLng(pt[1], pt[0]));
+            }
+          }
+        }
+      }
+      if (target.isEmpty()) return;
+      map.fitBounds(target, 20);
+      const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+        const z = map.getZoom();
+        map.setZoom(Math.min(20, (z ?? 17) + 0.2));
+        const center = map.getCenter();
+        const span = map.getBounds()?.toSpan();
+        if (span) map.panTo({ lat: center.lat() - span.lat() * 0.2, lng: center.lng() });
+      });
+      return () => window.google.maps.event.removeListener(listener);
+    }
+
+    // Overview / season / select / back → fit to parcel outline.
+    if (!metadata?.outline) return;
+    const target = new window.google.maps.LatLngBounds();
+    for (const poly of metadata.outline) {
+      for (const p of poly) {
+        const lat = Number(p.lat), lng = Number(p.lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          target.extend(new window.google.maps.LatLng(lat, lng));
+        }
+      }
+    }
+    if (target.isEmpty()) return;
+    map.fitBounds(target, 20);
+    const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+      const z = map.getZoom();
+      map.setZoom(Math.min(20, (z ?? 17) - 0.5));
+      const center = map.getCenter();
+      const span = map.getBounds()?.toSpan();
+      if (span) map.panTo({ lat: center.lat() - span.lat() * 0.2, lng: center.lng() });
+    });
+    return () => window.google.maps.event.removeListener(listener);
+  }, [map, metadata, view?.mode, view?.focus, fieldActivity?.mapRefitNonce, fieldActivity?.portfolioMode]);
+
+  // ------------------ one field-name label per field -------------------------
+  // Group zones by which field (metadata.fields) contains their centroid, then
+  // drop ONE label per field at the area-weighted average of the contained
+  // zones' centroids.
+  useEffect(() => {
+    if (!map || !features.length) return;
+    const fields = metadata?.fields;
+    if (!Array.isArray(fields) || fields.length === 0) return;
+
+    // ray-cast point-in-polygon, ring = [{lat, lng}, ...]
+    const inRing = (pt, ring) => {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i].lng, yi = ring[i].lat;
+        const xj = ring[j].lng, yj = ring[j].lat;
+        const hit = ((yi > pt.lat) !== (yj > pt.lat))
+          && (pt.lng < (xj - xi) * (pt.lat - yi) / (yj - yi + 1e-12) + xi);
+        if (hit) inside = !inside;
+      }
+      return inside;
+    };
+    const fieldIxAt = (pt) => {
+      for (let i = 0; i < fields.length; i++) {
+        const ring = fields[i]?.coordinates;
+        if (Array.isArray(ring) && ring.length >= 3 && inRing(pt, ring)) return i;
+      }
+      return -1;
+    };
+
+    // Accumulate centroids per field, weighted by zone area_m2. Only active
+    // zones contribute — grey/unknown zones don't drive field labels.
+    const acc = new Map();  // field idx → { sumLat, sumLng, sumW }
+    for (const f of features) {
+      const p = f.properties || {};
+      if (p.activity !== 'active') continue;
+      if (p.cluster_id === 0) continue;
+      const c = centroidOf(f);
+      if (!Number.isFinite(c?.lat) || !Number.isFinite(c?.lng)) continue;
+      const fx = fieldIxAt(c);
+      if (fx < 0) continue;
+      const w = Number(p.area_m2) > 0 ? Number(p.area_m2) : 1;
+      const cur = acc.get(fx) || { sumLat: 0, sumLng: 0, sumW: 0 };
+      cur.sumLat += c.lat * w;
+      cur.sumLng += c.lng * w;
+      cur.sumW += w;
+      acc.set(fx, cur);
+    }
+
+    const markers = [];
+    for (const [fx, v] of acc) {
+      if (v.sumW <= 0) continue;
+      const center = { lat: v.sumLat / v.sumW, lng: v.sumLng / v.sumW };
+      const name = fields[fx]?.name;
+      if (!name) continue;
+      const el = document.createElement('div');
+      el.style.cssText = 'background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);color:white;padding:3px 7px;border-radius:6px;font-size:10px;font-weight:600;white-space:nowrap;pointer-events:none;';
+      el.textContent = name;
+      const m = addMarkerLabel(map, center, el);
+      if (m) markers.push(m);
+    }
+    return () => markers.forEach(m => { if (m) m.map = null; });
+  }, [map, features, metadata]);
 
   // ------------------ signal markers -------------------------
   useEffect(() => {
@@ -124,20 +305,250 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
       })
       .map(f => {
         const status = f.properties?.signals?.status;
-        const emoji = status === 'ACTIVE_GOOD' ? '✅' : '⚠️';
+        const dotColor = status === 'ACTIVE_GOOD' ? '#16a34a' : '#f59e0b';
+        const crop = normalizeCropType(f.properties?.crop_type);
+        const iconUrl = crop ? `/images/crop_icons/${crop}.svg` : null;
         const el = document.createElement('div');
-        el.style.fontSize = '20px';
-        el.style.lineHeight = '1';
-        el.textContent = emoji;
-        const marker = new window.google.maps.marker.AdvancedMarkerElement({
-          map,
-          position: centroidOf(f),
-          content: el,
-        });
-        return marker;
+        el.style.cssText = 'position:relative;width:28px;height:28px;';
+        if (iconUrl) {
+          const img = document.createElement('img');
+          img.src = iconUrl;
+          img.style.cssText = 'width:24px;height:24px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));';
+          el.appendChild(img);
+        }
+        const dot = document.createElement('span');
+        dot.style.cssText = `position:absolute;bottom:0;right:0;width:9px;height:9px;border-radius:50%;background:${dotColor};border:1.5px solid #fff;`;
+        el.appendChild(dot);
+        return addMarkerLabel(map, centroidOf(f), el);
       });
-    return () => markers.forEach(m => { m.map = null; });
+    return () => markers.forEach(m => { if (m) m.map = null; });
   }, [map, features]);
+
+  // ------------------ info labels (dormant / historical) -------------------------
+  useEffect(() => {
+    if (!map) return;
+    const markers = [];
+    const labelStyle = 'background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);color:white;padding:8px 14px;border-radius:12px;font-size:11px;line-height:1.6;white-space:nowrap;';
+
+    if (fieldActivity?.dormant && view?.mode !== 'season' && outline.length) {
+      // Current state: fallow / dormant — single label at outline centroid
+      const poly = outline[0];
+      if (!poly?.latLngs?.length) return;
+      const center = poly.latLngs.reduce(
+        (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
+        { lat: 0, lng: 0 }
+      );
+      center.lat /= poly.latLngs.length;
+      center.lng /= poly.latLngs.length;
+      if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng)) return;
+
+      const d = fieldActivity.dormantStatus || {};
+      const el = document.createElement('div');
+      el.style.cssText = labelStyle;
+      el.innerHTML = [
+        `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${fieldActivity.dormantColor || '#8B6914'};margin-right:6px;vertical-align:middle;"></span><b>Fallow</b>`,
+        d.surface ? `Surface: ${d.surface}` : '',
+        d.moisture ? `Soil: ${d.moisture}` : '',
+        d.ploughed || '',
+        d.daysSinceCrop != null ? `Last crop: ${d.daysSinceCrop}d ago` : '',
+      ].filter(Boolean).join('<br>');
+
+      markers.push(addMarkerLabel(map, center, el));
+
+    }
+
+    return () => markers.forEach(m => { if (m) m.map = null; });
+  }, [map, fieldActivity?.dormant, fieldActivity?.activeCycle, view?.mode, view?.season, features, outline, ftUnconfirmed, ftCropName, ftCropColor]);
+
+  // ------------------ portfolio outlines + labels -------------------------
+  useEffect(() => {
+    if (!map || !fieldActivity?.portfolioMode || !fieldActivity?.portfolioProperties) {
+      // Clean up if leaving portfolio mode
+      if (portfolioOutlines.length) setPortfolioOutlines([]);
+      if (portfolioPrevOutlines.length) setPortfolioPrevOutlines([]);
+      portfolioMarkersRef.current.forEach(m => { if (m) m.map = null; });
+      portfolioMarkersRef.current = [];
+      portfolioBoundsRef.current = null;
+      portfolioFittedBoundsRef.current = null;
+      portfolioFittedLidsRef.current = null;
+      portfolioPrevSelectedRef.current = undefined;
+      portfolioFittedSelectedRef.current = undefined;
+      return;
+    }
+
+    const props = fieldActivity.portfolioProperties;
+    // undefined (not yet computed by staticCards.js) means "no filter yet" —
+    // show every marker rather than flashing an empty map on first mount.
+    const visibleIds = fieldActivity.portfolioVisibleLandIds
+      ? new Set(fieldActivity.portfolioVisibleLandIds.map(String))
+      : null;
+    const bounds = new window.google.maps.LatLngBounds();
+    const polys = [];
+    const labelStyle = 'background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);color:white;padding:6px 10px;border-radius:10px;font-size:10px;line-height:1.5;white-space:nowrap;cursor:pointer;';
+    const markers = [];
+
+    for (const [lid, meta] of Object.entries(props)) {
+      if (!meta.outline?.length) continue;
+      const visible = !visibleIds || visibleIds.has(String(lid));
+
+      // Bounds always include every known property (filtered out or not) —
+      // otherwise toggling a crop filter would shrink the fit-to-all bounds
+      // and trigger a re-pan every time the filter changes. Only the drawn
+      // polygon itself (polys, below) is suppressed when filtered out.
+      for (const ring of meta.outline) {
+        ring.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+      }
+
+      // Outline polygon — suppressed (not built) when filtered out by the
+      // crop legend/filter or the week-Gantt scrubber, same as the label
+      // below, so "filter" actually hides the property on the map, not just
+      // its name.
+      if (visible) {
+        for (const ring of meta.outline) {
+          const latLngs = ring.map(([lat, lng]) => ({ lat, lng }));
+          polys.push({ latLngs, lid });
+        }
+      }
+
+      // Label at centroid — clickable. Suppressed (not built) when filtered
+      // out by the crop legend/filter or the week-Gantt scrubber — see
+      // staticCards.js's visibleLandIds. (Crop-icon markers were tried and
+      // dropped — they didn't add anything over the farm name.)
+      if (meta.centroid && visible) {
+        const pos = { lat: meta.centroid[0], lng: meta.centroid[1] };
+        bounds.extend(pos);
+
+        const el = document.createElement('div');
+        el.style.cssText = labelStyle;
+        el.innerHTML = `<b>${meta.farm}</b>`;
+        el.addEventListener('click', () =>
+          setFieldActivity(prev => prev ? { ...prev, portfolioSelected: lid } : prev)
+        );
+
+        // Markers are rebuilt from scratch whenever the visible set changes
+        // (e.g. toggling a crop filter) — attach at the CURRENT Labels
+        // show/hide state, not always visible, otherwise a rebuild silently
+        // undoes an OFF toggle (the separate visibility effect below only
+        // reacts to portfolioLabels changing, not to a marker rebuild).
+        // addMarkerLabel must be called WITH the real map — passing null
+        // makes its own capability check treat this as "can't create" and
+        // return null outright, not a hidden marker — so construct visible,
+        // then detach immediately if labels are currently off.
+        const showLabels = fieldActivity?.portfolioLabels !== false;
+        const marker = addMarkerLabel(map, pos, el);
+        if (marker && !showLabels) marker.map = null;
+        markers.push(marker);
+      }
+    }
+
+    setPortfolioOutlines(polys);
+    portfolioBoundsRef.current = bounds;
+
+    // Clean up previous markers, store new ones
+    portfolioMarkersRef.current.forEach(m => { if (m) m.map = null; });
+    portfolioMarkersRef.current = markers;
+
+    return () => markers.forEach(m => { if (m) m.map = null; });
+  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioProperties, fieldActivity?.portfolioVisibleLandIds, setFieldActivity]);
+
+  // ------------------ portfolio label visibility (no refit) ----------------
+  useEffect(() => {
+    if (!map || !portfolioMarkersRef.current.length) return;
+    const show = fieldActivity?.portfolioLabels !== false;
+    portfolioMarkersRef.current.forEach(m => { m.map = show ? map : null; });
+  }, [map, fieldActivity?.portfolioLabels]);
+
+  // ------------------ portfolio: center on selected / re-fit all -------------------------
+  useEffect(() => {
+    if (!map || !fieldActivity?.portfolioMode) return;
+    const selected = fieldActivity?.portfolioSelected;
+    const props = fieldActivity?.portfolioProperties;
+    const cameFromSelected = !!portfolioPrevSelectedRef.current;
+    portfolioPrevSelectedRef.current = selected;
+    // Deselecting clears the "already fit" memory — a later re-selection of
+    // the exact same property (after having gone through no-selection) is a
+    // genuine new user action and should re-fit, not be skipped as if it
+    // were just a metadata refresh under an unbroken selection.
+    if (!selected) portfolioFittedSelectedRef.current = undefined;
+
+    if (selected && props?.[selected]) {
+      // Fit to the selected property — skip if we already fit to this exact
+      // selection (metadata refreshing under the same lid, e.g. the cache
+      // wave then the chain wave, must not re-pan). A genuine change of
+      // selection always re-fits.
+      if (portfolioFittedSelectedRef.current === selected) return;
+      portfolioFittedSelectedRef.current = selected;
+
+      const meta = props[selected];
+      const bounds = new window.google.maps.LatLngBounds();
+      (meta.outline || []).forEach(ring => ring.forEach(([lat, lng]) => bounds.extend({ lat, lng })));
+      if (meta.centroid) bounds.extend({ lat: meta.centroid[0], lng: meta.centroid[1] });
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds, 80);
+        const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+          const center = map.getCenter();
+          const span = map.getBounds()?.toSpan();
+          if (span) map.panTo({ lat: center.lat() - span.lat() * 0.18, lng: center.lng() });
+        });
+        return () => window.google.maps.event.removeListener(listener);
+      }
+    } else if (portfolioBoundsRef.current && !portfolioBoundsRef.current.isEmpty()) {
+      // No selection — fit to all (currently scoped) properties. Property
+      // metadata resolves in two waves (IndexedDB cache, then on-chain
+      // tokenURI) and each wave gives portfolioProperties a new object
+      // reference even when nothing newly visible was added — skip the
+      // fit+pan when it's the SAME set of properties as last time and the
+      // new bounds don't extend past what's already fitted, so that second
+      // wave doesn't visibly re-pan the map. But if the actual set of shown
+      // properties changed (e.g. the "Show all known properties" toggle),
+      // always re-fit — even if the new bounds are a subset of the old ones
+      // (shrinking back to fewer properties should zoom in, not stay put).
+      // A transition back from a selected property (the X/back button)
+      // also always re-fits, since that's a real, user-facing navigation.
+      const bounds = portfolioBoundsRef.current;
+      const currentLids = new Set(Object.keys(props || {}));
+      const prevLids = portfolioFittedLidsRef.current;
+      const sameLidSet = !!prevLids && prevLids.size === currentLids.size && [...currentLids].every(lid => prevLids.has(lid));
+      const alreadyFitted = !cameFromSelected
+        && sameLidSet
+        && portfolioFittedBoundsRef.current
+        && portfolioFittedBoundsRef.current.contains(bounds.getNorthEast())
+        && portfolioFittedBoundsRef.current.contains(bounds.getSouthWest());
+      if (alreadyFitted) return;
+
+      // Padding reduced from 40 — outlines were reading as tiny on load.
+      // Small extra zoom bump after settling (same pattern as the
+      // single-property/parcel fits above) tightens it further.
+      map.fitBounds(bounds, 10);
+      portfolioFittedBoundsRef.current = bounds;
+      portfolioFittedLidsRef.current = currentLids;
+      const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+        const z = map.getZoom();
+        map.setZoom(Math.min(20, (z ?? 15) + 0.6));
+        const center = map.getCenter();
+        const span = map.getBounds()?.toSpan();
+        if (span) map.panTo({ lat: center.lat() - span.lat() * 0.15, lng: center.lng() });
+      });
+      return () => window.google.maps.event.removeListener(listener);
+    }
+  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioSelected, fieldActivity?.portfolioProperties]);
+
+  // ------------------ portfolio: previous borrower outlines (grey, not clickable) ----------------
+  useEffect(() => {
+    if (!map || !fieldActivity?.portfolioMode || !fieldActivity?.portfolioPrevProperties) {
+      if (portfolioPrevOutlines.length) setPortfolioPrevOutlines([]);
+      return;
+    }
+    const polys = [];
+    for (const [lid, meta] of Object.entries(fieldActivity.portfolioPrevProperties)) {
+      if (!meta.outline?.length) continue;
+      for (const ring of meta.outline) {
+        const latLngs = ring.map(([lat, lng]) => ({ lat, lng }));
+        polys.push({ latLngs, lid });
+      }
+    }
+    setPortfolioPrevOutlines(polys);
+  }, [map, fieldActivity?.portfolioMode, fieldActivity?.portfolioPrevProperties]);
 
   return isLoaded ? (
       <GoogleMap
@@ -146,48 +557,180 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
         options={options}
         onUnmount={onUnmount}
       >
-        {/* Outline */}
-        // ------------------ V1 -------------------------
-        { metadata?.outline  && outline.map((poly, i) => (
+        {/* Outline — dormant color when fallow, white when active. Hidden when zone features tile the parcel. */}
+        { metadata?.outline && !features.length && outline.map((poly, i) => (
           <Polygon
             key={i}
             paths={poly.latLngs}
             options={{
-              fillColor: "rgba(255, 255, 255, 0.4)",
-              strokeColor: "#333333",
-              strokeOpacity: 0.8,
-              strokeWeight: 0.5,
+              fillColor: ftUnconfirmed
+                ? ftCropColor
+                : (fieldActivity?.dormant && view?.mode !== 'season') ? fieldActivity.dormantColor : "#9ca3af",
+              fillOpacity: ftUnconfirmed ? 0.15
+                : (fieldActivity?.dormant && view?.mode !== 'season') ? 0.5 : 0.4,
+              strokeColor: ftUnconfirmed
+                ? ftCropColor
+                : (fieldActivity?.dormant && view?.mode !== 'season') ? "#5C4A1E" : "#9ca3af",
+              strokeOpacity: 1,
+              strokeWeight: 1,
               clickable: false,
               zIndex: 1,
             }}
           />
         ))}
+        {/* Previous borrower outlines — grey, not clickable */}
+        {portfolioPrevOutlines.map((poly, i) => (
+          <Polygon
+            key={`pfprev-${poly.lid}-${i}`}
+            paths={poly.latLngs}
+            options={{
+              fillColor: 'rgba(156,163,175,0.12)',
+              fillOpacity: 1,
+              strokeColor: '#9CA3AF',
+              strokeOpacity: 0.65,
+              strokeWeight: 1,
+              clickable: false,
+              zIndex: 1,
+            }}
+          />
+        ))}
+        {/* Portfolio outlines — fill color is crop type (once known); active vs
+            inactive and selected are secondary channels (opacity/weight), not
+            a second hue, so they don't fight crop color for the same signal.
+            Properties with no resolved crop yet fall back to the previous
+            grey/blue active-vs-not scheme. Clickable, highlights selected. */}
+        {portfolioOutlines.map((poly, i) => {
+          const isSelected = String(fieldActivity?.portfolioSelected) === String(poly.lid);
+          const isActive = (fieldActivity?.portfolioActiveIds || []).some(id => String(id) === String(poly.lid));
+          const cropColorKey = fieldActivity?.portfolioCropByLandId?.[String(poly.lid)];
+          let fillColor, strokeColor;
+          if (cropColorKey) {
+            const hex = cropColor(cropColorKey);
+            const fillAlpha = isSelected ? 0.45 : (isActive ? 0.28 : 0.15);
+            fillColor = hexToRgba(hex, fillAlpha);
+            strokeColor = hex;
+          } else {
+            fillColor = isActive
+              ? (isSelected ? 'rgba(59,130,246,0.35)' : 'rgba(59,130,246,0.15)')
+              : (isSelected ? 'rgba(156,163,175,0.30)' : 'rgba(156,163,175,0.12)');
+            strokeColor = isActive
+              ? (isSelected ? '#1D4ED8' : '#3B82F6')
+              : (isSelected ? '#6B7280' : '#9CA3AF');
+          }
+          return (
+            <Polygon
+              key={`pf-${poly.lid}-${i}`}
+              paths={poly.latLngs}
+              onClick={() => setFieldActivity(prev => prev ? { ...prev, portfolioSelected: poly.lid } : prev)}
+              options={{
+                fillColor,
+                fillOpacity: 1,
+                strokeColor,
+                strokeOpacity: 0.95,
+                strokeWeight: isSelected ? 2.5 : 1.5,
+                clickable: true,
+                zIndex: isSelected ? 5 : (isActive ? 3 : 2),
+              }}
+            />
+          );
+        })}
         // ------------------ Dominant features -------------------------
-        {/* Activity */}
-        {features && features.filter((_f, i) => featureIds.includes(i)).flatMap((f, i) => {
+        {/* Activity / Select mode */}
+        {features && features.flatMap((f, i) => {
+          // Skip features with missing/empty geometry — upstream filters may
+          // strip whole zones (e.g. sub-threshold noise) and leave bare metadata.
+          const gtype = f?.geometry?.type;
+          if (!gtype || !f.geometry.coordinates?.length) return [];
           const isBorderArea = f.properties?.activity === 'border_area' || f.properties?.cluster_id === 0;
-          const yieldIndex = Number(f.properties?.yield_index ?? f.properties?.yield_kg_per_acre ?? NaN);
-          const fillOpacity = isBorderArea
-            ? 0.3
-            : Number.isFinite(yieldIndex) && yieldIndex > 0
-              ? Math.min(0.95, 0.25 + yieldIndex * 0.7)
-              : 0.55;
+          const isSelected = f.properties?.selected;
+          // Backdrop = the subdivided parent zone rendered under its subzones
+          // to fill any rendering gaps between adjacent partition polygons.
+          // Skipped in select mode entirely.
+          const isBackdrop = f.properties?.backdrop === true;
+          if (isBackdrop && isSelectMode) return [];
+
+          let fillColor, fillOpacity, strokeWeight;
+          if (isSelectMode) {
+            // Select mode: outline only, fill on select
+            fillColor = isSelected ? '#16a34a' : 'transparent';
+            fillOpacity = isSelected ? 0.45 : 0;
+            strokeWeight = 1;
+          } else {
+            // Active = feature belongs to an open cycle (stamped activity='active' upstream).
+            // Active zones get the crop color; inactive zones/subzones get grey shading
+            // (subzones lighter than bare zones). Every zone carries a visible border.
+            const yieldIndex = Number(f.properties?.yield_index ?? f.properties?.yield_kg_per_acre ?? NaN);
+            const GREY_SHADES = ['#4a4a4a','#606060','#747474','#888888','#9c9c9c','#b0b0b0','#636363','#797979'];
+            const isActive = f.properties?.activity === 'active';
+            const zid = f.properties?.zone_id;
+            const zIdx = typeof zid === 'number' ? zid : (String(zid).match(/(\d+)/)?.[1] ?? 0);
+            if (isBorderArea) {
+              fillColor = '#c0c0c0';
+              fillOpacity = 0.3;
+            } else if (isActive) {
+              fillColor = cropColor(f.properties?.crop_type);
+              fillOpacity = Number.isFinite(yieldIndex) && yieldIndex > 0
+                ? Math.min(0.95, 0.25 + yieldIndex * 0.7)
+                : 0.55;
+            } else {
+              fillColor = GREY_SHADES[Number(zIdx) % GREY_SHADES.length];
+              fillOpacity = 0.7;
+            }
+            // Perennial zones get an extra opacity bump so they read as more
+            // saturated/established than the surrounding crop zones.
+            if (f.properties?.category === 'perennial') {
+              fillOpacity = Math.min(0.95, fillOpacity + 0.25);
+            }
+            strokeWeight = isBorderArea ? 0.5 : 1;
+          }
+
+          const cropTypeStr = typeof f.properties?.crop_type === 'string' ? f.properties.crop_type : '';
+          const isPlant = /plant/i.test(cropTypeStr);
+          const isRatoon = /ratoon/i.test(cropTypeStr);
           const polygons = f.geometry.type === 'MultiPolygon'
             ? f.geometry.coordinates.map(poly => poly[0].map(([lng, lat]) => ({ lat, lng })))
             : [f.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }))];
+          const isSubzone = !!f.properties?.subzone_of;
           return polygons.map((paths, j) => (
           <Polygon
             key={`${i}-${j}`}
             paths={paths}
             options={{
-              fillColor: isBorderArea ? '#c0c0c0' : cropColor(f.properties?.crop_type),
+              fillColor,
               fillOpacity,
-              strokeColor: "#333333",
-              strokeOpacity: 0.8,
-              strokeWeight: 0.5,
-              clickable: !!onFeatureClick && !isBorderArea,
+              // Subzones: stroke colour matches the fill so adjacent
+              // partitions visually grow into the gap (~50/50 split). Plant
+              // and ratoon borders still take priority so the subtype is
+              // distinguishable.
+              strokeColor: isSelectMode
+                ? (isSelected ? '#16a34a' : '#ffffff')
+                : isBorderArea ? '#c0c0c0'
+                : isPlant ? '#000000'
+                : isRatoon ? '#9ca3af'
+                : isSubzone ? fillColor
+                : '#ffffff',
+              // Backdrop gets no stroke + sits below subzones; subzones
+              // always show their (fill-matching) stroke so adjacent
+              // partitions seal up.
+              strokeOpacity: isBackdrop
+                ? 0
+                : isSelectMode ? 1
+                : isBorderArea ? 0.5
+                : (isPlant || isRatoon) ? 0.9
+                : isSubzone ? 1
+                : 0,
+              strokeWeight: isSubzone && !isPlant && !isRatoon ? 2 : strokeWeight,
+              clickable: !isBackdrop && (isSelectMode || (!!onFeatureClick && !isBorderArea)),
+              zIndex: isBackdrop ? 1 : 2,
             }}
-            onClick={() => !isBorderArea && onFeatureClick?.(f)}
+            onClick={() => {
+              if (isBackdrop) return;
+              if (isSelectMode) {
+                onFeatureClick?.({ ...f, _toggle: true });
+              } else if (!isBorderArea) {
+                onFeatureClick?.(f);
+              }
+            }}
           />
           ));
         })}
@@ -197,7 +740,7 @@ function StaticMaps({metadata,fieldActivity,onFeatureClick}) {
             key={i}
             paths={f.geometry.coordinates.flatMap(poly => poly).map(([lng, lat]) => ({ lat, lng }))}
             options={{
-              fillColor: "rgba(255, 255, 255, 0.1)",
+              fillColor: "rgba(255, 255, 255, 0.3)",
               strokeColor: "#333333",
               strokeOpacity: 0.8,
               strokeWeight: 0.5,

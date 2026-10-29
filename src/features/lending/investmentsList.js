@@ -1,11 +1,57 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDataContext,useViewModeContext } from '../../utils/NavigationContext.js';
 import { IndividualExchangeButton, ClaimButton } from '../../components/UI/buttons.js';
 import { useInvestGeneric, useWithdrawGeneric, useWithdrawClaimGeneric } from '../../hooks/useLoadFunds.ts';
 import { usePreviewUnbond } from '../../hooks/useInvest.ts';
 import { useWeightedRates } from '../../hooks/useWeightedRates.js';
-import { ArrowPathIcon } from '@heroicons/react/24/solid';
-import { CountdownCircleWithdraw } from '../../components/UI/counter.js'
+import { ArrowPathIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
+import { CountdownCircle } from '../../components/UI/counter.js'
+
+/**
+ * Compact APY-history sparkline. Renders the weighted-rate history (one point
+ * per week) returned by useWeightedRates as a filled line graph. No-ops when
+ * there are fewer than two points to draw a line between.
+ */
+const RateHistoryChart = ({ history }) => {
+    const points = (Array.isArray(history) ? history : [])
+        .filter((h) => Number.isFinite(h?.ratePct))
+        .sort((a, b) => (a.updatedAt > b.updatedAt ? 1 : a.updatedAt < b.updatedAt ? -1 : 0));
+    if (points.length < 2) return null;
+
+    const W = 300, H = 90;
+    const PAD_L = 34, PAD_R = 6, PAD_T = 8, PAD_B = 8;
+    const rates = points.map((p) => p.ratePct);
+    const min = Math.min(...rates);
+    const max = Math.max(...rates);
+    const span = max - min || 1;
+    const n = points.length;
+    const x = (i) => PAD_L + (i / (n - 1)) * (W - PAD_L - PAD_R);   // X axis: one slot per week
+    const y = (r) => PAD_T + (1 - (r - min) / span) * (H - PAD_T - PAD_B); // Y axis: max at top, min at bottom
+
+    const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(p.ratePct).toFixed(1)}`).join(' ');
+    const area = `${line} L ${x(n - 1).toFixed(1)} ${H - PAD_B} L ${x(0).toFixed(1)} ${H - PAD_B} Z`;
+    const last = points[n - 1];
+
+    return (
+        <div className='mx-0 mt-4 px-2 py-3'>
+            <svg viewBox={`0 0 ${W} ${H}`} className='w-full text-green dark:text-green_dark' style={{ height: 96 }}>
+                { /* X-axis week gridlines (one per data point) */ }
+                {points.map((p, i) => (
+                    <line key={i} x1={x(i)} y1={PAD_T} x2={x(i)} y2={H - PAD_B}
+                        stroke='currentColor' strokeOpacity='0.15' strokeWidth='1' vectorEffect='non-scaling-stroke' />
+                ))}
+                { /* Y-axis labels: highest APY at top, lowest at bottom */ }
+                <text x={PAD_L - 5} y={PAD_T + 3} textAnchor='end' fill='currentColor' className='text-gray-400 dark:text-slate-400' style={{ fontSize: 9 }}>{max.toFixed(1)}%</text>
+                <text x={PAD_L - 5} y={H - PAD_B} textAnchor='end' fill='currentColor' className='text-gray-400 dark:text-slate-400' style={{ fontSize: 9 }}>{min.toFixed(1)}%</text>
+                { /* series */ }
+                <path d={area} fill='currentColor' fillOpacity='0.15' />
+                <path d={line} fill='none' stroke='currentColor' strokeWidth='2' vectorEffect='non-scaling-stroke' strokeLinejoin='round' strokeLinecap='round' />
+                <circle cx={x(n - 1)} cy={y(last.ratePct)} r='3' fill='currentColor' />
+            </svg>
+        </div>
+    );
+};
+
 /**
  * Investment List V2. 
  * List of funds of member union (multiple unions possible?), 
@@ -24,6 +70,7 @@ import { CountdownCircleWithdraw } from '../../components/UI/counter.js'
  * @param {*} param0 
  * @returns 
  */
+
 const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums}) => {
     const [ amount, setAmount ]                         = useState(0)
     const [ accept, setAccept ]                         = useState(true);
@@ -44,27 +91,33 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
     const [ investPool, setInvestPool ]                 = useState(hasLandTitle ? 'junior' : 'senior')
     const SENIORITY                                     = s?.junior > 1 ? 0 : 1  // allow for some dust to be left in the junior bucket
     const investInJunior                                = isUnionLeader ? investPool === 'junior' : hasLandTitle
-    const activeWithdrawal                              = Boolean(Number(hasMaturing?.requestTs))
+    const activeWithdrawal                              = Boolean(Number(hasMaturing?.requestTs)) && hasMaturing?.pendingPrincipalSnap > 0
+    const [ preferCash, setPreferCash ]                   = useState(true)  // junior default: get cash (INR)
     const { preview }                                   = usePreviewUnbond(db?.union?.address)
     const { investgeneric }                             = useInvestGeneric(db?.union?.address,initialBalance,fund_type)
     const { withdrawgeneric }                           = useWithdrawGeneric(db?.union?.address,s, token_address)
     const { withdrawclaimgeneric }                      = useWithdrawClaimGeneric(db?.union?.address,s, token_address)
     const [readyToClaim, setReadyToClaim]               = useState(false);
-    const endTs                                         = useMemo(() => Number(hasMaturing?.minWindowTs) || 0, [hasMaturing?.minWindowTs]);
-    const { rateByPair }                                = useWeightedRates(data, sums, db?.union?.address);
-    const getRatePercent                                = (fund, idx) => {
+    const [checkingLiq, setCheckingLiq]                 = useState(false);
+    const [flash, setFlash]                             = useState(false);  // one-shot flash on liquidity-threshold crossing
+    const [showChart, setShowChart]                     = useState(false);  // APY-history graph toggle (collapsed by default)
+    const wasOverLiqRef                                 = useRef(false);
+    const unbondEndTs                                   = hasMaturing ? Number(hasMaturing.minWindowTs) : 0;
+    const { rateByPair, historyByPair }                 = useWeightedRates(data, sums, db?.union?.address);
+
+    const getRatePercent = (fund, idx) => {
         const union = String(db?.union?.address || '').toLowerCase();
         const fundId = String(fund?.tokens?.[0]?.loanType || sums?.funds?.[idx]?.fund_id || '').toLowerCase();
         const key = `${union}-${fundId}`;
         const apiRate = rateByPair?.[key];
-        if (Number.isFinite(apiRate)) return apiRate;
-        const fallback = Number(fund?.tokens?.[0]?.previewRateBP ?? 0);
-        return Number.isFinite(fallback) ? fallback : 0;
+        const floor = Number(sums?.funds?.[idx]?.baseRateBP || fund?.tokens?.[0]?.baseRateBP || 0);
+        if (Number.isFinite(apiRate) && apiRate >= floor) return apiRate;
+        return Number.isFinite(floor) && floor > 0 ? floor : 0;
     };
 
     useEffect(() => {
-        if (endTs > 0 && Math.floor(Date.now()/1000) >= endTs) setReadyToClaim(true);
-    }, [endTs]);
+        if (hasMaturing?.pastMin) setReadyToClaim(true);
+    }, [hasMaturing?.pastMin]);
 
     useEffect(() => {
         setInvestPool(hasLandTitle ? 'junior' : 'senior');
@@ -82,26 +135,30 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
         if (!loanType || !addr || !s) return;
 
         (async () => {
-            const res = await preview(loanType, s, addr, 0);
-            /* prev = 
-            requestTs:              ts -> ts start unbonding
-            minWindowTs:            ts -> ts of default claim
-            pendingPrincipalSnap:   nmb -> nmb of shares
-            maturedBudget:          nmb -> no matured budget used
-            pastMin:                bool -> before ts of default claim
-            coveredByMaturities:    bool -> is matured amnt enough
-            coveredByIdle:          bool -> is idle amnt enough
-            eligibleNow:            bool -> you have enough shares still
-            */
+            const res = await preview(loanType, s, addr, SENIORITY);
             setMaturing(res)
         })();
-    }, [d?.tokens?.[0]?.loanType, s, db?.address]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [d?.tokens?.[0]?.loanType, db?.address, SENIORITY, s?.senior, s?.junior]);
 
+    // flash the withdraw card once when the amount crosses above available liquidity
+    const overLiquidity = !tab && amount > Math.max(0, (s?.idleCash ?? 0) - (s?.requiredReserve ?? 0));
+    useEffect(() => {
+        if (overLiquidity && !wasOverLiqRef.current) {
+            setFlash(true);
+            const t = setTimeout(() => setFlash(false), 700);
+            wasOverLiqRef.current = true;
+            return () => clearTimeout(t);
+        }
+        if (!overLiquidity) wasOverLiqRef.current = false;
+    }, [overLiquidity]);
+
+    const pendingEarnings = Math.round(s?.pending ?? 0);
     const handleSetTab = (bool) => {
         setTab(bool) // state required as ref won't rerender on tab change.
-        setAmount(0)
+        // withdraw tab: pre-fill with pending earnings so user sees they're included
+        setAmount(bool ? 0 : pendingEarnings)
         setBalance(initialBalance)
-        navRef.current.assetTab = bool
     }
     const setMax = (e) => {
         if (tab){
@@ -158,8 +215,8 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
     }
 
     const handleWithdrawalPeriodWarning = (amount) => {
-        // covered by idle, 
-        return amount <= attr.invested ? '14 days' : amount <= (attr.invested + attr.maturedBudget) ? 'less then 21 days' : 'more then 3 weeks'
+        // if the requested amount exceeds the fund's available liquidity, payout queues behind loan repayments
+        return amount <= fundAvailable ? '14 days' : 'multiple weeks'
     }
 
     if ((!s || !d)) {
@@ -170,13 +227,16 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
         );
     }
 
+    const fundAvailable = Math.max(0, (s?.idleCash ?? 0) - (s?.requiredReserve ?? 0));
+    const histUnion  = String(db?.union?.address || '').toLowerCase();
+    const histFundId = String(d?.tokens?.[0]?.loanType || sums?.funds?.[fundSelected]?.fund_id || '').toLowerCase();
+    const rateHistory = historyByPair?.[`${histUnion}-${histFundId}`];
     const attr = tokenview && {
         frozen: sums.isFrozen,
         type: s.fund_type,
         disabled: false,
         rate: getRatePercent(d, fundSelected),
-        maturedBudget: d.tokens[0].maturedBudget,
-        invested: s.principal + s.pending - (hasMaturing ? hasMaturing?.pendingPrincipalSnap : 0),
+        invested: s.principal - (hasMaturing ? hasMaturing?.pendingPrincipalSnap : 0),
         junior_raw: s.junior,
         senior_raw: s.senior,
         funds: s.totals,
@@ -206,27 +266,106 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                     <img className={'rounded-t-3xl opacity-70'} onClick={handleBackToList} src={imageData[attr.type]} alt={'inputfund'}/>
                 </div>
                 <div className='bg-gray-200 dark:bg-gray-700 pb-6 rounded-3xl'>
-                    { activeWithdrawal && 
+                    { activeWithdrawal && (() => {
+                        const coveredByBucket = Boolean(hasMaturing?.coveredByBucket);
+                        const canClaimNow         = readyToClaim && coveredByBucket;
+                        const liquidityShort      = !coveredByBucket;
+                        return (
                         <div className='bg-gray-200 dark:bg-gray-700'>
-                            <div className='flex flex-row justify-evenly relative z-20 -my-6 mx-3 rounded-xl bg-green dark:bg-green_dark p-3 shadow-2xl '>
-                                <div className='flex flex-col justify-center'>
-                                    <p className='font-bold'>{readyToClaim ? 'Shares unbonded': 'Unbonding your shares'}</p>
-                                    <p className='text-xs'>amount: {(hasMaturing?.pendingPrincipalSnap).toFixed(2)} nIN</p>
+                            <div className='flex flex-col relative z-20 -my-6 mx-3 rounded-xl bg-green dark:bg-green_dark shadow-2xl overflow-hidden'>
+                                <div className='flex flex-row justify-evenly p-3'>
+                                    <div className='flex flex-col justify-center'>
+                                        <p className='font-bold'>{canClaimNow ? 'Shares unbonded' : 'Unbonding your shares'}</p>
+                                        <p className='text-xs'>payout: {(hasMaturing?.pendingPrincipalSnap).toFixed(2)} nIN</p>
+                                    </div>
+                                    <div className='text-xs flex flex-col items-center justify-center'>
+                                        { canClaimNow
+                                            ? <HandleUnbondClaim />
+                                            : coveredByBucket
+                                                ? <CountdownCircle endTs={unbondEndTs} size={size} onDone={handleCountdownDone} />
+                                                : (
+                                                    <div style={{ width: size, height: size }} className='flex flex-col items-center justify-center rounded-full bg-white bg-opacity-20 text-white text-center gap-0.5'>
+                                                        { checkingLiq
+                                                            ? <div className='w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin' />
+                                                            : <>
+                                                                <span className='text-lg font-bold leading-none'>~3</span>
+                                                                <span className='text-xs leading-none'>weeks</span>
+                                                              </>
+                                                        }
+                                                    </div>
+                                                )
+                                        }
+                                    </div>
                                 </div>
-                                <div className='text-xs'>{ readyToClaim ? <HandleUnbondClaim />: <CountdownCircleWithdraw endTs={endTs} size={size} onDone={handleCountdownDone} />}</div>
+                                { liquidityShort && (
+                                    <div className='bg-amber-600 dark:bg-amber-700 px-12 py-6 flex flex-col gap-2'>
+                                        <p className='text-xs text-white font-semibold'>
+                                            { hasMaturing?.pastMin
+                                                ? '⚠ Waiting for loan repayments — your shares will be claimable once enough loans repay into this fund.'
+                                                : 'Waiting for loan repayments before payout can proceed'
+                                            }
+                                        </p>
+                                        <button
+                                            onClick={async () => {
+                                                setCheckingLiq(true);
+                                                const [res] = await Promise.all([
+                                                    preview(d?.tokens?.[0]?.loanType, s, db?.address, SENIORITY),
+                                                    new Promise(r => setTimeout(r, 5000)),
+                                                ]);
+                                                if (res) setMaturing(res);
+                                                setCheckingLiq(false);
+                                            }}
+                                            className='text-xs text-white font-bold border border-white border-opacity-50 rounded-lg px-2 py-2 self-start active:scale-95'
+                                        >
+                                            Check again
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                    }
+                        );
+                    })()}
                     <h3 className='font-bold z-10 px-6 text-center text-xl bg-gray-200 dark:text-white dark:bg-gray-700 pt-12' >{names[fundSelected]}</h3>
                     <p className='font-bold text-center bg-gray-200 dark:text-slate-400 dark:bg-gray-700 pt-12'>Currently earning {Number(attr.rate || 0).toFixed(2)}% APY</p>
+                    { rateHistory?.length >= 2 && (
+                        <p className='text-center bg-gray-200 dark:bg-gray-700 pt-1'>
+                            <button onClick={() => setShowChart((v) => !v)} className='text-xs font-bold text-blue-500 dark:text-blue-400 underline active:opacity-60'>
+                                {showChart ? 'Close' : 'View interest rate history for this fund'}
+                            </button>
+                        </p>
+                    )}
+                    { showChart && (
+                        <div className='bg-gray-200 dark:bg-gray-700 px-6 pt-3'>
+                            <RateHistoryChart history={rateHistory} />
+                        </div>
+                    )}
                     {handleFundStatus() && <p className='text-center bg-gray-200 dark:text-slate-400 dark:bg-gray-700 text-red pb-12 pt-1'>This fund has low liquidity!</p>}
                 </div>
                 <div className={`flex justify-around px-4 mt-12`}>
                     <h3 onClick={() => handleSetTab(true)} className={`font-bold ${!tab ? 'text-gray-400 dark:text-slate-400' : 'dark:text-white'} text-sm`}>Invest</h3>
                     <h3 onClick={() => handleSetTab(false)} className={`font-bold ${tab ? 'text-gray-400 dark:text-slate-400' : 'dark:text-white'} text-sm`}>Withdraw</h3>
                 </div>
-                <div className='flex flex-col w-full mt-5 rounded-3xl bg-gray-200 dark:bg-gray-700 p-6 justify-between'>
-                    
+                { (() => {
+                    const token       = d?.tokens?.[0];
+                    const juniorEq    = token?.juniorEquity    ?? 0;
+                    const seniorPrinc = token?.seniorPrincipal ?? 0;
+                    const totalEq     = juniorEq + seniorPrinc;
+                    const currentPct  = totalEq > 0 ? (juniorEq / totalEq * 100) : null;
+                    const threshPct   = token?.bucketThresholdPct ?? 10;
+                    const ratioOk     = currentPct !== null && currentPct >= threshPct;
+                    return (
+                        <div className='flex items-center justify-between mx-0 mt-4 rounded-2xl bg-white dark:bg-gray-800 px-4 py-3'>
+                            <p className={`text-xs font-bold ${ratioOk ? 'text-black dark:text-white' : 'text-black dark:text-white'}`}>
+                                First-loss reserve {currentPct !== null ? `: ${currentPct.toFixed(1)}%`: ''}
+                            </p>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ratioOk ? 'text-green dark:text-green' : 'text-red dark:text-red'}`}>
+                                {ratioOk ? `✓ ≥ ${threshPct.toFixed(0)}%` : `✗ Below ${threshPct.toFixed(0)}%`}
+                            </span>
+                        </div>
+                    );
+                })() }
+                <div className={`flex flex-col w-full mt-5 rounded-3xl p-6 justify-between transition-colors duration-300 ${flash ? 'bg-black dark:bg-white' : 'bg-gray-200 dark:bg-gray-700'}`}>
+
                     { !tab &&
                     <>
                         { /* WITHDRAW */ }
@@ -251,7 +390,18 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                                    <p className={`flex text-sm items-end px-1 dark:text-white ${attr.invested <= 0 && 'opacity-40'}`} onClick={() => setMax(attr.invested)}>max</p>
                                 </div>
                             </div>
-                            <p className='flex text-xs py-3 dark:text-slate-400'>⚠️ Withdrawal from this fund will take {handleWithdrawalPeriodWarning(amount)}.</p>
+                            {SENIORITY === 0 && (
+                            <label className='flex text-xs py-3 dark:text-slate-400 items-center gap-2'>
+                                <input checked={preferCash} onChange={() => setPreferCash(!preferCash)} type="checkbox" className="w-4 h-4 accent-black dark:accent-green_dark border-gray-300 rounded" />
+                                Get cash instead of USDT
+                            </label>
+                            )}
+                            <p className={`flex items-center gap-1 text-xs py-3 ${amount > fundAvailable ? 'text-red font-semibold' : 'dark:text-slate-400'}`}>
+                                {amount > fundAvailable
+                                    ? <ExclamationTriangleIcon className="w-4 h-4 text-red shrink-0" />
+                                    : '⚠️'} Withdrawal from this fund will take {handleWithdrawalPeriodWarning(amount)}.
+                            </p>
+                            <p className='flex text-xs dark:text-slate-400'>⚠️ Earnings are always withdrawn first — they are included in your withdrawal amount.</p>
                         </div>
                         { isFrozen && <p className='flex text-xs py-3 dark:text-white'> ❌ To withdraw, pay off any debts first.</p> }
                         </>
@@ -314,15 +464,11 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                 } 
                 { !tab &&
                 <div className='flex flex-col justify-evenly text-center'>
-                <div className="flex p-8 dark:text-slate-400">
-                    <input checked={true} readOnly type="checkbox" className="w-4 h-4 my-1 accent-black dark:accent-green_dark border-gray-300 rounded" />
-                    <div className="pl-3 text-left">This will automatically withdraw all your pending earnings!</div>
-                </div>                      
-                <ClaimButton disabled={attr.invested > 0 && !isFrozen ? false : true } handleClick={() => withdrawgeneric(amount,SENIORITY)} title='Withdraw' /> 
+                <ClaimButton disabled={attr.invested > 0 && !isFrozen ? false : true } handleClick={() => withdrawgeneric(amount, SENIORITY, preferCash)} title='Withdraw' />
                 </div>                } 
                 <div key="info" className='flex flex-col p-4'>
                     <h3 className="font-bold text-sm py-4 dark:text-white">Info</h3>
-                    <p className='text-sm dark:text-slate-400'>{info[attr.type] || info.GENERIC}</p>           
+                    <p className='text-sm dark:text-slate-400'>{info[attr.type] || info.GENERIC}</p>
                 </div>
             </div> 
             : 
@@ -340,7 +486,7 @@ const InvestmentList = ({ LAND, handleTokenView, data, fundSelected, names, sums
                                     <p className={`font-bold text-black dark:text-white`}>{names[index]}</p>
                                     <p className="text-gray-400 mb-3 dark:text-white">{subtitle[d.type] || subtitle.GENERIC}</p>
                                     <p className="text-gray-400 dark:text-slate-400">Total: {sums.funds[index].totals.toLocaleString('en-IN', { maximumFractionDigits: 0 })} nIN</p>
-                                    <p className="text-gray-400 dark:text-slate-400">Available: {(sums.funds[index].totals - sums.funds[index].lent - sums.funds[index].pendingWithdrawal).toLocaleString('en-IN', { maximumFractionDigits: 0 })} nIN</p>
+                                    <p className="text-gray-400 dark:text-slate-400">Available: {Math.max(0, sums.funds[index].idleCash - sums.funds[index].requiredReserve).toLocaleString('en-IN', { maximumFractionDigits: 0 })} nIN</p>
                                 </div>
                             </div>
                             <div className="flex flex-row justify-end p-4">

@@ -17,6 +17,14 @@
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <title>Nila Farm Finance App</title>
     <script>
+    // The keypad app's one-time link (SMS from L14): /l/<code> opens /lite (P8). Plain ES5, before the app loads,
+    // so a KaiOS browser never loads the app bundle.
+    (function () {
+      var m = location.pathname.match(/^\/l\/([0-9A-Za-z]+)\/?$/);
+      if (m) location.replace('/lite/#/l/' + m[1].toUpperCase());
+    })();
+    </script>
+    <script>
     (function () {
       const stored = localStorage.getItem('theme'); // 'light' | 'dark' | null (system)
       const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;

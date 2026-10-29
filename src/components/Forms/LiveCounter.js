@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { truncateSerial, groupByDenomination } from '../../utils/cashCounterHelpers';
+import { groupByDenomination } from '../../utils/cashCounterHelpers';
 
 const LiveCounter = ({ scannedBills, runningTotal, mode, pendingCount, isUploading, uploadPending }) => {
   const groups = groupByDenomination(scannedBills);
@@ -31,8 +31,7 @@ const LiveCounter = ({ scannedBills, runningTotal, mode, pendingCount, isUploadi
           animate={{ opacity: 1, y: 0 }}
           className="text-xs dark:text-slate-400"
         >
-          Last: ₹{lastBill.denomination.toLocaleString('en-IN')}{' '}
-          <span className="font-mono">({truncateSerial(lastBill.serialNumber)})</span>
+          Last: ₹{lastBill.denomination.toLocaleString('en-IN')} {lastBill.side || ''}
         </motion.div>
       )}
 

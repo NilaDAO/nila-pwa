@@ -1,0 +1,31 @@
+{
+  "version": "0.1.0",
+  "name": "Nila",
+  "description": "Nila for keypad phones: your crop shares, loans and cash-outs.",
+  "type": "web",
+  "launch_path": "/lite/index.html?app=1",
+  "icons": {
+    "56": "/lite/icon56.png",
+    "112": "/lite/icon112.png"
+  },
+  "developer": {
+    "name": "Nila",
+    "url": "https://nila.land"
+  },
+  "locales": {
+    "en-US": {
+      "name": "Nila",
+      "subtitle": "Farm finance",
+      "description": "Your crop shares, loans and cash-outs."
+    }
+  },
+  "default_locale": "en-US",
+  "fullscreen": "false",
+  "orientation": "portrait",
+  "cursor": false,
+  "permissions": {
+    "geolocation": {
+      "description": "To send the location of each field (F14)."
+    }
+  }
+}

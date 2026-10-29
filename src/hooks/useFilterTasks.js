@@ -1,12 +1,41 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from 'react';
-import { useDataContext } from '../utils/NavigationContext';
+import { useState, useMemo } from 'react';
+import { useDataContext, useViewModeContext, useNavContext } from '../utils/NavigationContext';
 import { ethers } from 'ethers';
-import { useCollectGrant } from './useCollectGrant.ts';
-import { useAcceptLoan } from './useLoadFunds.ts';
+import { useActiveLoans } from './useActiveLoans';
+import { useContactBook } from './useContactBook';
+import { useLoanAcceptance } from './useLoanAcceptance';
 import { useSwitchMain, useTopUpGas, useProvider} from './useWallet.ts';
 import useTouch from './useTouch';
 import { subscribeUser } from '../features/apis/pushManager';
+import { useUnionCashReserve } from './useUnionCashReserve.ts';
+import { useGlobalOpenRedeemOrders, useGlobalOpenCashOffers, usePendingCashDeliveries, usePendingFilledCashOffers } from './useCashOffer.ts';
+import { useLPProfile } from './useLPProfile';
+import { useFxPool } from './useWallet.ts';
+import { useLoadFundsData } from './useLoadFunds.ts';
+import { useCertRegistry } from './useCertRegistry.ts';
+import { useDonationPrograms, useDonationsEnabled } from './useDonationPrograms.ts';
+import { HEALTH_LABEL, enrichLoan } from '../utils/loanIssues.js';
+
+// Heroicons ExclamationTriangleIcon (20/solid) path, inlined as a data URI —
+// tasks.js's cropImg rendering mask-fills t.img in solid black onto a
+// t.iconBg-colored circle (see its cropImg branch), so this only needs to
+// supply the glyph shape; color comes from iconBg below, not from this SVG's
+// own fill. Avoids adding a new static asset for one glyph.
+const WARNING_ICON_URL = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="black">' +
+  // fill-rule/clip-rule are required — the exclamation mark's dot/bar are
+  // cut-out subpaths that only render as holes under the evenodd winding
+  // rule; without it (dropped when translating from the JSX fillRule/
+  // clipRule props to raw SVG attribute names) the whole thing filled solid
+  // instead of showing the glyph (2026-08-24).
+  '<path fill-rule="evenodd" clip-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"/>' +
+  '</svg>'
+);
+
+// Mirrors ActiveLoansCard.js's own PAYBACK_WARNING_DAYS — keep in sync so the
+// task list and the expanded loan row agree on when the warning appears.
+const PAYBACK_WARNING_DAYS = 21;
 
 export function usePolBalance(address, provider) {
   return useQuery({
@@ -20,22 +49,83 @@ export function usePolBalance(address, provider) {
   });
 }
 
+export const CERT_IMG = [
+  '/images/label-01.webp',
+  '/images/label-04.webp',
+  '/images/label-02.webp',
+  '/images/label-03.webp',
+  '/images/label-05.webp',
+];
+
+export const CROP_IMG = {
+  0: 'images/crop_icons/paddy.svg',
+  1: 'images/groundnut.png',
+  2: 'images/sugarcane.png',
+  3: 'images/label-06.webp',
+  4: 'images/label-06.webp',
+  5: 'images/label-06.webp',
+  6: 'images/sesame.png',
+  7: 'images/cassava.png',
+};
+
 export function useFilterTasks(LAND, CAP) {
-  const { db, tokenData, grantData } = useDataContext();
+  const { db, tokenData, unionFunds, fieldActivity, setFieldActivity } = useDataContext();
+  const { navRef } = useViewModeContext();
+  const { setIx, prevIx } = useNavContext();
   const { provider }                 = useProvider();
   const queryClient                  = useQueryClient();
   const isLeader                     = Boolean(db?.union?.leader);
+  const { resolveName, hasName }     = useContactBook({ enabled: false });
   const { data: polBalance }         = usePolBalance(db?.address, provider);
-  const { data: loansResp, isFetched: loansFetched } = useTransferableLoans(
-    db?.union?.address,
-    isLeader
-  );
-
-  const { collectGrant }             = useCollectGrant();
+  const { data: loansData, isFetched: loansFetched } = useActiveLoans(db?.union?.address, false);
+  const { data: reserveData, isPending: reservePending } = useUnionCashReserve(isLeader ? db?.union?.address : undefined);
+  const { profile: lpProfile, isPending: lpProfilePending } = useLPProfile();
+  const isLP = Boolean(lpProfile?.isLP);
+  const { data: getOffers  = [], isPending: getOffersPending  } = useGlobalOpenRedeemOrders();
+  const { data: giveOffers = [], isPending: giveOffersPending } = useGlobalOpenCashOffers();
   const { topUpGas }                 = useTopUpGas();
   const { switchToMain }             = useSwitchMain();
-  const { acceptLoan }               = useAcceptLoan();
   const { handleToggleView }         = useTouch();
+  const { lpFillRedeemOrder, commitCashRequest, postCashOffer, confirmCashOfferDelivered, confirmCashDelivery, cancelRedeemOrder } = useFxPool();
+  const { data: fundsData = [] } = useLoadFundsData(
+    db?.union?.address ?? '',
+    unionFunds ?? [],
+    db?.address ?? ''
+  );
+  const { data: pendingDeliveries = [] } = usePendingCashDeliveries(
+    isLeader ? db?.union?.address : undefined
+  );
+  const { data: filledCashOffers = [] } = usePendingFilledCashOffers(
+    isLeader ? db?.union?.address : undefined
+  );
+
+  // Shared by the crop-health and payback-warning tasks below — opens the
+  // portfolio outlines map focused on one enriched loan, replicating
+  // ActiveLoansCard's "View property outline" button (UnionReserve.js's
+  // onViewMap prop) since useFilterTasks isn't inside that component tree
+  // to receive the prop itself. ActiveLoansCard's own button also stashes
+  // the current fieldActivity into a savedFieldActivity ref (a UnionReserve
+  // prop not reachable from this hook) so back-navigation restores whatever
+  // view was active before — that one restoration nuance is lost here.
+  const openPortfolioOutline = (l) => {
+    setFieldActivity({
+      portfolioMode: true,
+      portfolioLoans: [l],
+      outlinesOnly: true,
+      portfolioLabels: false,
+      portfolioFocusLandId: l.landId,
+      portfolioMonthOffset: 0,
+      features: [],
+      geojson: { type: 'FeatureCollection', features: [] },
+    });
+    prevIx.current = 6;
+    setIx(2);
+  };
+  // Donations — task shows only when the union leader enabled donations AND there
+  // are active programs. Swipe-right dismisses for the session (local, like LP offers).
+  const { data: donationsEnabled = false } = useDonationsEnabled(db?.union);
+  const { data: donationPrograms = [] } = useDonationPrograms(db?.union, donationsEnabled);
+  const [donateDismissed, setDonateDismissed] = useState(false);
   const getNotificationPermission = () => {
     if (typeof window === 'undefined') return 'default';
     const override = localStorage.getItem('notificationPermissionOverride');
@@ -44,25 +134,55 @@ export function useFilterTasks(LAND, CAP) {
   };
   const [notificationPermission, setNotificationPermission] = useState(getNotificationPermission);
 
-  const filteredTransferables = loansResp?.items?.filter(l => !l.fastDraw && !l.drawdownTs) ?? [];
+  const [dismissedLoans, setDismissedLoans] = useState(new Set());
+  const { handleAcceptLoan, handleCancelLoan } = useLoanAcceptance({
+    onDismiss: (id) => setDismissedLoans(prev => new Set(prev).add(id)),
+  });
+  const filteredTransferables = loansData?.allItems?.filter(l => !l.fastDraw && !l.drawdownTs && l.txHash && !dismissedLoans.has(l.id)) ?? [];
   const hasTransferables = filteredTransferables.length > 0;
+
+  // Local-only dismissals for LP offers (swipe-left removes the row from this
+  // user's task list without touching on-chain state).
+  const [dismissedGetOffers,  setDismissedGetOffers]  = useState(new Set());
+  const [dismissedGiveOffers, setDismissedGiveOffers] = useState(new Set());
+  // Same for filled CashOffers awaiting union confirmation — there's no
+  // on-chain "reject" for a filled offer (NilaFxPool.confirmCashOfferDelivered
+  // is the only state transition out of status=1, gated to msg.sender === the
+  // offer's union), so a task stuck failing that call has no on-chain escape
+  // hatch. Swipe-left just hides it from this session's list.
+  const [dismissedFilledCashOffers, setDismissedFilledCashOffers] = useState(new Set());
+
+  // Split matching batches into those the farmer can join immediately vs. those needing a cert.
+  const allSuggestedBatches = fieldActivity?.suggestedBatches
+    ?? (fieldActivity?.suggestedBatch ? [fieldActivity.suggestedBatch] : []);
+  const openBatch  = allSuggestedBatches.find(b => (b.requiredCerts ?? 0) === 0) ?? null;
+  const certBatch  = allSuggestedBatches.find(b => (b.requiredCerts ?? 0) > 0)  ?? null;
+  const batchRequiredMask = certBatch?.requiredCerts ?? 0;
+  const { allMet: certsAllMet, requiredCerts: batchRequiredCertsList, loading: certLoading } = useCertRegistry(db?.address, batchRequiredMask);
 
   // compute readiness OUTSIDE queryFn so we can gate with `enabled`
   const tokenDataReady = Array.isArray(tokenData);
-  const grantReady = grantData && typeof grantData.alreadyClaimed === 'boolean' &&  typeof grantData.initialClaim === 'boolean';
   const landReady = Boolean(LAND?.current) && typeof LAND.current?.hasLand === 'boolean';
   const capReady = typeof CAP?.current === 'number' && Number.isFinite(CAP.current);
-  const accountReady = Boolean(db?.address) && Boolean(db?.chain);
-  const loansReady = !isLeader || loansFetched;
+  const accountReady = Boolean(db?.address);
+  const loansReady = true; // loans deferred to Cash & Liquidity tab — don't block task list
 
   const ready =
     tokenDataReady &&
-    grantReady &&
     landReady &&
     capReady &&
     accountReady &&
     loansReady;
 
+  // Upstream signals that contribute to the task list. While any of these is
+  // still loading, the composed list is incomplete and we should keep the task
+  // area in a loading state instead of flashing "All tasks completed".
+  const upstreamLoading =
+    lpProfilePending ||
+    getOffersPending ||
+    giveOffersPending ||
+    certLoading ||
+    (isLeader && reservePending);
   function shuffle(arr) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -72,11 +192,35 @@ export function useFilterTasks(LAND, CAP) {
     return a;
   }
 
-  const handleAcceptLoan = async (union,id,borrower,amount) => {
-    if (confirm(`Are you sure to accept the loan of ${amount} nIN to ${borrower}`)) {
-      await acceptLoan(union, id);
+  // Total escrow nIN the union holds (human-readable)
+  const escrowBalance = useMemo(() => {
+    const raw = reserveData?.activeEscrowNin;
+    if (!raw) return 0;
+    return Number(ethers.formatUnits(raw, 18));
+  }, [reserveData]);
+
+  // Mirrors UnionReserve.handleSettle: posts a CashOffer at 1% LP fee per escrow.
+  // The leader settles via an LP provider, not directly from the treasury.
+  const handleSettleExpiringEscrows = async (escrows) => {
+    if (!escrows?.length || !db?.union?.address) return;
+    const totalInr = Number(
+      escrows.reduce((s, e) => s + (e?.ninAmount != null ? BigInt(e.ninAmount) : 0n), 0n) / 10n ** 18n
+    );
+    const msg =
+      `Post a CashOffer for ₹${totalInr.toLocaleString('en-IN')} at 1% LP fee?\n\n` +
+      `An LP provider will deliver the cash on the union's behalf.`;
+    if (!confirm(msg)) return;
+    for (const e of escrows) {
+      try {
+        await postCashOffer(db.union.address, e.escrowId, 100); // 100 BP = 1%
+      } catch (err) {
+        console.error('postCashOffer failed:', err);
+        break;
+      }
     }
-  }
+    queryClient.invalidateQueries({ queryKey: ['unionCashReserve'] });
+    queryClient.invalidateQueries({ queryKey: ['unionOpenCashOffersList'] });
+  };
 
   const handleEnableNotifications = async () => {
     const res = await subscribeUser(db?.address);
@@ -99,35 +243,101 @@ export function useFilterTasks(LAND, CAP) {
     alert('Unable to enable notifications right now. Please try again.');
   }
 
+  // Extract leader treasury signals for queryKey + task generation
+  const now = Math.floor(Date.now() / 1000);
+  const pendingDisburse = reserveData?.pendingDisburse ?? [];
+  const scheduledExits  = reserveData?.scheduledExits  ?? [];
+  const treasury        = reserveData?.treasury        ?? 0n;
+  const available       = reserveData?.available       ?? 0n;
+  // Group pending escrows into a 4h bucket anchored on the earliest deadline
+  // and drive the settlement task from that bucket only. pendingDisburse is
+  // sorted asc by deadline (useUnionCashReserve). Mirrors the Countdown in
+  // UnionReserve.js:735-758. The task card triggers at <1d to match the bar's
+  // red-flash threshold (Countdown isWarning = remaining < 86400).
+  const BUCKET_WINDOW = 4 * 3600;
+  const earliestDeadline = pendingDisburse[0]?.deadline ?? null;
+  const settleBucket = earliestDeadline === null
+    ? []
+    : pendingDisburse.filter(e => e.deadline - earliestDeadline < BUCKET_WINDOW);
+  const hasUrgentEscrow = earliestDeadline !== null && (earliestDeadline - now) < 86400;
+  let urgentInr = 0;
+  try {
+    const sumRaw = settleBucket.reduce(
+      (s, e) => s + (e?.ninAmount != null ? BigInt(e.ninAmount) : 0n),
+      0n
+    );
+    urgentInr = Number(sumRaw / 10n ** 18n);
+  } catch (err) {
+    console.error('urgentInr calc failed:', err);
+  }
+  const hasOpenUnbond   = scheduledExits.some(e => e.pastMin);
+  const treasuryLow     = treasury > 0n && Number(available) / Number(treasury) < 0.2;
+
+  // Total available-to-borrow across all union funds. Mirrors the per-fund
+  // "Available" line on the Investment card (investmentsList.js):
+  //   Math.max(0, idleCash - requiredReserve)
+  // requiredReserve includes claimable + safety bump (10%), so this is the real lendable cash.
+  const totalAvailable = (fundsData ?? []).reduce(
+    (s, f) => s + Math.max(
+      0,
+      Number(f?.tokens?.[0]?.idleCash ?? 0) - Number(f?.tokens?.[0]?.requiredReserve ?? 0)
+    ),
+    0
+  );
+  const hasBorrowRoom = totalAvailable >= urgentInr && urgentInr > 0;
+
   const query = useQuery({
     queryKey: [
       'tasks',
       tokenDataReady ? tokenData.length : 0,
-      grantReady ? grantData.alreadyClaimed : null,
       landReady ? LAND.current.hasLand : null,
       capReady ? CAP.current : null,
-      db?.chain ?? null,
+      Number(process.env.REACT_APP_CHAIN_ID) || 137,
       db?.union?.chain ?? null,
       db?.union?.address ?? null,
       loansFetched ? filteredTransferables.length : null,
       notificationPermission,
       tokenDataReady ? tokenData.find(i => i?.sym === 'LAND')?.bal ?? 0 : null,
       typeof polBalance === 'number' ? polBalance < 0.2 : null,
+      hasUrgentEscrow,
+      urgentInr,
+      hasBorrowRoom,
+      hasOpenUnbond,
+      treasuryLow,
+      escrowBalance,
+      isLP,
+      getOffers.length,
+      dismissedGetOffers.size,
+      giveOffers.length,
+      dismissedGiveOffers.size,
+      pendingDeliveries.length,
+      filledCashOffers.length,
+      dismissedFilledCashOffers.size,
+      fieldActivity?.activeCycle?.length ?? 0,
+      openBatch?.id ?? null,
+      certBatch?.id ?? null,
+      !!fieldActivity?.dormant,
+      batchRequiredMask,
+      certsAllMet,
+      donationsEnabled,
+      donationPrograms.length,
+      donateDismissed,
     ],
-    staleTime: 5 * 60 * 1000,
+    // useFilterTasks is a pure derivation over upstream hooks — no network call.
+    // Treat the composed list as never-stale: when an upstream signal changes the
+    // queryKey shifts and the queryFn re-runs anyway. placeholderData keeps the
+    // previous list visible across key changes so we don't flash "loading tasks..".
+    staleTime: Infinity,
+    gcTime: Infinity,
+    placeholderData: (prev) => prev,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     enabled: ready, // only run when inputs are ready
     queryFn: async () => {
       if (!ready) return [];
-      const foodtokens   = tokenData ? tokenData.filter(b => b.type === 'ERC1155').length + 1 : 0;
-      const month        = new Date().toLocaleDateString('en-US', { month: 'long' });
       const MINCAP       = Number(process.env.REACT_APP_MIN_CAP ?? 100);
-      const chainSync    = db?.chain == db?.union?.chain; // losy comparison string vs number
-      const fallowFields = !!db?.reloadActivity?.act?.features?.some(f => {
-        const activity = f?.properties?.activity;
-        if (typeof activity === 'string') return activity === 'fallow';
-        const cls = f?.properties?.class;
-        return cls === 0 || cls === 1;
-      });
+      const chainSync    = (Number(process.env.REACT_APP_CHAIN_ID) || 137) == Number(db?.union?.chain);
+      const fallowFields = !!fieldActivity?.dormant;
       const topUpGasFlag = Boolean(localStorage.getItem('TopUpGas'));
       const hasLandToken = tokenData?.some(t => t?.sym === 'LAND' && Number(t?.bal || 0) > 0);
       const pendingLandMeta = db?.reload?.land?.metadata;
@@ -138,27 +348,23 @@ export function useFilterTasks(LAND, CAP) {
       const notificationsGranted = notificationPermission === 'granted';
       const baseNin = 40;
       const POL_or_Flag = (typeof polBalance === 'number' && polBalance < 0.2) || topUpGasFlag;
+      const hasActiveCycle = Boolean(fieldActivity?.activeCycle?.length);
+      const missingCerts = batchRequiredCertsList.filter(c => c.status !== 'valid' && c.status !== 'expiring');
 
       const taskList = [
-        { i: 0, 
-          active: !chainSync, 
-          img: "images/sat.svg", 
-          tx_nmb: 0, 
-          click: () => switchToMain(), 
-          title: `${db?.union?.name} has moved to Polygon mainnet.`, 
+        { i: 0,
+          active: !chainSync,
+          img: "images/sat.svg",
+          tx_nmb: 0,
+          click: () => switchToMain(),
+          title: `${db?.union?.name} has moved to Polygon mainnet.`,
           subtitle: 'Make the switch too.',
           btn: 'Switch',
+          swipeable: true,
+          swipeRightLabel: 'Switch ✓',
+          swipeHint: 'Swipe to switch',
         },
-        { i: 1, 
-          active: !tokenData?.some(i => i.sym === 'nIN' && i.bal > 0) && !grantData.initialClaim, 
-          img: "images/label-06.webp", 
-          tx_nmb: 0, 
-          click: () => collectGrant(), 
-          title: 'Claim your first grant.', 
-          subtitle: 'Grants reward you for being active.',
-          btn: 'Claim',
-         },
-        { i: 2, 
+        { i: 2,
           active: !hasLandToken && !LAND?.current?.hasLand,
           img: "images/LAND.png", 
           tx_nmb: landMintPending ? 0 : { ix: 2, i: 0 },
@@ -172,32 +378,46 @@ export function useFilterTasks(LAND, CAP) {
             : 'A land title can get you loans, grants and more.',
           btn: landMintPending && notificationsGranted ? null : (landMintPending ? 'Enable' : 'Claim'),
          },
-        { i: 3, 
-          active: LAND?.current?.hasLand && grantData && grantData.alreadyClaimed == false, 
-          img: "images/label-06.webp", 
-          tx_nmb: 0, 
-          click: () => collectGrant(db.address, db.union.address, foodtokens), 
-          title: `Well done, you earned ${(grantData.pending * 100).toFixed(0)} nIN.`, 
-          subtitle: `See how we calculate the ${month} reward.`, subclick: handleToggleView, sub_tx_nmb: { ix: 0, i: 43 },
-          btn: 'Collect',
-        },
-        { i: 4, 
-          active: Number(CAP?.current) > MINCAP, 
-          img: "images/label-06.webp", 
-          tx_nmb: { ix: 1, i: 0 }, 
-          click: handleToggleView, 
-          title: `Invest to reach the minimal loan cap`, 
-          subtitle: `You need at least ${MINCAP} nIN to be eligible.`,
+        { i: 4,
+          active: Number(CAP?.current) > MINCAP,
+          img: "images/label-06.webp",
+          tx_nmb: { ix: 1, i: 0 },
+          click: handleToggleView,
+          title: `Invest to reach the minimal loan cap`,
+          subtitle: `Invest more nIN to unlock borrowing.`,
           btn: 'Invest',
-         },
-        { i: 5, 
-          active: fallowFields, 
-          img: "images/paddy.png", 
-          tx_nmb: { ix: 2, i: 0 }, 
-          click: handleToggleView, 
-          title: `Start a new cultivation`, 
+          swipeable: true,
+          swipeRightLabel: 'Invest ✓',
+          swipeHint: 'Swipe to invest',
+        },
+        { i: 700,
+          active: donationsEnabled && donationPrograms.length > 0 && !donateDismissed,
+          img: "images/gift.svg",
+          cropImg: true,
+          iconBg: "bg-green_light dark:bg-green_dark_light",   // match the donate card
+          tx_nmb: { ix: 8 },
+          swipeable: true,
+          // SwipeCard maps swipe-right → click (success), swipe-left → click2.
+          click:  () => handleToggleView({ ix: 8 }),     // swipe right → donate page
+          click2: () => setDonateDismissed(true),        // swipe left  → remove task
+          title: `Donate to ${donationPrograms[0]?.name ?? 'a project'}`,
+          subtitle: `Support a project your union backs.`,
+          swipeRightLabel: 'Donate ✓',
+          swipeLeftLabel:  '✕ Dismiss',
+          swipeHint: 'Swipe right to donate · left to dismiss',
+        },
+        { i: 5,
+          active: fallowFields,
+          img: "images/crop_icons/paddy.svg",
+          cropImg: true,
+          tx_nmb: { ix: 2, i: 0 },
+          click: () => { setFieldActivity(prev => prev ? { ...prev, pendingCropForm: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
+          title: `Start a new cultivation`,
           subtitle: `Get up to 1L support to grow on fallow and unused fields.`,
-          btn: 'Grow'
+          btn: 'Grow',
+          swipeable: true,
+          swipeRightLabel: 'Grow ✓',
+          swipeHint: 'Swipe to grow',
         },
         // Show buy 
         { i: 6, 
@@ -210,92 +430,344 @@ export function useFilterTasks(LAND, CAP) {
           btn: 'Send',
         },
         // Loan acceptance by union leaders
-        ...(filteredTransferables.map((d, i) => ({
-            i: i + 7, 
-            active: isLeader && hasTransferables, 
-            img: 'images/label-06.webp', 
-            click: () => handleAcceptLoan(d.union, d.id, d.borrowerLabel ? d.borrowerLabel : d.borrower.slice(-15) , d.amount),
-            title: `${d.borrowerLabel ? d.borrowerLabel : d.borrower.slice(-15)} requests a loan.`, 
-            subtitle: `${d.amount} nIN.`,
-            btn: 'Accept'
-          })) || []), 
+        ...(filteredTransferables.map((d, i) => {
+            const label   = resolveName(d.borrower);
+            const fullAmt = Math.round(d.amount);
+            // Only the first pending loan can use the escrow; the rest must settle in full.
+            const avail   = i === 0 ? escrowBalance : 0;
+            const netAmt  = Math.max(0, Math.round(d.amount - avail));
+            return {
+              i: i + 7,
+              active: isLeader && hasTransferables,
+              img: 'images/label-06.webp',
+              click: (_, lpOpts) => handleAcceptLoan(d.union, d.id, label, d.borrower, d.amount, lpOpts),
+              title: `${label} requests a ₹${fullAmt.toLocaleString('en-IN')} loan.`,
+              subtitle: null,
+              btn: 'Accept',
+              btn2: 'Cancel',
+              click2: () => handleCancelLoan(d.union, d.id, label, d.txHash),
+              lp: { fullAmt, netAmt, escrowBalance: avail },
+            };
+          }) || []),
+        // Leader treasury urgency tasks
+        { i: 100,
+          active: isLeader && hasUrgentEscrow,
+          img: 'images/NILA.png',
+          tx_nmb: { ix: 6 },
+          title: hasBorrowRoom
+            ? `Cash-out ₹${urgentInr.toLocaleString('en-IN')} today`
+            : `Settle ₹${urgentInr.toLocaleString('en-IN')} cash today`,
+          subtitle: hasBorrowRoom
+            ? 'Find a borrower and cash-out today.'
+            : 'Settle the cash with an LP provider today.',
+          // Swipe right → settle from treasury, swipe left → open cash-out form
+          click:  () => handleSettleExpiringEscrows(settleBucket),
+          click2: () => handleToggleView({ ix: 6 }),
+          btn:  'Settle',
+          btn2: 'Cash Out',
+          swipeRightLabel: 'Settle ✓',
+          swipeLeftLabel:  'Cash Out ✓',
+          swipeLeftPositive: true,
+        },
+        { i: 101,
+          active: isLeader && hasOpenUnbond,
+          img: 'images/label-06.webp',
+          tx_nmb: { ix: 6 },
+          click: handleToggleView,
+          title: 'Member ready to claim cash.',
+          subtitle: 'Open Cash Out to post a Redeem Order.',
+          btn: 'Cash Out',
+        },
+        // LP: one task per get-cash offer (LP deposits USDT, picks up INR cash from union)
+        ...(isLP ? getOffers
+          .filter(o => !dismissedGetOffers.has(o.id))
+          .map((o, idx) => {
+            const inr  = Number(o.inrValue ?? 0);
+            const usdt = o.usdtAmount > 0n ? Number(o.usdtAmount) / 1e6 : 0;
+            const rate = usdt > 0 ? (inr / usdt).toFixed(2) : '—';
+            return {
+              i: 200 + idx,
+              active: true,
+              img: 'images/USDT0.png',
+              tx_nmb: 0,
+              // Swipe right → fill, swipe left → dismiss locally
+              click:  () => lpFillRedeemOrder(o.id),
+              click2: () => setDismissedGetOffers(prev => new Set(prev).add(o.id)),
+              title: `Collect ₹${inr.toLocaleString('en-IN')} cash`,
+              subtitle: `Get $${usdt.toFixed(2)} · ₹${rate}/$`,
+              btn:  'Fill',
+              btn2: 'Not interested',
+              swipeRightLabel: 'Fill ✓',
+              swipeLeftLabel:  '✕ Not interested',
+            };
+          }) : []),
+        // LP: one task per give-cash offer (LP brings INR cash, receives USDT locked by union)
+        ...(isLP ? giveOffers
+          .filter(o => !dismissedGiveOffers.has(o.id))
+          .map((o, idx) => {
+            const inr  = Number(o.inrValue ?? 0);
+            const feeInr = Math.round(inr * (o.feeBP ?? 100) / 10000);
+            return {
+              i: 300 + idx,
+              active: true,
+              img: 'images/USDT0.png',
+              tx_nmb: 0,
+              // Swipe right → fill, swipe left → dismiss locally
+              click:  () => commitCashRequest(o.id),
+              click2: () => setDismissedGiveOffers(prev => new Set(prev).add(o.id)),
+              title: `Bring ₹${inr.toLocaleString('en-IN')} cash to ${resolveName(o.union)}`,
+              subtitle: `Earn ₹${feeInr.toLocaleString('en-IN')} fee (${(o.feeBP ?? 100) / 100}%) holding $${(Number(o.usdtAmount) / 1e6).toFixed(2)}`,
+              btn:  'Fill',
+              btn2: 'Not interested',
+              swipeRightLabel: 'Fill ✓',
+              swipeLeftLabel:  '✕ Not interested',
+            };
+          }) : []),
+        // Union leader: LP filled a CashOffer (deposited USDT) — swipe right to
+        // accept. Swipe left dismisses locally only: the contract has no
+        // union-side reject for an already-filled offer (confirmCashOfferDelivered
+        // is the only way out of status=1, and it's gated to the offer's own
+        // union address) — so if Accept keeps reverting (wrong signer, or the
+        // offer is otherwise stuck), this is the only way to clear it from view.
+        ...(isLeader ? filledCashOffers
+          .filter(o => !dismissedFilledCashOffers.has(String(o.id)))
+          .map((o, idx) => {
+          const lpName = resolveName(o.lp);
+          const inr    = Number(o.inrValue);
+          const feeInr = Math.round(inr * (o.feeBP ?? 100) / 10000);
+          return {
+            i: 500 + idx,
+            active: true,
+            img: 'images/USDT0.png',
+            tx_nmb: 0,
+            click: async () => {
+              if (!confirm(`Accept ${lpName} collecting ₹${inr.toLocaleString('en-IN')} cash?`)) return;
+              try {
+                await confirmCashOfferDelivered(o.id);
+                queryClient.invalidateQueries({ queryKey: ['pendingFilledCashOffers'] });
+                queryClient.invalidateQueries({ queryKey: ['unionCashReserve'] });
+              } catch (err) { console.error('confirmCashOfferDelivered failed:', err); }
+            },
+            click2: () => setDismissedFilledCashOffers(prev => new Set(prev).add(String(o.id))),
+            title: `${lpName} collects ₹${inr.toLocaleString('en-IN')} cash.`,
+            subtitle: `For a ₹${feeInr.toLocaleString('en-IN')} fee.`,
+            btn: 'Accept',
+            btn2: 'Not now',
+            swipeable: true,
+            swipeRightLabel: 'Accept ✓',
+            swipeLeftLabel: '✕ Not now',
+          };
+        }) : []),
+        // Union leader: LP committed to a RedeemOrder — swipe to accept or deny
+        ...(isLeader ? pendingDeliveries.map((o, idx) => {
+          const lpName = resolveName(o.lp);
+          const inr    = Number(o.inrValue);
+          const feeInr = Math.round(inr * (o.feeBP ?? 100) / 10000);
+          return {
+            i: 400 + idx,
+            active: true,
+            img: 'images/USDT0.png',
+            tx_nmb: 0,
+            click: async () => {
+              if (!confirm(`Accept ₹${inr.toLocaleString('en-IN')} cash delivery from ${lpName}?`)) return;
+              try {
+                await confirmCashDelivery(o.id);
+                queryClient.invalidateQueries({ queryKey: ['pendingCashDeliveries'] });
+                queryClient.invalidateQueries({ queryKey: ['unionCashReserve'] });
+              } catch (err) { console.error('confirmCashDelivery failed:', err); }
+            },
+            click2: async () => {
+              if (!confirm(`Deny ${lpName}? This cancels the order.`)) return;
+              try {
+                await cancelRedeemOrder(o.id);
+                queryClient.invalidateQueries({ queryKey: ['pendingCashDeliveries'] });
+                queryClient.invalidateQueries({ queryKey: ['unionCashReserve'] });
+              } catch (err) { console.error('cancelRedeemOrder failed:', err); }
+            },
+            title: `${lpName} is delivering ₹${inr.toLocaleString('en-IN')} cash.`,
+            subtitle: `For a ₹${feeInr.toLocaleString('en-IN')} fee.`,
+            btn: 'Accept',
+            btn2: 'Deny',
+            swipeRightLabel: 'Accept ✓',
+            swipeLeftLabel: '✕ Deny',
+          };
+        }) : []),
+        // Union leader: crop-health warning, one per active loan whose
+        // satellite-read health is stressed/underperforming. No accept/deny
+        // — it's a live reflection of loan.health, not an action to take,
+        // so it disappears on its own once health improves or the loan
+        // closes rather than needing manual dismissal. Swipe-right opens
+        // the portfolio outlines map focused on this land, same as
+        // ActiveLoansCard's "View property outline" button.
+        ...(isLeader ? (loansData?.activeLoans ?? [])
+          .filter(l => l.health === 'stressed' || l.health === 'underperforming')
+          .map((rawLoan, idx) => {
+            const l = enrichLoan(rawLoan, { resolveName, hasName });
+            // Same priority as the expanded loan row's own health text
+            // (ActiveLoansCard.js) — healthSummary is the short read
+            // (crop_stage's "max 6 words" field); healthDescription is a
+            // longer farmer-facing line only ever used there as a tooltip,
+            // not the visible text.
+            const desc = l.healthSummary || HEALTH_LABEL[l.health] || l.health;
+            return {
+              i: 800 + idx,
+              active: true,
+              img: WARNING_ICON_URL,
+              cropImg: true,
+              iconBg: l.health === 'underperforming' ? 'bg-red' : 'bg-amber-400',
+              swipeable: true,
+              swipeRightLabel: 'View ✓',
+              swipeHint: 'Swipe to view property outline',
+              click: () => openPortfolioOutline(l),
+              title: l.displayName,
+              subtitle: desc,
+            };
+          }) : []),
+        // Union leader: payback-date warning, one per active loan whose
+        // daysToEos (see enrichLoan) is overdue or inside the 3-week
+        // warning window — same threshold and copy as ActiveLoansCard's own
+        // expanded-row warning paragraph, so the two never disagree. Needs
+        // enrichLoan first (unlike the health task above) since daysToEos/
+        // eosDate are derived fields, not present on raw loan records.
+        ...(isLeader ? (loansData?.activeLoans ?? [])
+          .map(rawLoan => enrichLoan(rawLoan, { resolveName, hasName }))
+          .filter(l => !l.chainClosed && l.daysToEos != null && l.daysToEos <= PAYBACK_WARNING_DAYS)
+          .map((l, idx) => {
+            const overdue = l.daysToEos < 0;
+            // Overdue copy mirrors UnionReserve.js's "New loans on hold" card
+            // (hasOverdueLoans) — same rule (an active loan past its payback
+            // date freezes new lending), surfaced here too so the task
+            // itself explains the union-wide consequence, not just this loan.
+            const desc = overdue
+              ? 'This loan is overdue. New loans are on hold until repaid or defaulted.'
+              : `This loan has to be paid back within ${l.daysToEos} day${l.daysToEos === 1 ? '' : 's'}.`;
+            return {
+              i: 900 + idx,
+              active: true,
+              img: WARNING_ICON_URL,
+              cropImg: true,
+              iconBg: overdue ? 'bg-red' : 'bg-amber-400',
+              urgent: overdue,
+              swipeable: true,
+              swipeRightLabel: 'View ✓',
+              swipeHint: 'Swipe to view property outline',
+              click: () => openPortfolioOutline(l),
+              title: l.displayName,
+              subtitle: desc,
+            };
+          }) : []),
+        { i: 102,
+          active: isLeader && treasuryLow,
+          img: 'images/label-06.webp',
+          tx_nmb: { ix: 6 },
+          click: handleToggleView,
+          title: 'Treasury liquidity low.',
+          subtitle: 'Post a Cash Offer to get USDT from an LP.',
+          btn: 'View',
+        },
+        // Batch match: open batch (no cert requirement) → swipe right to join
+        { i: 600,
+          active: hasActiveCycle && openBatch !== null && !tokenData?.some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && t.cropCode === openBatch?.cropCode),
+          img: CROP_IMG[openBatch?.cropCode] ?? 'images/crop_icons/paddy.svg',
+          cropImg: true,
+          tx_nmb: { ix: 2, i: 0 },
+          click: () => { setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
+          btn2: true,
+          swipeRightLabel: 'Join batch →',
+          swipeLeftLabel: (() => { const b = openBatch; return `✕ I'm not growing ${b?.cropName?.toLowerCase() ?? 'this crop'}`; })(),
+          click2: () => { setFieldActivity(prev => prev ? { ...prev, pendingCropForm: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
+          title: (() => {
+            const b = openBatch;
+            if (!b) return 'Batch open for your crop.';
+            const crop = b.cropName?.toLowerCase();
+            if (b.deliveryDate > 0 && b.targetQtyKg > 0n) return `Join the ${crop} growing programme.`;
+            return `Get a loan up to 1L`;
+          })(),
+          subtitle: (() => {
+            const b = openBatch;
+            if (!b) return null;
+            const unit = b.cropCode === 2 || b.cropCode === 7 ? 'MT' : b.cropCode === 6 ? 'kg' : 'quintal';
+            const div  = b.cropCode === 2 || b.cropCode === 7 ? 1000 : b.cropCode === 6 ? 1 : 100;
+            const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+            if (b.hasOrder) {
+              const parts = [];
+              if (b.pricePerKgUsdt > 0n) parts.push(`$${(Number(b.pricePerKgUsdt) / 1e6).toFixed(2)}/${unit}`);
+              if (b.deliveryDate > 0)    parts.push(`deliver by ${fmtDate(b.deliveryDate)}`);
+              return parts.join(' · ') || 'Union handles delivery and logistics.';
+            }
+            if (b.deliveryDate > 0 && b.targetQtyKg > 0n) {
+              return `${Number(b.targetQtyKg) / div} ${unit} target · deliver by ${fmtDate(b.deliveryDate)}`;
+            }
+            return `Join and confirm your ${b.cropName?.toLowerCase()} planting`;
+          })(),
+        },
+        // Cert-required batch: farmer is missing the required cert → prompt to apply.
+        { i: 601,
+          active: hasActiveCycle && certBatch !== null && !certsAllMet,
+          img: missingCerts[0]?.index != null ? CERT_IMG[missingCerts[0].index] : (CROP_IMG[certBatch?.cropCode] ?? 'images/crop_icons/paddy.svg'),
+          cropImg: missingCerts[0]?.index == null,
+          tx_nmb: { ix: 0 },
+          click: () => { navRef.current.assetTab = false; handleToggleView({ ix: 0 }); },
+          title: `${db?.union?.name} needs farmers with a ${missingCerts[0]?.name} certification.`,
+          subtitle: 'Start the application',
+          btn: 'Apply',
+          swipeable: true,
+          swipeRightLabel: 'Apply ✓',
+          swipeHint: 'Swipe to apply',
+        },
+        // Cert-required batch: farmer already holds all required certs → join directly.
+        { i: 602,
+          active: hasActiveCycle && certBatch !== null && certsAllMet && !tokenData?.some(t => t.type === 'ERC1155' && (t.bal ?? 0) > 0 && t.cropCode === certBatch?.cropCode),
+          img: CROP_IMG[certBatch?.cropCode] ?? 'images/crop_icons/paddy.svg',
+          cropImg: true,
+          tx_nmb: { ix: 2, i: 0 },
+          click: () => { setFieldActivity(prev => prev ? { ...prev, pendingJoin: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
+          btn2: true,
+          swipeRightLabel: 'Join batch →',
+          swipeLeftLabel: (() => { const b = certBatch; return `✕ I'm not growing ${b?.cropName?.toLowerCase() ?? 'this crop'}`; })(),
+          click2: () => { setFieldActivity(prev => prev ? { ...prev, pendingCropForm: true } : prev); handleToggleView({ ix: 2, i: 0 }); },
+          title: (() => {
+            const b = certBatch;
+            if (!b) return 'Certified batch open for your crop.';
+            return `You qualify for the ${b.cropName?.toLowerCase()} certified batch.`;
+          })(),
+          subtitle: (() => {
+            const b = certBatch;
+            if (!b) return null;
+            const unit = b.cropCode === 2 || b.cropCode === 7 ? 'MT' : b.cropCode === 6 ? 'kg' : 'quintal';
+            const div  = b.cropCode === 2 || b.cropCode === 7 ? 1000 : b.cropCode === 6 ? 1 : 100;
+            const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+            if (b.hasOrder) {
+              const parts = [];
+              if (b.pricePerKgUsdt > 0n) parts.push(`$${(Number(b.pricePerKgUsdt) / 1e6).toFixed(2)}/${unit}`);
+              if (b.deliveryDate > 0)    parts.push(`deliver by ${fmtDate(b.deliveryDate)}`);
+              return parts.join(' · ') || 'Union handles delivery and logistics.';
+            }
+            if (b.deliveryDate > 0 && b.targetQtyKg > 0n) {
+              return `${Number(b.targetQtyKg) / div} ${unit} target · deliver by ${fmtDate(b.deliveryDate)}`;
+            }
+            return `Join and confirm your ${b.cropName?.toLowerCase()} planting`;
+          })(),
+        },
       ];
 
       const active = taskList.filter(t => t.active);
-      
-      // Always place chain-switch task (i=0) and land task (i=2) first if active, then shuffle the rest
-      const pinned = active.filter(t => t.i === 0 || t.i === 2);
-      const others = active.filter(t => t.i !== 0 && t.i !== 2);
-      const highlighted_task = [...pinned, ...shuffle(others)];
+
+      // Overdue (red) payback warnings outrank everything else, including
+      // the pinned chain-switch/land/loan tasks below — an overdue payment
+      // is the single most urgent thing a leader can act on.
+      const urgent = active.filter(t => t.urgent);
+      // Pin chain-switch (i=0), land (i=2), and loan tasks (i=7+) first in order, shuffle the rest
+      const isLoan = (t) => t.i >= 7 && t.i < 100;
+      const pinned = active.filter(t => !t.urgent && (t.i === 0 || t.i === 2 || isLoan(t)));
+      const others = active.filter(t => !t.urgent && t.i !== 0 && t.i !== 2 && !isLoan(t));
+      const highlighted_task = [...urgent, ...pinned, ...shuffle(others)];
       return highlighted_task; // ✅ return the list
     },
   });
-  return query; // return the whole query object
+  // Surface upstream loading alongside the query result so the UI can keep the
+  // task area in a loading state while data is still streaming in (avoids the
+  // "All tasks completed" flash on hard reloads).
+  return { ...query, upstreamLoading };
 }
 
-export const useTransferableLoans = (union, enabled) =>
-  useQuery({
-    queryKey: ['transferableLoans', union],
-    queryFn: async () => {
-      const url = `${process.env.REACT_APP_API_BASE_URL}/filter_events/transferableLoans`;
-      console.log('fetching transferableLoans:', url, 'enabled', );
-      const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: union })
-    });
-    if (!res.ok) throw new Error('transferableLoans failed');
-    const json = await res.json();
-
-    const knownAddressBook = {
-      '0xaf7030023cf86611ffc5a71798a0f7022210f2b3': 'Carst',
-      '0xaf48a2282fd8a3ccb52d17ef08fe5db7d346dbb7': 'Anand',
-    };
-
-    const resolveAddress = (addr) => {
-      if (!addr) return addr;
-      const match = knownAddressBook[addr.toLowerCase()];
-      if (match) return match;
-      if (union && union.toLowerCase() === addr.toLowerCase()) return 'Union';
-
-      return `${addr.slice(0,6)}...${addr.slice(-4)}`;
-    };
-
-    const parseAmount = (raw) => {
-      try {
-        return Number(ethers.formatUnits(raw ?? '0', 18));
-      } catch (e) {
-        const fallback = Number(raw);
-        return Number.isFinite(fallback) ? fallback : 0;
-      }
-    };
-
-    const items = Array.isArray(json.items)
-      ? json.items.map((i) => ({
-          id: i.loan_id ?? i.id,
-          borrower: i.borrower,
-          borrowerLabel: resolveAddress(i.borrower),
-          fund: i.fund,
-          activity_stage: i.activity_stage,
-          activity_checked_at: i.activity_checked_at,
-          activity_stage_id: i.activity_stage_id,
-          displayName: i.display_name ?? resolveAddress(i.borrower),
-          active: Boolean(i.active),
-          amount: parseAmount(i.amount),
-          rateBP: Number(i.rate_bp ?? i.rateBP ?? 0),
-          maturityTs: i.maturity_ts,
-          drawdownTs: i.drawdown_ts,
-          milestone: i.milestone,
-          milestoneDigest: i.milestone_digest,
-          withincarryover: i.withincarryover ?? i.within_carryover ?? null,
-          txHash: i.tx_hash,
-          union: i.union_addr ?? union,
-          fastDraw: Boolean(i.fast_draw ?? i.fastDraw ?? false),
-        }))
-      : [];
-
-    return { ...json, items }; // { union, refresh, count, items }
-    },
-    enabled: enabled && !!union,
-    staleTime: 60 * 60 * 1000
-  });

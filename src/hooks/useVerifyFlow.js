@@ -44,7 +44,7 @@ const useVerifyFlow = (LAND = null) => {
   const { setIx }                            = useNavContext();
   const reloadDB                             = useReloadDB();
 
-  const { positions,approvedFields, remote, property } = fieldReg
+  const { positions, approvedFields, remote, property } = fieldReg
 
   const animateToMapView = () => {
     // If we're already in mapview, toggling through transactionview guarantees
@@ -90,7 +90,7 @@ const useVerifyFlow = (LAND = null) => {
     }
 
     // Polygon wrapped in one ring: [[[lat,lng], ...]]
-    if (Array.isArray(rawOutline[0]) && rawOutline[0].every(isPointTuple)) {
+    if (rawOutline.length === 1 && Array.isArray(rawOutline[0]) && rawOutline[0].every(isPointTuple)) {
       return {
         outline: toLatLngObjects(rawOutline[0]),
         mp: false,
@@ -202,13 +202,23 @@ const useVerifyFlow = (LAND = null) => {
               const outline = JSON.parse(response.data.output)
               const { outline: normalizedOutline, mp } = normalizeOutline(outline);
               const normalizedMetadata = {
-                outline: normalizedOutline,
+                outline: mp ? normalizedOutline : [normalizedOutline],  // always array of rings
                 mp,
                 fields: approvedFields.map((f) => f.shape || []).map((ring) => toLatLngObjects(ring)),
               };
               const mintStatus = response.data.mint_status
               const mintQueued = action === 'generate' &&
                 (mintStatus === 'pending' || response.data?.queued === true || response.data?.queue_status === 'pending')
+
+              // CRITICAL: if user clicked "generate" but mint was NOT queued, alert and bail.
+              // Never silently drop a land title submission.
+              if (action === 'generate' && !mintQueued) {
+                console.error('[verify] mint NOT queued!', { mintStatus, data: response.data });
+                alert('Error: your land title was NOT queued for minting. Please try again or contact support.');
+                updateFieldReg({ messages: 12 });
+                return;
+              }
+
               // set cookie just in case user doesnt progress
               const date = new Date();
               date.setTime(date.getTime() + (11 * 24 * 60 * 60 * 1000));
@@ -258,7 +268,7 @@ const useVerifyFlow = (LAND = null) => {
                 flow: 10,
                 property: ({
                   ...prev.property,
-                  shape: [mp ? (normalizedOutline[0] || []) : normalizedOutline],
+                  shape: mp ? normalizedOutline : [normalizedOutline],
                   address: db.address,
                   metadata: normalizedMetadata,
                   outline: normalizedOutline,

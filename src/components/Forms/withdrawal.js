@@ -226,9 +226,9 @@ const Withdraw = ({handleOpenForm }) => {
   const [ swipeStartX, setSwipeStartX ]     = useState(null)
   const [ txtype, setTxType ]               = useState(true)   // mirrors type for fx pool direction
   const [ _confirm, setConfirm ]            = useState(false)
-  const exchangeRate                        = tokenData.find((t) => t.sym === 'nIN').p
-  const n_initialBalance                    = Number(tokenData.find((t) => t.sym === 'nIN').bal)
-  const u_initialBalance                    = Number(tokenData.find((t) => t.sym === 'USDT').bal)
+  const exchangeRate                        = tokenData.find((t) => t.sym === 'nIN')?.p ?? 0
+  const n_initialBalance                    = Number(tokenData.find((t) => t.sym === 'nIN')?.bal ?? 0)
+  const u_initialBalance                    = Number(tokenData.find((t) => t.sym === 'USDT')?.bal ?? 0)
   const [ n_balance, setNBalance ]          = useState(n_initialBalance)
   const [ u_balance, setUBalance ]          = useState(u_initialBalance)
   const [ amount, setAmount ]               = useState(0)
