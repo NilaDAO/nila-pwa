@@ -68,7 +68,7 @@ export function readSessionQr(text) {
   const member = StrKey.encodeContract(Buffer.from(b.slice(1, 33)));
   const notAfter = Number(d.getBigUint64(33));
   if (Date.now() / 1000 > notAfter) throw new Error('This QR has expired. The member shows a new one.');
-  const entry = entryOf(member, notAfter, d.getBigInt64(41), d.getUint32(49), signatureVal(KINDS[b[0]], b.slice(53)));
+  const entry = entryOf(member, notAfter, d.getBigInt64(41), d.getUint32(49), signatureVal(KINDS[b[0]], b.slice(53, LEN)));
   return { member, notAfter, polygon: b[0] === 3 ? hex(b.slice(LEN)) : '',
     args: [nativeToScVal(BigInt(notAfter), { type: 'u64' })], entry: entry.toXDR('base64') };
 }
