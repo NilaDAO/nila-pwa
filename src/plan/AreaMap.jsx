@@ -79,19 +79,26 @@ function chip({ text, sub, acc, soil }, on, faded, clickable) {
   return el;
 }
 
-const ringsOf = (g) => (g?.type === 'Polygon' ? [g.coordinates[0]] : g?.type === 'MultiPolygon' ? g.coordinates.map((p) => p[0]) : []);
+export const ringsOf = (g) => (g?.type === 'Polygon' ? [g.coordinates[0]] : g?.type === 'MultiPolygon' ? g.coordinates.map((p) => p[0]) : []);
 
 /** outline: the parcel (record meta.geometry.out), drawn as a dashed white line; areas get their crop colour as fill
  *  and border (board CP10). selected / onSelect: tapping an area or its chip picks it; the others fade. */
-function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, fitBottom, fitSide = 40 }) {
+/** center ({ lat, lng }): where the map looks when there is no record to draw (26 Oct: a leader's filter with nothing
+ *  in it shows the union's land, never a black screen). */
+function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, fitBottom, fitSide = 40, center }) {
   const map = useRef(null);
   const drawn = useRef([]);
   const fitted = useRef(null);
   const draw = () => {
     const m = map.current; const g = window.google?.maps;
-    if (!m || !g || !record) return;
+    if (!m || !g) return;
     drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; });
     drawn.current = [];
+    if (!record) {
+      const key = center ? `c:${center.lat}:${center.lng}` : null;
+      if (key && fitted.current !== key) { fitted.current = key; m.setCenter(center); m.setZoom(14); }
+      return;
+    }
     const bounds = new g.LatLngBounds();
     const pick = onSelect ? (z) => () => onSelect(selected === z ? null : z) : null;
     areasOf(record).forEach((z, i) => {
@@ -138,7 +145,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       m.fitBounds(target, full ? { top: 80, left: fitSide, right: fitSide, bottom: fitBottom ?? Math.round(window.innerHeight * 0.6) } : 16);
     }
   };
-  useEffect(draw, [record, labels, selected, onSelect, height, fitBottom]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(draw, [record, labels, selected, onSelect, height, fitBottom, center]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; }); }, []);
   return (
     <div style={{ height, width: '100%', background: '#25361f' }} aria-label="Map of your areas">
@@ -148,15 +155,16 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
   );
 }
 
-function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, onSelect }) {
+function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, center }) {
   const box = useRef();
   const ready = useLeaflet();
   useEffect(() => {
-    if (!ready || !window.L || !box.current || !record) return undefined;
+    if (!ready || !window.L || !box.current || (!record && !center)) return undefined;
     const L = window.L;
     const map = L.map(box.current, { zoomControl: false });
     map.attributionControl.setPrefix(false);
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Esri World Imagery' }).addTo(map);
+    if (!record) { map.setView([center.lat, center.lng], 14); return () => map.remove(); }
     const areas = areasOf(record);
     const group = L.featureGroup().addTo(map);
     areas.forEach((z, i) => {
@@ -173,7 +181,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
     if (out) L.geoJSON(out, { interactive: false, style: { color: '#F1F5F9', weight: 1.5, dashArray: '6 4', fill: false } }).addTo(map);
     if (group.getLayers().length) map.fitBounds(group.getBounds(), { padding: [16, 16] });
     return () => map.remove();
-  }, [ready, record, labels, selected, onSelect]);
+  }, [ready, record, labels, selected, onSelect, center]);
   return (
     <>
       <style>{`.nila-area-label{background:${C.ink};color:${C.text};border:0;border-radius:9999px;padding:4px 10px;font:700 12px Inter,system-ui,sans-serif;box-shadow:none;text-align:center}.nila-area-label:before{display:none}`}</style>

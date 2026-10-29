@@ -3,7 +3,9 @@
 // build, and none in the service worker's precache.
 import { lazy, Suspense } from 'react';
 
-const PrivyRoot = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./PrivyRoot')) : null;
+// The static demo build (src/demo/shim.js) has no Privy: StaticRoot stands in for it.
+const PrivyRoot = process.env.REACT_APP_DEMO_STATIC === '1' ? lazy(() => import('./StaticRoot'))
+  : process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./PrivyRoot')) : null;
 
 export default function WalletRoot({ children }) {
   if (!PrivyRoot) return children;

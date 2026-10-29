@@ -10,17 +10,20 @@
 // Field notes are 'later' in the design (open-assets/2–4, Q27: no store and no member version of L7 yet): the list
 // is empty and the Add a note buttons are shown disabled.
 import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
+import { useQuery } from '@tanstack/react-query';
+import { useStellarConfig } from '../stellar/hooks';
+import { readContract, sv, tokenHex } from '../stellar/soroban';
+import HelpQr from './HelpQr';
+import { owedOf } from './owed';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { useNilaSigner } from '../wallet/signer';
-import DeskCard from '../shell/DeskCard';
-import { QrCircle } from './AssetParts';
 import AreaMap from '../plan/AreaMap';
 import { Loading } from '../register/Boot';
 import { areasOf, useFieldRecord } from '../plan/record';
 import { C } from '../shell/tokens';
 import { BanknoteIcon, TractorIcon } from '../shell/icons';
-import { amount, rowOf, useMyLand, useMyShares } from './MyShares';
+import { amount, assisted, rowOf, useMyLand, useMyShares } from './MyShares';
+import AddHours from './AddHours';
 import { tapRule } from '../plan/mapTap';
 import { shareOn } from '../shell/MapStage';
 import { currentSeason } from '../plan/ActivePlan';
@@ -59,6 +62,9 @@ const DropIcon = () => ico(<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-
 function statusOf(x) {
   if (!x.ft) return 'Not attested yet';
   const f = Number(x.ft.loan?.flags ?? 0);
+  // Unused past its last draw date (25 Oct): the cycle is over; shown as a state, not an error.
+  if (!x.drawn && (x.lapsed || x.late)) return 'Not used · lapsed';
+  if (!x.drawn && x.early) return 'Not open yet';
   if (!x.drawn) return 'Active when you collect';
   if (f & FLAG_CLOSED) return 'Repaid';
   if (f & FLAG_DEFAULTED) return 'Defaulted';
@@ -76,10 +82,10 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   const s = useNilaSigner();
   // #/cropshare/<token>/qr (A1's repay card, step 2): open on the QR.
   const [repayQr, setRepayQr] = useState(() => /\/qr$/.test(window.location.hash));
-  const [img, setImg] = useState();
-  useEffect(() => {
-    if (repayQr && x?.plan?.id && s?.stellarAddress) QRCode.toDataURL(`nila:share:${x.plan.id}_${x.token_id}:${s.stellarAddress}`, { width: 720, margin: 2 }).then(setImg);
-  }, [repayQr, x?.plan?.id, x?.token_id, s?.stellarAddress]);
+  const [adding, setAdding] = useState(false);
+  const { data: cfg } = useStellarConfig();
+  const vb = useQuery({ queryKey: ['stellar', 'voucherBook', token], enabled: !!cfg && !!token, staleTime: 30_000,
+    queryFn: () => readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(tokenHex(token))]).catch(() => null) });
   // S1 until her shares and her field record are both in (21 Oct): the card never shows before its map.
   if ((!x && (shares.isLoading || !shares.data)) || (x && !record && !field.error)) return <Loading />;
   if (!x) {
@@ -91,7 +97,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   }
   const r = rowOf(x) || {};
   const name = r.name || x.crop.replace(/_/g, ' ');
-  const fodder = !x.share.loan_amount && x.share.hours;
+  const fodder = !x.share.loan_amount && (x.share.acres_work ?? x.share.hours);
   const nAreas = areasOf(record).length;
   // The share's area in the crop's colour with the crop as its label; the other areas keep "Area n". A merged share
   // (same crop on several areas, 21 Oct) colours each of its areas.
@@ -129,15 +135,20 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
     // A4a: not active yet. Cash is the attested cash part (the plan's, before the attestation); machine hours at the plan's rate.
     const cash = x.ft ? num(x.ft.amount) : Number(x.share.loan_amount || 0);
     // Attested hours are voucher units (centi tractor hours, 23 Oct); before the attestation, the plan's machine hours.
-    const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.hours || 0);
+    const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.acres_work ?? x.share.hours ?? 0);   // tractor acres (27 Oct)
     const vouchers = Number(r.finance?.voucher_value || 0);
-    const from = x.ft ? new Date(Number(x.ft.from_date) * 1000) : x.share.from_date ? new Date(x.share.from_date) : null;
+    // Its window (25 Oct): ready from a week before its sowing window, used by its last sowing day.
+    const until = x.final ? new Date(x.final * 1000) : x.share.final_date ? new Date(x.share.final_date) : null;
+    const opens = x.opens ? new Date(x.opens * 1000) : x.share.open_date ? new Date(x.share.open_date) : null;
+    const over = x.lapsed || x.late;
+    const day = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     return (
       <Sheet map={map} onBack={onBack} bar={bar} onSwipe={onSwipe}>
         {head}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Row k="Status" v={statusOf(x)} />
-          <Row k="Collect from" v={partOfMonth(from)} strong />
+          {!over && opens && <Row k={x.ready ? 'Ready since' : 'Ready from'} v={day(opens)} strong />}
+          <Row k={over ? 'Last day was' : 'Use it by'} v={until ? day(until) : '—'} strong />
           <Row k="Where" v="Union office" strong />
         </div>
         <div style={line} />
@@ -149,7 +160,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
           </div>
           {hours > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}>
-              <TractorIcon color={C.gold} /><span style={{ flexGrow: 1, color: C.muted }}>Machine hours · {x.ft ? `${hours.toFixed(1)} tractor h` : `${hours} h`}</span><b>{vouchers ? inr(vouchers) : '—'}</b>
+              <TractorIcon color={C.gold} /><span style={{ flexGrow: 1, color: C.muted }}>Machine work · {x.ft ? `${hours.toFixed(1)} tractor ac` : `${hours} ac`}</span><b>{vouchers ? inr(vouchers) : '—'}</b>
             </div>
           )}
         </div>
@@ -157,6 +168,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
         <Row k="Total" v={inr(cash + vouchers)} strong />
         {/* Ready: her scan of the leader's QR (assisted: the leader taps it on her phone), or a leader's own take-up. */}
         {x.ready && <Primary onClick={() => onTakeUp(x.token_id)}>Get cash and vouchers</Primary>}
+        {over && <p style={{ ...muted, textAlign: 'center' }}>Too late for this cycle. Its fields are freed for a new plan.</p>}
       </Sheet>
     );
   }
@@ -164,15 +176,13 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   // A4: active. The loan on it: the cash part handed out, what is left to repay, due 3 weeks after harvest.
   const l = x.ft.loan || {};
   const open = !(Number(l.flags ?? 0) & FLAG_CLOSED);
-  if (repayQr) {
-    return (
-      <DeskCard title={`${name} · Area ${x.area}`} onBack={() => setRepayQr(false)}>
-        <QrCircle img={img} alt="Your crop share QR" />
-        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment.</p>
-      </DeskCard>
-    );
-  }
-  const left = num(l.principal) - num(l.principal_paid);
+  // One QR at the office (executive decision 26 Oct): the help QR; the leader counts the cash and records the repayment.
+  // More machine hours (27 Oct, self mode): until its last draw date, while the loan is open and not overdue.
+  const canAdd = open && !(Number(l.flags ?? 0) & FLAG_OVERDUE) && !assisted() && (!x.final || Date.now() / 1000 <= x.final);
+  if (adding && canAdd) return <AddHours token={x.token_id} name={`${name} · Area ${x.area}`} map={map} onBack={() => setAdding(false)} />;
+  if (repayQr) return <HelpQr onBack={() => setRepayQr(false)} note="Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment." />;
+  // What is left: the cash part and the voucher's value, with interest (26 Oct: the voucher is debt from the draw).
+  const left = Number(owedOf(l, vb.data)) / 1e7;
   const harvest = r.harvest ? new Date(r.harvest) : null;
   const sugarcane = /sugarcane/.test(x.crop);
   const noteBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14,
@@ -183,9 +193,13 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Row k="Status" v={statusOf(x)} />
         <Row k="Harvest" v={fodder ? 'Regular cuts' : partOfMonth(harvest)} strong />
-        {num(l.principal) > 0 && <Row k="Loan" v={`${inr(num(l.principal))}${left > 0 ? ` · ${inr(left)} to repay` : ''}`} strong />}
+        {(num(l.principal) > 0 || vb.data) && <Row k="Loan" v={`${inr(num(l.principal) + (vb.data ? num(vb.data.value) : 0))}${left > 0 ? ` · ${inr(Math.ceil(left))} to repay` : ''}`} strong />}
       </div>
       {open && <Primary onClick={() => setRepayQr(true)}>Repay at the office</Primary>}
+      {canAdd && (
+        <button type="button" onClick={() => setAdding(true)} style={{ width: '100%', height: 44, marginTop: 8, borderRadius: 12, border: 0, background: C.raised,
+          color: C.text, fontWeight: 700, fontSize: 14, fontFamily: 'inherit', cursor: 'pointer' }}>Add machine work</button>
+      )}
       <div style={line} />
       <h2 style={{ fontSize: 16, fontWeight: 700, margin: '12px 0 0' }}>Field notes</h2>
       <p style={{ ...muted, margin: '0 0 12px' }}>Your notes help your leader plan the harvest.</p>

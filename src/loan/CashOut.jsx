@@ -9,7 +9,7 @@
 // your nIN back" or for the list of her open codes (shown on A7 under the cash-out card); #paid's time is when her
 // app saw it paid, not the pay_out ledger time.
 import DeskCard from '../shell/DeskCard';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
@@ -23,9 +23,12 @@ import CameraView from '../shell/CameraView';
 import { useFxRate } from '../shell/UsdcAsset';
 import AssetSwapLayout, { AssetForm, SwapTarget, money } from '../shell/AssetSwapLayout';
 import { useLpStatus } from '../anchor/hooks';
+import { usePost } from '../anchor/LeaderLp';
+import { BRING } from '../anchor/sep';
 import { AssetScreen, Card, CardTitle, KV, MarkCircle, QrCircle, Secondary, Stepper, useOnline, when } from './AssetParts';
 import { readDeskCode, signDeskCode } from './deskCode';
 import { deskClaim } from './desk';
+import HelpQr from './HelpQr';
 
 const NIN = 10_000_000n;
 const SETTLE_S = 600;                // a code never seen on chain after 10 min was never sent
@@ -155,7 +158,7 @@ export default function CashOut({ onBack, kycOnly }) {
 
   const collect = async (amt) => {
     setError(undefined);
-    try { setDesk({ ...(await signDeskCode({ cfg, signer: me, signHash: s.signHash, kind: 'N', amount: BigInt(amt) * NIN })), amount: amt }); } catch (e) { setError(e.message); }
+    setDesk({ amount: amt });   // the help QR (26 Oct): the leader pays it out in the session
   };
   const reclaim = (e) => {
     patch(e.hash, { reclaimed: true });    // taken back, not paid: never shown as #paid once it is gone
@@ -176,7 +179,8 @@ export default function CashOut({ onBack, kycOnly }) {
       </AssetScreen>
     );
   }
-  if (desk) return <DeskQr title={`${inr(desk.amount)} in cash`} rows={[['You get', `₹${fmt(desk.amount)} in cash`], ['nIN', `${fmt(desk.amount)} burned when paid`]]} qr={desk.qr} until={desk.until} onBack={() => setDesk(undefined)} />;
+  // One QR at the office (executive decision 26 Oct): the help QR; the leader pays out the nIN in the session.
+  if (desk) return <HelpQr onBack={() => setDesk(undefined)} note={`Go to the union office to cash out ${fmt(desk.amount)} nIN. Your leader scans this, hands you ₹${fmt(desk.amount)} and records it (the nIN are burned).`} />;
   if (shown) return <Code e={shown} img={img} ready={tx.ready} reclaim={reclaim} onDone={() => done(shown)} onBack={() => done(shown)} />;
 
   const a = max < 1 ? 0 : Math.max(1, Math.min(amount, max));   // nothing to cash out: 0, and the button is off
@@ -233,6 +237,26 @@ export function PayOut({ onBack, initial, onInvest }) {
   const tx = useSorobanTx();
   const [got, setGot] = useState();        // { kind, member, inr, entry } | { old: code }
   const [error, setError] = useState();
+  // Cash at the office (25 Oct): a payout is booked against it, so a short office cannot pay. The gap goes to the
+  // union's LPs as a Bring by itself, once per withdrawal QR (fx_pool adds it to an open Bring no LP has accepted).
+  const desk = useQuery({ queryKey: ['stellar', 'deskRoom', 'payout', cfg?.union, got?.member, got?.exp], enabled: !!cfg && !!got && !got.old,
+    staleTime: 10_000, refetchInterval: 15_000,
+    queryFn: async () => Number(BigInt(await readContract(cfg, 'fx_pool', 'cash_at_hand', [sv.address(cfg.union)]) || 0n) / BigInt(NIN)) });
+  const gap = got && !got.old && desk.data != null && got.inr > desk.data ? Math.ceil(got.inr - desk.data) : 0;
+  const bring = usePost();
+  const asking = useRef('');
+  useEffect(() => {
+    if (!gap || !cfg?.anchor_url || !bring.tx.ready) return;
+    const k = `nila.bring.payout.${got.member}.${got.exp}`;
+    let asked = 0;
+    try { asked = Number(localStorage.getItem(k) || 0); } catch { /* private mode */ }
+    if (gap <= asked || asking.current === k) return;
+    asking.current = k;
+    bring.post(BRING, gap - asked).then((out) => {
+      if (out) { try { localStorage.setItem(k, String(gap)); } catch { /* private mode */ } bring.tx.reset(); }
+      asking.current = '';
+    });
+  }, [gap, cfg?.anchor_url, bring.tx.ready]); // eslint-disable-line react-hooks/exhaustive-deps
   // From the one scan (24 Oct): the QR is read already; check it here as if scanned on this screen.
   useEffect(() => { if (initial && cfg) read(initial); }, [cfg]); // eslint-disable-line react-hooks/exhaustive-deps
   const read = async (text) => {
@@ -268,14 +292,19 @@ export function PayOut({ onBack, initial, onInvest }) {
         invalidate: [['stellar', 'account']] });
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
+  if (bring.tx.status === 'pending' || bring.tx.status === 'failed') return <TxScreens tx={bring.tx} onClose={() => bring.tx.reset()} onRetry={() => bring.tx.retry()} />;
   if (!cfg) return <Loading />;
   if (got) {
     return (
       <DeskCard title="Pay out cash" onBack={() => setGot(undefined)}>
         <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>{got.old ? 'A cash-out code' : `${inr(got.inr)} in cash`}</p>
         {!got.old && <p style={{ ...muted, textAlign: 'center' }}>{got.kind === 'W' ? 'Their union investment' : 'Their nIN, burned when you record it'}</p>}
-        <p style={{ color: C.gold, textAlign: 'center' }}>Record it only once you have handed over the cash.</p>
-        <Primary disabled={!tx.ready} onClick={pay}>Cash handed over</Primary>
+        {gap > 0 ? (
+          <p style={{ color: C.coral, textAlign: 'center' }}>
+            {`Not enough cash at the office: ${inr(gap)} short. ${cfg.anchor_url ? `Your LPs are asked to bring ${inr(gap)}; pay out once it is here.` : 'Pay out once it is here.'}`}
+          </p>
+        ) : <p style={{ color: C.gold, textAlign: 'center' }}>Record it only once you have handed over the cash.</p>}
+        <Primary disabled={!tx.ready || gap > 0 || (!got.old && desk.data == null)} onClick={pay}>Cash handed over</Primary>
         {got.kind === 'W' && onInvest && <Secondary onClick={() => onInvest(got.member)}>Invest instead</Secondary>}
       </DeskCard>
     );
@@ -283,7 +312,7 @@ export function PayOut({ onBack, initial, onInvest }) {
   return (
     <DeskCard title="Pay out cash" onBack={onBack}>
       <CameraView mode="qr" onText={read} />
-      <p style={muted}>Hand over the cash, then scan the QR on her phone.</p>
+      <p style={muted}>Hand over the cash, then scan the QR on the member's phone.</p>
       {error && <p style={{ color: C.coral }}>{error}</p>}
     </DeskCard>
   );

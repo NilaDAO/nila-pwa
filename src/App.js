@@ -185,6 +185,13 @@ function App({installAvailable}) {
   // ------------- core initializer --------------
   const bootstrap = useCallback(async () => {
 
+    // A keypad (feature) phone or a window that small (KaiOS is 240×320): the app is Nila lite there (P8), so only a
+    // link to /lite, as the desktop gets its QR screen (26 Oct).
+    if (/KAIOS/i.test(navigator.userAgent) || (window.innerWidth <= 320 && window.innerHeight <= 400)) {
+      setBootStage('featurePhone');
+      return;
+    }
+
     // check if we can load the wallet or set mismatchdevice
     if(keyMalformed){
       setBootStage('mismatchdevice')
@@ -335,6 +342,7 @@ function App({installAvailable}) {
   // ------------- conditional renders --------------
   if (bootStage === 'loading') return NEW_BOOT ? (fromRegister ? <NewBoot.RegLoading /> : <NewBoot.Loading />) : (<div className='flex h-full justify-center'><Spinner stages={loadStage} /></div>);
   if (bootStage === 'notMobile') return <NotMobile />;
+  if (bootStage === 'featurePhone') return <NewBoot.FeaturePhone />;
   if (bootStage === 'moveToStandalone') return <MoveToStandalone installPrompt={installPromptEvent} setInstallPromptEvent={setInstallPromptEvent} />;
   if (bootStage === 'install') return <InstallApp installAvailable={installAvailable} />;
   if (bootStage === 'mismatchdevice') return <MismatchDevice />;

@@ -8,6 +8,16 @@ import { C, R } from './tokens';
 import { muted } from '../plan/ui';
 
 let seq = 0;
+// Demo builds only (src/demo/shim.js): record mode keeps each QR read; the static build has no camera and offers
+// the recorded QR, or a grey stand-in photo, through one button. Dropped from real builds (literal flags).
+const demo = process.env.REACT_APP_DEMO_RECORD === '1' || process.env.REACT_APP_DEMO_STATIC === '1' ? require('../demo/shim') : null;
+const STATIC = process.env.REACT_APP_DEMO_STATIC === '1';
+const demoPhoto = () => new Promise((r) => {
+  const c = document.createElement('canvas'); c.width = 640; c.height = 480;
+  const g = c.getContext('2d'); g.fillStyle = '#556'; g.fillRect(0, 0, 640, 480);
+  g.fillStyle = '#fff'; g.font = '32px sans-serif'; g.fillText('Demo photo', 230, 250);
+  c.toBlob(r, 'image/jpeg', 0.8);
+});
 
 const corner = (pos) => {
   const t = pos[0] === 't'; const l = pos[1] === 'l';
@@ -19,7 +29,7 @@ const corner = (pos) => {
   };
 };
 
-export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false, title, hint }) {
+export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false, title, hint, facing = 'environment' }) {
   const box = useRef();
   const video = useRef();
   const [id] = useState(() => `nila-cam-${++seq}`);
@@ -27,13 +37,13 @@ export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false,
 
   // QR: html5-qrcode draws its own <video> into the round box; stopping before it runs throws, so guard it.
   useEffect(() => {
-    if (mode !== 'qr') return undefined;
+    if (mode !== 'qr' || STATIC) return undefined;
     let scanner; let live = true; let running = false;
     const stop = () => { if (!running) return; running = false; try { scanner.stop().catch(() => {}); } catch { /* not running */ } };
     import('html5-qrcode').then(({ Html5Qrcode }) => {
       if (!live || !box.current) return;
       scanner = new Html5Qrcode(id, { verbose: false });
-      scanner.start({ facingMode: 'environment' }, { fps: 10, aspectRatio: 1 }, (t) => { onText?.(t); stop(); }, () => {})
+      scanner.start({ facingMode: 'environment' }, { fps: 10, aspectRatio: 1 }, (t) => { demo?.recordQr(t); onText?.(t); stop(); }, () => {})
         .then(() => { running = true; if (!live) stop(); })
         .catch(() => { if (live) setDenied(true); });
     });
@@ -42,13 +52,13 @@ export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false,
 
   // Photo: our own stream into a <video>; the shutter grabs a frame.
   useEffect(() => {
-    if (mode !== 'photo') return undefined;
+    if (mode !== 'photo' || STATIC) return undefined;
     let live = true; let stream;
-    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } })
+    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } } })
       .then((s) => { if (!live) { s.getTracks().forEach((t) => t.stop()); return; } stream = s; if (video.current) { video.current.srcObject = s; video.current.play().catch(() => {}); } })
       .catch(() => { if (live) setDenied(true); });
     return () => { live = false; stream?.getTracks().forEach((t) => t.stop()); };
-  }, [mode]);
+  }, [mode, facing]);
 
   const shoot = async () => {
     const v = video.current;
@@ -68,7 +78,7 @@ export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false,
         <style>{`#${id} video{width:100%!important;height:100%!important;object-fit:cover}#${id}{width:100%;height:100%}#${id} img,#${id} > div:not(:first-child){display:none!important}`}</style>
         {mode === 'qr'
           ? <div id={id} ref={box} aria-label="Camera view" style={{ width: '100%', height: '100%' }} />
-          : <video ref={video} playsInline muted aria-label="Camera view" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+          : <video ref={video} playsInline muted aria-label="Camera view" style={{ width: '100%', height: '100%', objectFit: 'cover', transform: facing === 'user' ? 'scaleX(-1)' : undefined }} />}
         {['tl', 'tr', 'bl', 'br'].map((p) => <span key={p} aria-hidden="true" style={corner(p)} />)}
       </div>
       {mode === 'photo' && (
@@ -77,6 +87,12 @@ export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false,
             style={{ width: 64, height: 64, borderRadius: R.round, border: `4px solid ${C.text}`, boxShadow: `inset 0 0 0 4px ${C.ink}`,
               background: busy ? C.muted : C.text, cursor: busy ? 'default' : 'pointer' }} />
         </div>
+      )}
+      {STATIC && (
+        <button type="button" disabled={busy} style={{ alignSelf: 'center', padding: '8px 16px', borderRadius: R.round, border: `1px solid ${C.accent}`, background: 'none', color: C.accent }}
+          onClick={async () => { if (mode === 'photo') onPhoto?.(await demoPhoto()); else { const t = demo.demoQr(); if (t) onText?.(t); else console.warn('[demo-static] no QR recorded'); } }}>
+          {mode === 'photo' ? 'Use a demo photo' : 'Use the demo QR'}
+        </button>
       )}
       {denied && <span style={{ ...muted, color: C.coral, textAlign: 'center' }}>Allow the camera to use it here.</span>}
     </div>

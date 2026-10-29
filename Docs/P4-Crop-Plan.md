@@ -114,3 +114,38 @@ member-review and re-plan rules (open-cp/5–8).
 - A land picker for several titles; tappable areas on CP10; Done / mismatch / improvements once their data exists.
 - **Demo:** `/plan` on in the demo stack (LLM off), a test record and a FoodToken with standing batches on the
   fork, so the whole plan → approve → mint runs on localhost.
+
+## Last draw date and lapse (executive decision 25 Oct)
+
+A crop share can be used from its attestation until its **last draw date** (`final_date`, the last day the crop may
+still be sown in its season); there is no "from" date any more. Unused past it, the share lapses (anyone may lapse it on
+Stellar) and the oracle burns its Polygon FoodToken, so its fields are free again.
+
+- CP10/CP11 table: the column "Available from" is **"Use it by"** (the season's latest last draw date); the repay line
+  says "each 21 days after its harvest" (no calendar date).
+- CP13: "Receive cash" carries "use it by <date>"; "Repay ₹X" shows "after harvest" in place of a month, with
+  "21 days after your harvest" under it.
+- A1 / A4a: a share past its last date reads **"Not used · lapsed"**; A4a shows "Use it by" (or "Last day was") and
+  "Too late for this cycle. Its fields are freed for a new plan."
+- L11 and the leader's one scan: a share past its last date is refused with "Too late for this cycle".
+- `readFoodTokens` reads each token's `FoodTokenFinal` entry beside its `FoodToken` entry (one batch).
+
+DESIGN GAPs: none of these texts is on a board — "Use it by", "Last day was", "Not used · lapsed", "Too late for this
+cycle…", "21 days after your harvest", "each 21 days after its harvest".
+
+## Extend my plan (executive decision 25 Oct, "extend, not update")
+
+A plan always runs one year ahead: the three cycles after the one under way. CP13's button is **"Extend my plan · N
+seasons"** (N = the cycles missing; "Your plan covers the next three seasons" when none). It replaces "Update my plan" /
+"Plan next year": an approved plan is never rerun (the node refuses /revise on it).
+
+- Extend → POST /plan/{id}/extend → a plan job → the extension, a plan of its own with only the new cycles, runs through
+  the usual screens: CP9 why → CP10/CP11 accept → CP12 waiting for the leader → L12 approve → the union mints.
+- Active: CP13 and the crop share list read the land's chain (GET /plan/land/{id}/chain): the approved plan and its
+  extensions as one plan (`mergedPlan`), "Season N of M" across them. `useMyShares` reads every plan's mint list.
+- A share whose sowing is more than a year ahead is deferred by the node's mint list ("made later") and does not hold
+  the active plan up; a leader makes it later from L12 once it is within a year.
+
+DESIGN GAPs: no board for the extension (the plan screens are reused as they are), for "Extend my plan · N seasons",
+"Your plan covers the next three seasons", "Planned <from> to <to>", or for telling the leader that a deferred crop share
+can now be made.

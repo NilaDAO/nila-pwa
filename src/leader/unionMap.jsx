@@ -9,7 +9,7 @@
 //  - harvests: properties with a harvest in the next 60 days, by weeks to harvest.
 // (Crop plan keeps the leader's own property, CropPlanFlow.)
 import { useCallback, useMemo } from 'react';
-import AreaMap from '../plan/AreaMap';
+import AreaMap, { ringsOf } from '../plan/AreaMap';
 import { usePlanClient } from '../plan/hooks';
 import { useNilaSigner } from '../wallet/signer';
 import { useMachines, typeName } from '../machine/hooks';
@@ -17,6 +17,19 @@ import { C } from '../shell/tokens';
 import { useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
 
 const DAY = 86_400;
+// Where the union map looks before any member has land on it (the demo union's area, as AreaMap's start).
+const UNION_START = { lat: 11.8872, lng: 78.9659 };
+
+/** The middle of all the union's land (every member's property and title fields), for a filter with nothing in it. */
+export function unionCentre(members) {
+  let lat = 0; let lng = 0; let k = 0;
+  for (const m of members || []) {
+    for (const g of [...(m.places || []), ...(m.fields || [])].map((x) => x.geometry)) {
+      ringsOf(g).forEach((ring) => ring.forEach(([x, y]) => { lng += x; lat += y; k += 1; }));
+    }
+  }
+  return k ? { lat: Math.round((lat / k) * 1e5) / 1e5, lng: Math.round((lng / k) * 1e5) / 1e5 } : UNION_START;
+}
 export const FILTER_NAMES = { members: 'Members', assets: 'Assets', cash: 'Active loans', harvests: 'Harvests' };
 
 /** { map, count }: the union map for a tab. fitBottom: the room the card leaves at the bottom (px). on: false reads
@@ -81,8 +94,8 @@ export function useLeaderMap(filter = 'members', fitBottom = 170, on = true) {
       .filter((z, i, a) => a.findIndex((y) => y.zone_id === z.zone_id) === i);
     const count = shown.length;
     const chip = `${FILTER_NAMES[filter] || filter} · ${count}`;
-    // No property to show: the map stays clear (the chip still says 0).
-    const map = <AreaMap record={zones.length ? { zones } : null} labels={label} onSelect={(z) => z && pick(String(z).split('#')[0])} fitSide={90} fitBottom={fitBottom} chip={chip} />;
+    // No property to show (26 Oct): the satellite map centred on the union's land, the chip saying 0.
+    const map = <AreaMap record={zones.length ? { zones } : null} center={zones.length ? undefined : unionCentre(all)} labels={label} onSelect={(z) => z && pick(String(z).split('#')[0])} fitSide={90} fitBottom={fitBottom} chip={chip} />;
     return { map, count, loading: !members.data };
   }, [all, filter, shares.data, machines.data, dues.data, pick, fitBottom, members.data]);
 }

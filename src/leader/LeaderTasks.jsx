@@ -11,12 +11,16 @@ import { usePlanClient } from '../plan/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useUnionOffers } from '../anchor/hooks';
 import { useBorderJobs } from '../border/hooks';
+import { useKeypadMembers } from '../keypad/hooks';
 import { memberName } from '../border/LeaderBorder';
 import { C, FONT } from '../shell/tokens';
 import ListRow, { ListSection, ScreenHeader } from '../shell/ListRow';
 import MapCard from '../shell/MapCard';
 import { BanknoteIcon, CalendarIcon, CropIcon, PayOutIcon, PinIcon, RepayIcon, RupeeIcon, TractorIcon, UserPlusIcon } from '../shell/icons';
 import { useKnownMembers, useLeaderTodo, useUnionCash } from './hooks';
+import { addressFromQr, useUnionMembers } from './unionMembers';
+import CameraView from '../shell/CameraView';
+import DeskCard from '../shell/DeskCard';
 import { ReadyShareRows, useMyShares } from '../loan/MyShares';
 
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
@@ -41,10 +45,34 @@ export function PickMember({ title, onPick, onBack, onScan }) {
   );
 }
 
+/** Tasks → Make a crop plan (26 Oct): the leader scans the member's QR to find the member (no session yet: making the
+ *  plan takes longer than 5 minutes; the QR is scanned again at the end, to accept it). */
+export function PlanFor({ go }) {
+  const api = usePlanClient();
+  const members = useUnionMembers(api);
+  const [error, setError] = useState();
+  const [tries, setTries] = useState(0);
+  const onText = (t) => {
+    const a = addressFromQr(t);
+    const m = a && (members.data || []).find((x) => x.address === a);
+    if (!m) { setError(a ? 'Not a member of your union.' : 'This is not a member\'s QR.'); setTries((x) => x + 1); return; }
+    if (!(m.titleId || m.lands?.length)) { setError('This member has no land title yet.'); setTries((x) => x + 1); return; }
+    go(`memberplan/${m.route}`);
+  };
+  return (
+    <DeskCard title="Make a crop plan" onBack={() => go('tasks')}>
+      <CameraView key={tries} mode="qr" onText={onText} />
+      <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>Scan the member's QR. You make the plan together; at the end the member shows the QR again to accept it.</p>
+      {error && <p style={{ color: C.coral, margin: 0 }}>{error}</p>}
+    </DeskCard>
+  );
+}
+
 // The board's groups (LeaderBorders "Start a task"), only the rows whose flow exists; icons as on the board.
 // "Scan an LP code" has no board row (LP scan, P9): it keeps the cash icon.
 const START = [
-  ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon]]],
+  ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon],
+    ['Make a crop plan', 'Scan the member\'s QR', 'tasks/planfor', CropIcon]]],
   // One scan for her (executive decision 24 Oct): the QR says which kind, the chain picks invest, withdraw, use or
   // repay. Her G2 in Members stays a second way in.
   ['Cash', [['Scan a member QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
@@ -62,6 +90,7 @@ export default function LeaderTasks({ go }) {
   const todo = useLeaderTodo(api, cash);
   const offers = useUnionOffers().data || [];
   const borders = useBorderJobs().data || [];
+  const keypads = useKeypadMembers().data || [];
   const lp = useLpStatus().data;
   const ownReady = (useMyShares().data || []).some((x) => x.ready);
   const [q, setQ] = useState('');
@@ -77,6 +106,11 @@ export default function LeaderTasks({ go }) {
   }
   for (const j of borders.filter((x) => x.status !== 'minted')) {
     items.unshift({ key: `border-${j.id}`, title: 'Check field borders', who: `${memberName(j)} · ${j.fields} fields`, to: `tasks/border/${j.id}`, ready: j.status === 'ready' });
+  }
+  // A keypad member with no fields yet (26 Oct): the leader takes the field points on the leader's phone (R5–R7),
+  // with or without the member's phone set up.
+  for (const m of keypads.filter((x) => x.phone_type === 'keypad' && !x.job)) {
+    items.unshift({ key: `border-pts-${m.id}`, title: 'Take field points', who: m.name, to: `tasks/member/${m.id}/points`, ready: true });
   }
   const shown = items.filter((t) => !q || `${t.title} ${t.who}`.toLowerCase().includes(q.toLowerCase()));
   const row = (t, i) => {

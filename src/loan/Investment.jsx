@@ -22,7 +22,7 @@ import { Loading } from '../register/Boot';
 import { assisted } from './MyShares';
 import Segmented from '../shell/Segmented';
 import { AssetScreen, Card, KV, Line, MarkCircle, QrCircle, Secondary, Stepper } from './AssetParts';
-import { DeskQr } from './CashOut';
+import HelpQr from './HelpQr';
 import { signDeskCode } from './deskCode';
 
 const RAY = 10n ** 27n;
@@ -109,13 +109,11 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
   const mode = pick ?? (pending || canClaim ? 'withdraw' : 'invest');
   const collect = async () => {
     setError(undefined);
-    try { setDesk(await signDeskCode({ cfg, signer: s.stellarAddress, signHash: s.signHash, kind: 'W' })); } catch (e) { setError(e.message); }
+    setDesk(true);
   };
-  if (desk) {
-    return <DeskQr title="Your withdrawal" qr={desk.qr} until={desk.until} onBack={() => setDesk(undefined)}
-      rows={[['You get', canClaim ? `${inr(Math.floor(toCollect))} in cash` : 'your withdrawal in cash'], ['Ready', canClaim ? 'now' : `from about ${dateOf(claimAt)}`]]} />;
-  }
-  if (showQr) return <BringCash amount={bring} after={invested + bring} address={s?.stellarAddress} onBack={() => setShowQr(false)} />;
+  // One QR at the office (executive decision 26 Oct): the help QR, to invest and to collect a withdrawal.
+  if (desk) return <HelpQr onBack={() => setDesk(undefined)} note={`Go to the union office to collect ${canClaim ? `${inr(Math.floor(toCollect))} in cash` : 'your withdrawal'}. Your leader scans this, hands you the cash and records it.`} />;
+  if (showQr) return <HelpQr onBack={() => setShowQr(false)} note={`Bring ${inr(bring)} in cash to the union office. Your leader scans this, counts the cash and records your investment.`} />;
   return (
     <AssetScreen title="Union investment" onBack={onBack} note={NOTE}>
       <Card label="nIN invested">
@@ -158,7 +156,7 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
 
       {mode === 'withdraw' && <Card label="Withdraw">
         <Segmented label="Invest or withdraw" options={SWITCH} value={mode} onChange={setPick} />
-        {/* Assisted (23 Oct): the leader drives her phone; she confirms and signs here, as in self mode. */}
+        {/* Assisted: collecting is the member's signed QR, as in self mode; starting is the leader's request (26 Oct). */}
         {canClaim && leader ? (
           <Primary disabled={!tx.ready} onClick={claim}>Get your withdrawal</Primary>
         ) : canClaim ? (
@@ -173,11 +171,16 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
             : `Your withdrawal is on its way: collect it in cash at the union office from about ${dateOf(claimAt)}.`}</p>
         ) : (
           <>
-            <p style={muted}>You can withdraw {fmt(free)} nIN</p>
-            <Stepper value={o} set={setOut} step={25} min={0} max={free} unit="nIN" label="nIN to withdraw" />
+            {/* Members never hold nIN (22 Oct): their withdrawal is rupees, in cash at the office; a leader's goes to her wallet as nIN. */}
+            <p style={muted}>{leader ? `You can withdraw ${fmt(free)} nIN` : `You can withdraw ${inr(free)}`}</p>
+            <Stepper value={o} set={setOut} step={25} min={0} max={free} unit={leader ? 'nIN' : '₹'} label={leader ? 'nIN to withdraw' : 'Rupees to withdraw'} />
             <KV k="You get about" v={leader ? `${fmt(o)} nIN` : `₹${fmt(o)} in cash`} />
             <p style={muted}>{leader ? `Arrives in your wallet by about ${dateOf(now + DAYS_14)}` : `Collect it in cash at the union office from about ${dateOf(now + DAYS_14)}`}</p>
-            <Secondary disabled={!tx.ready || o < 1 || !market.data} onClick={() => withdraw(o)}>Withdraw</Secondary>
+            {/* Assist mode (26 Oct, A1): the member's app signs no call itself; the leader starts it on G2 and the member
+                answers the request in the Scan tab. */}
+            {helped
+              ? <p style={muted}>Ask your leader to start it, then scan their request in the Scan tab.</p>
+              : <Secondary disabled={!tx.ready || o < 1 || !market.data} onClick={() => withdraw(o)}>Withdraw</Secondary>}
           </>
         )}
       </Card>}

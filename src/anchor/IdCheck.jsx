@@ -9,9 +9,11 @@
 import { Loading } from '../register/Boot';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Primary, Sheet, muted } from '../plan/ui';
-import { C, R } from '../shell/tokens';
+import { CheckRow, Primary, muted } from '../plan/ui';
+import MapCard from '../shell/MapCard';
+import { C, FONT, R } from '../shell/tokens';
 import { useAnchorInfo, useLpStatus, useSep10Token, useUsdcTrustline } from './hooks';
+import CameraView from '../shell/CameraView';
 import { getCustomer, putConsent, putCustomer } from './sep';
 
 const MAX_SIDE = 1280;
@@ -40,15 +42,16 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
   const getToken = useSep10Token();
   const lp = useLpStatus();
   const trust = useUsdcTrustline();
-  const [signedIn, setSignedIn] = useState(false);
   const [vals, setVals] = useState({});
   const [selfie, setSelfie] = useState();
+  const [shooting, setShooting] = useState(false);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState();
-  // Her K1 at the anchor; read after she signed in (one SEP-10 signature), refreshed while it is checked.
+  // Her K1 at the anchor, read as soon as the screen opens (26 Oct: no Start step; the SEP-10 signature is silent),
+  // refreshed while it is checked.
   const k1 = useQuery({
-    queryKey: ['anchor', 'k1', kind], enabled: signedIn && !!info.data, retry: 1,
+    queryKey: ['anchor', 'k1', kind], enabled: !!info.data, retry: 1,
     refetchInterval: (q) => (q.state.data?.status === 'PROCESSING' ? 30_000 : false),
     queryFn: async () => getCustomer(info.data, await getToken(), kind),
   });
@@ -81,15 +84,16 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
     setBusy(false);
   };
 
+  // Reaching the anchor and reading the member's check: the app's standard loading view, not a bare "…".
+  if ((!info.data && !info.isError) || k1.isLoading) return <Loading />;
   let body;
   if (!info.data) {
-    body = <p style={muted}>{info.isError ? 'The anchor is not reachable. Try again later.' : '…'}</p>;
-  } else if (!signedIn || k1.isLoading) {
+    body = <p style={muted}>The anchor is not reachable. Try again later.</p>;
+  } else if (k1.isError) {
     body = (
       <>
-        <p style={muted}>{leader ? 'Needed for union leaders.' : 'Needed to become an LP.'}</p>
-        {k1.isError && <p style={{ color: C.coral }}>{k1.error.message}</p>}
-        <Primary onClick={() => setSignedIn(true)}>{signedIn ? '…' : 'Start'}</Primary>
+        <p style={{ color: C.coral }}>{k1.error.message}</p>
+        <Primary onClick={() => k1.refetch()}>Try again</Primary>
       </>
     );
   } else if (status === 'PROCESSING') {
@@ -125,7 +129,7 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
             <h2 style={{ fontSize: 16 }}>We need one more thing</h2>
             {Object.values(k1.data.provided_fields).filter((f) => f.error).map((f) => <p key={f.description} style={{ color: C.coral }}>{f.error}</p>)}
           </>
-        ) : <p style={muted}>{leader ? 'Needed for union leaders.' : 'Needed to become an LP.'}</p>}
+        ) : !leader && <p style={muted}>Needed to become an LP.</p>}
         <h2 style={{ fontSize: 14, marginTop: 16 }}>Your details</h2>
         {FIELDS.filter(([k]) => asked.includes(k)).map(([k, label, type]) => (
           <label key={k} style={{ display: 'block' }}>
@@ -137,28 +141,34 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
         ))}
         {asked.includes('proof_of_liveness') && <h2 style={{ fontSize: 14, marginTop: 8 }}>Selfie</h2>}
         {asked.includes('proof_of_liveness') && (
-          <label style={{ display: 'block', background: C.raised, borderRadius: 12, padding: 12, marginBottom: 10 }}>
-            <span style={{ fontWeight: 700 }}>{selfie ? 'Selfie taken' : 'Take a selfie'}</span>
-            <span style={{ ...muted, display: 'block' }}>We check it is really you, live.</span>
-            {selfie && <img src={selfie.url} alt="Your selfie" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: R.round, marginTop: 8 }} />}
-            <input aria-label="Take a selfie" type="file" accept="image/*" capture="user" style={{ display: 'none' }}
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
+          // The app's own camera, front facing (27 Oct): a file input opens the file picker on a computer.
+          shooting ? (
+            <div style={{ background: C.raised, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+              <CameraView mode="photo" facing="user" title="Take a selfie" hint="Look into the camera." onPhoto={async (blob) => {
+                setShooting(false);
                 try {
-                  const blob = await selfieBlob(f);
+                  const b = await selfieBlob(blob);
                   if (selfie?.url) URL.revokeObjectURL(selfie.url);
-                  setSelfie({ blob, url: URL.createObjectURL(blob) }); setSelfieError(undefined);
+                  setSelfie({ blob: b, url: URL.createObjectURL(b) }); setSelfieError(undefined);
                 } catch { setSelfieError('That photo could not be read. Take it again.'); }
               }} />
-          </label>
+              <button type="button" onClick={() => setShooting(false)} style={{ display: 'block', margin: '4px auto 0', border: 0, background: 'transparent',
+                color: C.muted, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setShooting(true)} style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, color: C.text,
+              fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', background: C.raised, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+              <span style={{ fontWeight: 700 }}>{selfie ? 'Selfie taken · take it again' : 'Take a selfie'}</span>
+              <span style={{ ...muted, display: 'block' }}>We check it is really you, live.</span>
+              {selfie && <img src={selfie.url} alt="Your selfie" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: R.round, marginTop: 8 }} />}
+            </button>
+          )
         )}
         {selfieError && <p style={{ color: C.coral }}>{selfieError}</p>}
         {!needs && (
-          <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, margin: '8px 0' }}>
-            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} aria-label="I agree to the check" />
-            <span>I agree that Nila checks my phone and location during this check.</span>
-          </label>
+          <CheckRow on={consent} onClick={() => setConsent((v) => !v)} style={{ margin: '8px 0' }}>
+            I agree that Nila checks my phone and location during this check.
+          </CheckRow>
         )}
         <p style={muted}>Nila keeps this data for 5 years, as the law requires. Members of your union do not see it.</p>
         {error && <p style={{ color: C.coral }}>{error}</p>}
@@ -167,5 +177,11 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
       </>
     );
   }
-  return <Sheet landName="Nila" title="Identity check" onBack={onBack}>{body}</Sheet>;
+  // The map-view standard (26 Oct, as the help QR): a full-height card with the drag line, the title in its header,
+  // no "Nila" heading over it.
+  return (
+    <MapCard header={{ title: 'Identity check', onBack }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
+      {body}
+    </MapCard>
+  );
 }

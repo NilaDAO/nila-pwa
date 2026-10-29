@@ -5,19 +5,20 @@
 // She signs the arguments without a leader (require_auth_for_args), so any leader of her union may scan and submit
 // it. Compact as the voucher code (voucherCode.js): her address | [amount, 8 bytes] | expiry ledger | signature, in
 // base32; nonce = the expiry ledger, so a QR is used once. ~48 h.
-import { Address, Keypair, StrKey, hash, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+import { Address, Keypair, StrKey, hash, xdr } from '@stellar/stellar-sdk';
 import { contractId, server, sv } from '../stellar/soroban';
+import { memberEntry, memberOf } from '../stellar/account';
 
 export const DESK_TERM = 34_560;     // ledgers (~5 s each): about 48 hours
 const KIND = { W: { prefix: 'NILA:W:', len: 100 }, N: { prefix: 'NILA:N:', len: 108 } };
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-const toB32 = (bytes) => {
+export const toB32 = (bytes) => {
   let bits = 0; let val = 0; let out = '';
   for (const b of bytes) { val = ((val << 8) | b) & 0xffff; bits += 8; while (bits >= 5) { out += B32[(val >>> (bits - 5)) & 31]; bits -= 5; } }
   if (bits > 0) out += B32[(val << (5 - bits)) & 31];
   return out;
 };
-const fromB32 = (str) => {
+export const fromB32 = (str) => {
   let bits = 0; let val = 0; const out = [];
   for (const ch of str) {
     const i = B32.indexOf(ch); if (i < 0) throw new Error('bad');
@@ -70,14 +71,7 @@ export function readDeskCode(cfg, text) {
   const exp = d.getUint32(i); const sig = b.slice(i + 4);
   const inv = invocation(cfg, kind, amount);
   if (!Keypair.fromPublicKey(member).verify(payload(cfg, inv, exp), Buffer.from(sig))) throw new Error('This QR is not signed for your union.');
-  const sigVal = nativeToScVal({ public_key: StrKey.decodeEd25519PublicKey(member), signature: Buffer.from(sig) },
-    { type: { public_key: ['symbol', null], signature: ['symbol', null] } });
-  const entry = new xdr.SorobanAuthorizationEntry({
-    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(new xdr.SorobanAddressCredentials({
-      address: new Address(member).toScAddress(), nonce: xdr.Int64.fromString(String(exp)),
-      signatureExpirationLedger: exp, signature: xdr.ScVal.scvVec([sigVal]),
-    })),
-    rootInvocation: inv,
-  }).toXDR('base64');
-  return { kind, member, amount, exp, entry };
+  // Smart accounts (26 Oct): the QR holds her Privy key; the entry is for her account (memberEntry).
+  const entry = memberEntry(cfg, member, sig, exp, inv);
+  return { kind, member: memberOf(cfg, member), key: member, amount, exp, entry };
 }

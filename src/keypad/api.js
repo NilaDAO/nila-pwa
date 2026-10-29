@@ -10,5 +10,7 @@ export function keypadClient(signer) {
     sendAgain: (id) => call('POST', `/keypad/members/${id}/link`, {}),
     member: (id) => call('GET', `/keypad/members/${id}`),
     list: () => call('GET', '/keypad/members'),
+    // 26 Oct: the leader's phone takes the keypad member's field points; they start the member's border job.
+    points: (id, points) => call('POST', `/keypad/members/${id}/points`, { points }),
   };
 }

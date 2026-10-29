@@ -2,7 +2,7 @@
 // BootNotPhone; notes start-spec). Same props and actions as today's features/registration/preLoadPages.js and the
 // loading spinner, so App.js keeps its boot order; only the screens are the boards'. Used in Privy builds.
 import { useEffect, useState } from 'react';
-import { useStage } from '../shell/stageCtx';
+import { useShellLook, useStage } from '../shell/stageCtx';
 import { SkeletonRows } from '../shell/Skeleton';
 import { C } from '../shell/tokens';
 import QRCode from 'qrcode';
@@ -45,16 +45,9 @@ export function Loading({ offline, old }) {
   // In the map-central shell (24 Oct) a screen loading its data loads in place: the map area shows the bouncing logo
   // (the stage cleared), and a card of skeleton rows sits where the card will be; the header and the tab bar stay.
   const stage = useStage();
-  useEffect(() => {
-    if (!stage || offline || old) return undefined;
-    stage.set(null);
-    // The shell lets the map area (and its logo) show through while loading, as an open map card does.
-    const shell = document.querySelector('[data-testid="shell"]');
-    if (!shell) return undefined;
-    const was = shell.style.background;
-    shell.style.background = 'transparent';
-    return () => { shell.style.background = was; };
-  }, [stage, offline, old]);
+  useEffect(() => { if (stage && !offline && !old) stage.set(null); }, [stage, offline, old]);
+  // The shell lets the map area (and its logo) show through while loading, as an open map card does.
+  useShellLook({ clear: true }, !!stage && !offline && !old);
   if (stage && !offline && !old) {
     return (
       <div role="status" aria-label="Loading" style={{ position: 'fixed', left: 8, right: 8, top: '34vh', bottom: 0, zIndex: 1, background: C.ink,
@@ -174,6 +167,25 @@ export function NotFoundPage() {
         <span role="heading" aria-level="1" style={h1}>This page wandered off the farm</span>
         <span style={sub}>Reload Nila. If you see this again, close the app and open it again.</span>
         <button type="button" style={cta} onClick={() => window.location.reload()}>Reload</button>
+      </div>
+    </div>
+  );
+}
+
+/** A keypad phone or a window that small (26 Oct, DESIGN GAP: no board): one link to Nila lite. /lite/index.html, not
+ *  /lite/: a server's SPA fallback may answer the directory with this app's own index.html. Focused at once, so the
+ *  keypad's centre key opens it. */
+export function FeaturePhone() {
+  return (
+    <div style={{ ...ground, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
+        <img src={LOGO} alt="Nila" style={{ width: 40, height: 40 }} />
+        <span role="heading" aria-level="1" style={{ ...h1, marginTop: 0 }}>This phone uses Nila lite</span>
+        <span style={{ ...sub, fontSize: 12 }}>Nila lite is made for keypad phones.</span>
+        <a href={`${process.env.PUBLIC_URL || ''}/lite/index.html`} autoFocus
+          style={{ ...btnPrimary, alignSelf: 'stretch', marginTop: 12, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>
+          Open Nila lite
+        </a>
       </div>
     </div>
   );
