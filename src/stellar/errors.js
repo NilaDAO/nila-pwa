@@ -55,7 +55,7 @@ const MESSAGES = {
     6: 'This machine is not the owner’s.',
     7: 'The union has no rate for this machine type.',
     10: 'The machine is not confirmed by its owner, or it is on hold.',
-    11: 'More hours than the voucher code, the voucher or the machine’s week allows.',
+    11: 'More acres than the voucher code, the voucher, the crop share’s area or the machine’s week allows.',
     15: 'Machine vouchers are paused.',
     20: 'An owner cannot claim on their own voucher.',
   },

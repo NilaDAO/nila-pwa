@@ -39,6 +39,13 @@ const outline = (record) => record?.meta?.geometry?.out
 // Her land as on her title (24 Oct, the leader's Assets map): the title's fields from its metadata (the node's `shape`),
 // else the record's fields or areas.
 const addFields = (m, tf) => { if (tf?.fields?.length) m.fields.push(...tf.fields); };
+// A title whose field record is not built yet (28 Oct): its place on the map is the title's own outline (else its
+// fields), as the Assets map draws it, so the Members map and G2 show the land too.
+const addTitlePlace = (m, t, tf) => {
+  if (!tf) return;
+  const shapes = tf.outline ? [tf.outline] : tf.fields.map((f) => f.geometry);
+  shapes.forEach((geometry, i) => m.places.push({ id: `land-${t.title_id}${i ? `-${i}` : ''}`, geometry }));
+};
 
 // The list as it was last seen, kept on the phone per account and union (22 Oct): G1 shows it at once on the next open
 // and refreshes it in the background. Only the list fields are kept (no field records), so it stays small.
@@ -104,6 +111,7 @@ export function useUnionMembers(api) {
             const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
             if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
             addFields(m, shapeToFields(t.shape) || recordFields(record));
+            if (!record) addTitlePlace(m, t, shapeToFields(t.shape));
           }));
           return m;
         })));
@@ -131,6 +139,7 @@ export function useUnionMembers(api) {
           const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
           if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
           addFields(m, shapeToFields(t.shape) || recordFields(record));
+          if (!record) addTitlePlace(m, t, shapeToFields(t.shape));
         })),
         Promise.all(jobs.map(async (j) => {
           if (!j.member) return;

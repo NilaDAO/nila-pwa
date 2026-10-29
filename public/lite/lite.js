@@ -8,7 +8,7 @@
  *   (F14 is gone, 26 Oct: the leader takes her field points on the leader's phone; after F9 the phone opens F1)
  *   #/home            (26 Oct, simplified) no land title yet: the pending screen; the title ready and not seen yet:
  *                     #/property; then the asset list (26 Oct): F1/F11/F12 as rows (the QR is the right softkey on every screen): invested, crop
- *                     shares, machine hours, crop plan, land, messages (read only; no nIN rows: members hold no nIN)
+ *                     shares, machine work, crop plan, land, messages (read only; no nIN rows: members hold no nIN)
  *   #/help            the help QR as large as the screen allows (A2: a leader acts for her for 5 minutes, session.js)
  *   #/property        the land title is ready: one image of the screen's exact size showing the property; OK → home
  *   #/share/<token>   F7: one crop share (lent, repay, repaid, by when; or ready to use, with the help QR)
@@ -348,7 +348,8 @@
         var img = new Image(); img.width = w; img.height = h; img.alt = 'Your land';
         img.onload = function () { box.innerHTML = ''; box.appendChild(img); };
         img.onerror = function () { var m = document.getElementById('mapmsg'); if (m) m.textContent = 'Your land title is ready. No map image right now.'; };
-        img.src = API + '/keypad/land?p=' + encodeURIComponent(q.p) + '&s=' + encodeURIComponent(q.s);
+        // The hosted static demo (static.js): the picture is a file of the site.
+        img.src = window.NILA_LITE_STATIC ? '/lite/demo-land.jpg' : API + '/keypad/land?p=' + encodeURIComponent(q.p) + '&s=' + encodeURIComponent(q.s);
       });
     });
   }
@@ -365,7 +366,7 @@
       if (i.m && i.m.left > 0) rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 repay by ' + part(i.due), v: inr(i.m.atDue), go: function () { go('#/share/' + hexKey(x.token)); } });
       else if (x.state === 'ready') rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 ready to use', v: inr(x.cash), go: function () { go('#/share/' + hexKey(x.token)); } });
     });
-    if (hours > 0) rows.push({ t: 'Machine hours', s: 'Pay a machine owner', v: (Math.round(hours * 10) / 10) + ' h', go: function () { go('#/hours'); } });
+    if (hours > 0) rows.push({ t: 'Machine work', s: 'Pay a machine owner', v: (Math.round(hours * 10) / 10) + ' ac', go: function () { go('#/hours'); } });
     var next = shares.filter(function (x) { return x.state === 'ready' || x.state === 'early'; })
       .sort(function (a, b) { return tsOf(a.sow) - tsOf(b.sow); })[0];
     rows.push({ t: 'My crop plan', s: next ? 'Next: sow ' + (next.name || next.crop) + ' by ' + part(tsOf(next.sow)) : (shares.length ? 'All seasons' : 'No plan yet'), go: function () { go('#/plan'); } });
@@ -389,7 +390,7 @@
       var h = '<h1>' + esc(x.name || x.crop) + ' \u00b7 Area ' + esc(x.area) + '</h1>' +
         (x.area ? '<div class="map" id="areamap"><p class="muted">\u2026</p></div>' : '') + '<p class="small hint">' + what + '</p><div class="rows">';
       if (i.m) {
-        h += row('Lent', inr(i.m.lent)) + (i.hours ? row('Machine hours', (Math.round(i.hours * 10) / 10) + ' h') : '') + row('You repay', inr(i.m.atDue)) +
+        h += row('Lent', inr(i.m.lent)) + (i.hours ? row('Machine work', (Math.round(i.hours * 10) / 10) + ' tractor acres') : '') + row('You repay', inr(i.m.atDue)) +
           row('Repaid', inr(i.m.repaid)) + row('Repay by', part(i.due)) + '</div>';
       } else {
         h += row('Cash up to', inr(x.cash)) + row(x.state === 'early' ? 'From' : 'Use by', part(x.state === 'early' ? x.open : x.final)) +
@@ -402,73 +403,80 @@
       }, function () { var box = document.getElementById('areamap'); if (box) box.innerHTML = '<p class="muted small">No picture right now.</p>'; });
     });
   }
-  // ---- machine hours (27 Oct): she types the hours, her phone shows a QR the machine owner scans ----
-  // The QR is her own signed authorization of machinery.claim for this voucher, up to those hours, once, for 2 days
-  // (session.js voucher): the owner gets no session and cannot act for her account.
+  // ---- machine work (27 Oct, in acres): she picks the crop share and the job, her phone shows a QR the owner scans ----
+  // Nothing is typed: the job's acres are the crop share's area × its passes (the plan's jobs, /keypad/me). The QR is her
+  // own signed authorization of machinery.claim for this voucher, up to that job's units, once, for 2 days (session.js
+  // voucher): the owner gets no session and cannot act for her account; the owner may lower the acres for a part done.
   var VOUCHER_LEDGERS = 34560;   // 48 hours of 5-second ledgers
+  var JOB_NAMES = { 1: 'Tractor + rotavator', 2: 'Seed drill / planter', 3: 'Power weeder', 4: 'Tractor + cultivator', 5: 'Tractor + plough',
+    6: 'Tractor + disc harrow', 7: 'Tractor + ridger', 8: 'Tractor + puddler', 9: 'Tractor + trailer', 10: 'Tractor + cane trailer',
+    11: 'Power tiller', 12: 'Paddy transplanter', 13: 'Sugarcane sett planter' };
   function voucherList(d) {
     var out = [];
     (d.me.shares || []).forEach(function (x) {
       var left = d.vouchers[hexKey(x.token)] || 0;
       if (left > 0) out.push({ x: x, left: left });
     });
-    for (var k in d.vouchers) {
-      if (d.vouchers.hasOwnProperty(k) && d.vouchers[k] > 0 && !out.some(function (v) { return hexKey(v.x.token) === k; })) out.push({ x: { token: k }, left: d.vouchers[k] });
-    }
     return out;
   }
-  function hoursOf(units) { return Math.round(units / 10) / 10; }
-  /** #/hours: her vouchers with hours left; one goes straight to typing the hours. */
+  function tAcres(units) { return Math.round(units / 10) / 10; }
+  /** #/hours: her crop shares with machine work left; one goes straight to its jobs. */
   function machineHours() {
-    withData('Machine hours', function (d) {
+    withData('Machine work', function (d) {
       var list = voucherList(d);
       if (list.length === 1) { go('#/hours/' + hexKey(list[0].x.token)); return; }
-      menu('hours', 'Machine hours', '<p class="small">Pay a machine owner with your machine hours. Choose the crop share.</p>',
+      menu('hours', 'Machine work', '<p class="small">Pay a machine owner for work on your crop share. Choose the crop share.</p>',
         list.map(function (v) {
-          return { t: (v.x.name || v.x.crop || 'Crop share') + (v.x.area ? ' \u00b7 Area ' + v.x.area : ''), s: hoursOf(v.left) + ' h left',
+          return { t: (v.x.name || v.x.crop || 'Crop share') + (v.x.area ? ' \u00b7 Area ' + v.x.area : ''), s: tAcres(v.left) + ' tractor acres left',
             go: function () { go('#/hours/' + hexKey(v.x.token)); } };
         }), ['Back', function () { go('#/home'); }], list.length ? undefined : null, null);
-      if (!list.length) main.innerHTML += '<p class="muted">No machine hours left.</p>';
+      if (!list.length) main.innerHTML += '<p class="muted">No machine work left.</p>';
     });
   }
-  /** #/hours/<token>: she types the hours the job may take (whole tractor hours, up to what is left), then OK. */
+  /** #/hours/<token>: the share's jobs (the plan's machines, each its acres); OK on one shows its QR. */
   function hoursEntry(tok) {
-    withData('Machine hours', function (d) {
-      var left = d.vouchers[tok] || 0, typed = '';
+    withData('Machine work', function (d) {
+      var left = d.vouchers[tok] || 0;
+      var x = (d.me.shares || []).filter(function (y) { return hexKey(y.token) === tok; })[0] || {};
       var back = ['Back', function () { go('#/home'); }];
-      if (left <= 0) { screen('<p class="muted">No machine hours left on this crop share.</p>', back, null, null, 'Machine hours'); return; }
-      var max = Math.floor(left / 100);
-      var draw = function (err) {
-        var n = parseInt(typed || '0', 10);
-        screen('<p class="small">How many hours may the machine owner work? You have ' + hoursOf(left) + ' h left.</p>' +
-          '<div class="entry">' + (typed ? esc(typed) : '<span class="muted">0</span>') + ' h</div>' +
-          '<p class="muted small">Type the hours with the number keys.</p>' + (err ? '<p class="err small">' + esc(err) + '</p>' : ''),
-          back, n > 0 ? ['Show QR', function () { make(n); }] : null, null, 'Machine hours');
-        keys.digit = function (k) { if (typed.length < 3) { typed = (typed + k).replace(/^0+/, ''); draw(); } };
-        keys.Backspace = function () { if (typed) { typed = typed.slice(0, -1); draw(); } else go('#/home'); };
-      };
-      var make = function (n) {
-        if (n > max) { draw('At most ' + max + ' h.'); return; }
+      if (left <= 0) { screen('<p class="muted">No machine work left on this crop share.</p>', back, null, null, 'Machine work'); return; }
+      var jobs = (x.jobs || []).filter(function (j) { return j.units > 0; });
+      var make = function (units, label) {
         busy = true;
-        screen('<div class="qr qr-big" id="qr"><p class="muted" style="color:#121212">Making your QR\u2026</p></div>', null, null, null, 'Machine hours');
+        screen('<div class="qr qr-big" id="qr"><p class="muted" style="color:#121212">Making your QR\u2026</p></div>', null, null, null, 'Machine work');
         var cfg = d.cfg;
         fetch(cfg.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (r) { return r.json(); }).then(function (l) {
           return loadKey().then(function (pair) {
             if (!pair) throw new Error('This phone has no key. Ask your union leader for a new link.');
             return window.NilaSession.voucher({ passphrase: cfg.passphrase, machinery: cfg.contracts.machinery, union: cfg.union,
-              account: d.me.account, token: hexBytes(tok), units: n * 100, ledger: l.result.sequence, ledgers: VOUCHER_LEDGERS },
+              account: d.me.account, token: hexBytes(tok), units: units, ledger: l.result.sequence, ledgers: VOUCHER_LEDGERS },
             function (payload) { return window.crypto.subtle.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, pair.privateKey, payload); });
           });
         }).then(function (q) {
           return window.NilaQR.svg(q.qr, { margin: 1, errorCorrectionLevel: 'L' });
         }).then(function (svg) {
           busy = false;
-          screen('<div class="qr qr-big">' + svg + '</div><p class="small hint" style="text-align:center">Up to ' + n + ' h \u00b7 valid 2 days. Show this to the machine owner.</p>',
-            ['Back', function () { go('#/home'); }], ['Done', function () { go('#/home'); }], null, 'Machine hours');
-        }, function (e) { busy = false; draw((e && e.message) || 'Could not make the QR. Try again.'); });
+          screen('<div class="qr qr-big">' + svg + '</div><p class="small hint" style="text-align:center">' + esc(label) + ' \u00b7 valid 2 days. Show this to the machine owner.</p>',
+            ['Back', function () { go('#/home'); }], ['Done', function () { go('#/home'); }], null, 'Machine work');
+        }, function (e) {
+          busy = false;
+          screen('<p class="err">' + esc((e && e.message) || 'Could not make the QR. Try again.') + '</p>', back, null, null, 'Machine work');
+        });
       };
-      draw();
+      // No jobs in the plan (an older share): one QR for what is left, any machine; the owner's app caps it at the area.
+      if (!jobs.length) {
+        screen('<p class="small">Show a QR for the machine work left on this crop share (' + tAcres(left) + ' tractor acres).</p>',
+          back, ['Show QR', function () { make(left, 'Machine work up to ' + tAcres(left) + ' tractor acres'); }], null, 'Machine work');
+        return;
+      }
+      menu('jobs', 'Machine work', '<p class="small">Choose the job. The QR covers the area of this crop share.</p>',
+        jobs.map(function (j) {
+          var units = Math.min(j.units, left), part = units < j.units;
+          var name = JOB_NAMES[j.type] || 'Machine';
+          var acres = part ? Math.floor(j.acres * units / j.units * 100) / 100 : j.acres;
+          return { t: name, s: acres + ' acres' + (part ? ' (what is left)' : ''), go: function () { make(units, name + ' \u00b7 ' + acres + ' acres'); } };
+        }), back, undefined, null);
     });
   }
 
@@ -551,7 +559,7 @@
       };
       var head = '';
       // One sentence on what a crop plan is (26 Oct); without a plan, the member opens the QR for the leader to make it.
-      head = '<p class="small">Your crop plan says what to grow on each area for the coming year, and the cash and machine hours for it.</p>' + head +
+      head = '<p class="small">Your crop plan says what to grow on each area for the coming year, and the cash and machine work for it.</p>' + head +
         (list.length ? '' : d.me.plan === 'waiting' ? '<p>Your crop plan is made. It waits for your union leader to approve it.</p>' :
           d.me.plan === 'approved' ? '<p>Your crop plan is approved. Your union is making your crop shares.</p>' :
           d.me.plan === 'denied' ? '<p>Your union leader did not approve the plan. Open your QR and show it to your union leader to make a new one.</p>' :
@@ -571,7 +579,7 @@
       var i = shareInfo(d, x);
       screen('<h1>' + esc(x.name || x.crop) + ' \u00b7 Area ' + esc(x.area) + '</h1><div class="rows">' +
         (x.kg ? row('Expected', 'about ' + Math.round(x.kg) + ' kg') : '') + row('Cash', inr(i.m ? i.m.lent : x.cash)) +
-        (i.hours ? row('Machine hours', (Math.round(i.hours * 10) / 10) + ' h') : '') +
+        (i.hours ? row('Machine work', (Math.round(i.hours * 10) / 10) + ' tractor acres') : '') +
         (x.sow ? row('Sow', part(tsOf(x.sow))) : '') + (x.harvest ? row('Harvest', part(tsOf(x.harvest))) : '') +
         (i.m ? row('Repay by', part(i.due)) : '') + '</div>', back, null, ['Map', function () { go('#/land'); }], 'My crop plan');
     });

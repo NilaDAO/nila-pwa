@@ -91,7 +91,7 @@ function placeAt(m, y) {
   return proj.fromPointToLatLng(new g.Point(p.x, p.y + (y - m.getDiv().clientHeight / 2) / 2 ** m.getZoom()));
 }
 
-export default function FieldMap({ points = [], me = null, pan = false, onCenter, start = null, selected = null, onSelect, pinY = null }) {
+export default function FieldMap({ points = [], me = null, pan = false, onCenter, start = null, selected = null, onSelect, pinY = null, shapes = null }) {
   const map = useRef(null);
   const marks = useRef([]);
   const line = useRef(null);
@@ -136,6 +136,11 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
         p.parts.forEach((x) => m.__parts.push(new g.Circle({ map: m, center: { lat: x.lat, lng: x.lng }, radius: 1.5, clickable: false,
           strokeColor: '#D4A634', strokeWeight: 2, fillColor: '#121212', fillOpacity: 1 })));
       });
+      // Fields already accepted (28 Oct, adding points to a border job): solid white outlines, not tappable.
+      (m.__shapes || []).forEach((x) => x.setMap(null));
+      m.__shapes = (shapes || []).map((geo) => new g.Polygon({ map: m, clickable: false,
+        paths: (geo?.coordinates?.[0] || []).map(([lng, lat]) => ({ lat, lng })),
+        strokeColor: '#ffffff', strokeOpacity: 1, strokeWeight: 2, fillColor: '#ffffff', fillOpacity: 0.08 }));
       if (line.current) line.current.setPath(points);
       else if (points.length) {
         line.current = new g.Polyline({ path: points, geodesic: true, strokeColor: '#D4CF5A', strokeOpacity: 0.3, strokeWeight: 1 });
@@ -162,7 +167,7 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
         }
       }
     } catch (e) { console.error('[field map] markers not drawn', e); }
-  }, [points, center, me, pan, selected, onSelect]);
+  }, [points, center, me, pan, selected, onSelect, shapes]);
 
   useEffect(() => { draw(); }, [draw]);
   useEffect(() => () => {

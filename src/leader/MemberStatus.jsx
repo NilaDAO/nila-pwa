@@ -6,7 +6,8 @@
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Card, CardButton, ConfirmCard, Text } from '../shell/SettingsParts';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
@@ -14,6 +15,7 @@ import { usePlanClient } from '../plan/hooks';
 import { C, FONT, R } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
 import AreaMap from '../plan/AreaMap';
+import { areaM2 } from '../plan/mapTap';
 import { areasOf } from '../plan/record';
 import { rowsInSeason } from '../plan/PlanResult';
 import { SEASON } from '../loan/MyShares';
@@ -187,9 +189,11 @@ export default function MemberStatus({ id, go }) {
       map={m.record ? <AreaMap record={m.record} /> : <span />} />;
   }
   const now = Date.now() / 1000;
+  // The land from its field record, else (record not built yet, 28 Oct) from the title's own fields, as the Assets map.
   const areas = areasOf(m.record);
-  const fields = m.record?.meta?.geometry?.field_features?.features || [];
-  const acres = areas.reduce((a, z) => a + (z.area_m2 || 0), 0) / 4046.86;
+  const fields = m.record ? m.record.meta?.geometry?.field_features?.features || [] : m.fields || [];
+  const acres = (m.record ? areas.reduce((a, z) => a + (z.area_m2 || 0), 0) : fields.reduce((a, f) => a + areaM2(f.geometry), 0)) / 4046.86;
+  const hasLand = !!m.record || fields.length > 0;
   // Not drawn and not lapsed (25 Oct: no from date any more, attested with its last draw date), soonest last date first.
   const open = m.shares.filter((x) => !x.drawn && !x.lapsed);
   const next = [...open].sort((a, b) => (a.final || a.from) - (b.final || b.from))[0];
@@ -204,7 +208,9 @@ export default function MemberStatus({ id, go }) {
   });
   // Her fields only (23 Oct): until her record is in, no map at all, never the leader's own fields.
   // Map taps (24 Oct rule): her property again → back to the list (only her property is on G2's map).
-  const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} /> : <span />;
+  // No record yet: the title's fields, as the Assets map (28 Oct).
+  const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} />
+    : fields.length ? <AreaMap record={{ zones: fields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry })) }} onSelect={() => go('members')} /> : <span />;
   const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>;
   return (
     <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings'), busy: refreshing,
@@ -213,12 +219,12 @@ export default function MemberStatus({ id, go }) {
       {/* The card's 22 px side padding (MapCard takes the sheet's padding back for screens with cards of their own). */}
       <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {m.record && <Row k="Property" v={`${acres.toFixed(1)} acres`} />}
+        {hasLand && <Row k="Property" v={`${acres.toFixed(1)} acres`} />}
         {/* Fields: the fields her title was minted with (L3/L4), from the title's record (meta.geometry.field_features);
             the record's areas are only for the crops on the map. "—" when the record lists none. */}
-        {m.record && <Row k="Fields" v={fields.length || '—'} />}
+        {hasLand && <Row k="Fields" v={fields.length || '—'} />}
         {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
-        {!m.record && <Row k="Status" v={m.note || 'No land title yet'} />}
+        {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
       </div>
       {m.recordHash && !m.shares.length && (
         // The member's crop plan (26 Oct): made with the member without a session; the member's QR accepts it at the end.
@@ -292,7 +298,7 @@ export default function MemberStatus({ id, go }) {
                   </span>
                   {st.more && (
                     <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
-                      background: C.raised, color: C.text, boxShadow: `inset 0 0 0 1px ${C.muted}`, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Add hours</button>
+                      background: C.raised, color: C.text, boxShadow: `inset 0 0 0 1px ${C.muted}`, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Add machine work</button>
                   )}
                   {st.take ? (
                     <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
@@ -315,7 +321,42 @@ export default function MemberStatus({ id, go }) {
           <Row k="Record" v={<span style={{ color: C.accent }}>{`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`}</span>} />
         </Section>
       )}
+      <RemoveMember m={m} inv={inv} go={go} />
       </div>
     </MapCard>
   );
 }
+
+/** G2 Remove member (executive decision 28 Oct; the look of Settings → Reset account): the node burns the member's land
+ *  title on Stellar, which ends the membership. Only with no crop share and no investment; nIN, USDC and vouchers stay
+ *  in the member's wallet. */
+function RemoveMember({ m, inv, go }) {
+  const api = usePlanClient();
+  const qc = useQueryClient();
+  const [ask, setAsk] = useState(false);
+  const titleId = m.titleId || [...(m.lands || [])][0];
+  const rm = useMutation({
+    mutationFn: () => api.removeMember(titleId),
+    onSuccess: () => { setAsk(false); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
+  });
+  if (!titleId) return null;
+  const p = inv.data;
+  const investment = p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
+  const why = m.shares.length ? 'The member has crop shares.'
+    : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
+      : investment > 0 ? 'The member has an investment: pay it out first.' : null;
+  return (
+    <Card title="Remove member">
+      <Text>Burns the member's land title, which ends the membership of the union. nIN, USDC and vouchers stay in the member's wallet.</Text>
+      {why && <Text style={{ color: C.gold }}>{why}</Text>}
+      <CardButton color={C.coral} onClick={why ? undefined : () => setAsk(true)}>Remove member</CardButton>
+      {rm.error && <Text style={{ color: C.coral }}>{rm.error.message}</Text>}
+      {ask && (
+        <ConfirmCard ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending}
+          onCancel={() => setAsk(false)} onOk={() => rm.mutate()}
+          warn={`Remove ${m.label} from the union? The land title ${titleId} is burned; this cannot be undone. To join again the member needs a new land title.`} />
+      )}
+    </Card>
+  );
+}
+

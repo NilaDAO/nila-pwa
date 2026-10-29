@@ -64,7 +64,7 @@ export function useUnionBook(api) {
       const rows = await Promise.all(loans.map(async (l) => {
         const [g, v] = await Promise.all([
           readContract(cfg, 'fund_core', 'get_loan', [u, sv.bytes32(l.token_id)]).catch(() => null),
-          // Her voucher's tractor hours left, from the chain (23 Oct: the node's list carried no hours).
+          // Her voucher's tractor acres left, from the chain (27 Oct; the node's list carries no units).
           cfg.contracts.machinery ? readContract(cfg, 'machinery', 'voucher', [u, sv.bytes32(l.token_id)]).catch(() => null) : null,
         ]);
         if (!g || g.closed) return null;
@@ -72,7 +72,7 @@ export function useUnionBook(api) {
         const since = Math.max(0, now - Number(g.last_accrual_ts || g.drawdown_ts));
         const interest = n(g.interest_accrued) - n(g.interest_paid) + (out * Number(g.rate_bp) * since) / (10_000 * YEAR);
         return { token: l.token_id, borrower: l.borrower, drawnAt: l.drawn_at, outstanding: out, interest, rateBp: Number(g.rate_bp), overdue: !!g.overdue,
-          hours: v && !v.void ? (Number(v.hours) - Number(v.used)) / 100 : 0 };
+          hours: v && !v.void ? (Number(v.units) - Number(v.used)) / 100 : 0 };   // tractor acres left (field name kept)
       }));
       const open = rows.filter(Boolean);
       const feeBp = Number(uc?.treasury_fee_bp ?? 0) + Number(uc?.rainy_fee_bp ?? 0);

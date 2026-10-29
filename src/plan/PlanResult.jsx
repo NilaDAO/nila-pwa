@@ -1,8 +1,8 @@
 // CP10 (board CropPlanQ3-xdlz): the map is the list. The bar on top of the card switches seasons (overview) or
 // slides through her areas (an area picked); the area card shows her year as bars, its sales, and Accept Area N.
 // Spec: nila-design notes/page-member.md "cp-result". DESIGN GAPs, not built: Split this area and Merge with other
-// areas (no node call yet), changing a crop on the bars (a tap opens Change my plan with the crop named instead).
-import { useRef } from 'react';
+// areas (no node call yet). A crop is changed on its season row (28 Oct): a tap opens a list of the catalogue's crops.
+import { useRef, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
 import { Notice, inr, muted } from './ui';
 
@@ -86,7 +86,50 @@ export function SlideBar({ label, onPrev, onNext, prevLabel, nextLabel }) {
 const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear() - y0) * 12 + t.getMonth() - 9 + (t.getDate() - 1) / 31; };
 
 /** The area card (an area picked): her year as bars, sales, Back and Accept Area N. */
-export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, acceptLabel = 'Accept the plan' }) {
+// Ink on a light crop colour, white on a dark one (black gram's grey, Cumbu Napier's green).
+const lightBg = (hex) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return true;
+  const n = parseInt(m[1], 16);
+  return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 140;
+};
+
+export const sortedCrops = (crops) => (crops || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+
+/** One area's crop in one season, picked from the catalogue (28 Oct): the crops as chips inside the row itself, which
+ *  grows to hold them (no list over the map); the crop now is marked. A tap on another crop sends the change.
+ *  label: a line above the chips (the overview's "Area N"). */
+export function CropSelect({ label, crops, current, currentName, disabled, onPick }) {
+  const list = current && !crops.some((c) => c.key === current) ? [{ key: current, name: currentName || current }, ...crops] : crops;
+  return (
+    <div role="group" aria-label={`Crop${label ? ` for ${label}` : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0 2px' }}>
+      {label && <span style={{ fontSize: 14, fontWeight: 700 }}>{label}{!current && <span style={{ color: C.muted, fontWeight: 400 }}> · no crop</span>}</span>}
+      {/* The month selector's style (CP intake, 28 Oct): a grid of buttons in the crop's colour; the crop now is full,
+          the others faded; no ring. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        {list.map((c) => {
+          const on = c.key === current;
+          return (
+            <button key={c.key} type="button" disabled={disabled} aria-pressed={on} onClick={() => { if (!on) onPick(c.key); }}
+              style={{ minHeight: 44, padding: '4px 6px', borderRadius: 12, border: 0, background: c.colour || C.muted, opacity: disabled ? 0.3 : on ? 1 : 0.45,
+                color: lightBg(c.colour) ? C.ink : C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, lineHeight: 1.2, cursor: on || disabled ? 'default' : 'pointer' }}>
+              {c.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** crops: the catalogue's crops for the season rows' list; onCrop(row, cropKey): that crop instead on this area in that
+ *  row's season; changing: a change is being sent. */
+export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, picked = {}, onUpdate, acceptLabel = 'Accept the plan' }) {
+  // picked (28 Oct): crops chosen on this area's rows, not sent yet (slot → crop key); the accept button then reads
+  // Update crop plan and sends them all (onUpdate).
+  const changed = Object.keys(picked).length > 0;
+  const cropOf = (key) => (crops || []).find((c) => c.key === key);
+  const [open, setOpen] = useState(null);   // the season row whose crop list is open
   const seasons = plan.plan.seasons || [];
   // A row merged with other areas (same crop that season) counts here by this area's share of its acres.
   const own = area?.area_m2 ? area.area_m2 / 4046.86 : null;
@@ -117,14 +160,24 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
         <div style={{ position: 'relative' }}>
           {rows.map((r) => {
             const s0 = Math.max(0, Math.min(12, at(r.sow))); const s1 = Math.max(s0 + 0.3, Math.min(12, at(r.harvest)));
+            const rowKey = `${r.slot}-${r.crop}`;
+            const list = sortedCrops(crops);
             return (
-              <button key={`${r.slot}-${r.crop}`} type="button" disabled={readOnly} onClick={() => onCrop?.(r)} aria-label={`Change ${r.name}`}
+              // Open, the row itself grows and holds the crops (28 Oct): a raised box around the bar and the chips.
+              <div key={rowKey} style={open === rowKey ? { background: C.raised, borderRadius: 12, margin: '4px -10px', padding: '2px 10px 10px' } : undefined}>
+              <button type="button" disabled={readOnly || !onCrop} onClick={() => setOpen(open === rowKey ? null : rowKey)} aria-label={`Change ${r.name}`} aria-expanded={open === rowKey}
                 style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30, padding: 0, border: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: readOnly ? 'default' : 'pointer' }}>
-                <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+                <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{picked[r.slot] ? cropOf(picked[r.slot])?.name || picked[r.slot] : r.name}</span>
                 <span style={{ position: 'relative', flexGrow: 1, height: 14 }}>
-                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: r.colour || C.muted }} />
+                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: (picked[r.slot] && cropOf(picked[r.slot])?.colour) || r.colour || C.muted }} />
                 </span>
               </button>
+              {open === rowKey && (
+                // The crop list for this area in this season: picking one sends the change (a new plan version).
+                <CropSelect crops={list} current={picked[r.slot] || r.crop} currentName={r.name} disabled={changing}
+                  onPick={(key) => onCrop(r, key)} />
+              )}
+              </div>
             );
           })}
           {/* Soil covers (no bare soil in the dry months, 21 Oct): hatched bars, never a crop for sale. */}
@@ -135,12 +188,23 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
             const label = c.kind === 'bare' ? 'Bare soil' : c.kind === 'mulch' ? 'Mulch' : short.charAt(0).toUpperCase() + short.slice(1);
             const fill = c.kind === 'bare' ? `repeating-linear-gradient(45deg, ${C.coral} 0 3px, transparent 3px 6px)`
               : `repeating-linear-gradient(45deg, ${c.colour || '#7FB069'} 0 3px, rgba(127,176,105,0.25) 3px 6px)`;
+            // A soil cover is advice (21 Oct): a crop may be picked in its season instead (28 Oct); the pick replaces it.
+            const slot = (c.slots || [])[0];
+            const rowKey = `soil-${c.from}`;
+            const pick = slot && picked[slot] && !rows.some((r) => r.slot === slot) ? cropOf(picked[slot]) : null;
+            const can = !readOnly && !!onCrop && !!slot && !rows.some((r) => r.slot === slot);
             return (
-              <div key={`soil-${c.from}`} title={c.name} style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30 }}>
-                <span style={{ width: CL - 8, marginRight: 8, fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: C.text }}>{label}</span>
+              <div key={rowKey} style={open === rowKey ? { background: C.raised, borderRadius: 12, margin: '4px -10px', padding: '2px 10px 10px' } : undefined}>
+              <button type="button" title={c.name} disabled={!can} onClick={() => setOpen(open === rowKey ? null : rowKey)} aria-label={`Change ${label}`} aria-expanded={open === rowKey}
+                style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30, padding: 0, border: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: can ? 'pointer' : 'default' }}>
+                <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: C.text }}>{pick ? pick.name : label}</span>
                 <span style={{ position: 'relative', flexGrow: 1, height: 14 }}>
-                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: fill }} />
+                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: pick ? pick.colour || C.muted : fill }} />
                 </span>
+              </button>
+              {open === rowKey && (
+                <CropSelect crops={sortedCrops(crops)} current={slot && picked[slot]} disabled={changing} onPick={(key) => onCrop({ slot }, key)} />
+              )}
               </div>
             );
           })}
@@ -179,9 +243,10 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
         <button type="button" onClick={onBack} style={{ ...btn, background: C.raised, color: C.text }}>Back</button>
-        {!readOnly && !accepted && <button type="button" onClick={onAccept} style={{ ...btn, background: C.accent, color: C.ink }}>Accept {name}</button>}
-        {!readOnly && accepted && nextName && <button type="button" onClick={onNext} style={{ ...btn, background: C.accent, color: C.ink }}>Next: {nextName}</button>}
-        {!readOnly && accepted && !nextName && <button type="button" onClick={onAll} style={{ ...btn, background: C.accent, color: C.ink }}>{acceptLabel}</button>}
+        {!readOnly && changed && <button type="button" disabled={changing} onClick={onUpdate} style={{ ...btn, background: C.accent, color: C.ink, opacity: changing ? 0.5 : 1 }}>{changing ? 'Updating…' : 'Update crop plan'}</button>}
+        {!readOnly && !changed && !accepted && <button type="button" onClick={onAccept} style={{ ...btn, background: C.accent, color: C.ink }}>Accept {name}</button>}
+        {!readOnly && !changed && accepted && nextName && <button type="button" onClick={onNext} style={{ ...btn, background: C.accent, color: C.ink }}>Next: {nextName}</button>}
+        {!readOnly && !changed && accepted && !nextName && <button type="button" onClick={onAll} style={{ ...btn, background: C.accent, color: C.ink }}>{acceptLabel}</button>}
         {/* Remove this area (21 Oct): left-over bits leave the plan; a confirm first (CropPlanFlow). */}
         {!readOnly && onRemove && total > 1 && (
           <button type="button" onClick={onRemove} aria-label={`Remove ${name} from your plan`} style={{ ...btn, flex: 'none', width: 44, padding: 0, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

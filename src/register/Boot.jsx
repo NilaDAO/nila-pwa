@@ -2,7 +2,7 @@
 // BootNotPhone; notes start-spec). Same props and actions as today's features/registration/preLoadPages.js and the
 // loading spinner, so App.js keeps its boot order; only the screens are the boards'. Used in Privy builds.
 import { useEffect, useState } from 'react';
-import { useStage } from '../shell/stageCtx';
+import { useShellLook, useStage } from '../shell/stageCtx';
 import { SkeletonRows } from '../shell/Skeleton';
 import { C } from '../shell/tokens';
 import QRCode from 'qrcode';
@@ -45,16 +45,9 @@ export function Loading({ offline, old }) {
   // In the map-central shell (24 Oct) a screen loading its data loads in place: the map area shows the bouncing logo
   // (the stage cleared), and a card of skeleton rows sits where the card will be; the header and the tab bar stay.
   const stage = useStage();
-  useEffect(() => {
-    if (!stage || offline || old) return undefined;
-    stage.set(null);
-    // The shell lets the map area (and its logo) show through while loading, as an open map card does.
-    const shell = document.querySelector('[data-testid="shell"]');
-    if (!shell) return undefined;
-    const was = shell.style.background;
-    shell.style.background = 'transparent';
-    return () => { shell.style.background = was; };
-  }, [stage, offline, old]);
+  useEffect(() => { if (stage && !offline && !old) stage.set(null); }, [stage, offline, old]);
+  // The shell lets the map area (and its logo) show through while loading, as an open map card does.
+  useShellLook({ clear: true }, !!stage && !offline && !old);
   if (stage && !offline && !old) {
     return (
       <div role="status" aria-label="Loading" style={{ position: 'fixed', left: 8, right: 8, top: '34vh', bottom: 0, zIndex: 1, background: C.ink,

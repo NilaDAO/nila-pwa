@@ -1,6 +1,6 @@
 // Shared crop-plan layout: the header band (map in P4c) and the bottom sheet of the CP boards.
 import { cloneElement, isValidElement, useContext, useEffect, useLayoutEffect, useRef } from 'react';
-import { LabelsCtx, SheetLowCtx, useStage } from '../shell/stageCtx';
+import { LabelsCtx, SheetLowCtx, useShellLook, useStage } from '../shell/stageCtx';
 import { C, FONT, GRADIENT, R } from '../shell/tokens';
 import useSheetDrag from '../shell/useSheetDrag';
 import { SettingsButton } from '../shell/RoundButton';
@@ -8,16 +8,18 @@ import { SettingsButton } from '../shell/RoundButton';
 /** head: header buttons in place of Back / name / Settings. top: the card's top (px) when it opens. onSwipe(±1): a
  *  sideways swipe on the card (A4/A5's ‹ asset › bar). */
 /** full (map-central): the card takes the whole screen height, rising from where A1's card stands. */
-export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered, noSettings }) {
+/** actions: round buttons (RoundButton) in the header row, left of Settings (28 Oct: Refresh on the no-title card). */
+export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered, noSettings, actions }) {
   const drag = useSheetDrag(onLowered, resetKey, startLow);   // the drag line as on R5 (all map screens, 21 Oct)
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell the one map behind the tabs
   // (shell/MapStage) draws this sheet's map, so it is never mounted again between screens.
   const stage = useStage();
-  const staged = !!stage && isValidElement(map);
+  // A map marked ownMap (BorderMap) is not the shell's land map: the sheet draws it itself, behind the card.
+  const staged = !!stage && isValidElement(map) && !map.type?.ownMap;
   const labelsCtx = useContext(LabelsCtx);
   const labelled = staged && Object.keys(map.props.labels || {}).length > 0;
   // A sheet without its record yet clears the stage (23 Oct): the last screen's fields never stay behind it.
-  useEffect(() => { if (staged) stage.set(map.props.record || map.props.chip ? map.props : null); });   // a filter with no match keeps its chip
+  useEffect(() => { if (staged) stage.set(map.props.record || map.props.chip || map.props.center ? map.props : null); });   // a filter with no match keeps its chip
   const shown = staged ? null : map;
   const x0 = useRef(null);
   const swipe = onSwipe ? {
@@ -33,25 +35,19 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
   // card when scrolled to the end: off while a map sheet is open, so the card stays glued to the bottom.
   // Staged (map-central): the shell lets the map behind it show and take taps while this sheet is open; only the card,
   // the header buttons and the tab bar take them.
-  const hasMap = !!map;
-  useEffect(() => {
-    const shell = hasMap && document.querySelector('[data-testid="shell"]');
-    if (!shell) return undefined;
-    const was = [shell.style.paddingBottom, shell.style.background, shell.style.pointerEvents];
-    shell.style.paddingBottom = '0px';
-    if (staged) { shell.style.background = 'transparent'; shell.style.pointerEvents = 'none'; }
-    return () => { [shell.style.paddingBottom, shell.style.background, shell.style.pointerEvents] = was; };
-  }, [hasMap, staged]);
-  // Map-central (staged): the header is a row inside the card under the drag line, sticky while the card scrolls
-  // (executive decision 21 Oct): Back, the land's name or the title, Settings; `head` replaces the row's content.
+  useShellLook({ flush: true, clear: staged, through: staged }, !!map);
+  // In the shell the header is a row inside the card under the drag line, sticky while the card scrolls (executive
+  // decision 21 Oct; 28 Oct: also for a map of its own, as L2–L4): Back, the land's name or the title, Settings;
+  // `head` replaces the row's content. The staged map is the shell's one map (AreaMap); any other map is drawn here.
+  const inShell = !!stage;
   const btnIn = { width: 40, height: 40, borderRadius: R.round, background: C.raised, border: 0, color: C.text, fontSize: 20, flexShrink: 0 };
-  const inTitle = staged && !ownHead && (landName || title);
+  const inTitle = inShell && !ownHead && (landName || title);
   // The card is drawn on the non-map screens' gradient (executive decision 21 Oct); the sticky header paints the same
   // gradient, sized to the card and shifted by where the header sits in it, so it never shows as a flat band.
-  const cardBg = staged ? GRADIENT : C.ink;
+  const cardBg = inShell ? GRADIENT : C.ink;
   const headRef = useRef(null);
   useLayoutEffect(() => {
-    if (!staged) return undefined;
+    if (!inShell) return undefined;
     const paint = () => {
       const c = drag.ref.current; const h = headRef.current;
       if (!c || !h) return;
@@ -67,13 +63,15 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       window.removeEventListener('scroll', paint, { capture: true }); window.removeEventListener('resize', paint); ro?.disconnect();
     };
   }); // eslint-disable-line react-hooks/exhaustive-deps
-  const headRow = staged && (
+  const sideW = 40 + (actions ? 48 : 0);
+  const headRow = inShell && (
     <div ref={headRef} data-sheet-head style={{ position: 'sticky', top: 0, zIndex: 3, background: GRADIENT, backgroundRepeat: 'no-repeat', margin: '0 -22px 8px', padding: '4px 22px 12px' }}>
       {ownHead || (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          {onBack ? <button type="button" aria-label="Back" onClick={onBack} style={btnIn}>←</button> : <span style={{ width: 40 }} />}
+          {/* Both sides as wide as the wider one, so the title stays in the middle. */}
+          <span style={{ display: 'flex', width: sideW }}>{onBack && <button type="button" aria-label="Back" onClick={onBack} style={btnIn}>←</button>}</span>
           <span style={{ flexGrow: 1, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{inTitle || ''}</span>
-          {noSettings ? <span style={{ width: 40 }} /> : <SettingsButton />}
+          <span style={{ display: 'flex', gap: 8, width: sideW, justifyContent: 'flex-end' }}>{actions}{!noSettings && <SettingsButton />}</span>
         </div>
       )}
     </div>
@@ -94,12 +92,12 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
     return (
       <div style={{ fontFamily: FONT, color: C.text, position: 'fixed', inset: 0, zIndex: 0, background: staged ? 'transparent' : '#25361f', pointerEvents: staged ? 'none' : undefined }}>
         {shown && <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>{isValidElement(shown) ? cloneElement(shown, { height: '100%' }) : shown}</div>}
-        {!staged && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
+        {!inShell && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
         <div data-sheet-scroll style={{ position: 'absolute', left: 0, right: 0, top: 76, bottom: 0, overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none', zIndex: 4, pointerEvents: 'none' }}>
           <div aria-hidden="true" style={{ height: Math.max(120, Math.round(window.innerHeight / 3) - 76) }} />
           <section ref={drag.ref} className="cp-sheet" {...swipe} style={{ pointerEvents: 'auto', background: cardBg, borderRadius: '24px 24px 0 0', padding: '10px 22px 104px', boxSizing: 'border-box', minHeight: '100%', boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', ...drag.style }}>
             <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}.cp-sheet [data-sheet-head] h1{margin:0!important}[data-sheet-scroll]::-webkit-scrollbar{display:none}'}</style>
-            <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
+            <div style={{ marginBottom: inShell ? 4 : 16 }}>{drag.handle}</div>
             {headRow}
             <div style={staged ? { opacity: drag.low ? 0 : 1, visibility: drag.low ? 'hidden' : 'visible', transition: drag.low ? 'none' : 'opacity 200ms' } : undefined}>
               {title && !(inTitle && !landName) && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: '0 0 16px' }}>{title}</h1>}
@@ -124,7 +122,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         {map && <div style={{ height: full ? 24 : bar ? Math.round(window.innerHeight / 2) + 24 : top ?? 220 }} />}
       </div>
       {/* The header buttons stay fixed at the top, above map and card; they never scroll away (21 Oct) — with or without a map. */}
-      {!staged && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
+      {!inShell && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
       <div ref={drag.ref} className="cp-sheet" {...swipe} style={{ background: cardBg, borderRadius: '24px 24px 0 0', marginTop: -24, padding: '10px 22px 104px', position: 'relative', zIndex: 1, flexShrink: 0, pointerEvents: 'auto', minHeight: full ? '100dvh' : undefined, boxSizing: 'border-box', ...drag.style, ...(full && staged && !drag.startedLow ? { animation: 'nila-rise 320ms cubic-bezier(0.2,0.8,0.2,1)' } : {}) }}>
         {full && staged && <style>{`@keyframes nila-rise{from{transform:translateY(${Math.round(window.innerHeight * 0.34) - 24}px)}to{transform:translateY(0)}}`}</style>}
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
@@ -140,7 +138,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
             </button>
           </div>
         )}
-        <div style={{ marginBottom: staged ? 4 : 16 }}>{drag.handle}</div>
+        <div style={{ marginBottom: inShell ? 4 : 16 }}>{drag.handle}</div>
         {headRow}
         {/* Lowered (map-central): the body fades out, so under the tab bar only the card's gradient shows. */}
         <div style={staged ? { opacity: drag.low ? 0 : 1, visibility: drag.low ? 'hidden' : 'visible', transition: drag.low ? 'none' : 'opacity 200ms' } : undefined}>

@@ -5,45 +5,34 @@
 // app (the farm name or a short address stands in).
 import { cloneElement, useCallback, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { C, FONT, R, SHADOW } from '../shell/tokens';
+import { C, FONT, R } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
-import useSheetDrag from '../shell/useSheetDrag';
 import { acres, shapeFor } from './api';
 import BorderMap, { ShapeThumb } from './BorderMap';
 import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
 import { TxScreens } from '../stellar/TxStatus';
-import { Notice } from '../plan/ui';
+import { Notice, Sheet } from '../plan/ui';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
 export const memberName = (job) => job?.farm || job?.name || short(job?.polygon || job?.member);
-const pill = { background: 'rgba(18,18,18,0.85)', borderRadius: R.round, boxShadow: SHADOW };
 const btn = (primary) => ({ flex: 1, height: 44, borderRadius: R.button, border: 0, fontWeight: 700, fontSize: 14, fontFamily: FONT,
   background: primary ? C.accent : C.raised, color: primary ? C.ink : C.text });
 const DONE = ['accepted', 'left_out'];
 
-// The map fills the screen behind the card (26 Oct, as the other map screens): dragging the card down shows more map,
-// never a blank space. The card starts at 40 % of the screen and reaches at least the bottom.
+// The map fills the screen behind the card; the card is the app's one map card (plan/ui.jsx Sheet, 28 Oct): header row
+// inside the card, drag line, clear of the tab bar. It starts at 40 % of the screen.
 const TOP = 0.4;
 
-function Frame({ name, onBack, backLabel, map, children }) {
-  const drag = useSheetDrag();   // the drag line as on R5 (all map screens, 21 Oct)
-  const full = map ? cloneElement(map, { height: '100%', fitBottom: Math.round(window.innerHeight * (1 - TOP)) }) : null;
+function Frame({ name, onBack, map, children }) {
+  const top = Math.round(window.innerHeight * TOP);
+  const shown = map ? cloneElement(map, { fitBottom: window.innerHeight - top }) : null;
   return (
-    <div style={{ fontFamily: FONT, color: C.text, position: 'relative' }}>
-      <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>{full}</div>
-      <button type="button" aria-label={backLabel} onClick={onBack} style={{ ...pill, position: 'fixed', zIndex: 6, left: 8, top: 12, width: 40, height: 40, border: 0, color: C.text, fontSize: 20 }}>←</button>
-      <h1 style={{ position: 'fixed', zIndex: 6, left: 56, right: 56, top: 12, margin: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
-        <span style={{ ...pill, padding: '0 14px', height: 40, display: 'flex', alignItems: 'center', fontSize: 16, fontWeight: 700 }}>{name}</span>
-      </h1>
-      <div aria-hidden="true" style={{ height: `${TOP * 100}vh`, pointerEvents: 'none' }} />
-      <div ref={drag.ref} style={{ background: C.ink, borderRadius: '24px 24px 0 0', minHeight: `${(1 - TOP) * 100}vh`, boxSizing: 'border-box', position: 'relative', zIndex: 5, padding: '14px 22px 24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: SHADOW, ...drag.style }}>
-        {drag.handle}
-        {children}
-      </div>
-    </div>
+    <Sheet map={shown} title={name} onBack={onBack} top={top + 24} noSettings>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{children}</div>
+    </Sheet>
   );
 }
 
@@ -74,7 +63,7 @@ const AddRow = ({ onClick }) => (
 function Fetch({ job, onBack, onAdd }) {
   const again = job.fields.find((f) => f.state === 'drawing' && f.round > 0);
   return (
-    <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
+    <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} drawing active={again?.n} />}>
       <Head title={again ? `Drawing field ${again.n} again` : 'Finding field borders'} sub="Drawing shapes, please wait" />
       {job.fields.map((f) => (
@@ -85,22 +74,66 @@ function Fetch({ job, onBack, onAdd }) {
   );
 }
 
-/** L2: the best match for every field, all still to check. */
+/** A neighbour plot the runs found (28 Oct, DESIGN GAP: no board): add it to an accepted field, make it a field of
+ *  its own, or leave it out. Shown in the card while a plot on the map is picked. */
+function PlotChoice({ job, plot, onClose }) {
+  const { addPlot, newField } = useBorderDecision(job.id);
+  const busy = addPlot.isPending || newField.isPending;
+  const err = addPlot.error || newField.error;
+  const accepted = job.fields.filter((f) => f.state === 'accepted');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <Head title={`Plot next to the fields · ${acres(plot.acres)}`} sub="Part of this land? Add it to a field or make it a field of its own." />
+      {accepted.map((f) => (
+        <button key={f.n} type="button" disabled={busy} style={{ ...btn(false), flex: 'none' }}
+          onClick={() => addPlot.mutate({ field: f.n, plot: plot.id }, { onSuccess: onClose })}>Add to field {f.n}</button>
+      ))}
+      {!accepted.length && <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>Accept a field first to add this plot to it.</p>}
+      <button type="button" disabled={busy} style={{ ...btn(true), flex: 'none' }}
+        onClick={() => newField.mutate({ plot: plot.id }, { onSuccess: onClose })}>{newField.isPending ? 'Adding…' : 'Make it a new field'}</button>
+      <button type="button" disabled={busy} style={{ ...btn(false), flex: 'none', background: 'transparent' }} onClick={onClose}>Leave it out</button>
+      {err && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{err.message}</p>}
+    </div>
+  );
+}
+
+/** L2: the best combination for every field, proposed from the first shapes (28 Oct): accept it at once, or check
+ *  field by field. While a field is still drawn the plan is shown with a note that more shapes are coming. */
 function Plan({ job, onField, onBack, onAdd }) {
   const open = job.fields.filter((f) => f.state !== 'left_out');
+  const [plotId, setPlotId] = useState();
+  const plot = (job.plots || []).find((p) => p.id === plotId);
+  const { acceptPlan } = useBorderDecision(job.id);
+  const drawing = job.fields.filter((f) => f.state === 'drawing');
+  const waiting = job.fields.filter((f) => f.state === 'ready' && job.plan?.[String(f.n)]);
   return (
-    <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
-      map={<BorderMap fields={job.fields} plan={job.plan} onField={onField} />}>
-      <Head title={`${open.length} fields · best match`} sub="Tap a field to check it" />
+    <Frame name={memberName(job)} onBack={onBack}
+      map={<BorderMap fields={job.fields} plan={job.plan} onField={onField} plots={job.plots || []} plotOn={plotId} onPlot={setPlotId} />}>
+      {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
+      <Head title={`${open.length} fields · proposed plan`} sub="Accept the plan, or tap a field to check it" />
+      {drawing.length > 0 && (
+        <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>
+          {drawing.map((f) => `Field ${f.n}`).join(', ')} still being drawn. More shapes are coming; the plan may change.
+        </p>
+      )}
+      {waiting.length > 0 && (
+        <button type="button" disabled={acceptPlan.isPending} style={{ ...btn(true), flex: 'none' }}
+          onClick={() => acceptPlan.mutate()}>{acceptPlan.isPending ? 'Accepting…' : `Accept this plan (${waiting.length} field${waiting.length === 1 ? '' : 's'})`}</button>
+      )}
+      {acceptPlan.error && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{acceptPlan.error.message}</p>}
+      {(job.plots || []).length > 0 && (
+        <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>Dotted outlines on the map: plots next to the fields. Tap one to add it.</p>
+      )}
       {job.fields.map((f) => {
         const s = shapeFor(f, job.plan);
         const busy = f.state === 'drawing';
-        return <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : busy ? 'Drawing the shapes, please wait' : s ? acres(s.acres) : ''}
+        return <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : busy ? 'Drawing the shapes, please wait' : f.state === 'empty' ? 'No shape left: check it' : s ? acres(s.acres) : ''}
           right={busy ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.accepted ? 'Accepted' : undefined}
           onClick={f.state === 'left_out' || busy ? undefined : () => onField(f.n)} />;
       })}
       <AddRow onClick={onAdd} />
       <button type="button" disabled style={{ ...btn(true), flex: 'none', opacity: 0.5 }}>Mint land title</button>
+      </>)}
     </Frame>
   );
 }
@@ -135,7 +168,7 @@ function Check({ job, n, onDone, onBack }) {
   const holds = chosen?.holds?.length || 0;
   const moved = Object.keys(plan || {}).filter((k) => Number(k) !== n && plan[k] !== job.plan?.[k]);
   return (
-    <Frame name={memberName(job)} backLabel="Back to all fields" onBack={onBack}
+    <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={plan} active={n} shapeOverride={sel} onField={() => {}} />}>
       <Head title={`Field ${n}`} sub={memberName(job)} />
       <div role="group" aria-label={`Shapes for field ${n}`} style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
@@ -154,9 +187,13 @@ function Check({ job, n, onDone, onBack }) {
       {/* DESIGN GAP: no board for a field whose every shape overlaps an accepted field (e.g. two points a few metres
           apart): say so, Accept stays off, None fit draws it again from a moved point. */}
       {shapes.length === 0 && (
-        <p role="note" style={{ margin: 0, fontSize: 14, color: C.text }}>No shape fits next to the fields you accepted. Press None fit to draw this field again from a point a few metres away.</p>
+        <p role="note" style={{ margin: 0, fontSize: 14, color: C.text }}>No shape left for this field. Press None fit to draw it again from a point a few metres away.</p>
       )}
-      {holds > 0 && <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>{holds + 1} points in this field</p>}
+      {holds > 0 && (
+        <Notice kind="warn" title={`This shape covers field ${chosen.holds.join(', ')} too`}>
+          Accepting it takes that land from {chosen.holds.length > 1 ? 'those fields' : 'that field'}. Pick a smaller shape if the member sees them as separate fields.
+        </Notice>
+      )}
       {moved.length > 0 && <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>{moved.map((k) => `Field ${k}`).join(', ')} {moved.length > 1 ? 'change' : 'changes'} too</p>}
       {err && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{err.message}</p>}
       <div style={{ display: 'flex', gap: 8 }}>
@@ -172,6 +209,8 @@ function Check({ job, n, onDone, onBack }) {
 function Done({ job, onField, onBack, onAdd }) {
   const mint = useMintLandTitle(job.id);
   const [farm, setFarm] = useState('');   // the title's name: hers from R6, else the leader names it here
+  const [plotId, setPlotId] = useState();
+  const plot = (job.plots || []).find((p) => p.id === plotId);
   const ok = job.fields.filter((f) => f.state === 'accepted');
   const total = ok.reduce((a, f) => a + (shapeFor(f, job.plan)?.acres || 0), 0);
   // A failed mint, or an error the beat recorded while it retries, shows even while the job is still 'minting'.
@@ -195,8 +234,9 @@ function Done({ job, onField, onBack, onAdd }) {
       onRetry={() => { mint.reset(); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }} />;
   }
   return (
-    <Frame name={memberName(job)} backLabel="Back to tasks" onBack={onBack}
-      map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} />}>
+    <Frame name={memberName(job)} onBack={onBack}
+      map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} plots={st ? [] : job.plots || []} plotOn={plotId} onPlot={st ? undefined : setPlotId} />}>
+      {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
       <Head title={`${ok.length} fields · all accepted`} sub={`Total ${total.toFixed(2)} acres`} />
       {job.fields.map((f) => (
         <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
@@ -228,6 +268,7 @@ function Done({ job, onField, onBack, onAdd }) {
           Waiting for the member to open the SMS
         </button>)}
       {st === 'minted' && <button type="button" style={{ ...btn(false), flex: 'none' }} onClick={onBack}>Back to tasks</button>}
+      </>)}
     </Frame>
   );
 }
@@ -243,7 +284,9 @@ function AddPoints({ job, onDone }) {
   });
   if (add.isPending) return <Loading />;
   if (add.error) return <ErrorFull title="The points were not added" text={add.error.message} primary="Try again" onPrimary={() => add.mutate()} secondary="Back to all fields" onSecondary={onDone} />;
-  return <PointsStep evm={key} forName={memberName(job)} onDone={() => add.mutate()} onBack={onDone} />;
+  const pts = job.fields.map((f) => f.moved || f.point).filter(Boolean);
+  const accepted = job.fields.filter((f) => f.accepted).map((f) => f.shapes?.find((s) => s.id === f.accepted)?.geometry || f.accepted_shape?.geometry).filter(Boolean);
+  return <PointsStep evm={key} forName={memberName(job)} onDone={() => add.mutate()} onBack={onDone} startAt={pts.at(-1) || null} shapes={accepted} />;
 }
 
 /** tasks/border/<id>[/<field> | /add] */

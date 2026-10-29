@@ -17,7 +17,7 @@ import { useCropChain, useLandTitles, usePlanClient } from '../plan/hooks';
 import { Primary, inr, muted } from '../plan/ui';
 import ListRow from '../shell/ListRow';
 import { Card, QrCircle } from './AssetParts';
-import { th } from '../machine/hooks';
+import { ta } from '../machine/hooks';
 import { LeaderLoan } from './LoanScreens';
 import HelpQr from './HelpQr';
 import { C, FONT } from '../shell/tokens';
@@ -157,7 +157,7 @@ export function ShareRows({ onOpen }) {
       <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5, color: C.muted, paddingTop: 6 }}>Crop shares</span>
       {shares.data.map((x) => {
         const r = rowOf(x) || {};
-        const fodder = !x.share.loan_amount && x.share.hours;
+        const fodder = !x.share.loan_amount && (x.share.acres_work ?? x.share.hours);
         const tag = x.ready && assisted() ? 'Ready · ask your leader' : shareTag(x);
         return (
           <button key={x.token_id} type="button" onClick={() => onOpen(x.token_id)} style={{

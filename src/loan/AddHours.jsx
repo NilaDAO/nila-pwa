@@ -1,7 +1,7 @@
-// More machine hours on her own crop share, already taken up (executive decision 27 Oct; self mode: assisted members
-// get them from their leader in a session, G2 → L11). Until the share's last draw date, while its loan is open: one
-// row per machine type the union has (confirmed machines), in whole hours at the union's rate; the voucher grows by
-// their value in tractor hours (fund_core.draw_loan again with cash 0). Owed from today, with interest.
+// More machine work on her own crop share, already taken up (executive decision 27 Oct; self mode: assisted members
+// get it from their leader in a session, G2 → L11). Until the share's last draw date, while its loan is open: one
+// row per machine type the union has (confirmed machines), in acres (a tenth) at the union's price an acre; the
+// voucher grows by their value in tractor acres (fund_core.draw_loan again with cash 0). Owed from today, with interest.
 // DESIGN GAP: no board; built on L11's machine rows.
 import { useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
@@ -10,7 +10,7 @@ import { sv, tokenHex } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { TRACTOR, th, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
+import { TRACTOR, ta, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
 
 export default function AddHours({ token, name, map, onBack }) {
   const s = useNilaSigner();
@@ -27,8 +27,8 @@ export default function AddHours({ token, name, map, onBack }) {
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, flexShrink: 0, cursor: 'pointer' };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   return (
-    <Sheet map={map} title="Add machine hours" onBack={onBack}>
-      <p style={{ ...muted, marginTop: 0 }}>{name}. The hours are owed from today, with interest, like the vouchers you took with it.</p>
+    <Sheet map={map} title="Add machine work" onBack={onBack}>
+      <p style={{ ...muted, marginTop: 0 }}>{name}. The machine work is owed from today, with interest, like the vouchers you took with it.</p>
       {(rates.isLoading || machines.isLoading) && <p style={muted}>…</p>}
       {!machines.isLoading && types.length === 0 && <p style={muted}>Your union has no machines registered yet.</p>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -36,21 +36,21 @@ export default function AddHours({ token, name, map, onBack }) {
           const h = mach[t] || 0;
           return (
             <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ flexGrow: 1, color: C.muted, fontSize: 14, lineHeight: 1.5 }}>{typeName(t)}{rateOf(t) ? ` · ${inr(rateOf(t))}/h` : ''}</span>
-              <button type="button" aria-label={`Fewer ${typeName(t)} hours`} style={b} onClick={() => setMach((m) => ({ ...m, [t]: Math.max(0, h - 1) }))}>−</button>
-              <span style={{ width: 56, textAlign: 'center', fontSize: 16, fontWeight: 700 }}>{h} h</span>
-              <button type="button" aria-label={`More ${typeName(t)} hours`} style={b} onClick={() => setMach((m) => ({ ...m, [t]: h + 1 }))}>+</button>
+              <span style={{ flexGrow: 1, color: C.muted, fontSize: 14, lineHeight: 1.5 }}>{typeName(t)}{rateOf(t) ? ` · ${inr(rateOf(t))}/ac` : ''}</span>
+              <button type="button" aria-label={`Fewer ${typeName(t)} acres`} style={b} onClick={() => setMach((m) => ({ ...m, [t]: Math.max(0, Math.round((h - 0.1) * 10) / 10) }))}>−</button>
+              <span style={{ width: 64, textAlign: 'center', fontSize: 16, fontWeight: 700 }}>{h} ac</span>
+              <button type="button" aria-label={`More ${typeName(t)} acres`} style={b} onClick={() => setMach((m) => ({ ...m, [t]: Math.round((h + 0.1) * 10) / 10 }))}>+</button>
             </div>
           );
         })}
       </div>
-      {units > 0 && <p style={{ fontSize: 14 }}>≈ {th(units)} tractor hours · {inr(value)} more owed</p>}
+      {units > 0 && <p style={{ fontSize: 14 }}>≈ {ta(units)} tractor acres · {inr(value)} more owed</p>}
       <Primary disabled={!units || !tx.ready || !cfg} onClick={() => tx.run({
-        label: `More machine hours · ${name}`, rows: [['Machine vouchers', `${th(units)} tractor hours`], ['Owed', inr(value)]],
+        label: `More machine work · ${name}`, rows: [['Machine vouchers', `${ta(units)} tractor acres`], ['Owed', inr(value)]],
         contractName: 'fund_core', fn: 'draw_loan',
         args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(token)), sv.i128(0n), sv.u32(units)],
         invalidate: [['oracle', 'myShares'], ['stellar', 'vouchers'], ['stellar', 'voucherBook', token], ['stellar', 'investment']],
-      })}>Add the hours</Primary>
+      })}>Add the machine work</Primary>
     </Sheet>
   );
 }
