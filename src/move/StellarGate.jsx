@@ -8,13 +8,15 @@
 // "Every start" is a cold start: sessionStorage clears when the app is closed from the task switcher.
 // Loaded only with Privy on; otherwise the app is unchanged.
 import { useEffect, useState } from 'react';
+import { useLeader, writeLeaderFlag } from '../shell/leader';
+import { UNIONS_ONE, saveUnionRecord } from '../register/Registration';
 import { useDataContext } from '../utils/NavigationContext';
 import { useNilaSigner } from '../wallet/signer';
 import MoveFlow, { LeaderStart } from './MoveFlow';
 import Shell from '../shell/Shell';
 import RegFrame from '../register/RegFrame';
 import { BootLoading } from '../register/Boot';
-import { STELLAR_CHAIN } from './hooks';
+import { appToOpen } from '../shell/start';
 
 // This start only, per wallet: 'old' (today's app) or 'new' (Stellar, leaders).
 const modeKey = (addr) => `nila.start:${(addr || '').toLowerCase()}`;
@@ -37,13 +39,17 @@ export default function StellarGate({ children }) {
   useEffect(() => { setMode(readMode(addr)); }, [addr]);
   const choose = (m) => { try { sessionStorage.setItem(modeKey(addr), m); } catch { /* private mode */ } setMode(m); };
 
-  // A Stellar wallet: a union leader (Init union.leader, set at R9 from the Polygon RolesRegistry) gets the leader app.
-  if (db?.chain === STELLAR_CHAIN) return signer ? <Shell leader={Boolean(db?.union?.leader)} /> : <Holding />;
-  if (!signer || db?.chain !== '137') return children;
-  if (mode === 'old') return children;
-  if (db?.union?.leader) {
-    if (mode === 'new') return <Shell leader />;
-    return <LeaderStart onOld={() => choose('old')} onNew={() => { signer.stellarSetup?.run(); choose('new'); }} />;
-  }
+  // The leader flag: shell/leader.js (the RolesRegistry; the Init record only while it has not answered). A yes the
+  // record lacks is written back with the union (as R9), a no corrects a record that says leader.
+  const record = db?.union;
+  const saveRecord = (l) => (record ? writeLeaderFlag(record)(l) : l ? saveUnionRecord(async () => true, UNIONS_ONE(), addr) : Promise.resolve());
+  const { leader } = useLeader(record?.address || UNIONS_ONE().polygon, addr, record?.leader, saveRecord);
+
+  // Which app: shell/start.js.
+  const open = appToOpen({ chain: db?.chain, signer: !!signer, leader, mode });
+  if (open === 'holding') return <Holding />;
+  if (open === 'old') return children;
+  if (open === 'app') return <Shell leader={leader} />;
+  if (open === 'leaderStart') return <LeaderStart onOld={() => choose('old')} onNew={() => { signer.stellarSetup?.run(); choose('new'); }} />;
   return <MoveFlow onMoved={() => window.location.reload()} onRepay={() => choose('old')} />;
 }

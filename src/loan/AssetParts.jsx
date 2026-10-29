@@ -105,9 +105,13 @@ export function NoteBar({ children }) {
 
 /** A QR in the white circle (A1a, A7b). */
 export function QrCircle({ img, alt }) {
+  // While the QR is being made (26 Oct): the same white circle, pulsing, with the app's skeleton timing — no jump.
   return (
-    <div style={{ width: '100%', aspectRatio: '1', borderRadius: R.round, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {img && <img src={img} alt={alt} style={{ width: '62%', height: '62%', imageRendering: 'pixelated' }} />}
+    <div aria-busy={!img} style={{ width: '100%', aspectRatio: '1', borderRadius: R.round, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      animation: img ? 'none' : 'nila-skel 1.4s ease-in-out infinite' }}>
+      <style>{'@keyframes nila-skel{0%,100%{opacity:.55}50%{opacity:1}}'}</style>
+      {img ? <img src={img} alt={alt} style={{ width: '62%', height: '62%', imageRendering: 'pixelated' }} />
+        : <span style={{ color: '#121212', fontSize: 14, fontWeight: 700 }}>Making your QR…</span>}
     </div>
   );
 }

@@ -63,7 +63,35 @@ function meDot() {   // R5 #on: her location, a blue dot (board SendLocation-v3n
 }
 
 /** points: her saved points; me: {lat, lng, acc} her live location (R5 #on: blue dot and accuracy circle). */
-export default function FieldMap({ points = [], me = null, pan = false, onCenter, start = null, selected = null, onSelect }) {
+/** Choose on the map (26 Oct): the pin sits in the middle of the map left open above the card (half the card's top),
+ *  not the map's own centre, which is often behind the card. Followed while the card grows or is dragged. */
+export function usePinY(on) {
+  const [y, setY] = useState(null);
+  useEffect(() => {
+    if (!on) return undefined;
+    const f = () => {
+      const el = document.querySelector('[data-reg-card]');
+      const top = el ? el.getBoundingClientRect().top : window.innerHeight;
+      const v = Math.round(Math.max(80, top / 2));          // never under the header chip
+      setY((o) => (o != null && Math.abs(o - v) < 4 ? o : v));
+    };
+    f();
+    const t = setInterval(f, 300);
+    window.addEventListener('resize', f);
+    return () => { clearInterval(t); window.removeEventListener('resize', f); };
+  }, [on]);
+  return y;
+}
+
+/** The place under screen height y (px) of the map: the centre moved by y − half the map's height. */
+function placeAt(m, y) {
+  const g = window.google?.maps; const proj = m?.getProjection?.(); const c = m?.getCenter();
+  if (!c || !proj || y == null) return c;
+  const p = proj.fromLatLngToPoint(c);
+  return proj.fromPointToLatLng(new g.Point(p.x, p.y + (y - m.getDiv().clientHeight / 2) / 2 ** m.getZoom()));
+}
+
+export default function FieldMap({ points = [], me = null, pan = false, onCenter, start = null, selected = null, onSelect, pinY = null, shapes = null }) {
   const map = useRef(null);
   const marks = useRef([]);
   const line = useRef(null);
@@ -75,10 +103,13 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
     : here ? { lat: here.lat, lng: here.lng } : UNION_LOCATION), [points, here]);
   const placed = useRef(false);   // pan mode: centred on her once, then she moves the map
   useEffect(() => {
-    if (!map.current || !pan || placed.current || (!here && !points.length)) return;
+    if (!map.current || !pan || placed.current || (!here && !points.length) || pinY == null) return;
     placed.current = true;
     map.current.setCenter(center);
-  }, [pan, here, points.length, center]);
+    if (pinY != null) map.current.panBy(0, Math.round(map.current.getDiv().clientHeight / 2 - pinY));   // her place under the pin
+  }, [pan, here, points.length, center, pinY]); // eslint-disable-line react-hooks/exhaustive-deps
+  const report = () => { const c = placeAt(map.current, pinY); if (pan && c && onCenter) onCenter({ lat: c.lat(), lng: c.lng() }); };
+  useEffect(() => { if (map.current) report(); }, [pinY]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const draw = useCallback(() => {
     const m = map.current;
@@ -105,6 +136,11 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
         p.parts.forEach((x) => m.__parts.push(new g.Circle({ map: m, center: { lat: x.lat, lng: x.lng }, radius: 1.5, clickable: false,
           strokeColor: '#D4A634', strokeWeight: 2, fillColor: '#121212', fillOpacity: 1 })));
       });
+      // Fields already accepted (28 Oct, adding points to a border job): solid white outlines, not tappable.
+      (m.__shapes || []).forEach((x) => x.setMap(null));
+      m.__shapes = (shapes || []).map((geo) => new g.Polygon({ map: m, clickable: false,
+        paths: (geo?.coordinates?.[0] || []).map(([lng, lat]) => ({ lat, lng })),
+        strokeColor: '#ffffff', strokeOpacity: 1, strokeWeight: 2, fillColor: '#ffffff', fillOpacity: 0.08 }));
       if (line.current) line.current.setPath(points);
       else if (points.length) {
         line.current = new g.Polyline({ path: points, geodesic: true, strokeColor: '#D4CF5A', strokeOpacity: 0.3, strokeWeight: 1 });
@@ -131,7 +167,7 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
         }
       }
     } catch (e) { console.error('[field map] markers not drawn', e); }
-  }, [points, center, me, pan, selected, onSelect]);
+  }, [points, center, me, pan, selected, onSelect, shapes]);
 
   useEffect(() => { draw(); }, [draw]);
   useEffect(() => () => {
@@ -142,6 +178,6 @@ export default function FieldMap({ points = [], me = null, pan = false, onCenter
   return (
     <GoogleMap mapContainerStyle={STYLE} center={pan ? undefined : center} zoom={21} options={pan ? PAN_OPTIONS : OPTIONS}
       onLoad={(m) => { map.current = m; m.setCenter(center); draw(); }} onUnmount={() => { map.current = null; }}
-      onIdle={() => { const c = map.current?.getCenter(); if (pan && c && onCenter) onCenter({ lat: c.lat(), lng: c.lng() }); }} />
+      onIdle={report} />
   );
 }

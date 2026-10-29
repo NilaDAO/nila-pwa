@@ -13,6 +13,7 @@ export const qkPlan = {
   job: (jobId) => ['oracle', 'planJob', jobId],
   titles: (addr) => ['polygon', 'titles', addr],
   pending: () => ['oracle', 'pendingApprovals'],
+  chain: (landId) => ['oracle', 'planChain', landId],
 };
 
 export function usePlanClient() {
@@ -65,6 +66,35 @@ export function useCropPlan(landId) {
     queryFn: () => api.latest(landId).catch((e) => { if (e.status === 404) return null; throw e; }),
     // CP12: while she waits for the leader, look again every 30 s.
     refetchInterval: (q) => (q.state.data?.status === 'accepted' && !q.state.data?.approval ? 30_000 : false),
+  });
+}
+
+/** Her plan as one (25 Oct, "extend, not update"): { plans: the approved plans of the land in order (the plan and
+ *  its extensions), pending: an extension still waiting, can_extend: the cycles "Extend my plan" would add }. */
+export function useCropChain(landId) {
+  const api = usePlanClient();
+  return useQuery({
+    queryKey: qkPlan.chain(landId), enabled: !!api && landId != null, staleTime: 30_000,
+    queryFn: () => api.chain(landId).catch((e) => { if (e.status === 404) return { plans: [], pending: null, can_extend: [] }; throw e; }),
+  });
+}
+
+/** The approved chain as one plan for CP13: the last plan with every season and crop share of the chain. */
+export function mergedPlan(chain, fallback) {
+  const ps = chain?.plans || [];
+  if (ps.length < 2) return fallback;
+  const last = ps[ps.length - 1];
+  const seasons = ps.flatMap((p) => p.plan.seasons || []).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  return { ...last, plan: { ...last.plan, seasons, shares: ps.flatMap((p) => p.plan.shares || []) } };
+}
+
+/** "Extend my plan": the node plans the missing cycles as a new plan (a job), or answers nothing_to_add. */
+export function useExtendPlan(landId) {
+  const api = usePlanClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (planId) => api.extend(planId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qkPlan.chain(landId) }),
   });
 }
 

@@ -13,7 +13,9 @@ export async function signStellarMessage(signHash, message) {
 }
 
 /** A signed fetch to the node, for /plan and the other signed APIs (border O16 …). */
-export function signedCall({ stellarAddress, signHash }) {
+export function signedCall({ stellarAddress, senderAddress, signHash }) {
+  // The key that signs (her Privy wallet, G…); the node maps it to her smart account (26 Oct).
+  const signer = senderAddress || stellarAddress;
   // opts.etag: sent as If-None-Match; a 304 returns { notModified: true } and the reply's ETag is kept in out.etag.
   return async function call(method, path, body, opts = {}) {
     const raw = body === undefined ? '' : JSON.stringify(body);
@@ -22,7 +24,7 @@ export function signedCall({ stellarAddress, signHash }) {
     const sig = await signStellarMessage(signHash, msg);
     const r = await fetch(`${API}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json', 'X-Nila-Account': stellarAddress, 'X-Nila-Ts': String(ts), 'X-Nila-Sig': sig,
+      headers: { 'Content-Type': 'application/json', 'X-Nila-Account': signer, 'X-Nila-Ts': String(ts), 'X-Nila-Sig': sig,
         ...(opts.etag ? { 'If-None-Match': opts.etag } : {}) },
       body: body === undefined ? undefined : raw,
       ...(opts.etag ? { cache: 'no-store' } : {}),
@@ -45,6 +47,9 @@ export function planClient(signer) {
     makePlan: (landId, intake, extra = {}) => call('POST', '/plan/jobs', { land_id: landId, intake, ...extra }),
     job: (jobId) => call('GET', `/plan/jobs/${jobId}`),
     latest: (landId) => call('GET', `/plan/land/${landId}`),
+    // Extend, not update (25 Oct): the land's approved plans in order, a waiting extension, the cycles to add.
+    chain: (landId) => call('GET', `/plan/land/${landId}/chain`),
+    extend: (planId) => call('POST', `/plan/${planId}/extend`, {}),
     plan: (planId) => call('GET', `/plan/${planId}`),
     accept: (planId, zone) => call('POST', `/plan/${planId}/accept`, { zone }),
     pendingApprovals: () => call('GET', '/plan/approvals/pending'),
@@ -59,11 +64,20 @@ export function planClient(signer) {
     // P10 / O15: the union's loan list (the async list) and C2's event search, one window per tap.
     unionLoans: () => call('GET', '/stellar/union/loans'),
     unionTitles: () => call('GET', '/stellar/union/titles'),
+    // G2 Remove member (28 Oct): the node burns the member's Stellar title (no crop shares, no investment).
+    removeMember: (titleId) => call('POST', '/stellar/union/remove', { title_id: Number(titleId) }),
     // The compact members list (map-centred lane, 23 Oct): one row per member; 404 until the node has it.
-    // With the ETag of the list kept on the phone: { notModified: true } when the node's list has not changed (24 Oct).
-    unionMembers: (etag) => call('GET', '/stellar/union/members', undefined, { etag }),
+    // since (25 Oct): the change counter of the list kept on the phone; only the rows changed after it come back.
+    unionMembers: (since) => call('GET', since ? `/stellar/union/members?since=${since}` : '/stellar/union/members'),
     unionSearch: (window) => call('POST', '/stellar/union/search', { window }),
   };
+}
+
+/** H1 (25 Oct): each crop's Polygon family and the union's standing batch for it (public, kept an hour on the node). */
+export async function getCropBatches() {
+  const r = await fetch(`${API}/plan/batches`);
+  if (!r.ok) throw new Error(`batches ${r.status}`);
+  return r.json();
 }
 
 export async function getCatalogue() {

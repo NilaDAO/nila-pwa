@@ -159,7 +159,7 @@ export function ScanLp({ onBack }) {
       {o.data === null && <p style={{ color: C.coral }}>No such offer.</p>}
       {o.data && Number(o.data.state) !== 1 && <p style={{ color: C.coral }}>This offer is {why}.</p>}
       {o.data && Number(o.data.state) === 1 && !live && <p style={{ color: C.coral }}>This offer has expired.</p>}
-      {o.data && Number(o.data.state) === 1 && live && mine.data === false && <p style={{ color: C.coral }}>This code is not from the LP who accepted the offer, or it is older than 10 minutes. Ask her to open her code again.</p>}
+      {o.data && Number(o.data.state) === 1 && live && mine.data === false && <p style={{ color: C.coral }}>This code is not from the LP who accepted the offer, or it is older than 10 minutes. Ask the LP to open their code again.</p>}
       {id != null && !ok && <Secondary onClick={again}>Scan again</Secondary>}
       {ok && (
         <>

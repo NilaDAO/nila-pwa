@@ -8,7 +8,6 @@ import { C, FONT, R } from '../shell/tokens';
 import { DEMO_COGNITO } from '../utils/demoMode';
 import RegFrame, { Bouncing, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
-const MAX = 6;
 const DEMO_START = { lat: 11.88720, lng: 78.96594, acc: 0 };   // Viriyur, TN: among the real fields of the node's records
 const EMPTY = { points: [], farm: '', finish: false };
 // Per account: on a shared phone (assisted mode) one member's points never go out under the next member's login.
@@ -70,7 +69,10 @@ const WifiOff = () => (
  *  "Next point" and stores it. "Take a second point": when she cannot stand in the middle of the field, a second point
  *  and the field's point becomes the middle of the two. The name input shows only for a new point or a selected one (then with the remove button next to it).
  *  "All my fields have a point" ends it (executive decisions 20 Oct). */
-export function PointsStep({ evm, onDone }) {
+export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shapes = null }) {
+  // startAt / shapes (28 Oct): adding points to an open border job starts "Choose on the map" on a point the job
+  // already has, and draws its accepted fields.
+  // forName (26 Oct): the leader takes a keypad member's points on the leader's phone; the texts name the member.
   const online = useOnline();
   const [q, setQ] = useState(() => readPoints(evm));
   const [name, setName] = useState('');
@@ -95,14 +97,14 @@ export function PointsStep({ evm, onDone }) {
   };
   // Demo only (localhost + chain 31337 + flag): "Choose on the map" starts in Viriyur, Tamil Nadu (the union's
   // place), not at the laptop's location; a real build starts where she is.
-  const choose = () => { save({ ...q, pan: true }); if (DEMO_COGNITO) setMe(DEMO_START); else if (!me) fix(setMe); };
+  const choose = () => { save({ ...q, pan: true }); if (startAt) setMe(startAt); else if (DEMO_COGNITO) setMe(DEMO_START); else if (!me) fix(setMe); };
   useEffect(() => {
     let live = true;
     navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (live && r.state === 'granted') share(); }).catch(() => {});
     return () => { live = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const add = (pt) => { save({ ...q, points: [...q.points, pt].slice(0, MAX) }); setName(''); };
+  const add = (pt) => { save({ ...q, points: [...q.points, pt] }); setName(''); };
   const saveHere = () => {
     setError(null);
     if (pan) { if (centre) add({ lat: centre.lat, lng: centre.lng, acc: 0, manual: true, ts: Math.floor(Date.now() / 1000) }); return; }
@@ -134,7 +136,12 @@ export function PointsStep({ evm, onDone }) {
       (e) => { setBusy(false); setError(e.code === 1 ? 'Allow location for this app in your phone settings.' : 'Your location was not found. Try again outside.'); });
   };
   const remove = (i) => { save({ ...q, points: q.points.filter((_, k) => k !== i) }); setSelected(null); };
-  const finish = () => { save({ ...q, finish: true }); onDone(); };
+  // Done while the last point waits for its name (26 Oct): it keeps the typed name, else its number.
+  const finish = () => {
+    const pts = q.points.slice();
+    if (unnamed) pts[n - 1] = { ...pts[n - 1], name: (name.trim() || String(n)).slice(0, 40) };
+    save({ ...q, points: pts, finish: true }); setName(''); onDone();
+  };
 
   const ready = pan ? !!centre : loc === 'on';           // she can save a point now
   // The info note explains the second point while a field waits for its name (executive decision 21 Oct; the text
@@ -147,9 +154,11 @@ export function PointsStep({ evm, onDone }) {
       : undefined;
   const wait = unnamed || busy;
   return (
-    <MapFrame map={q.points} me={pan ? null : me} start={me} pan={pan} onCenter={setCentre} info={info}
+    <MapFrame header={forName ? `Fields of ${forName}` : undefined} onBack={onBack} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
       selected={selected} onSelect={setSelected}>
-      <div style={cardTitle}>{n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field'}</div>
+      <div style={cardTitle}>{forName
+        ? (n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field')
+        : (n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field')}</div>
       {!online && (
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', ...sheetText }}>
           <div style={{ width: 20, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><WifiOff /></div>
@@ -202,7 +211,7 @@ export function PointsStep({ evm, onDone }) {
         ? <button type="button" style={busy || (pan && !centre) ? btnDisabled : btnPrimary} disabled={busy || (pan && !centre)} onClick={secondPoint}>Save the opposite point</button>
         : unnamed && name.trim()
         ? <button type="button" style={btnPrimary} onClick={storeName}>Next point</button>
-        : n < MAX && (ready
+        : (ready
           ? <button type="button" style={wait ? btnDisabled : btnPrimary} disabled={wait} onClick={saveHere}>Save this location</button>
           : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>)}
       {unnamed && !q.points[n - 1].two && (second
@@ -211,7 +220,7 @@ export function PointsStep({ evm, onDone }) {
       {n === 0 && (pan
         ? <button type="button" style={btnSecondary} onClick={share}>Share my location</button>
         : <button type="button" style={btnSecondary} onClick={choose}>Choose on the map</button>)}
-      {n > 0 && <button type="button" style={wait ? btnDisabled : btnSecondary} disabled={wait} onClick={finish}>All my fields have a point</button>}
+      {n > 0 && <button type="button" style={busy || second ? btnDisabled : btnSecondary} disabled={busy || second} onClick={finish}>{forName ? 'All fields have a point' : 'All my fields have a point'}</button>}
     </MapFrame>
   );
 }

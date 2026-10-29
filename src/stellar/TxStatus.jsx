@@ -16,11 +16,11 @@ export function useSorobanTx() {
   const [tx, setTx] = useState({ status: 'idle' });
   const last = useRef(null);
   const run = useCallback(async (params) => {
-    const { label, rows = [], contractName, fn, args, auth, invalidate = [], hold = false } = params;
+    const { label, rows = [], contractName, fn, args, auth, session, invalidate = [], hold = false } = params;
     last.current = { params, hash: null, sentAt: 0 };
     setTx({ status: 'pending', label, rows });
     try {
-      const out = await invokeContract({ cfg, source: s.stellarAddress, signHash: s.signHash, contractName, fn, args, auth,
+      const out = await invokeContract({ cfg, source: s.senderAddress, account: s.stellarAddress, signHash: s.signHash, contractName, fn, args, auth, session,
         onSent: (hash) => { last.current = { params, hash, sentAt: Date.now() }; setTx((t) => ({ ...t, hash })); } });
       invalidate.forEach((k) => qc.invalidateQueries({ queryKey: k }));
       setTx({ status: 'success', label, rows, hash: out.hash, when: new Date(), result: out.result, hold });
@@ -152,4 +152,27 @@ export function TxScreens({ tx, onClose, onRetry, network = 'Stellar' }) {
     );
   }
   return null;
+}
+
+/** An N-board notice for something the person cannot finish now (28 Oct: a member's field record still being built
+ *  when the leader opens the crop plan): a clock mark, the reason, the details card, and a countdown that closes it
+ *  (as N2), since waiting on the screen does not help. */
+export function NoticeScreen({ title: heading, text, rows = [], seconds = 10, onClose }) {
+  const [left, setLeft] = useState(seconds);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const t = setInterval(() => setLeft((n) => Math.max(0, n - 1)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => { if (left === 0) close.current?.(); }, [left]);
+  return (
+    <Screen>
+      <Mark bg={C.ink} stroke={C.gold}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Mark>
+      <h1 style={title}>{heading}</h1>
+      {text && <p style={sub}>{text}</p>}
+      {rows.length > 0 && <Card>{rows.map(([k, v]) => <Row key={k} k={k} v={v} />)}</Card>}
+      <Button primary onClick={onClose}>Closing in {left} sec…</Button>
+    </Screen>
+  );
 }

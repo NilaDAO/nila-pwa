@@ -1,9 +1,11 @@
 // A13 my machine (board MemberMachine), the owner's side of a voucher (executive decision, 17 Oct):
 // - after the leader registered it (L13), she confirms it (machinery.confirm_machine);
 // - she scans a member's voucher code (A8a: the member's signed authorization of machinery.claim for up to N units,
-//   centi tractor hours, 23 Oct), enters the whole hours her machine worked and claims (machinery.claim, with that authorization): the prepaid part (diesel + the driver share) reaches her wallet in nIN at once,
-//   the rest is pending until the member repays (fund_core.pay_voucher inside the claim);
-// - what members repaid for her collects into her balance; "Collect" moves it to her wallet (collect_dues);
+//   centi tractor acres, 27 Oct), confirms the acres worked (the crop share's area, from its token id; lower for a part
+//   done) and claims (machinery.claim, with that authorization): the whole amount (the price an acre on the share's crop
+//   × the acres) reaches her wallet in nIN at once, from the voucher's senior reserve (26 Oct: the
+//   member's debt is separate, nothing waits for a repayment);
+// - a balance left from before 26 Oct can still be collected (collect_dues);
 // - on hold / available (machinery.set_hold) with a reason.
 // DESIGN GAPs: no per-job names (no member names on the node; jobs are kept on her phone from her claims,
 // no indexer yet); photos are shown as the 8 positions, not the images; the hold switch sits here, not in
@@ -13,13 +15,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, server, sv } from '../stellar/soroban';
-import { matchToken, readVoucherCode, voucherEntry } from './voucherCode';
+import { matchToken, matchTokenP256, readVoucherCode, voucherEntry } from './voucherCode';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { Card, CardTitle, KV } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
-import { HOLD_REASONS, PARTS, TRACTOR, centi, hoursFor, saveJob, th, typeName, unitsOf, useMyMachine, useOwnerDues, useRates } from './hooks';
+import { HOLD_REASONS, PARTS, TRACTOR, acresFor, acresText, centi, rateForCrop, saveJob, shareOfToken, ta, typeName, unitsOf, useMyMachine, useOwnerDues, useRates } from './hooks';
+import { sessionQrPhone } from '../stellar/session';
 import MapCard from '../shell/MapCard';
 
 const svgT = (size, color) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" /></svg>;
@@ -46,11 +49,12 @@ const LABELS = ['Front left', 'Front', 'Front right', 'Left', null, 'Right', 'Ba
 /** A scanned voucher code (compact, 23 Oct): her address, units, expiry and signature; the share is found among her
  *  vouchers by the signature, and the full authorization entry is rebuilt. Throws a plain reason. */
 export async function parseVoucherCode(cfg, text) {
-  const c = readVoucherCode(text);
+  const c = readVoucherCode(text, cfg);
   const latest = (await server(cfg).getLatestLedger()).sequence;
   if (c.exp <= latest) throw new Error('This code has expired. Ask the member to make a new one.');
   const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(c.member)]).catch(() => []);
-  const token = matchToken(cfg, c, (ids || []).map((id) => Buffer.from(id).toString('hex')));
+  const hexes = (ids || []).map((id) => Buffer.from(id).toString('hex'));
+  const token = c.p256 ? await matchTokenP256(cfg, c, hexes) : matchToken(cfg, c, hexes);
   if (!token) throw new Error('No voucher of this member matches this code.');
   return { entry: voucherEntry(cfg, c, token), member: c.member, token, signed: c.units };
 }
@@ -82,9 +86,9 @@ export default function MyMachine({ onBack, pick: first }) {
       <MapCard header={{ title: 'Confirm your machine', onBack }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
         <Card label="Your machine" style={{ gap: 12 }}>
           <CardTitle>{typeName(m.machine_type)}</CardTitle>
-          <span style={muted}>Your union leader registered it for you. Members can hire it with their machine hours once you confirm.</span>
-          <KV k="Hours a week" v={`${m.hours_per_week} h`} />
-          {rate && <KV k="You get an hour" v={inr(rate.total)} />}
+          <span style={muted}>Your union leader registered it for you. Members can hire it with their machine vouchers once you confirm.</span>
+          <KV k="Acres a week" v={`${m.acres_per_week} ac`} />
+          {rate && <KV k="You get an acre" v={inr(rate.total)} />}
         </Card>
         <Card label="Your duties" style={{ gap: 12 }}>
           <CardTitle>Your duties</CardTitle>
@@ -105,12 +109,12 @@ export default function MyMachine({ onBack, pick: first }) {
       </Page>
     );
   }
-  const left = Math.max(0, m.hours_per_week - m.usedThisWeek);
+  const left = Math.max(0, m.acres_per_week - m.usedThisWeek);
   const d = dues.data;
   // The registered photos, public by their on-chain hash (node GET /machines/photos, 23 Oct); n in walk order.
   const ph = m.photos_hash ? Buffer.from(m.photos_hash).toString('hex') : '';
   const photo = (l) => (ph && cfg ? `${process.env.REACT_APP_API_BASE_URL}/machines/photos/${cfg.union}/${ph}/${WALK.indexOf(l) + 1}` : '');
-  // A13 as the board (MemberMachine): a full page of cards, not a map card (23 Oct); no weekly hours shown.
+  // A13 as the board (MemberMachine): a full page of cards, not a map card (23 Oct); no weekly acres shown.
   const sec = { height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' };
   return (
     <Page title="" onBack={onBack} bare>
@@ -123,7 +127,7 @@ export default function MyMachine({ onBack, pick: first }) {
           </span>
           <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
             <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, color: m.on_hold ? C.coral : C.accent }}>{m.on_hold ? 'On hold' : 'Available'}</span>
-            <span style={muted}>{m.on_hold ? HOLD_REASONS[m.hold_reason] : `${m.hours_per_week} h a week`}</span>
+            <span style={muted}>{m.on_hold ? HOLD_REASONS[m.hold_reason] : `${m.acres_per_week} acres a week`}</span>
           </span>
         </div>
         {!m.on_hold && <Primary disabled={!tx.ready || left === 0} onClick={() => setClaiming(true)}>Scan a voucher code</Primary>}
@@ -144,14 +148,13 @@ export default function MyMachine({ onBack, pick: first }) {
         {dues.isLoading && <span style={muted}>…</span>}
         {d && (
           <>
-            <Paid k="Received" sub="In nIN, at the job" v={inr(d.received)} color={C.accent} />
-            <Paid k="Pending" sub="When the farmers repay" v={inr(d.pending)} />
-            {d.ready > 0 && <Paid k="Repaid to you" sub="Ready to move to your wallet" v={inr(d.ready)} />}
+            <Paid k="Received" sub="In nIN, in full at each job" v={inr(d.received)} color={C.accent} />
+            {d.ready > 0 && <Paid k="Left from before" sub="Ready to move to your wallet" v={inr(d.ready)} />}
             {d.ready > 0 && <Primary disabled={!tx.ready} onClick={() => tx.run({ label: 'Collect', rows: [['Amount', inr(d.ready)]], contractName: 'fund_core', fn: 'collect_dues',
               args: [sv.address(me), sv.address(cfg.union)], invalidate: [['stellar', 'dues'], ['stellar', 'account']] })}>Collect {inr(d.ready)}</Primary>}
             {d.jobs.map((j) => (
               <div key={`${j.token}-${j.ts}`} style={{ borderTop: `1px solid ${C.raised}`, paddingTop: 12 }}>
-                <Paid k={`${j.hours} h`} sub={new Date(j.ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} v={`${inr(j.prepay)} paid`} />
+                <Paid k={j.acres != null ? acresText(j.acres) : `${j.hours} h`} sub={new Date(j.ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} v={`${inr(j.prepay)} paid`} />
               </div>
             ))}
           </>
@@ -167,89 +170,83 @@ export default function MyMachine({ onBack, pick: first }) {
   );
 }
 
-/** The cost list for the hours worked (23 Oct): each part of the rate × hours; a check on what is paid now at the
- *  job (diesel and the driver's prepaid share, machinery.prepay_per_hour); no icon on what is paid when she repays. */
-function Costs({ parts, hours, driverBp }) {
-  const now = { diesel: parts.diesel, driver: (parts.driver * driverBp) / 10_000 };
-  const rows = PARTS.filter(([k]) => parts[k] > 0).map(([k, name]) => [name, parts[k] * hours, (now[k] || 0) * hours]);
-  const paidNow = rows.reduce((a, r) => a + r[2], 0);
+/** The cost list for the acres worked (27 Oct): each part of the price an acre × acres, all paid now at the job. */
+function Costs({ parts, acres }) {
+  const rows = PARTS.filter(([k]) => parts[k] > 0).map(([k, name]) => [name, parts[k] * acres]);
   const total = rows.reduce((a, r) => a + r[1], 0);
-  // A blank of the check's width keeps the names in line on the rows without an icon.
-  const check = (on) => (
-    <span aria-label={on ? 'Paid now' : undefined} style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center',
-      justifyContent: 'center', background: on ? C.accent : 'transparent' }}>
-      {on && <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}
-    </span>
-  );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14, lineHeight: 1.5 }}>
-      {rows.map(([name, all, pre]) => (
+      {rows.map(([name, all]) => (
         <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {check(pre > 0)}
-          <span style={{ flexGrow: 1, color: C.muted }}>{name}{pre > 0 && pre < all ? ` · ${inr(pre)} now` : ''}</span>
+          <span style={{ flexGrow: 1, color: C.muted }}>{name}</span>
           <b>{inr(all)}</b>
         </div>
       ))}
       <div style={{ height: 1, background: C.raised }} />
-      <KV k="Paid now" v={inr(paidNow)} />
-      <KV k="When the member repays" v={inr(total - paidNow)} />
+      <KV k="Paid to you now" v={inr(total)} />
     </div>
   );
 }
 
-/** Scan her code → hours worked → machinery.claim. */
+/** Scan her code → the acres worked (the crop share's area, from its token id; the owner may lower it for a part
+ *  done) → machinery.claim (27 Oct: acres, not hours; the price for the share's crop when the union set one). */
 function Claim({ machine, rate, tractor, onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
   const [scan, setScan] = useState();
   const [error, setError] = useState();
-  const [hours, setHours] = useState(1);
+  const [acres, setAcres] = useState(1);
   const [tries, setTries] = useState(0);     // the camera reads once: a new one after a wrong code
-  // The share of the driver paid at the job (machinery.prepay_share, basis points); diesel is always paid at the job.
-  const share = useQuery({ queryKey: ['stellar', 'prepayShare', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 300_000,
-    queryFn: () => readContract(cfg, 'machinery', 'prepay_share', [sv.address(cfg.union)]) });
   const read = async (text) => {
     setError(undefined);
     try {
+      // The member's own QR (the one for the office) is not a voucher (27 Oct): say how to make the right one.
+      const phone = sessionQrPhone(text);
+      if (phone === 'keypad') throw new Error('This is the member\'s office QR, not a machine-work QR. On the keypad phone: open Machine work, pick the job, press Show QR, and scan that.');
+      if (phone === 'phone') throw new Error('This is the member\'s office QR, not a machine-work QR. On their phone: Assets → Machine vouchers, pick the job, Make code, and scan that.');
       const c = await parseVoucherCode(cfg, text);
       const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(c.token)]);
       if (!v || v.void || v.member !== c.member) throw new Error('This voucher is not open any more.');
       if (v.member === s.stellarAddress) throw new Error('You cannot claim your own voucher.');
-      // Her code and her voucher are in units (tractor hours); this machine's hours use its rate ÷ the tractor's.
-      const units = Math.min(c.signed, Number(v.hours) - Number(v.used));
-      // To a tenth of an hour (23 Oct: the contract counts hundredths of an hour worked).
-      const max = Math.floor(Math.min(rate && tractor ? hoursFor(units, rate.total, tractor) : 0, machine.hours_per_week - machine.usedThisWeek) * 10) / 10;
-      setScan({ ...c, max });
-      setHours(max);   // her code's maximum on this machine; the owner can lower it (23 Oct)
+      // Her code and her voucher are in units (tractor acres); an acre of this machine on her crop uses its price ÷ the
+      // tractor's. Never more than her share's area (the contract checks it too) or this machine's week.
+      const units = Math.min(c.signed, Number(v.units) - Number(v.used));
+      const { family, centiAcres } = shareOfToken(c.token);
+      const price = (await rateForCrop(cfg, machine.machine_type, family)) || rate;
+      const area = centiAcres > 0 ? centiAcres / 100 : Infinity;
+      const max = Math.floor(Math.min(price && tractor ? acresFor(units, price.total, tractor) : 0, area, machine.acres_per_week - machine.usedThisWeek) * 100) / 100;
+      setScan({ ...c, max, area, price });
+      setAcres(max);   // the share's area, as a rule; the owner can lower it for a part done (27 Oct)
     } catch (e) { setError(e.message); setTries((t) => t + 1); }
   };
   const claim = async () => {
     const out = await tx.run({
-      label: `Claim ${hours} h`, rows: [['Hours worked', `${hours} h`], ['Machine', typeName(machine.machine_type)],
-        ...(rate && tractor ? [['Uses', `${th(unitsOf(hours, rate.total, tractor))} tractor hours`]] : [])],
+      label: `Claim ${acresText(acres)}`, rows: [['Acres worked', acresText(acres)], ['Machine', typeName(machine.machine_type)],
+        ...(scan.price && tractor ? [['Uses', `${ta(unitsOf(acres, scan.price.total, tractor))} tractor acres`]] : [])],
       contractName: 'machinery', fn: 'claim',
-      args: [sv.address(s.stellarAddress), sv.u64(machine.id), sv.address(cfg.union), sv.bytes32(scan.token), sv.u32(scan.signed), sv.u32(centi(hours))],
+      args: [sv.address(s.stellarAddress), sv.u64(machine.id), sv.address(cfg.union), sv.bytes32(scan.token), sv.u32(scan.signed), sv.u32(centi(acres))],
       auth: [scan.entry], invalidate: [['stellar', 'machine'], ['stellar', 'dues'], ['stellar', 'account']],
     });
     // claim returns (prepay, pending) in nIN; a retry that found the sent call carries no result: 0 then.
     const [prepay, pending] = Array.isArray(out?.result) ? out.result.map((x) => Number(BigInt(x)) / 1e7) : [0, 0];
-    if (out) saveJob({ owner: s.stellarAddress, token: scan.token, hours, prepay, pending, ts: Math.floor(Date.now() / 1000) });
+    if (out) saveJob({ owner: s.stellarAddress, token: scan.token, acres, prepay, pending, ts: Math.floor(Date.now() / 1000) });
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
   if (scan) {
     return (
-      <Page title="Hours worked" onBack={() => setScan(undefined)}>
+      <Page title="Acres worked" onBack={() => setScan(undefined)}>
+        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>{Number.isFinite(scan.area) ? `The crop share is ${acresText(scan.area)}. Lower it only if you did part of it.` : 'Up to what the code allows.'}</p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, margin: '12px 0' }}>
-          {/* Half-hour steps, down to a tenth of an hour at the ends. */}
-          <button type="button" aria-label="Less" style={b} onClick={() => setHours(Math.max(Math.min(0.1, scan.max), Math.round((hours - 0.5) * 10) / 10))}>−</button>
-          <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 700, fontSize: 20 }}>{hours} h</span>
-          <button type="button" aria-label="More" style={b} onClick={() => setHours(Math.min(scan.max, Math.round((hours + 0.5) * 10) / 10))}>+</button>
+          {/* Tenth-of-an-acre steps, down to a hundredth at the ends. */}
+          <button type="button" aria-label="Less" style={b} onClick={() => setAcres(Math.max(Math.min(0.01, scan.max), Math.round((acres - 0.1) * 100) / 100))}>−</button>
+          <span style={{ minWidth: 96, textAlign: 'center', fontWeight: 700, fontSize: 20 }}>{acresText(acres)}</span>
+          <button type="button" aria-label="More" style={b} onClick={() => setAcres(Math.min(scan.max, Math.round((acres + 0.1) * 100) / 100))}>+</button>
         </div>
-        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>Up to {scan.max} h on this code</p>
-        {rate && <Costs parts={rate.parts} hours={hours} driverBp={Number(share.data ?? 0)} />}
-        <Primary disabled={!tx.ready || scan.max <= 0 || hours <= 0} onClick={claim}>Claim {hours} h</Primary>
+        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>Up to {acresText(scan.max)} on this code</p>
+        {scan.price && <Costs parts={scan.price.parts} acres={acres} />}
+        <Primary disabled={!tx.ready || scan.max <= 0 || acres <= 0} onClick={claim}>Claim {acresText(acres)}</Primary>
       </Page>
     );
   }

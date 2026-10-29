@@ -2,7 +2,7 @@
 // signed in silently with her own Polygon key (Sign-In With Ethereum), the key Cognito already
 // keeps for her (executive decision, 16 Oct — LOAN_RULES §5). Privy's JWT login needs its Scale plan.
 import { ethers } from 'ethers';
-import { readAllItems } from '../utils/db';
+import { deleteAllItems, readAllItems } from '../utils/db';
 import { decryptPrivateKey, handleGetEncryptedPrivateKey } from '../utils/getEncryptedKey';
 
 export const AUTH_EVENT = 'nila:auth-changed';
@@ -20,7 +20,18 @@ export const getLocalEvmWallet = async () => {
     const pk = db.local_pk || (db.salt && await decryptPrivateKey(await handleGetEncryptedPrivateKey(db), db.salt));
     return pk ? new ethers.Wallet(pk) : undefined;
   } catch (e) {
-    console.error('[privy] her Polygon key is not available', e);
+    console.error('[privy] the Polygon key is not available', e);
+    // The login itself is gone (26 Oct): Cognito refuses the session even after a token refresh (the user was removed,
+    // or the refresh token revoked). Clear the stored session and start at the login, once per tab (no reload loop).
+    if (/NotAuthorized/.test(`${e?.name} ${e?.code} ${e?.__type}`)) {
+      try {
+        if (!sessionStorage.getItem('nila.deadSession')) {
+          sessionStorage.setItem('nila.deadSession', '1');
+          await deleteAllItems();
+          window.location.reload();
+        }
+      } catch { /* storage blocked: the app stays where it is */ }
+    }
     return undefined;
   }
 };

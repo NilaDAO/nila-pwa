@@ -11,11 +11,17 @@ import { useStellarConfig } from '../stellar/hooks';
 import { deskClaim } from '../loan/desk';
 import { signDeskCode } from '../loan/deskCode';
 import { C, FONT, R, TAB_BAR_HEIGHT } from './tokens';
+import HelpQr from '../loan/HelpQr';
 
 const SHADOW = 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px';
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
 
+/** A member's QR is the help QR (executive decision 26 Oct: one QR at the office); a leader's is her account number. */
 export default function WalletQr({ onBack, leader }) {
+  return leader ? <AccountQr onBack={onBack} leader={leader} /> : <HelpQr onBack={onBack} />;
+}
+
+function AccountQr({ onBack, leader }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const addr = s?.stellarAddress;
@@ -24,7 +30,7 @@ export default function WalletQr({ onBack, leader }) {
   const claim = useQuery({ queryKey: ['stellar', 'deskClaim', addr], enabled: !!cfg && !!addr && !leader, queryFn: () => deskClaim(cfg, addr) });
   const ready = claim.data?.shares > 0n;
   const signed = useQuery({ queryKey: ['stellar', 'deskCode', addr, ready], enabled: ready && !!s?.ready,
-    queryFn: () => signDeskCode({ cfg, signer: addr, signHash: s.signHash, kind: 'W' }), staleTime: 3_600_000 });
+    queryFn: () => signDeskCode({ cfg, signer: s.senderAddress, signHash: s.signHash, kind: 'W' }), staleTime: 3_600_000 });
   const text = ready ? signed.data?.qr : addr;
   useEffect(() => { if (text) QRCode.toDataURL(text, { width: 400, margin: 0, errorCorrectionLevel: 'L' }).then(setImg); }, [text]);
   const copy = async () => {

@@ -12,7 +12,8 @@ import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-c
 import { polygon } from 'viem/chains';
 import { AUTH_EVENT, getChain, getLocalEvmWallet, hasSession } from './session';
 import { SignerContext } from './signer';
-import { useAccount, useSetupAccount } from '../stellar/hooks';
+import { useAccount, useSetupAccount, useStellarConfig } from '../stellar/hooks';
+import { accountOf } from '../stellar/account';
 
 const APP_ID = process.env.REACT_APP_PRIVY_APP_ID;
 
@@ -71,8 +72,12 @@ function SignerBridge({ children }) {
 
   // Silent Privy login with her key; logout follows the Cognito session.
   const busy = useRef(false);
+  // After a failed login, wait before the next try (26 Oct): every re-render tried again at once, and a rate-limited
+  // wallet (Privy 429) stayed limited. 1 minute after a failure, 5 after a 429; a timer makes the one retry.
+  const retryAt = useRef(0);
+  const [, setRetryTick] = useState(0);
   useEffect(() => {
-    if (!ready || busy.current) return;
+    if (!ready || busy.current || Date.now() < retryAt.current) return;
     const evm = linkedEvm(user);
     if (authenticated && (!session.active || (evmWallet && evm.length && !evm.includes(evmWallet.address.toLowerCase())))) {
       busy.current = true;
@@ -94,7 +99,13 @@ function SignerBridge({ children }) {
       }
       setError(undefined);
     })()
-      .catch((e) => { console.error('[privy] silent login failed', e); setError(e.message); })
+      .catch((e) => {
+        console.error('[privy] silent login failed', e);
+        setError(e.message);
+        const wait = /429|too many requests/i.test(`${e?.message} ${e?.cause?.message || ''}`) ? 300_000 : 60_000;
+        retryAt.current = Date.now() + wait;
+        setTimeout(() => setRetryTick((x) => x + 1), wait + 100);
+      })
       .finally(() => { busy.current = false; });
   }, [ready, authenticated, user, session, evmWallet, generateSiweMessage, loginWithSiwe, logout]);
 
@@ -144,14 +155,19 @@ function SignerBridge({ children }) {
   // Her Stellar account (P2): the node sponsors it; it needs no land title (titles stay on Polygon).
   // Made by itself at login for a new wallet (R4). A Polygon wallet ('137') waits for the move:
   // M1 step 1 calls the same setup (design R4: "Polygon wallet found → M1").
-  const account = useAccount(signersReady ? stellar.address : undefined);
+  // Smart accounts (26 Oct): her account is a contract of the union's factory at an address that follows from her
+  // Privy key; the key's own plain account (sponsored, 0 XLM) sends her calls, the node fee-bumps them.
+  const { data: cfg } = useStellarConfig();
+  const smart = stellar && cfg?.contracts?.account_factory ? accountOf(cfg, stellar.address) : stellar?.address;
+  const account = useAccount(signersReady ? stellar.address : undefined, signersReady ? smart : undefined);
   const { status: setupStatus, error: setupError, mutate: runSetup, mutateAsync: runSetupAsync } =
-    useSetupAccount({ stellarAddress: stellar?.address, evmWallet, signHash });
+    useSetupAccount({ stellarAddress: stellar?.address, account: smart, evmWallet, signHash });
   const autoSetup = chain !== undefined && chain !== '137';  // undefined: not read yet
   const tried = useRef();
   useEffect(() => {
     // Also for her existing account without this network's nIN trustline (22 Oct): the setup adds it, sponsored.
-    const missing = account.data?.exists === false || (account.data?.exists && account.data.nin === null);
+    const missing = account.data?.exists === false || (account.data?.exists && account.data.nin === null)
+      || account.data?.deployed === false;
     if (!signersReady || !autoSetup || !missing || tried.current === stellar.address) return;
     tried.current = stellar.address;
     runSetup(undefined, { onError: (e) => console.error('[privy] Stellar account setup failed', e) });
@@ -166,7 +182,9 @@ function SignerBridge({ children }) {
     privyNew,
     privyEvmAddress: linkedEvm(user)[0],
     evmAddress: evmWallet?.address,
-    stellarAddress: stellar?.address,
+    // Her account (the smart account: titles, shares, investment, roles); senderAddress sends her transactions.
+    stellarAddress: smart,
+    senderAddress: stellar?.address,
     signHash,
     signEvmTx,
     // { exists, nin: { balance, authorized }, usdc, sponsor } once read; undefined before.
@@ -182,7 +200,7 @@ function SignerBridge({ children }) {
       if (!evmWallet) throw new Error('no Polygon key');
       return evmWallet.signMessage(msg);
     },
-  }), [signersReady, authenticated, error, user, privyNew, evmWallet, stellar, signHash, signEvmTx, account.data,
+  }), [signersReady, authenticated, error, user, privyNew, evmWallet, stellar, smart, signHash, signEvmTx, account.data,
     setupStatus, setupError, runSetup, runSetupAsync]);
 
   return <SignerContext.Provider value={value}>{children}</SignerContext.Provider>;

@@ -19,7 +19,7 @@ import { ScanIcon, UsdcTile } from './icons';
 import { C, R } from './tokens';
 
 const UNIT = 10_000_000n;   // USDC and nIN, 7 decimals
-const isG = (a) => /^G[A-Z2-7]{55}$/.test(a);
+const isG = (a) => /^[GC][A-Z2-7]{55}$/.test(a);
 
 /** fx_pool's rupees per USDC, or null when it is stale (a swap is then refused by the contract too). */
 export function useFxRate() {
@@ -67,7 +67,7 @@ export default function UsdcAsset({ onBack }) {
   const form = (
     <AssetForm
       to={tab === 'swap' ? <SwapTarget title="Nila swap · your nIN" rate={rate ? `1 USDC = ${money(rate)} nIN` : 'Rate not available now'} />
-        : scan ? <CameraView mode="qr" onText={(t) => { const g = t.replace(/^.*?(G[A-Z2-7]{55}).*$/s, '$1'); setTo(g); setScan(false); }} />
+        : scan ? <CameraView mode="qr" onText={(t) => { const g = t.replace(/^.*?([GC][A-Z2-7]{55}).*$/s, '$1'); setTo(g); setScan(false); }} />
           : (
             <div style={{ display: 'flex', gap: 8 }}>
               <input aria-label="Stellar address" placeholder="G… address" value={to} onChange={(e) => setTo(e.target.value.trim().toUpperCase())}

@@ -31,7 +31,10 @@ export async function anchorInfo(anchorUrl) {
 }
 
 /** SEP-10: the anchor's challenge, checked, signed by her Privy Stellar wallet. Returns { token, exp }. */
-export async function sep10(info, account, signHash, passphrase) {
+export async function sep10(info, account, signHash, chainPassphrase) {
+  // The challenge is the anchor's own: checked and signed with the passphrase its stellar.toml names (the demo's local
+  // network runs Anchor Platform as FUTURENET, 26 Oct); it is never submitted.
+  const passphrase = info.NETWORK_PASSPHRASE || chainPassphrase;
   const c = await json(await fetch(`${info.WEB_AUTH_ENDPOINT}?account=${account}&home_domain=${encodeURIComponent(info.homeDomain)}`), 'SEP-10');
   const webAuthDomain = new URL(info.WEB_AUTH_ENDPOINT).host;
   // Throws unless it is a real challenge from the anchor's signing key, for her account and this home domain.

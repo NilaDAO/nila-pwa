@@ -18,11 +18,13 @@ import { Card, CardTitle } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
 import { PARTS, useRates } from './hooks';
 import MapCard from '../shell/MapCard';
+import { addressFromQr } from '../leader/unionMembers';
 
 // Walk order (machines/photos.py LABELS): Front first, then round. Grid: 3×3 with the machine in the middle.
 const WALK = ['Front', 'Front right', 'Right', 'Back right', 'Back', 'Back left', 'Left', 'Front left'];
 const GRID = ['Front left', 'Front', 'Front right', 'Left', null, 'Right', 'Back left', 'Back', 'Back right'];
-const isG = (a) => /^G[A-Z2-7]{55}$/.test(a || '');
+// A member's account (26 Oct: smart accounts are C…; plain keys G…).
+const isAccount = (a) => /^[GC][A-Z2-7]{55}$/.test(a || '');
 const MAX_SIDE = 1280;
 const svg = (d, color, size = 20) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>;
 const CheckMark = ({ color = C.accent }) => svg(<path d="M20 6 9 17l-5-5" />, color);
@@ -52,7 +54,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   const [type, setType] = useState();
   const [picking, setPicking] = useState(false);
   const [photos, setPhotos] = useState({});
-  const [hours, setHours] = useState(40);
+  const [hours, setHours] = useState(20);   // acres a week (27 Oct)
   const [error, setError] = useState();
   const [busy, setBusy] = useState(false);
   const [shooting, setShooting] = useState();
@@ -70,7 +72,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
     setTo(own);
     setError(undefined); setBusy(true);
     try {
-      if (!isG(own)) throw new Error('That QR is not a member wallet. Scan the owner\'s wallet QR.');
+      if (!isAccount(own)) throw new Error('That QR is not a member\'s QR. Scan the owner\'s QR.');
       // A machine owner is paid in nIN (prepay and dues), so the owner needs the anchor's identity check first (K1,
       // executive decision 24 Oct), a union machine's leader included.
       if (!(await readContract(cfg, 'fx_pool', 'id_checked', [sv.address(own)]).catch(() => false))) {
@@ -79,7 +81,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
       const { photos_hash: ph } = await api.machinePhotos(WALK.map((l) => ({ content_type: photos[l].content_type, data_b64: photos[l].data_b64 })));
       setBusy(false);
       await tx.run({
-        label: 'Register a machine', rows: [['Machine', rate.name], ['Hours a week', `${hours} h`], ['Owner', `${own.slice(0, 4)}…${own.slice(-4)}`]],
+        label: 'Register a machine', rows: [['Machine', rate.name], ['Acres a week', `${hours} ac`], ['Owner', `${own.slice(0, 4)}…${own.slice(-4)}`]],
         contractName: 'machinery', fn: 'register_machine',
         args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.address(own), sv.u32(rate.type), sv.u32(hours), sv.bytes32(ph)],
         invalidate: [['stellar', 'machines']],
@@ -99,7 +101,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   if (scanning) {
     return page('Register a machine', () => setScanning(false), (
       <Card label="Scan the owner's wallet QR">
-        <CameraView mode="qr" title="Scan the owner's wallet QR" onText={(t) => { setScanning(false); register(t.match(/G[A-Z2-7]{55}/)?.[0]); }} />
+        <CameraView mode="qr" title="Scan the owner's QR" onText={(t) => { setScanning(false); register(addressFromQr(t)); }} />
       </Card>
     ));
   }
@@ -117,13 +119,13 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
           <div style={{ background: C.raised, borderRadius: R.button, overflow: 'hidden' }}>
             <button type="button" aria-expanded={picking} onClick={() => setPicking(!picking)} style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left' }}>
               <span style={{ flexGrow: 1, fontWeight: 700 }}>{rate.name}</span>
-              <span style={{ color: C.muted }}>{inr(rate.total)} an hour</span>
+              <span style={{ color: C.muted }}>{inr(rate.total)} an acre</span>
               <span style={{ display: 'flex', transform: picking ? 'rotate(180deg)' : 'none' }}>{svg(<path d="m6 9 6 6 6-6" />, C.muted)}</span>
             </button>
             {picking && (rates.data || []).filter((r) => r.type !== rate.type).map((r) => (
               <button key={r.type} type="button" onClick={() => { setType(r.type); setPicking(false); }}
                 style={{ ...field, width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', cursor: 'pointer', textAlign: 'left', borderTop: `1px solid ${C.ink}`, borderRadius: 0 }}>
-                <span style={{ flexGrow: 1 }}>{r.name}</span><span style={{ color: C.muted }}>{inr(r.total)} an hour</span>
+                <span style={{ flexGrow: 1 }}>{r.name}</span><span style={{ color: C.muted }}>{inr(r.total)} an acre</span>
               </button>
             ))}
           </div>
@@ -157,23 +159,23 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
         )}
       </Card>
       {rate && (
-        <Card label="Price an hour" style={{ gap: 12 }}>
-          <CardTitle right={<span style={{ fontSize: 16, fontWeight: 700 }}>{inr(rate.total)}</span>}>Price an hour</CardTitle>
+        <Card label="Price an acre" style={{ gap: 12 }}>
+          <CardTitle right={<span style={{ fontSize: 16, fontWeight: 700 }}>{inr(rate.total)}</span>}>Price an acre</CardTitle>
           <span style={sub}>The current voucher rate</span>
           {PARTS.map(([k, label]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, lineHeight: 1.5, fontWeight: 700 }}><span>{label}</span><span>{inr(rate.parts[k])}</span></div>
           ))}
         </Card>
       )}
-      <Card label="Hours a week" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <Card label="Acres a week" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Hours a week</span>
+          <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Acres a week</span>
           <span style={sub}>Available for jobs</span>
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button type="button" aria-label="Less hours" style={b} onClick={() => setHours(Math.max(1, hours - 1))}>−</button>
-          <span style={{ ...field, width: 92, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', fontSize: 16, fontWeight: 700 }}>{hours}<span style={{ color: C.muted, fontWeight: 400, fontSize: 14 }}>h</span></span>
-          <button type="button" aria-label="More hours" style={b} onClick={() => setHours(Math.min(70, hours + 1))}>+</button>
+          <button type="button" aria-label="Fewer acres" style={b} onClick={() => setHours(Math.max(1, hours - 1))}>−</button>
+          <span style={{ ...field, width: 92, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', fontSize: 16, fontWeight: 700 }}>{hours}<span style={{ color: C.muted, fontWeight: 400, fontSize: 14 }}>ac</span></span>
+          <button type="button" aria-label="More acres" style={b} onClick={() => setHours(Math.min(500, hours + 1))}>+</button>
         </span>
       </Card>
       <Card label="Owner's duties" style={{ gap: 12 }}>
@@ -190,7 +192,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
           <>
             <Primary disabled={!rate || !tx.ready || !api || !s?.stellarAddress} onClick={() => register(s.stellarAddress)}>Union machine: register to me</Primary>
             <button type="button" disabled={!rate || !tx.ready || !api} onClick={() => setScanning(true)}
-              style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>A member's machine: scan their wallet QR</button>
+              style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>A member's machine: scan their QR</button>
           </>
         )}
       </Card>
