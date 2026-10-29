@@ -70,8 +70,11 @@ function amountFromArgs(fn, a) {
   return '';
 }
 
-async function stellarRows(cfg, me) {
-  const r = await fetch(`${cfg.horizon_url}/accounts/${me}/operations?order=desc&limit=100&join=transactions`);
+// Horizon knows plain G… accounts only: her calls are sent by her key (the sender), while her nIN / USDC sit on her
+// smart account (C…), so a balance change to or from either is hers.
+async function stellarRows(cfg, sender, account) {
+  if (!sender?.startsWith('G')) return [];
+  const r = await fetch(`${cfg.horizon_url}/accounts/${sender}/operations?order=desc&limit=100&join=transactions`);
   if (r.status === 404) return [];
   if (!r.ok) throw new Error(`Horizon ${r.status}`);
   const [ninCode, ninIssuer] = cfg.nin_asset.split(':');
@@ -87,7 +90,8 @@ async function stellarRows(cfg, me) {
     // Her nIN / USDC moved by the call (SAC balance changes).
     let nin = 0; let usdc = 0;
     for (const c of op.asset_balance_changes || []) {
-      const sign = c.to === me ? 1 : c.from === me ? -1 : 0;
+      const mine = (a) => a === sender || a === account;
+      const sign = mine(c.to) ? 1 : mine(c.from) ? -1 : 0;
       if (!sign) continue;
       if (c.asset_code === ninCode && c.asset_issuer === ninIssuer) nin += sign * n(c.amount);
       if (c.asset_code === usdcCode && c.asset_issuer === usdcIssuer) usdc += sign * n(c.amount);
@@ -275,7 +279,7 @@ async function polygonLogRows(evm, shareLabel) {
 }
 
 /** Her history (member and leader), newest first. */
-export function useHistory(stellarAddress, evmAddress) {
+export function useHistory(stellarAddress, evmAddress, senderAddress) {
   const { data: cfg } = useStellarConfig();
   const shares = useMyShares();
   // Her crop shares by token id (64 hex): "Sesame Area 1", put in the row's title (Today rows show only the time).
@@ -284,10 +288,11 @@ export function useHistory(stellarAddress, evmAddress) {
   const shareLabel = (hex) => labels[String(hex).replace(/^0x/, '').toLowerCase().padStart(64, '0')] || '';
   const ready = !shares.isLoading;
   return useQuery({
-    queryKey: ['history', stellarAddress, evmAddress, Object.keys(labels).length], enabled: !!cfg && !!stellarAddress && ready, staleTime: 30_000,
+    queryKey: ['history', stellarAddress, senderAddress, evmAddress, Object.keys(labels).length], enabled: !!cfg && !!stellarAddress && ready, staleTime: 30_000,
     queryFn: async () => {
       const [st, ev, pg, pl] = await Promise.all([
-        stellarRows(cfg, stellarAddress),
+        // Each source fails on its own: a read that fails hides only its rows.
+        stellarRows(cfg, senderAddress, stellarAddress).catch(() => []),
         nilaEvents(cfg).catch(() => []),
         polygonRows(evmAddress, process.env.REACT_APP_CHAIN_ID || 137).catch(() => ({ rows: [], note: null })),
         polygonLogRows(evmAddress, shareLabel).catch(() => []),

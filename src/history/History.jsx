@@ -30,7 +30,7 @@ const card = { background: C.ink, borderRadius: R.card, boxShadow: SHADOW, paddi
 
 export default function History({ onBack }) {
   const s = useNilaSigner();
-  const h = useHistory(s?.stellarAddress, s?.evmAddress);
+  const h = useHistory(s?.stellarAddress, s?.evmAddress, s?.senderAddress);
   const groups = [];
   for (const r of h.data?.rows || []) {
     const g = day(r.at);
