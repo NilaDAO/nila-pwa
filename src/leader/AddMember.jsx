@@ -3,7 +3,10 @@
 // 30 minutes, one use, bound to her number; F9); a smartphone the app's address (she registers herself, R1–R14).
 // #sent follows her progress: link sent, opened and agreed, phone set up (no PIN, executive decision 22 Oct). Then the
 // leader takes the field points on the leader's own phone (26 Oct, executive decision: the keypad phone takes none;
-// R5–R7's screen, tasks/member/<id>/points), which starts the border job; "Match field shapes" opens it (L2). DESIGN GAPs: the leader's own name is not on Stellar, so the
+// R5–R7's screen, tasks/member/<id>/points), which starts the border job; "Match field shapes" opens it (L2).
+// A smartphone member (executive decision 29 Oct): no SMS. The member registers in the Nila app (assist mode) and shows
+// the help QR, which carries the account and the Polygon address; the leader scans it here and takes the field points
+// on the leader's phone (tasks/member/qr/points), which start the member's border job. DESIGN GAPs: the leader's own name is not on Stellar, so the
 // link names the union's representative (R9's union list); the hooks' names are the design's proposal (Q53).
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -17,7 +20,9 @@ import { Card, CardButton, Row, Text } from '../shell/SettingsParts';
 import { useUnionInfo } from '../shell/SettingsParts';
 import { Notice, Primary } from '../plan/ui';
 import { useInviteLink, useKeypadClient, useKeypadMember } from '../keypad/hooks';
-import { useSendFieldPoints } from '../border/hooks';
+import { useBorderClient, useSendFieldPoints } from '../border/hooks';
+import CameraView from '../shell/CameraView';
+import { accountOfQr, memberOfQr } from '../stellar/session';
 import { PointsStep, clearPoints, readPoints } from '../border/SendLocation';
 import { Loading } from '../register/Boot';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
@@ -130,8 +135,21 @@ export default function AddMember({ id, go }) {
   const send = useInviteLink();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('+91');
-  const [type, setType] = useState('keypad');
+  const [type, setType] = useState('smartphone');
+  const [scanError, setScanError] = useState();
+  const [tries, setTries] = useState(0);
   const ok = name.trim() && phoneOk(phone);
+  const onScan = (t) => {
+    const m = memberOfQr(t);
+    if (!m) {
+      setScanError(accountOfQr(t) ? 'This QR has no Polygon address. The member updates the Nila app and shows the QR again.'
+        : 'This is not a member\'s Nila QR.');
+      setTries((x) => x + 1);
+      return;
+    }
+    scannedNewMember(m);
+    go('tasks/member/qr');
+  };
   const submit = () => send.mutate({ name: name.trim(), phone: phoneValue(phone), phoneType: type, unionName: union.name, leaderName: union.rep },
     // A keypad member (26 Oct): all in one go at the farm — the link is sent and the leader goes straight on to the
     // field points (R5–R7 on the leader's phone); a member who already has fields goes to the progress screen.
@@ -139,24 +157,32 @@ export default function AddMember({ id, go }) {
   return (
     <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: 'Add a member', onBack: () => go('tasks'), onSettings: () => go('settings') }}>
-      {id ? <Sent id={id} go={go} /> : (
+      {id === 'qr' ? <NewSmartphone go={go} /> : id ? <Sent id={id} go={go} /> : (
         <>
+          <Card title="The member's phone">
+            <div role="radiogroup" aria-label="The member's phone" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Radio title="Smartphone" sub="Nila app. The member registers and shows their QR." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
+              <Radio title="Keypad phone" sub="Nila lite. The member opens a link from SMS." on={type === 'keypad'} onClick={() => setType('keypad')} />
+            </div>
+          </Card>
+          {type === 'smartphone' ? (
+            <Card title="Scan the member's QR">
+              <CameraView key={tries} mode="qr" onText={onScan} />
+              <Notice kind="info">Do this at the farm. The member registers in the Nila app and opens their QR. Then you take the field points on your phone.</Notice>
+              {scanError && <Text style={{ color: C.coral }}>{scanError}</Text>}
+            </Card>
+          ) : (
           <Card title="Member">
             <label style={label} htmlFor="l14-name">Name</label>
             <input id="l14-name" style={field} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
             <label style={label} htmlFor="l14-phone">Phone number</label>
             <PhoneField id="l14-phone" value={phone} onChange={setPhone} />
             <Row k={<b style={{ color: C.text }}>Union</b>} v={union.name || '—'} />
-          </Card>
-          <Card title="The member's phone">
-            <div role="radiogroup" aria-label="The member's phone" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Radio title="Smartphone" sub="Nila app. The member registers." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
-              <Radio title="Keypad phone" sub="Nila lite. The member opens a link from SMS." on={type === 'keypad'} onClick={() => setType('keypad')} />
-            </div>
-            <Notice kind="info">Do this at the farm. A smartphone member sends the location of each field from their phone; for a keypad phone you take them on your phone. No phone of their own? A family member's phone works. No phone, no account.</Notice>
+            <Notice kind="info">Do this at the farm: you take the field points on your phone. No phone of their own? A family member's phone works. No phone, no account.</Notice>
             {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
-            <Primary disabled={!ok || send.isPending} onClick={submit}>{type === 'keypad' ? 'Send app link and take field points' : 'Send app link'}</Primary>
+            <Primary disabled={!ok || send.isPending} onClick={submit}>Send app link and take field points</Primary>
           </Card>
+          )}
         </>
       )}
     </MapCard>
@@ -182,6 +208,67 @@ export function KeypadPoints({ id, go }) {
     );
   }
   return <PointsStep evm={key} forName={m?.name || 'the member'} onDone={done} onBack={() => go(`tasks/member/${id}`)} />;
+}
+
+const SCANNED = 'nila.l14.scanned';
+const readScanned = () => { try { return JSON.parse(sessionStorage.getItem(SCANNED) || 'null'); } catch { return null; } };
+const writeScanned = (m) => { try { sessionStorage.setItem(SCANNED, JSON.stringify(m)); } catch { /* this tab only */ } };
+
+/** A smartphone member's help QR was scanned (L14 or the Members scan, 29 Oct): { account, polygon }. */
+export const scannedNewMember = (m) => writeScanned({ account: m.account, polygon: m.polygon });
+
+/** tasks/member/qr (29 Oct): the scanned member's name and phone number, typed by the leader (nothing else knows
+ *  them: no SMS, no node link), then the field points. */
+function NewSmartphone({ go }) {
+  const [m] = useState(readScanned);
+  const [name, setName] = useState(m?.name || '');
+  const [phone, setPhone] = useState(m?.phone || '+91');
+  useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
+  if (!m) return null;
+  const ok = name.trim() && phoneOk(phone);
+  const next = () => { writeScanned({ ...m, name: name.trim(), phone: phoneValue(phone) }); go('tasks/member/qr/points'); };
+  return (
+    <Card title="New member">
+      <label style={label} htmlFor="l14-name">Name</label>
+      <input id="l14-name" style={field} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+      <label style={label} htmlFor="l14-phone">Phone number</label>
+      <PhoneField id="l14-phone" value={phone} onChange={setPhone} />
+      <Row k={<b style={{ color: C.text }}>Account</b>} v={`${m.account.slice(0, 4)}…${m.account.slice(-4)}`} />
+      <Notice kind="info">Do this at the farm: next you take the field points on your phone.</Notice>
+      <Primary disabled={!ok} onClick={next}>Take field points</Primary>
+    </Card>
+  );
+}
+
+/** tasks/member/qr/points (29 Oct): a smartphone member scanned on L14; the leader takes the field points on the
+ *  leader's phone (R5–R7) and they start the member's border job for the QR's account and Polygon address. */
+export function SmartphonePoints({ go }) {
+  const api = useBorderClient();
+  const [m] = useState(readScanned);
+  const key = m ? `smart-${m.account}` : 'smart-none';
+  useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
+  const send = useMutation({ mutationFn: () => {
+    const q = readPoints(key);
+    return api.leaderPoints({ account: m.account, polygon: m.polygon, name: m.name, phone: m.phone, farm: (q.farm || '').trim(),
+      points: q.points.map(({ lat, lng, acc }) => ({ lat, lng, acc })) });
+  } });
+  const done = () => send.mutate(undefined, { onSuccess: (job) => {
+    clearPoints(key);
+    try { sessionStorage.removeItem(SCANNED); } catch { /* gone with the tab */ }
+    go(`tasks/border/${job.id}`);
+  } });
+  if (!m) return null;
+  if (send.isPending) return <Loading />;
+  if (send.error) {
+    return (
+      <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}
+        header={{ title: 'Field points', onBack: () => go('tasks/member/qr') }}>
+        <Text style={{ color: C.coral }}>{send.error.message}</Text>
+        <Primary onClick={done}>Try again</Primary>
+      </MapCard>
+    );
+  }
+  return <PointsStep evm={key} forName={m.name || 'the member'} onDone={done} onBack={() => go('tasks/member/qr')} />;
 }
 
 /** The leader's own land title (28 Oct, executive decision): one flow on the leader's phone, as for a keypad member —

@@ -10,6 +10,10 @@ export function borderClient(signer) {
   const call = signedCall(signer);
   return {
     sendPoints: ({ polygon, farm, union, points }) => call('POST', '/border/points', { polygon, farm: farm || undefined, union: union || undefined, points }).then(jobOf),
+    // L14 for a smartphone member (29 Oct): the leader sends the points with the account and Polygon address of the
+    // member's help QR.
+    leaderPoints: ({ account, polygon, name, phone, farm, points }) =>
+      call('POST', '/border/points/leader', { account, polygon, name: name || '', phone: phone || '', farm: farm || '', points }).then(jobOf),
     mine: () => call('GET', '/border/mine').then(jobOf),
     jobs: () => call('GET', '/border/jobs').then(listOf),
     job: (id) => call('GET', `/border/job/${id}`).then(jobOf),

@@ -71,7 +71,7 @@ export function PlanFor({ go }) {
 // The board's groups (LeaderBorders "Start a task"), only the rows whose flow exists; icons as on the board.
 // "Scan an LP code" has no board row (LP scan, P9): it keeps the cash icon.
 const START = [
-  ['Members', [['Add a member', 'send the app link', 'tasks/member', UserPlusIcon],
+  ['Members', [['Add a member', 'Scan their QR or send a keypad link', 'tasks/member', UserPlusIcon],
     ['Make a crop plan', 'Scan the member\'s QR', 'tasks/planfor', CropIcon]]],
   // One scan for her (executive decision 24 Oct): the QR says which kind, the chain picks invest, withdraw, use or
   // repay. Her G2 in Members stays a second way in.

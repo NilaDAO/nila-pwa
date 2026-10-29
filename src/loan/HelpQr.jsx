@@ -6,10 +6,13 @@ import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { makeSessionQr } from '../stellar/session';
-import { muted, Primary } from '../plan/ui';
+import { muted } from '../plan/ui';
 import MapCard from '../shell/MapCard';
 import { C, FONT } from '../shell/tokens';
 import { QrCircle } from './AssetParts';
+
+// As MyShares' assisted() (not imported: MyShares imports this file).
+const assisted = () => { try { return localStorage.getItem('nila.mode') !== 'self'; } catch { return true; } };
 
 /** `note`: what the leader will do (repay, invest, collect…); `onBack` when opened from a page (not the Scan tab). */
 export default function HelpQr({ note, onBack } = {}) {
@@ -21,7 +24,8 @@ export default function HelpQr({ note, onBack } = {}) {
   const [now, setNow] = useState(Date.now() / 1000);
   const make = async () => {
     setError(undefined);
-    try { setQr(await makeSessionQr(cfg, s.stellarAddress, s.signHash)); } catch (e) { setError(e.message); }
+    // An assist-mode smartphone adds its Polygon address (29 Oct): a leader can add the member from this QR (L14).
+    try { setQr(await makeSessionQr(cfg, s.stellarAddress, s.signHash, 'Ed25519', assisted() ? s.evmAddress : undefined)); } catch (e) { setError(e.message); }
   };
   useEffect(() => { if (cfg && s?.ready && !qr) make(); }, [cfg, s?.ready]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (qr) QRCode.toDataURL(qr.qr, { width: 400, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [qr]);
@@ -38,12 +42,11 @@ export default function HelpQr({ note, onBack } = {}) {
   return (
     <MapCard header={{ title: 'Your QR', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}
       style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {!over && !error && <QrCircle img={qr ? img : undefined} alt="Your QR" />}
+      {over || error ? <QrCircle img={img} onRefresh={make} /> : <QrCircle img={qr ? img : undefined} alt="Your QR" />}
       <p style={{ ...muted, textAlign: 'center', margin: 0 }}>
-        {over ? 'This QR has expired.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop share, start or collect a withdrawal.'}
+        {over ? 'This QR has expired. Tap the circle for a new one.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop share, start or collect a withdrawal.'}
       </p>
       {error && <p style={{ color: C.coral, textAlign: 'center', margin: 0 }}>{error}</p>}
-      {(over || error) && <Primary onClick={make}>Make a new QR</Primary>}
     </MapCard>
   );
 }

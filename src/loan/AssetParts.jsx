@@ -6,6 +6,7 @@ import { useContext, useEffect, useState } from 'react';
 import { SheetLowCtx } from '../shell/stageCtx';
 import { C, FONT, R, SHADOW, TAB_BAR_HEIGHT } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
+import { RefreshIcon } from '../shell/icons';
 
 const settings = () => { window.location.hash = '#/settings'; };
 
@@ -104,8 +105,23 @@ export function NoteBar({ children }) {
 }
 
 /** A QR in the white circle (A1a, A7b). */
-export function QrCircle({ img, alt }) {
+export function QrCircle({ img, alt, onRefresh }) {
   // While the QR is being made (26 Oct): the same white circle, pulsing, with the app's skeleton timing — no jump.
+  // An expired QR (the design's expired state, 29 Oct): the old QR faded in the white circle, a dark round badge in
+  // the middle with the refresh icon (the design's clock); a tap makes a new QR.
+  if (onRefresh) {
+    return (
+      <button type="button" onClick={onRefresh} aria-label="Make a new QR" style={{ position: 'relative', width: '100%', aspectRatio: '1',
+        borderRadius: R.round, background: '#FFFFFF', border: 0, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer' }}>
+        {img && <img src={img} alt="" style={{ width: '62%', height: '62%', imageRendering: 'pixelated', opacity: 0.15 }} />}
+        <span style={{ position: 'absolute', width: 64, height: 64, borderRadius: R.round, background: '#121212', display: 'flex',
+          alignItems: 'center', justifyContent: 'center' }}>
+          <RefreshIcon size={28} color="#FFFFFF" />
+        </span>
+      </button>
+    );
+  }
   return (
     <div aria-busy={!img} style={{ width: '100%', aspectRatio: '1', borderRadius: R.round, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
       animation: img ? 'none' : 'nila-skel 1.4s ease-in-out infinite' }}>

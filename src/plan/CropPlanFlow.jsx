@@ -217,14 +217,19 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const mint = useMintCropShares();
   const approve = useApprovePlan();
   // Assist mode (26 Oct): the leader made the plan, so the member's scan at CP11 is the whole consent: accept, approve
-  // and make the crop shares in one go (no separate L12).
+  // and make the crop shares in one go (no separate L12). The leader's own plan likewise (29 Oct): the leader's "I accept"
+  // approves it and makes the crop shares. A self-mode member's own plan still waits for a leader (L12).
   const [making, setMaking] = useState(false);
+  const [makeError, setMakeError] = useState();
+  // The N sequence shows from the scan (or "I accept") on, through accept and approve to the last crop share (29 Oct:
+  // it showed only from the mint, so the plan flashed back in between).
   const makeMine = async () => {
-    setError(undefined);
+    setError(undefined); setMakeError(undefined); setMaking(true);
     try {
       if (plan.status !== 'accepted') await accept.mutateAsync(plan);
       await approve.mutateAsync({ planId: plan.id, decision: 'approve' });
-      setMaking(true);
+    } catch (e) { setMakeError(e.message); return; }
+    try {
       await mint.run(plan.id);
       qc.invalidateQueries({ queryKey: qkPlan.plan(landId) });
       qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });
@@ -342,12 +347,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   // Plain loading (titles, plan, record not fetched yet) is S1 (executive decision 21 Oct); CP1's pending card is only
   // for a record that is really not there yet.
   if (making) {
-    const seq = { busy: 'pending', done: 'success', failed: 'failed', partial: 'failed' }[mint.status] || 'pending';
+    const seq = makeError ? 'failed' : { busy: 'pending', done: 'success', failed: 'failed', partial: 'failed' }[mint.status] || 'pending';
     if (seq !== 'success') when.current = new Date();
     const tx = { status: seq, label: 'Making the crop shares', when: when.current,
       rows: [['Crop shares', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Member', forLand?.label || `Land ${landId}`]],
-      reason: (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
-    return <TxScreens tx={tx} network="Polygon" onClose={() => { window.location.hash = '#/members'; }} onRetry={() => mint.run(plan.id)} />;
+      reason: makeError || (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
+    return <TxScreens tx={tx} network="Polygon" onClose={() => { window.location.hash = '#/members'; }}
+      onRetry={() => (makeError ? makeMine() : mint.run(plan.id))} />;
   }
   if (scanToAccept) {
     return (
@@ -613,7 +619,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       setError(undefined);
       // The leader accepts for the member only in the member's session: scan the help QR first (26 Oct).
       if (forLand && !(sessionUntil > Date.now() / 1000 + 10)) { setScanToAccept(true); return; }
-      if (forLand) { await makeMine(); return; }
+      if (forLand || self) { await makeMine(); return; }
       try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
     };
     return (
@@ -701,11 +707,12 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     );
   }
   if (self) {
-    // Leader app (26 Oct): the leader's own plan waits for a leader; this leader may approve it now (L12, 23 Oct).
+    // The leader's own plan accepted before the one-go rule (29 Oct): approve it and make the crop shares here.
     return (
       <Sheet map={map} landName={name} title="Plan accepted">
-        <p style={muted}>You accepted your plan. A leader of the union approves it next.</p>
-        <Primary disabled={!plan?.id} onClick={() => { window.location.hash = `#/approvals/${plan.id}`; }}>Check and approve</Primary>
+        <p style={muted}>You accepted your plan. Approve it to make your crop shares.</p>
+        {error && <p style={{ color: C.coral }}>{error}</p>}
+        <Primary disabled={!plan?.id} onClick={makeMine}>Approve and make the crop shares</Primary>
         <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 10, fontSize: 14, fontFamily: 'inherit' }}>See the plan</button>
       </Sheet>
     );

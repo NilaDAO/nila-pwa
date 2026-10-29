@@ -135,7 +135,18 @@ function SignerBridge({ children }) {
   // tx hash). P0 showed this covers Soroban auth entries and SEP-10.
   const signHash = useCallback(async (hash) => {
     if (!stellar) throw new Error('no Stellar wallet yet');
-    const { signature } = await signRawHash({ address: stellar.address, chainType: 'stellar', hash: toHex(hash) });
+    // Privy signs inside its hidden frame; right after a reload it may not be loaded yet ("wallet proxy not
+    // initialized", 29 Oct: the help QR is made at once). Wait for it, up to about 15 seconds.
+    let signature;
+    for (let i = 0; ; i++) {
+      try {
+        ({ signature } = await signRawHash({ address: stellar.address, chainType: 'stellar', hash: toHex(hash) }));
+        break;
+      } catch (e) {
+        if (!/proxy not initiali[sz]ed/i.test(e?.message || '') || i >= 30) throw e;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
     const sig = fromHex(signature);
     if (sig.length !== 64) throw new Error(`signature is ${sig.length} bytes, expected 64`);
     return sig;
