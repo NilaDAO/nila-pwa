@@ -4,8 +4,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { C, FONT } from '../shell/tokens';
 import FieldScene from './FieldScene';
-import FieldMap, { useFieldMapLoaded } from './FieldMap';
+import FieldMap, { useFieldMapLoaded, usePinY } from './FieldMap';
 import useSheetDrag from '../shell/useSheetDrag';
+import { useShellLook, useStage } from '../shell/stageCtx';
+import { TAB_BAR_HEIGHT } from '../shell/tokens';
 
 const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
 
@@ -107,28 +109,38 @@ export const fieldInput = { display: 'block', width: '100%', height: 44, borderR
   fontSize: 16, color: '#F1F5F9', border: 0, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', flexShrink: 0 };
 
 /** R5–R7: the satellite map (FieldMap) once Google Maps is loaded; until then, offline or without a key, the scene. */
-function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect }) {
+function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect, shapes }) {
   const { ok } = useFieldMapLoaded();
+  const pinY = usePinY(ok && pan);
+  // No map (offline, or a key the site is not allowed to use, 28 Oct): "Choose on the map" takes the start spot as the
+  // point, so the fields can still be sent (else Save this location waits for a centre that never comes).
+  const here = start || me;
+  useEffect(() => {
+    if (ok || !pan || !here || !onCenter) return undefined;
+    // A tick later: the step's own handler (MapFrame) is connected after this effect runs.
+    const t = setTimeout(() => onCenter({ lat: here.lat, lng: here.lng }), 0);
+    return () => clearTimeout(t);
+  }, [ok, pan, here?.lat, here?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ok) return <FieldGround points={points} />;
   return (
     <>
-      <FieldMap points={map} me={me} pan={pan} onCenter={onCenter} start={start} selected={selected} onSelect={onSelect} />
-      {pan && <PanPin />}
+      <FieldMap points={map} me={me} pan={pan} onCenter={onCenter} start={start} selected={selected} onSelect={onSelect} pinY={pinY} shapes={shapes} />
+      {pan && <PanPin y={pinY} />}
     </>
   );
 }
 
-/** Choose on the map: the pin at the map's centre marks where her point goes. */
-function PanPin() {
+/** Choose on the map: the pin in the middle of the map above the card marks where the point goes (26 Oct). */
+function PanPin({ y }) {
   return (
-    <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 2 }}>
+    <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top: y != null ? y : '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 2 }}>
       <svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="rgba(212,166,52,0.25)" />
         <circle cx="22" cy="22" r="9" fill="#D4A634" stroke="#121212" strokeWidth="3" /></svg>
     </div>
   );
 }
 
-/** R5–R8 are one screen (executive decision 20 Oct): the satellite map, the header chip and the info footer are
+/** R5–R8 are one screen (executive decision 20 Oct): the satellite map and the info footer are
  *  mounted once by MapStage; each step (R5, R6, R7, R8) only swaps its card. A step says what the map shows through
  *  MapFrame, which inside a MapStage renders just the card. Background: the Google satellite map (today's field
  *  registration settings), the field scene when Maps cannot load. Boards SendLocation-v3np (R5, artifact v1755). */
@@ -142,23 +154,19 @@ export function MapStage({ header = 'Mint your land title', children }) {
   const select = useRef(null);
   const onSelect = useCallback((i) => select.current?.(i), []);
   const [lowered, setLowered] = useState(false);         // the card dragged down: the info footer slides out
-  const ctx = useMemo(() => ({ setView, centre, select, setLowered }), []);
+  const ctx = useMemo(() => ({ setView, centre, select, setLowered, header }), [header]);
+  // Inside the app's shell (a leader's own points, + Add a point): the card clears the tab bar itself.
+  const inShell = !!useStage();
+  useShellLook({ flush: true }, inShell);
   return (
     <MapCtx.Provider value={ctx}>
       <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#4a6632', display: 'flex', flexDirection: 'column',
         fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
         <style>{MOTION_CSS}</style>
-        <MapOrScene map={view.map} points={view.map.length} me={view.me} start={view.start} pan={view.pan} onCenter={onCenter}
+        <MapOrScene map={view.map} points={view.map.length} me={view.me} start={view.start} shapes={view.shapes} pan={view.pan} onCenter={onCenter}
           selected={view.selected} onSelect={onSelect} />
         <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 160, pointerEvents: 'none',
           background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)' }} />
-        {/* The standard header chip (boards A6 TreeMap and the other map screens): a dark pill in the middle of the header. */}
-        <h1 style={{ position: 'absolute', left: 56, right: 56, top: 52, height: 40, margin: 0, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', zIndex: 3, pointerEvents: 'none' }}>
-          <span style={{ padding: '0 14px', height: 40, borderRadius: 9999, background: 'rgba(18,18,18,0.85)',
-            boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', display: 'flex', alignItems: 'center',
-            fontSize: 16, fontWeight: 700, lineHeight: 1.3, whiteSpace: 'nowrap', color: '#F1F5F9' }}>{view.header || header}</span>
-        </h1>
         <div style={{ height: 92 }} />
         <div style={{ flexGrow: 1, minHeight: 24 }} />
         {children}
@@ -172,6 +180,7 @@ export function MapStage({ header = 'Mint your land title', children }) {
           </div>
           </div>
         )}
+        {inShell && <div style={{ height: TAB_BAR_HEIGHT }} />}
       </div>
     </MapCtx.Provider>
   );
@@ -179,32 +188,39 @@ export function MapStage({ header = 'Mint your land title', children }) {
 
 /** A step on the map screen: tells the stage what to show and renders its card (and an optional overlay). Outside a
  *  MapStage it brings its own stage. */
-export function MapFrame({ header, map = [], me = null, start = null, info = INFO_R5, overlay, pan = false, onCenter, selected = null, onSelect, children }) {
+export function MapFrame({ header, onBack, map = [], me = null, start = null, shapes = null, info = INFO_R5, overlay, pan = false, onCenter, selected = null, onSelect, children }) {
   const ctx = useContext(MapCtx);
-  const key = JSON.stringify([header, map, me, start, info, pan, selected]);
-  useEffect(() => { if (ctx) ctx.setView({ header, map, me, start, info, pan, selected }); }, [ctx, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const key = JSON.stringify([header, map, me, start, shapes, info, pan, selected]);
+  useEffect(() => { if (ctx) ctx.setView({ header, map, me, start, shapes, info, pan, selected }); }, [ctx, key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (ctx) { ctx.centre.current = onCenter; ctx.select.current = onSelect; } }, [ctx, onCenter, onSelect]);
   const card = (
     <>
-      <DragCard onLowered={(v) => ctx?.setLowered(v)}>{children}</DragCard>
+      <DragCard onLowered={(v) => ctx?.setLowered(v)} title={header || ctx?.header || 'Mint your land title'} onBack={onBack}>{children}</DragCard>
       {overlay}
     </>
   );
   if (ctx) return card;
-  return <MapStage header={header}><StandaloneView view={{ header, map, me, start, info, pan, selected }} onCenter={onCenter} onSelect={onSelect}>{card}</StandaloneView></MapStage>;
+  return <MapStage header={header}><StandaloneView view={{ header, map, me, start, shapes, info, pan, selected }} onCenter={onCenter} onSelect={onSelect}>{card}</StandaloneView></MapStage>;
 }
 
 /** The map card with the standard drag line (map cards): drag down lowers the card — never off the screen, the top
  *  strip stays — and the info footer slides out (the reverse of its slide in); drag up or a tap on the line brings
  *  both back. Releasing snaps to the nearer end. */
-function DragCard({ onLowered, children }) {
+function DragCard({ onLowered, title, onBack, children }) {
   const { ref, style, handle } = useSheetDrag(onLowered);
+  // The header is a row inside the card, as on every map card (28 Oct): Back, the title.
   return (
-    <div ref={ref} style={{ position: 'relative', zIndex: 4, ...style }}>
+    <div ref={ref} data-reg-card="" style={{ position: 'relative', zIndex: 4, ...style }}>
     <div className="nila-motion" style={{ animation: anim.drop, position: 'relative', margin: '0 8px', background: '#121212', borderRadius: 24,
       boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', padding: '10px 22px 18px',
       display: 'flex', flexDirection: 'column', gap: 14 }}>
       {handle}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {onBack ? <button type="button" aria-label="Back" onClick={onBack} style={{ width: 40, height: 40, borderRadius: 9999, background: '#1F2733', border: 0,
+          color: '#F1F5F9', fontSize: 20, flexShrink: 0 }}>←</button> : <span style={{ width: 40 }} />}
+        <h1 style={{ flexGrow: 1, margin: 0, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{title}</h1>
+        <span style={{ width: 40 }} />
+      </div>
       {children}
     </div>
     </div>

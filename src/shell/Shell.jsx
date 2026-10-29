@@ -22,6 +22,8 @@ import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
 import { ReadyShareRows, TakeUp, rowOf, useMyShares } from '../loan/MyShares';
 import MapStage from './MapStage';
+import { ShellLookCtx } from './stageCtx';
+import { firstTab, screenToOpen } from './start';
 import { HarvestGroup, HarvestList } from '../leader/Harvests';
 import MapCard from './MapCard';
 import { SlideBar } from '../plan/PlanResult';
@@ -31,12 +33,13 @@ import LpOffers from '../anchor/LpOffers';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
 import Settings from './Settings';
-import LeaderTasks from '../leader/LeaderTasks';
+import LeaderTasks, { PlanFor } from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
-import AddMember from '../leader/AddMember';
+import AddMember, { KeypadPoints, LeaderOwnPoints } from '../leader/AddMember';
+import { KeypadAccounts } from '../keypad/hooks';
 import LeaderBorder from '../border/LeaderBorder';
-import Registration, { pointsSent } from '../register/Registration';
+import Registration, { onboarded } from '../register/Registration';
 import { BootLoading } from '../register/Boot';
 import RegFrame from '../register/RegFrame';
 import { TITLE_KEYS, useTitleCount } from '../register/titles';
@@ -46,6 +49,9 @@ import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomT
 import { C, FONT, GRADIENT, TAB_BAR_HEIGHT, loadInter } from './tokens';
 import ListRow, { ListSection } from './ListRow';
 import { BanknoteIcon, CropIcon } from './icons';
+import { assisted } from '../loan/MyShares';
+import { usePlanClient } from '../plan/hooks';
+import { useUnionMembers } from '../leader/unionMembers';
 
 const MOVE = {
   waiting: 'Your nIN from the old network arrives after your union confirms your land title.',
@@ -56,7 +62,6 @@ const MOVE = {
 
 const readTab = () => (window.location.hash.match(/^#\/(\w+)/) || [])[1];
 const readArg = () => (window.location.hash.match(/^#\/\w+\/(\w+)/) || [])[1];
-const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
 
 // Screens built in later steps (P4 crop plan, P5 scan and loans, leader screens). DESIGN GAP: interim.
 function Later({ title, step }) {
@@ -70,16 +75,28 @@ function Later({ title, step }) {
 
 
 // tasks/border/<job id>[/<field>]: L2a–L4 for a leader.
-const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+))?/) || [];
+const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+|add))?/) || [];
 // tasks/member[/<id>]: L14 Add a member and its #sent progress (P8).
-const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?$/);
+const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?(\/points)?$/);
+
+/** A member's crop plan, made by the leader with the member (assist mode, 26 Oct): #/memberplan/<route>. */
+function MemberPlan({ route }) {
+  const api = usePlanClient();
+  const m = (useUnionMembers(api).data || []).find((x) => x.route === route);
+  if (!m) return <BootLoading />;
+  // Close (a notice that cannot be finished now): back where the leader came from (Tasks or the member's G2).
+  const onClose = () => { if (window.history.length > 1) window.history.back(); else window.location.hash = '#/tasks'; };
+  return <CropPlanFlow forLand={{ landId: Number(m.titleId || m.lands[0]), recordHash: m.recordHash, evm: m.polygon, account: m.address, label: m.label, onClose }} />;
+}
 
 function TasksView({ leader, go }) {
   const lp = useLpStatus();
   const shares = useMyShares().data;
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
+  if (leader && window.location.hash.startsWith('#/tasks/planfor')) return <PlanFor go={go} />;
   const member = readMember();
+  if (leader && member && member[2]) return <KeypadPoints key={member[1]} id={member[1]} go={go} />;
   if (leader && member) return <AddMember key={member[1] || 'new'} id={member[1]} go={go} />;
   if (leader) return <LeaderTasks go={go} />;
   // A2 (board Tasks): "Cash offers" for an LP, then "To do". DESIGN GAP: the board's to-do rows (use machine hours,
@@ -140,6 +157,13 @@ function TitleWait({ titleCount, s }) {
 
 export default function Shell({ leader }) {
   const s = useNilaSigner();
+  // What the open screens ask of the shell under them (useShellLook): no bottom padding, no gradient, taps through.
+  const [looks, setLooks] = useState(() => new Map());
+  const lookApi = useMemo(() => ({
+    add: (id, l) => setLooks((m) => new Map(m).set(id, l)),
+    remove: (id) => setLooks((m) => { const n = new Map(m); n.delete(id); return n; }),
+  }), []);
+  const look = [...looks.values()].reduce((a, l) => ({ flush: a.flush || l.flush, clear: a.clear || l.clear, through: a.through || l.through }), {});
   useEffect(loadInter, []);
   // The page behind the app is the gradient's top colour, so a scroll past either end never shows a white bar.
   useEffect(() => {
@@ -148,6 +172,15 @@ export default function Shell({ leader }) {
     els.forEach((e) => { e.style.background = '#121212'; });
     return () => els.forEach((e, i) => { e.style.background = was[i]; });
   }, []);
+  // Self mode from the identity check (executive decision 26 Oct): a member who passed K1 and never chose a mode
+  // switches from assist to self once; the Settings toggle still decides after that.
+  const idCheck = useLpStatus();
+  useEffect(() => {
+    if (leader || !idCheck.data?.idChecked) return;
+    try {
+      if (localStorage.getItem('nila.mode') === null) { localStorage.setItem('nila.mode', 'self'); window.location.reload(); }
+    } catch { /* private mode: stays in assist mode */ }
+  }, [leader, idCheck.data?.idChecked]);
   const tabs = leader ? LEADER_TABS : assisted() ? ASSISTED_TABS : MEMBER_TABS;
   const [view, setView] = useState(() => readTab() || 'assets');
   const [, setHash] = useState(window.location.hash);
@@ -166,6 +199,12 @@ export default function Shell({ leader }) {
   const legacy = useLegacyBalances(s?.evmAddress);
   // Her land title on Polygon or on Stellar (src/register/titles.js) decides registration.
   const titleCount = useTitleCount(s?.evmAddress, s?.stellarAddress);
+  // No land title (28 Oct): the app opens on the Crop plan, where the title is minted; a link to another tab stays.
+  useEffect(() => {
+    if (!readTab() && firstTab({ titles: titleCount }) === 'crop') window.location.hash = '#/crop';
+  }, [titleCount.loading, titleCount.count]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The start steps end without a reload (28 Oct): the shell reads onboarded() again.
+  const [, setStarted] = useState(0);
   const qc = useQueryClient();
   const [retry, setRetry] = useState();
   const again = async () => {
@@ -193,13 +232,17 @@ export default function Shell({ leader }) {
   // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
   // A leader is also a member (notes leader-missing): the same gate applies to her; with a title she never sees it.
   // Until her titles are known she sees the registration ground, not a flash of the tab bar.
-  if (titleCount.loading) return <TitleWait titleCount={titleCount} s={s} />;
-  // Registration only for a new Privy user (AfterCode, LOAN_RULES §5 20 Oct); an existing one without a title gets the app.
-  // A leader who has sent her field points works in the leader app while her title waits (no R14 loop).
-  if (!(leader && pointsSent(s?.evmAddress)) && (demoNew(s?.evmAddress) || (titleCount.count === 0 && s?.privyNew === true))) {
-    const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
-    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} /></div>;
+  // Which screen: shell/start.js (titles loading, the start steps R9 + R10 once per wallet, a member's field points, a tab).
+  const screen = screenToOpen({ titles: titleCount, onboarded: onboarded(s?.evmAddress), demoNew: demoNew(s?.evmAddress),
+    privyNew: s?.privyNew, tab: view, arg: readArg(), leader });
+  if (screen === 'titleWait') return <TitleWait titleCount={titleCount} s={s} />;
+  const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
+  if (screen === 'start') {
+    const onStarted = () => { go('crop'); setStarted((n) => n + 1); };
+    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} onStarted={onStarted} /></div>;
   }
+  // "Mint a new land title" on the Crop plan's no-title card (28 Oct): a member's R5–R14, full screen.
+  if (screen === 'fields') return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration fields onTitle={onTitle} /></div>;
 
   let body;
   if (view === 'assets') {
@@ -219,7 +262,8 @@ export default function Shell({ leader }) {
   else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
   // The leader app is the member app, extended (notes leader-missing): her Crop plan tab is her own plan (CP13 with
   // the leader tab bar); the union's plans to approve (L12) open from L1's To do.
-  else if (view === 'crop') body = <CropPlanFlow />;
+  else if (view === 'crop' && leader && readArg() === 'register') body = <LeaderOwnPoints go={go} />;
+  else if (view === 'crop') body = <CropPlanFlow self={leader} />;   // a leader makes their own plan (never assist)
   else if (view === 'approvals' && leader) body = <LeaderPlans key={readArg() || 'one'} planId={readArg()} onBack={() => go('tasks')} />;
   else if (view === 'scan') body = <MemberScan onDone={() => go('assets')} />;
   else if (view === 'loan') body = <LeaderLoan key={readArg()} initial={readArg()} />;
@@ -241,6 +285,7 @@ export default function Shell({ leader }) {
   // A2 Tasks: for an LP the board's "Cash offers" section; the other task rows come in a later step.
   else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
   else if (view === 'members' && leader) body = readArg() ? <MemberStatus key={readArg()} id={readArg()} go={go} /> : <Members go={go} />;
+  else if (view === 'memberplan' && leader) body = <MemberPlan route={readArg()} />;
   // H1 / H2 (25 Oct): the Harvests tab, and one harvest group on the map.
   else if (view === 'harvests' && leader) body = readArg() ? <HarvestGroup key={readArg()} id={readArg()} go={go} /> : <HarvestList go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
@@ -253,13 +298,17 @@ export default function Shell({ leader }) {
   return (
     // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.
     // The map stage lies under the shell (map-central trial): a map sheet makes the shell see-through while it is open.
+    <ShellLookCtx.Provider value={lookApi}>
     <MapStage>
-      <div style={{ minHeight: '100vh', background: GRADIENT, paddingBottom: TAB_BAR_HEIGHT + 16, position: 'relative', zIndex: 1 }} data-testid="shell">
+      <div style={{ minHeight: '100vh', background: look.clear ? 'transparent' : GRADIENT, paddingBottom: look.flush ? 0 : TAB_BAR_HEIGHT + 16,
+        pointerEvents: look.through ? 'none' : undefined, position: 'relative', zIndex: 1 }} data-testid="shell">
         {/* One card per screen (24 Oct): a new screen gets a fresh card, so a header button (Tasks, Settings, History)
             opens it raised; only a bottom-bar tab keeps a lowered card down (keepLowOnTab). */}
         <Fragment key={view}>{body}</Fragment>
+        {leader && <KeypadAccounts />}
         <BottomTabBar tabs={tabs} active={active} onSelect={(v) => { keepLowOnTab(); resetA1Scroll(); go(v); }} />
       </div>
     </MapStage>
+    </ShellLookCtx.Provider>
   );
 }

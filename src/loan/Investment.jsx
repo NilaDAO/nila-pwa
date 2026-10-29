@@ -22,7 +22,7 @@ import { Loading } from '../register/Boot';
 import { assisted } from './MyShares';
 import Segmented from '../shell/Segmented';
 import { AssetScreen, Card, KV, Line, MarkCircle, QrCircle, Secondary, Stepper } from './AssetParts';
-import { DeskQr } from './CashOut';
+import HelpQr from './HelpQr';
 import { signDeskCode } from './deskCode';
 
 const RAY = 10n ** 27n;
@@ -109,13 +109,11 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
   const mode = pick ?? (pending || canClaim ? 'withdraw' : 'invest');
   const collect = async () => {
     setError(undefined);
-    try { setDesk(await signDeskCode({ cfg, signer: s.stellarAddress, signHash: s.signHash, kind: 'W' })); } catch (e) { setError(e.message); }
+    setDesk(true);
   };
-  if (desk) {
-    return <DeskQr title="Your withdrawal" qr={desk.qr} until={desk.until} onBack={() => setDesk(undefined)}
-      rows={[['You get', canClaim ? `${inr(Math.floor(toCollect))} in cash` : 'your withdrawal in cash'], ['Ready', canClaim ? 'now' : `from about ${dateOf(claimAt)}`]]} />;
-  }
-  if (showQr) return <BringCash amount={bring} after={invested + bring} address={s?.stellarAddress} onBack={() => setShowQr(false)} />;
+  // One QR at the office (executive decision 26 Oct): the help QR, to invest and to collect a withdrawal.
+  if (desk) return <HelpQr onBack={() => setDesk(undefined)} note={`Go to the union office to collect ${canClaim ? `${inr(Math.floor(toCollect))} in cash` : 'your withdrawal'}. Your leader scans this, hands you the cash and records it.`} />;
+  if (showQr) return <HelpQr onBack={() => setShowQr(false)} note={`Bring ${inr(bring)} in cash to the union office. Your leader scans this, counts the cash and records your investment.`} />;
   return (
     <AssetScreen title="Union investment" onBack={onBack} note={NOTE}>
       <Card label="nIN invested">

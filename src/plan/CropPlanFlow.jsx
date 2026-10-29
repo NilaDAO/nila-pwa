@@ -2,30 +2,40 @@
 // CP12 waiting for the leader (nila-design boards CropPlanIntro … CropPlanPending-590i). Copy from the
 // boards; DESIGN GAPs: no map yet (P4c), no suggested crops on CP4 (no source), CP9 shows the
 // engine's one explanation text (16 Oct), CP6/CP5 answers mapped to numbers/keys in hooks.js.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bouncing } from '../register/RegFrame';
 import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT } from '../shell/tokens';
-import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
-import { Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
+import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanClient, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
+import { CheckRow, Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
+import { Sheet as BaseSheet } from './ui';
 import { BasisDrawer, Drawer, InfoButton } from './Drawer';
 import { useMintCropShares } from './mint';
+import { NoticeScreen, TxScreens } from '../stellar/TxStatus';
 import MoneyChart from './MoneyChart';
 import { areasOf, summarize, useFieldRecord } from './record';
 import { useTitleName } from './hooks';
 import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import CropsStep from './CropsStep';
-import { AreaCard, SEASON, SlideBar, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
+import { AreaCard, CropSelect, SEASON, SlideBar, sortedCrops, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
 import { shareOn } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
+import RoundButton from '../shell/RoundButton';
+import { RefreshIcon } from '../shell/icons';
+import HelpQr from '../loan/HelpQr';
+import StartHelp from '../loan/StartHelp';
+import { useSessionUntil } from '../stellar/session';
+import { useMyBorderJob } from '../border/hooks';
+import { unionCentre } from '../leader/unionMap';
+import { useUnionMembers } from '../leader/unionMembers';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function Making({ jobId, onDone, onError }) {
+function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
   const job = usePlanJob(jobId);
   const [secs, setSecs] = useState(0);
   useEffect(() => { const t = setInterval(() => setSecs((s) => s + 1), 1000); return () => clearInterval(t); }, []);
@@ -36,7 +46,7 @@ function Making({ jobId, onDone, onError }) {
   // Board CropPlanMaking (CP8): the bouncing Nila logo (the same bounce as R14), then the counter and "Time passed".
   return (
     <div style={{ textAlign: 'center' }}>
-      <Bouncing top={42} bottom={8} label="Making your crop plan" />
+      <Bouncing top={42} bottom={8} label={label} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <span aria-label="Time passed" style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}</span>
         <span style={muted}>Time passed</span>
@@ -47,7 +57,7 @@ function Making({ jobId, onDone, onError }) {
 
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
-function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) => z }) {
+function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, acceptLabel = 'Accept the plan' }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
@@ -61,6 +71,7 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
   const above = seasons.reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.cash_above_cap || 0), 0), 0);
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance.due)).sort().pop();
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
+  const [open, setOpen] = useState(null);   // the season whose areas' crops are open
   return (
     <>
       {!readOnly && <TapLine done={checked.size} total={zones.length} />}
@@ -76,11 +87,25 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
             const sows = new Set(s.rows.map((r) => r.sow).filter(Boolean));
             const by = (p.shares || []).filter((sh) => sows.has(sh.from_date) && sh.final_date).map((sh) => sh.final_date).sort().pop();
             return (
-              <tr key={s.slot} style={{ borderTop: `1px solid ${C.raised}` }}>
-                <td style={{ padding: '8px 0' }}><b>{SEASON[s.slot]}</b></td>
+              <Fragment key={s.slot}>
+              {/* A tap on the season opens its areas' crops (28 Oct, replaces Change my plan): one list per area. */}
+              <tr onClick={!readOnly && onCrop ? () => setOpen(open === s.slot ? null : s.slot) : undefined} aria-expanded={open === s.slot}
+                style={{ borderTop: `1px solid ${C.raised}`, cursor: !readOnly && onCrop ? 'pointer' : 'default', background: open === s.slot ? C.raised : undefined }}>
+                <td style={{ padding: open === s.slot ? '8px 0 8px 10px' : '8px 0', borderRadius: open === s.slot ? '12px 0 0 0' : undefined }}><b>{SEASON[s.slot]}</b>{!readOnly && onCrop && <span style={{ color: C.muted }}> {open === s.slot ? '▴' : '▾'}</span>}</td>
                 <td>{by ? new Date(by).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{inr(cash)}</td>
+                <td style={{ textAlign: 'right', paddingRight: open === s.slot ? 10 : 0, borderRadius: open === s.slot ? '0 12px 0 0' : undefined }}>{inr(cash)}</td>
               </tr>
+              {open === s.slot && (
+                // The season row itself grows (28 Oct): its areas' crops in the same raised box, no list over the map.
+                <tr style={{ background: C.raised }}><td colSpan={3} style={{ padding: '0 10px 10px', borderRadius: '0 0 12px 12px' }}>
+                  {[...zones].sort((a, b) => Number(areaNo(a)) - Number(areaNo(b))).map((z) => {
+                    const r = s.rows.find((x) => zonesOf(x).includes(z));
+                    return <CropSelect key={z} label={`Area ${areaNo(z)}`} crops={sortedCrops(crops)} current={pending[z]?.[s.slot] || r?.crop} currentName={r?.name} disabled={changing}
+                      onPick={(key) => onCrop(z, s.slot, key)} />;
+                  })}
+                </td></tr>
+              )}
+              </Fragment>
             );
           })}
           {p.trees?.discount > 0 && (
@@ -131,9 +156,10 @@ function PlanView({ plan, checked, onAccept, onChange, readOnly, areaNo = (z) =>
           ? `Area ${areaNo(n.zone)}${n.slot ? `, ${SEASON[n.slot] || n.slot}` : ''}${n.crop ? ` (${n.crop.replace(/_/g, ' ')})` : ''}: ${n.why}`
           : n.why || n.reason || JSON.stringify(n))).join('; ')}</Notice>
       )}
-      {!readOnly && <Primary disabled={checked.size < zones.length} onClick={onAccept}>Accept the plan</Primary>}
-      {/* CP10: change it — a new version that follows her (Renew plan is on CP9). */}
-      {!readOnly && onChange && <button type="button" onClick={onChange} style={{ ...secondaryBtn, width: '100%', marginTop: 8 }}>Change my plan</button>}
+      {!readOnly && (Object.keys(pending).length
+        ? <Primary disabled={changing} onClick={onUpdate}>{changing ? 'Updating…' : 'Update crop plan'}</Primary>
+        : <Primary disabled={checked.size < zones.length} onClick={onAccept}>{acceptLabel}</Primary>)}
+      {/* CP10: a crop is changed on its season row in the area card (28 Oct; Renew plan is on CP9). */}
     </>
   );
 }
@@ -149,43 +175,84 @@ function Pending({ map, name, error }) {
   );
 }
 
-export default function CropPlanFlow() {
+/** `forLand` (26 Oct, assist mode): a leader makes a member's crop plan with the member: the member's land
+ *  { landId, recordHash, evm, account, label } instead of the signed-in person's own. Making the plan takes longer than a
+ *  5-minute session, so the member's help QR is scanned only at the end, to accept it (CP11). */
+/** Assist mode: the crop plan is made with the leader (26 Oct). */
+function AssistPlan({ map, name, waiting }) {
+  const [qr, setQr] = useState(false);
+  if (qr) return <HelpQr onBack={() => setQr(false)} note="Show this to your union leader. Your leader makes your crop plan with you and reads it to you." />;
+  return (
+    <Sheet map={map} landName={name} title={waiting ? 'Your crop plan is with your leader' : 'Your crop plan'}>
+      <p style={muted}>{waiting ? 'Your leader checks it and approves it. Your crop shares come after that.'
+        : 'Your union leader makes your crop plan with you at the union office. At the end you show your QR to accept it.'}</p>
+      {!waiting && <Primary onClick={() => setQr(true)}>Show your QR</Primary>}
+    </Sheet>
+  );
+}
+
+export default function CropPlanFlow({ forLand, self = false } = {}) {
+  // A member's plan made by the leader (26 Oct): the member's name on every card, no settings button.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const Sheet = useMemo(() => (forLand ? function MemberSheet(p) { return <BaseSheet {...p} noSettings />; } : BaseSheet), [!!forLand]);
   const s = useNilaSigner();
   const qc = useQueryClient();
-  const titles = useLandTitles(s?.evmAddress);
+  const titles = useLandTitles(forLand ? undefined : s?.evmAddress);
   // A title on Stellar only (the demo writes new titles there, 21 Oct): used when she has none on Polygon.
-  const stellarTitles = useStellarTitles(s);
-  const onPolygon = (titles.data || []).length > 0;
-  const stellarTitle = !onPolygon ? stellarTitles.data?.[0] : undefined;
-  const landId = onPolygon ? titles.data[0] : stellarTitle?.title_id;
+  const stellarTitles = useStellarTitles(forLand ? null : s);
+  const onPolygon = !forLand && (titles.data || []).length > 0;
+  const stellarTitle = forLand ? { title_id: forLand.landId, record_hash: forLand.recordHash } : !onPolygon ? stellarTitles.data?.[0] : undefined;
+  const landId = forLand ? forLand.landId : onPolygon ? titles.data[0] : stellarTitle?.title_id;
   const current = useCropPlan(landId);
   // Extend, not update (25 Oct): the approved plan and its extensions, shown as one once active.
   const chainQ = useCropChain(landId);
   const extend = useExtendPlan(landId);
   const catalogue = useCropCatalogue();
-  const field = useFieldRecord(landId, s?.evmAddress, stellarTitle ? stellarTitle.record_hash || '' : undefined);
+  const field = useFieldRecord(landId, forLand ? forLand.evm : s?.evmAddress, stellarTitle ? stellarTitle.record_hash || '' : undefined);
   const record = field.data?.record;
   const submit = useSubmitIntake(landId);
   const accept = useAcceptPlan(landId);
+  const sessionUntil = useSessionUntil(forLand?.account);
+  const [scanToAccept, setScanToAccept] = useState(false);
   const mint = useMintCropShares();
+  const approve = useApprovePlan();
+  // Assist mode (26 Oct): the leader made the plan, so the member's scan at CP11 is the whole consent: accept, approve
+  // and make the crop shares in one go (no separate L12).
+  const [making, setMaking] = useState(false);
+  const makeMine = async () => {
+    setError(undefined);
+    try {
+      if (plan.status !== 'accepted') await accept.mutateAsync(plan);
+      await approve.mutateAsync({ planId: plan.id, decision: 'approve' });
+      setMaking(true);
+      await mint.run(plan.id);
+      qc.invalidateQueries({ queryKey: qkPlan.plan(landId) });
+      qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });
+    } catch (e) { setError(e.message); }
+  };
+  // The member's scan is the acceptance (26 Oct): no CP11 conditions step in assist mode.
+  const toTerms = () => {
+    if (!forLand) { setStep('terms'); return; }
+    if (sessionUntil > Date.now() / 1000 + 10) makeMine(); else setScanToAccept(true);
+  };
+  const when = useRef(new Date());
   const revise = useRevisePlan();
   const discard = useDiscardPlan(landId);
   const renew = async () => {
     setError();
     try { await discard.mutateAsync(current.data.id); setCrops(new Set()); setRole(); setCows(); setMonths([]); setFarmCash(''); setJobId(); setStep(null); } catch (e) { setError(e.message); }
   };
-  const [changeNote, setChangeNote] = useState('');
   // An approved plan whose crop shares are already on her wallet opens on "made", not on "Make".
   const approvedId = current.data?.approval?.decision === 'approve' ? current.data.id : undefined;
   const checkMinted = mint.check;
   const checkedFor = useRef();
   useEffect(() => {   // per approved plan: check now, then every 15 s until her crop shares are made (the union mints them)
-    if (!approvedId) return undefined;
+    if (!approvedId || making) return undefined;
     if (checkedFor.current !== approvedId) { checkedFor.current = approvedId; checkMinted(approvedId); }
     if (mint.status === 'done' || mint.status === 'partial') return undefined;
     const t = setInterval(() => checkMinted(approvedId), 15_000);
     return () => clearInterval(t);
-  }, [approvedId, checkMinted, mint.status]);
+  }, [approvedId, checkMinted, mint.status, making]);
   const [step, setStep] = useState(null);
   const [crops, setCrops] = useState(new Set());
   const [role, setRole] = useState();
@@ -196,6 +263,7 @@ export default function CropPlanFlow() {
   const [removing, setRemoving] = useState(null);   // the area asked to remove (CP10 confirm)
   const [afterMake, setAfterMake] = useState('why');
   const [jobId, setJobId] = useState();
+  const [pending, setPending] = useState({});   // crops picked, not sent yet (CP10, 28 Oct)
   const [madeId, setMadeId] = useState();   // the plan the last job made: CP9 waits until the latest plan is that one
   const [error, setError] = useState();
   const [read, setRead] = useState(false);
@@ -213,7 +281,7 @@ export default function CropPlanFlow() {
   useEffect(() => { if (approved) setSeason(currentSeason(plan.plan.seasons || [])); }, [planId, approved]); // eslint-disable-line react-hooks/exhaustive-deps
   // Her land's name comes from the land title's metadata (not the record), "Land <id>" only when it has none.
   const titleName = useTitleName(landId, onPolygon, stellarTitle);
-  const name = titleName || (landId != null ? `Land ${landId}` : 'Nila');
+  const name = (forLand && forLand.label) || titleName || (landId != null ? `Land ${landId}` : 'Nila');
   const zoneOrder = useMemo(() => areasOf(record).map((z) => z.zone_id), [record]);
   const areaNo = useCallback((zone) => (zoneOrder.indexOf(zone) + 1) || zone, [zoneOrder]);
   // The map is the list (CP10): each area's chip shows what grows there in the season shown, or just "Area n".
@@ -222,10 +290,16 @@ export default function CropPlanFlow() {
     if (!ss?.length) return {};
     const i = Math.min(season, ss.length - 1);
     const rows = rowsInSeason(ss, i);
+    // Crops picked and not sent yet (28 Oct): the area shows the picked crop, in its colour.
+    const slotNow = ss[i].slot;
+    const pickedHere = (z) => pending[z]?.[slotNow] && (catalogue.data?.crops || []).find((c) => c.key === pending[z][slotNow]);
     // A merged row (same crop on several areas, 21 Oct): its harvest on the first area's chip, "with Area n" on the others.
-    const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, { text: r.name,
+    const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, pickedHere(z) ? { text: pickedHere(z).name, sub: 'changed',
+      colour: pickedHere(z).colour, acc: false } : { text: r.name,
       sub: r.off_catalogue ? 'not in the crop list' : z !== zonesOf(r)[0] ? `with Area ${areaNo(zonesOf(r)[0])}` : fmtKg(r.kg),
       colour: r.colour, acc: checked.has(z) }]));
+    // An area with no crop that season but a pick for it.
+    for (const z of Object.keys(pending)) if (!out[z] && pickedHere(z)) out[z] = { text: pickedHere(z).name, sub: 'changed', colour: pickedHere(z).colour };
     // A soil cover in this season (no bare soil in the dry months, 21 Oct), where no crop is on the area then.
     const slot = ss[i].slot;
     for (const c of plan.plan.soil_cover || []) {
@@ -236,7 +310,7 @@ export default function CropPlanFlow() {
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
     return out;
-  }, [plan, season, checked, areaNo]);
+  }, [plan, season, checked, areaNo, pending, catalogue.data]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
@@ -256,27 +330,110 @@ export default function CropPlanFlow() {
 
   // While her titles load (the Stellar list also waits for her signer), CP1's pending sheet — never "No land title"
   // before both chains have answered.
-  const titlesKnown = !titles.isLoading && (onPolygon || stellarTitles.isFetched);
+  // No title yet (28 Oct): the satellite map on the union's land behind the card, never an empty screen.
+  const planApi = usePlanClient();
+  const unionMembers = useUnionMembers(self && !record ? planApi : null);
+  const noLandMap = <AreaMap record={null} center={unionCentre(unionMembers.data)} />;
+  // Her field points already with the union (28 Oct): the title is minted from that border job (L2a–L4), never by
+  // registering again.
+  const myJob = useMyBorderJob();
+  const openJob = myJob.data && myJob.data.status !== 'failed' && myJob.data.status !== 'minted' ? myJob.data : null;
+  const titlesKnown = !!forLand || (!titles.isLoading && (onPolygon || stellarTitles.isFetched));
   // Plain loading (titles, plan, record not fetched yet) is S1 (executive decision 21 Oct); CP1's pending card is only
   // for a record that is really not there yet.
+  if (making) {
+    const seq = { busy: 'pending', done: 'success', failed: 'failed', partial: 'failed' }[mint.status] || 'pending';
+    if (seq !== 'success') when.current = new Date();
+    const tx = { status: seq, label: 'Making the crop shares', when: when.current,
+      rows: [['Crop shares', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Member', forLand?.label || `Land ${landId}`]],
+      reason: (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
+    return <TxScreens tx={tx} network="Polygon" onClose={() => { window.location.hash = '#/members'; }} onRetry={() => mint.run(plan.id)} />;
+  }
+  if (scanToAccept) {
+    return (
+      <StartHelp member={forLand.account} label={forLand.label} onBack={() => setScanToAccept(false)}
+        onStarted={async () => { setScanToAccept(false); await makeMine(); }} />
+    );
+  }
+  // The Privy login failed (busy, 429): no Stellar wallet, so her titles cannot be read; say so instead of S1's
+  // "Loading is slow" until PrivyRoot's next try (1–5 minutes).
+  if (!titlesKnown && s?.error && !s?.ready) {
+    return (
+      <Sheet map={noLandMap} landName="Connecting your wallet">
+        <p style={muted}>Your wallet did not connect: the login service is busy. Nila tries again by itself in a few minutes; keep the app open.</p>
+      </Sheet>
+    );
+  }
   if (!titlesKnown || current.isLoading) return <Loading />;
   if (titles.data && !titles.data.length && !stellarTitle) {
-    return <Sheet map={map} landName={name} title="No land title yet"><p style={muted}>Your crop plan starts when your land title is ready.</p></Sheet>;
+    const refresh = () => { titles.refetch(); stellarTitles.refetch(); };
+    const busy = titles.isFetching || stellarTitles.isFetching;
+    // Assist mode (28 Oct): the member mints nothing; the leader takes the field points and mints the land title.
+    const helped = !self && assisted();
+    return (
+      <Sheet map={noLandMap} landName="No land title yet" actions={(
+        <RoundButton label="Refresh" onClick={busy ? undefined : refresh}>
+          <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
+          <span style={{ display: 'flex', animation: busy ? 'nila-spin 900ms linear infinite' : 'none' }}><RefreshIcon color={C.text} /></span>
+        </RoundButton>
+      )}>
+        <p style={muted}>{openJob
+          ? (self ? 'Your field points are with the union. Check the borders and mint your land title.' : 'Your field points are with the union. Your leader mints your land title.')
+          : helped ? 'Your leader takes the field points at your farm and mints your land title. Your crop plan starts when it is ready.'
+            : 'Your crop plan starts when your land title is ready.'}</p>
+        {(titles.isError || stellarTitles.isError) && <p style={{ ...muted, color: C.coral }}>Your land title could not be loaded.</p>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+          {openJob
+            ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>{openJob.status === 'ready' ? 'Check borders and mint' : 'See my fields'}</Primary>
+            : !helped && <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
+        </div>
+      </Sheet>
+    );
   }
+  // Assist mode (26 Oct): the member's phone makes no crop plan; the leader makes it with the member at the office, in a
+  // session from the member's help QR. Until the plan is approved the phone says so and shows the help QR.
+  if (!forLand && !self && assisted() && !approved) return <AssistPlan map={map} name={name} waiting={plan?.status === 'accepted'} />;
   const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');
   const back = (to) => () => setStep(to);
+  // Crops picked for an area in a season (28 Oct, replaces Change my plan's free text) wait in `pending` (zone → slot →
+  // crop key); Update crop plan sends them all as one new version, and the node re-plans around them (her change is
+  // followed unless a hard fact refuses it). Picking the crop the plan has drops the pick.
+  const changeCrop = (zone, slot, key) => setPending((p0) => {
+    const row = (plan?.plan?.seasons || []).find((x) => x.slot === slot)?.rows.find((r) => zonesOf(r).includes(zone));
+    const z = { ...(p0[zone] || {}) };
+    if (row?.crop === key) delete z[slot]; else z[slot] = key;
+    const next = { ...p0, [zone]: z };
+    if (!Object.keys(z).length) delete next[zone];
+    return next;
+  });
+  const updatePlan = async () => {
+    setError(undefined);
+    try {
+      const res = await revise.mutateAsync({ planId: plan.id, note: '', changes: pending });
+      setPending({}); setAfterMake('plan'); setJobId(res.job_id); setStep('making');
+    } catch (e) { setError(e.message); }
+  };
 
   if (at === 'record') {
     // CP1 / CP2 (boards CropPlanPending, CropPlanPending-n9mn-kewp). DESIGN GAPs: no "Main issues" (the
     // oracle detects none yet, design Q20), no "Add your trees and water sources" row (A5 not built).
     if (field.isLoading) return <Loading />;
+    // The leader with a member (forLand): the member's help QR is already scanned and a 5-minute session would run
+    // out long before the record (up to an hour), so an N-board says to try again later and closes itself (28 Oct).
+    if (!record && forLand) {
+      return (
+        <NoticeScreen title="The field record is not ready yet" onClose={forLand.onClose}
+          text="Nila is still building this member's field record from the satellite images. This can take up to an hour. Make the crop plan later; the member shows their QR again then."
+          rows={[['Member', forLand.label || name], ['Land title', String(forLand.landId)]]} />
+      );
+    }
     if (!record) return <Pending map={map} name={name} error={field.error} />;
     const sum = summarize(record);
     return (
-      <Sheet map={map} landName={name} title="Your field record">
+      <Sheet map={map} landName={name} title={forLand ? 'Field record' : 'Your field record'}>
         {sum.from && <p style={{ ...muted, textAlign: 'center', margin: 0 }}>{sum.from} to {sum.to}</p>}
         <p style={{ ...muted, textAlign: 'center' }}>{sum.cultivations} cultivations on {sum.areas} areas</p>
-        <Primary onClick={() => setStep('intro')}>Make my crop plan</Primary>
+        <Primary onClick={() => setStep('intro')}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
       </Sheet>
     );
   }
@@ -371,8 +528,9 @@ export default function CropPlanFlow() {
   }
   if (at === 'making') {
     return (
-      <Sheet map={map} landName={name} title="Making your crop plan">
-        <Making jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
+      // No farm name over the wait (26 Oct): the card's header says whose plan is made (a leader for a member: the name).
+      <Sheet map={map} title={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : 'Making your crop plan'} noSettings>
+        <Making label={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : undefined} jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
           onError={(e) => { setError(e); setStep('farmcash'); }} />
       </Sheet>
     );
@@ -415,24 +573,25 @@ export default function CropPlanFlow() {
         {area ? (
           <AreaCard plan={plan} zone={area} name={`Area ${areaNo(area)}`} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
             accepted={checked.has(area)} total={zones.length} done={checked.size} readOnly={readOnly}
-            nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => pickArea(next)} onAll={() => setStep('terms')}
+            nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => pickArea(next)} onAll={toTerms} acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined}
             onBack={() => pickArea(null)}
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
-            onCrop={(r) => { setChangeNote(`Area ${areaNo(area)}, ${SEASON[r.slot]}: instead of ${r.name}, `); setStep('change'); }}
+            crops={catalogue.data?.crops} changing={revise.isPending} onCrop={(r, key) => changeCrop(area, r.slot, key)}
+            picked={pending[area] || {}} onUpdate={updatePlan}
             onRemove={() => setRemoving(area)} />
         ) : (
-          <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={() => setStep('terms')} onChange={() => setStep('change')} readOnly={readOnly} />
+          <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={toTerms} readOnly={readOnly}
+            crops={catalogue.data?.crops} changing={revise.isPending} onCrop={changeCrop} pending={pending} onUpdate={updatePlan}
+            acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined} />
         )}
+        {error && <p style={{ color: C.coral }}>{error}</p>}
         {removing && (() => {
-          // CP10 remove-area confirm (21 Oct): the node removes it by code (no Claude call); the same line goes into her
-          // Change my plan draft, so Claude hears of it with her next change.
+          // CP10 remove-area confirm (21 Oct): the node removes it by code (no Claude call).
           const label = `Area ${areaNo(removing)}`;
           const remove = async () => {
             setError(undefined);
             try {
               const r = await revise.mutateAsync({ planId: plan.id, note: '', changes: {}, remove: [removing] });
-              const line = `Remove ${label} from my plan: it is a left-over bit.`;
-              setChangeNote((n) => (n.includes(line) ? n : `${n.trim() ? `${n.trim()}\n` : ''}${line}`));
               setChecked((c) => { const n = new Set(c); n.delete(removing); return n; });
               setRemoving(null); pickArea(null); setAfterMake('plan'); setJobId(r.job_id); setStep('making');
             } catch (e) { setError(e.message); setRemoving(null); }
@@ -448,27 +607,13 @@ export default function CropPlanFlow() {
       </Sheet>
     );
   }
-  if (at === 'change' && plan) {
-    // DESIGN GAP: the board changes crops on the map (P4c); here she says what to change (/revise, her
-    // suggestion is followed unless a hard fact refuses it, LOAN_RULES §5).
-    const go = async () => {
-      setError(undefined);
-      try { const r = await revise.mutateAsync({ planId: plan.id, note: changeNote }); setJobId(r.job_id); setStep('making'); } catch (e) { setError(e.message); }
-    };
-    return (
-      <Sheet map={map} landName={name} title="Change my plan" onBack={back('plan')}>
-        <p style={muted}>Tell us what to change and why. Your plan follows you unless a fact rules it out, and it says why.</p>
-        <textarea aria-label="What to change" value={changeNote} maxLength={1000} onChange={(e) => setChangeNote(e.target.value)}
-          style={{ width: '100%', minHeight: 100, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: 12, boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 14 }} />
-        {error && <p style={{ color: C.coral }}>{error}</p>}
-        <Primary disabled={!changeNote.trim() || revise.isPending} onClick={go}>Make my new plan</Primary>
-      </Sheet>
-    );
-  }
   if (at === 'terms' && plan) {
     // CP11 (board CropPlanTerms): the money chart, the two conditions, read-and-accept. The card scrolls inside.
     const go = async () => {
       setError(undefined);
+      // The leader accepts for the member only in the member's session: scan the help QR first (26 Oct).
+      if (forLand && !(sessionUntil > Date.now() / 1000 + 10)) { setScanToAccept(true); return; }
+      if (forLand) { await makeMine(); return; }
       try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
     };
     return (
@@ -486,20 +631,11 @@ export default function CropPlanFlow() {
         )}
         <Notice title="Estimates, not guarantees">Yield, sales and cash flow are estimated from your field record and can contain errors. Vouchers and cash depend on available funds: Nila and your union cannot guarantee them.</Notice>
         <Notice kind="info" title="Amounts can be changed">You can change your cash and voucher amounts together with your union leaders.</Notice>
-        <button type="button" role="checkbox" aria-checked={read} aria-label="I have read these conditions" onClick={() => setRead((r) => !r)} style={{
-          display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 52, padding: '12px 16px', boxSizing: 'border-box', border: 0, borderRadius: 12,
-          background: C.raised, fontFamily: 'inherit', fontSize: 14, lineHeight: 1.5, color: C.text, cursor: 'pointer', marginTop: 14,
-          boxShadow: read ? `inset 0 0 0 2px ${C.accent}` : 'none' }}>
-          <span style={{ flex: 1, minWidth: 0, textAlign: 'left', fontWeight: 700 }}>I have read these conditions</span>
-          <span aria-hidden="true" style={{ width: 20, height: 20, flexShrink: 0, boxSizing: 'border-box', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: read ? C.accent : 'transparent', border: `2px solid ${read ? C.accent : C.muted}` }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={read ? C.ink : 'transparent'} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-          </span>
-        </button>
+        <CheckRow on={read} onClick={() => setRead((r) => !r)} style={{ marginTop: 14 }}>I have read these conditions</CheckRow>
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <button type="button" disabled={!read || accept.isPending} aria-disabled={!read} onClick={go} style={{
           width: '100%', height: 44, border: 0, borderRadius: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, padding: '0 24px', marginTop: 14,
-          color: read ? C.ink : C.muted, background: read ? C.accent : C.raised, cursor: read ? 'pointer' : 'not-allowed' }}>I accept</button>
+          color: read ? C.ink : C.muted, background: read ? C.accent : C.raised, cursor: read ? 'pointer' : 'not-allowed' }}>{forLand ? 'Scan the member\'s QR and accept' : 'I accept'}</button>
       </Sheet>
     );
   }
@@ -523,7 +659,7 @@ export default function CropPlanFlow() {
         onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
       return (
         <Sheet map={map} landName={name} bar={bar}>
-          <ActivePlan plan={plan} areaNo={areaNo} season={shown} shares={myShares.data} assist={assisted()}
+          <ActivePlan plan={plan} areaNo={areaNo} season={shown} shares={myShares.data} assist={!self && assisted()}
             canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
             onExtend={async () => {
               setError(undefined);
@@ -551,6 +687,26 @@ export default function CropPlanFlow() {
         <Bouncing top={24} bottom={24} label="Your union is making your crop shares" />
         <p style={{ ...muted, textAlign: 'center' }}>Your crop shares are being made by your union.{mint.total ? ` ${mint.done || 0} of ${mint.total} made.` : ''}</p>
         <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 14 }}>See my plan</button>
+      </Sheet>
+    );
+  }
+  if (forLand) {
+    // A member's plan accepted before the one-go rule (26 Oct): approve it and make the crop shares here.
+    return (
+      <Sheet map={map} landName={name} title="Plan accepted">
+        <p style={muted}>{forLand.label || 'The member'} accepted the plan. Approve it to make the crop shares.</p>
+        {error && <p style={{ color: C.coral }}>{error}</p>}
+        <Primary disabled={!plan?.id} onClick={makeMine}>Approve and make the crop shares</Primary>
+      </Sheet>
+    );
+  }
+  if (self) {
+    // Leader app (26 Oct): the leader's own plan waits for a leader; this leader may approve it now (L12, 23 Oct).
+    return (
+      <Sheet map={map} landName={name} title="Plan accepted">
+        <p style={muted}>You accepted your plan. A leader of the union approves it next.</p>
+        <Primary disabled={!plan?.id} onClick={() => { window.location.hash = `#/approvals/${plan.id}`; }}>Check and approve</Primary>
+        <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 10, fontSize: 14, fontFamily: 'inherit' }}>See the plan</button>
       </Sheet>
     );
   }

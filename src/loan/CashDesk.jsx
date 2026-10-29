@@ -24,6 +24,8 @@ import CashBoard from '../leader/CashBoard';
 import CameraView from '../shell/CameraView';
 import { addressFromQr, useUnionMembers } from '../leader/unionMembers';
 import { Secondary } from './AssetParts';
+import { owedOf } from './owed';
+import StartHelp from './StartHelp';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
@@ -43,8 +45,7 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
       readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null),
     ]);
     if (loan) {
-      const owed = BigInt(loan.principal) - BigInt(loan.principal_paid) + BigInt(loan.interest_accrued) - BigInt(loan.interest_paid)
-        + (vb ? BigInt(vb.senior_out) + (vb.dues || []).reduce((t, d) => t + BigInt(d.amount), 0n) : 0n);
+      const owed = owedOf(loan, vb);
       if (amt > owed) change = Number((amt - owed) / NIN);
     }
   }
@@ -60,7 +61,7 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
   });
   return true;
 }
-const isG = (a) => /^G[A-Z2-7]{55}$/.test(a || '');
+const isG = (a) => /^[GC][A-Z2-7]{55}$/.test(a || '');
 
 function Amount({ value, set, max = 10000 }) {
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
@@ -111,11 +112,8 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
       return per.flat().filter(Boolean);
     },
   });
-  const owed = (l) => {
-    const cash = BigInt(l.loan.principal) - BigInt(l.loan.principal_paid) + BigInt(l.loan.interest_accrued) - BigInt(l.loan.interest_paid);
-    const voucher = l.vb ? BigInt(l.vb.senior_out) + (l.vb.dues || []).reduce((t, d) => t + BigInt(d.amount), 0n) : 0n;
-    return Math.ceil(Number(cash + voucher) / Number(NIN));
-  };
+  // Cash and the voucher's value, with interest, and the treasury's 5% of handed-back hours (26 Oct).
+  const owed = (l) => Math.ceil(Number(owedOf(l.loan, l.vb)) / Number(NIN));
   // From her G2 with one open loan, or her crop share QR (24 Oct): that loan is picked for her.
   useEffect(() => {
     if (!fixed || token || !loans.data) return;
@@ -180,7 +178,7 @@ function ScanHer({ title, note, shareOnly, onFound, onBack }) {
   const [error, setError] = useState();
   const read = (text) => {
     const t = String(text || '').trim();
-    const share = /^nila:share:(\w+?)_(\w+):(G[A-Z2-7]{55})$/.exec(t);
+    const share = /^nila:share:(\w+?)_(\w+):([GC][A-Z2-7]{55})$/.exec(t);
     if (share) { onFound({ who: share[3], plan: share[1], token: share[2] }); return; }
     if (shareOnly) { setError('Scan the crop share QR (a Ready crop share in Assets).'); return; }
     const g = addressFromQr(t);
@@ -198,69 +196,15 @@ function ScanHer({ title, note, shareOnly, onFound, onBack }) {
 const FLAG_CLOSED = 4;
 const dayOf = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
-/** Tasks → Scan her QR (executive decision 24 Oct): one scanner; the QR says which kind, the chain picks the lane.
- *  Her address (wallet QR): a withdrawal ready (14 days passed) → pay it out (her wallet QR then carries her signature,
- *  NILA:W), else invest. Her crop share QR: an open loan on it → repay, no loan and its season started → use it (L11).
- *  A machine owner's signed nIN QR (NILA:N) → pay out. */
+/** Tasks → Scan her QR (executive decision 26 Oct: one QR at the office, every mode): the member's help QR starts the
+ *  session and opens the member's G2, where the leader invests, repays, uses a crop share or pays out. */
 function ScanAny({ onBack }) {
-  const { data: cfg } = useStellarConfig();
-  const [lane, setLane] = useState();
-  const [error, setError] = useState();
-  const [busy, setBusy] = useState(false);
-  const read = async (text) => {
-    const t = String(text || '').trim();
-    setError(undefined);
-    if (/^NILA:[WN]:/i.test(t) || /^nila:cash:/i.test(t)) { setLane({ kind: 'payout', text: t }); return; }
-    setBusy(true);
-    try {
-      const share = /^nila:share:(\w+?)_(\w+):(G[A-Z2-7]{55})$/.exec(t);
-      if (share) {
-        const hex = tokenHex(share[2]);
-        const ft = await readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(hex)]).catch(() => null);
-        if (!ft || ft.member !== share[3]) throw new Error('This crop share is not this member\'s in your union.');
-        const flags = Number(ft.loan?.flags ?? 0);
-        if (flags & FLAG_DRAWN) {
-          if (flags & FLAG_CLOSED) throw new Error('The loan on this crop share is repaid.');
-          setLane({ kind: 'repay', who: share[3], token: hex });
-        } else if (ft.lapsed || (Number(ft.final_date || 0) > 0 && Date.now() / 1000 > Number(ft.final_date))) {
-          // Its last draw date has passed (25 Oct): too late for this cycle.
-          throw new Error(`Too late for this cycle: the last day to use this crop share was ${dayOf(Number(ft.final_date))}.`);
-        } else if (Date.now() / 1000 < opensOf(ft)) {
-          // Its window opens a week before its sowing window (25 Oct, the crop calendar).
-          throw new Error(`Not open yet: this crop share can be used from ${dayOf(opensOf(ft))}.`);
-        } else {
-          window.location.replace(`#/loan/${share[1]}_${share[2]}`);
-        }
-        return;
-      }
-      const g = addressFromQr(t);
-      if (!g) throw new Error("This is not a member QR.");
-      const claim = await deskClaim(cfg, g);
-      setLane(claim.shares > 0n ? { kind: 'ready', who: g, inr: claim.inr } : { kind: 'invest', who: g });
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
-  };
-  const invest = (who) => setLane({ kind: 'invest', who });
-  if (lane?.kind === 'payout') return <PayOut onBack={onBack} initial={lane.text} onInvest={invest} />;
-  if (lane?.kind === 'invest') return <Scan purpose="invest" onBack={onBack} initialMember={lane.who} />;
-  if (lane?.kind === 'repay') return <Scan purpose="repay" onBack={onBack} initialMember={lane.who} initialToken={lane.token} />;
-  if (lane?.kind === 'ready') {
-    return (
-      <DeskCard title="Withdrawal ready" onBack={() => setLane(undefined)}>
-        <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>{inr(Math.floor(lane.inr))} to collect</p>
-        <p style={muted}>To pay it out, the member opens their wallet QR again: it carries their signature now. Hand over the cash, then scan it.</p>
-        <Primary onClick={() => setLane(undefined)}>Scan again</Primary>
-        <Secondary onClick={() => invest(lane.who)}>Invest instead</Secondary>
-      </DeskCard>
-    );
-  }
-  return (
-    <DeskCard title="Scan a member QR" onBack={onBack}>
-      <CameraView mode="qr" onText={read} />
-      <p style={muted}>Wallet QR: invest, or a withdrawal once it is ready. Crop share QR: use it, or repay its loan.</p>
-      {busy && <p style={muted}>…</p>}
-      {error && <p style={{ color: C.coral }}>{error}</p>}
-    </DeskCard>
-  );
+  const api = usePlanClient();
+  const union = useUnionMembers(api);
+  return <StartHelp onBack={onBack} onStarted={(who) => {
+    const m = (union.data || []).find((x) => x.address === who);
+    window.location.replace(m ? `#/members/${m.route}` : '#/members');
+  }} />;
 }
 
 // An old #/cash/invest|withdraw/<her> link: her G2 does these in place now.
@@ -274,7 +218,7 @@ function ToMembersFrom({ member }) {
 // crop share QR first, then the count. From her G2 they come as #/cash/<action>/<her Stellar address>.
 const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw', share: 'share', scan: 'scan' };
 const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
-const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/(G[A-Z2-7]{55})/) || [])[1];
+const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/([GC][A-Z2-7]{55})/) || [])[1];
 
 export default function CashDesk({ initial }) {
   const [view, setView] = useState(OPEN[initial]);

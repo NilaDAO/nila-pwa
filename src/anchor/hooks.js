@@ -29,7 +29,8 @@ export function useSep10Token() {
   const { data: cfg } = useStellarConfig();
   const info = useAnchorInfo();
   return useCallback(async () => {
-    const me = s?.stellarAddress;
+    // SEP-10 signs with her key (G…). NOT BUILT (26 Oct): the anchor naming her smart account (SEP-45, or its own map).
+    const me = s?.senderAddress || s?.stellarAddress;
     const t = tokens.get(me);
     if (t && t.exp * 1000 > Date.now() + 60_000) return t.token;
     const i = info.data || (await info.refetch()).data;

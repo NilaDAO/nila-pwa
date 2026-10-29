@@ -28,6 +28,7 @@ import { BRING } from '../anchor/sep';
 import { AssetScreen, Card, CardTitle, KV, MarkCircle, QrCircle, Secondary, Stepper, useOnline, when } from './AssetParts';
 import { readDeskCode, signDeskCode } from './deskCode';
 import { deskClaim } from './desk';
+import HelpQr from './HelpQr';
 
 const NIN = 10_000_000n;
 const SETTLE_S = 600;                // a code never seen on chain after 10 min was never sent
@@ -157,7 +158,7 @@ export default function CashOut({ onBack, kycOnly }) {
 
   const collect = async (amt) => {
     setError(undefined);
-    try { setDesk({ ...(await signDeskCode({ cfg, signer: me, signHash: s.signHash, kind: 'N', amount: BigInt(amt) * NIN })), amount: amt }); } catch (e) { setError(e.message); }
+    setDesk({ amount: amt });   // the help QR (26 Oct): the leader pays it out in the session
   };
   const reclaim = (e) => {
     patch(e.hash, { reclaimed: true });    // taken back, not paid: never shown as #paid once it is gone
@@ -178,7 +179,8 @@ export default function CashOut({ onBack, kycOnly }) {
       </AssetScreen>
     );
   }
-  if (desk) return <DeskQr title={`${inr(desk.amount)} in cash`} rows={[['You get', `₹${fmt(desk.amount)} in cash`], ['nIN', `${fmt(desk.amount)} burned when paid`]]} qr={desk.qr} until={desk.until} onBack={() => setDesk(undefined)} />;
+  // One QR at the office (executive decision 26 Oct): the help QR; the leader pays out the nIN in the session.
+  if (desk) return <HelpQr onBack={() => setDesk(undefined)} note={`Go to the union office to cash out ${fmt(desk.amount)} nIN. Your leader scans this, hands you ₹${fmt(desk.amount)} and records it (the nIN are burned).`} />;
   if (shown) return <Code e={shown} img={img} ready={tx.ready} reclaim={reclaim} onDone={() => done(shown)} onBack={() => done(shown)} />;
 
   const a = max < 1 ? 0 : Math.max(1, Math.min(amount, max));   // nothing to cash out: 0, and the button is off

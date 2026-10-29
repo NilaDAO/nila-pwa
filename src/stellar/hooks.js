@@ -1,10 +1,12 @@
 // Stellar hooks for the PWA (P2). Loaded only inside the Privy chunk, so the live build carries none of it.
 // Names and keys follow the design (data/DataHooksRead.md, DataHooksWrite.md): useAccount, useSetupAccount.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Asset, TransactionBuilder } from '@stellar/stellar-sdk';
+import { Address, Asset, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
+import { signerVal } from './account';
 import { ethers } from 'ethers';
 import { buildAccount, buildNinTrustline, getAccount, getStellarConfig, linkMessage, submitAccount, submitNinTrustline } from './api';
 import { qk } from './keys';
+import { invokeContract, isDeployed, readContract, sv } from './soroban';
 
 export function useStellarConfig() {
   return useQuery({ queryKey: qk.stellar.config(), queryFn: getStellarConfig, staleTime: Infinity, retry: 2 });
@@ -17,15 +19,25 @@ const NIN_DECIMALS = 7;
  * Fresh 15 s. Not persisted yet (the app has no query persister). No USDC for members: they hold no
  * USDC trustline (R9, R11), and a balance of an unknown issuer is ignored.
  */
-export function useAccount(address) {
+export function useAccount(address, smart) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: qk.stellar.account(address),
+    queryKey: [...qk.stellar.account(address), smart || ''],
     enabled: !!cfg && !!address,
     staleTime: 15_000,
     queryFn: async () => {
       const a = await getAccount(cfg.horizon_url, address);
       if (!a) return { exists: false };
+      // Smart accounts (26 Oct): her nIN is held by her account contract, a balance on the nIN asset contract (no
+      // trustline); `deployed` tells whether the account exists yet.
+      if (smart && smart !== address) {
+        const deployed = await isDeployed(cfg, smart);
+        const [bal, auth] = deployed ? await Promise.all([
+          readContract(cfg, 'nin', 'balance', [sv.address(smart)]).catch(() => 0),
+          readContract(cfg, 'nin', 'authorized', [sv.address(smart)]).catch(() => false)]) : [0, false];
+        return { exists: true, deployed, sponsor: a.sponsor || null,
+          nin: { balance: Number(BigInt(bal ?? 0)) / 10 ** NIN_DECIMALS, authorized: !!auth }, decimals: NIN_DECIMALS };
+      }
       const [code, issuer] = cfg.nin_asset.split(':');
       const nin = a.balances.find((b) => b.asset_code === code && b.asset_issuer === issuer);
       return {
@@ -87,7 +99,15 @@ async function addNinTrustline(cfg, me, signHash) {
  * wallet pair, the node's sponsor co-signs and submits. Safe to repeat: an existing account is a no-op, unless it lacks
  * this network's nIN trustline, which is then added (sponsored).
  */
-export function useSetupAccount({ stellarAddress, evmWallet, signHash }) {
+/** Her smart account (26 Oct): made once, by her own Privy key's plain account, through the union's factory (anyone
+ *  may create an account; its address follows from her key). */
+async function createSmartAccount(cfg, sender, account, signHash) {
+  if (!account || account === sender || await isDeployed(cfg, account)) return;
+  await invokeContract({ cfg, source: sender, signHash, contractName: 'account_factory', fn: 'create',
+    args: [signerVal(StrKey.decodeEd25519PublicKey(sender))] });
+}
+
+export function useSetupAccount({ stellarAddress, account, evmWallet, signHash }) {
   const qc = useQueryClient();
   const { data: cfg } = useStellarConfig();
   return useMutation({
@@ -95,7 +115,11 @@ export function useSetupAccount({ stellarAddress, evmWallet, signHash }) {
     mutationFn: async () => {
       if (!cfg || !stellarAddress || !evmWallet) throw new Error('not ready');
       const existing = await getAccount(cfg.horizon_url, stellarAddress);
-      if (existing) return hasNin(existing, cfg) ? { existed: true } : addNinTrustline(cfg, stellarAddress, signHash);
+      if (existing) {
+        const out = hasNin(existing, cfg) ? { existed: true } : await addNinTrustline(cfg, stellarAddress, signHash);
+        await createSmartAccount(cfg, stellarAddress, account, signHash);
+        return out;
+      }
       const polygon = ethers.getAddress(evmWallet.address);
       const polygonSig = await evmWallet.signMessage(linkMessage(cfg.network, stellarAddress, polygon));
       let hash;
@@ -122,7 +146,10 @@ export function useSetupAccount({ stellarAddress, evmWallet, signHash }) {
       // The node does not wait: poll Horizon until the account is there (about one ledger).
       for (let i = 0; i < 30; i++) {
         await sleep(2000);
-        if (await getAccount(cfg.horizon_url, stellarAddress)) return { hash };
+        if (await getAccount(cfg.horizon_url, stellarAddress)) {
+          await createSmartAccount(cfg, stellarAddress, account, signHash);
+          return { hash };
+        }
       }
       throw new Error(`account not on Stellar 60 s after ${hash}`);
     },

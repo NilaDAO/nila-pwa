@@ -18,8 +18,8 @@ const SEASON = { S1: 'Season 1', S2: 'Season 2', S3: 'Season 3' };
 // The machine hours of a season by kind ("Tractor 6 h · Weeder 2 h"), or "None".
 function voucherKinds(rows) {
   const h = {};
-  rows.forEach((r) => Object.entries(r.finance.machines || {}).forEach(([m, v]) => { h[m] = (h[m] || 0) + (v.hours || 0); }));
-  const parts = Object.entries(h).filter(([, n]) => n > 0).map(([m, n]) => `${m[0].toUpperCase()}${m.slice(1).replace(/_/g, ' ')} ${Math.round(n * 10) / 10} h`);
+  rows.forEach((r) => Object.entries(r.finance.machines || {}).forEach(([m, v]) => { h[m] = (h[m] || 0) + (v.acres ?? v.hours ?? 0); }));
+  const parts = Object.entries(h).filter(([, n]) => n > 0).map(([m, n]) => `${m[0].toUpperCase()}${m.slice(1).replace(/_/g, ' ')} ${Math.round(n * 100) / 100} ac`);
   return parts.length ? parts.join(' · ') : 'None';
 }
 

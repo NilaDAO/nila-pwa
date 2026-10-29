@@ -15,7 +15,7 @@ import Segmented from '../shell/Segmented';
 import { Primary, inr } from '../plan/ui';
 import { Stepper } from '../loan/AssetParts';
 import { usePlanClient } from '../plan/hooks';
-import { useLeaderMap } from './unionMap';
+import { unionCentre, useLeaderMap } from './unionMap';
 import AreaMap from '../plan/AreaMap';
 import { useUnionMembers, useUnionShares } from './unionMembers';
 import { harvestGroups, unitOf, useCropPrices, useSetPrice } from './harvestData';
@@ -46,7 +46,7 @@ function groupMap(group, members) {
     });
   }
   const chip = `${group?.shares?.length || 0} crop share${group?.shares?.length === 1 ? '' : 's'}`;
-  return <AreaMap record={zones.length ? { zones } : null} labels={labels} fitSide={90} fitBottom={Math.round(window.innerHeight * 0.5)} chip={chip}
+  return <AreaMap record={zones.length ? { zones } : null} center={zones.length ? undefined : unionCentre(members)} labels={labels} fitSide={90} fitBottom={Math.round(window.innerHeight * 0.5)} chip={chip}
     onSelect={(z) => { const t = z && String(z).split('#')[0]; const x = group?.shares?.find((y) => y.token === t); if (x?.route) window.location.hash = `#/members/${x.route}`; }} />;
 }
 

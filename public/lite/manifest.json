@@ -2,14 +2,26 @@
   "name": "Nila lite",
   "short_name": "Nila",
   "description": "Nila for keypad phones: your crop shares, loans and cash-outs.",
-  "start_url": "/lite/",
+  "start_url": "/lite/index.html?app=1",
   "scope": "/lite/",
   "display": "standalone",
   "background_color": "#121212",
   "theme_color": "#000000",
   "icons": [
-    { "src": "/lite/icon56.png", "sizes": "56x56", "type": "image/png" },
-    { "src": "/lite/icon112.png", "sizes": "112x112", "type": "image/png" },
-    { "src": "/nila192.png", "sizes": "192x192", "type": "image/png" }
+    {
+      "src": "/lite/icon56.png",
+      "sizes": "56x56",
+      "type": "image/png"
+    },
+    {
+      "src": "/lite/icon112.png",
+      "sizes": "112x112",
+      "type": "image/png"
+    },
+    {
+      "src": "/nila192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
   ]
 }

@@ -67,6 +67,7 @@ export function useMintCropShares() {
   const nonceRef = useRef(null); // our own counter: ethers caches getTransactionCount for 250 ms
 
   const send = useCallback(async (ft, fn, args) => {   // signed by this app's own Polygon key (the leader's)
+    if (process.env.REACT_APP_DEMO_STATIC === '1') { await sleep(800); return `0x${'0'.repeat(64)}`; }   // static demo: nothing sent
     const me = s.evmAddress;
     const data = ft.interface.encodeFunctionData(fn, args);
     const [chainNonce, fees, gas] = await Promise.all([

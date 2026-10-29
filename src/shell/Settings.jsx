@@ -16,8 +16,8 @@ import { HOLD_REASONS, typeName, useMyMachine, useRates } from '../machine/hooks
 import { inr } from '../plan/ui';
 import { AccountCard, Card, CardButton, ConfirmCard, NotificationsCard, ResetCard, Row, SwitchRow, Text, UnionCard, useUnionInfo } from './SettingsParts';
 import { C, FONT } from './tokens';
+import { assisted } from '../loan/MyShares';
 
-const assisted = () => { try { return localStorage.getItem('nila.mode') === 'assist'; } catch { return false; } };
 
 /** "How you use Nila": the tab bar follows nila.mode, so the app opens again with the new mode. */
 function ModeCard() {
@@ -79,7 +79,7 @@ function MachineCard() {
       <Row k="Price an hour" v={rate ? inr(rate.total) : '—'} />
       <Row k="At the job" v={atJob != null ? inr(atJob) : '—'} />
       <Row k="After the farmer repays" v={atJob != null ? inr(rate.total - atJob) : '—'} />
-      <Row k="Hours a week" v={`${m.hours_per_week} · you drive`} />
+      <Row k="Acres a week" v={`${m.acres_per_week} · you drive`} />
       <Text style={{ padding: '4px 0 8px 0' }}>
         {driverShare ? `Diesel and ${driverShare} are paid at the job` : 'Diesel is paid at the job'}; the rest after the farmer repays. You drive it yourself, keep it working and pay the repairs.
       </Text>

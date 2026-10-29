@@ -18,6 +18,7 @@ import { recordFields, shapeToFields } from '../plan/titleFields';
 import { useNilaSigner } from '../wallet/signer';
 import { opensOf } from '../loan/MyShares';
 import { keptGet, keptPut } from '../shell/kept';
+import { accountOfQr } from '../stellar/session';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -38,6 +39,13 @@ const outline = (record) => record?.meta?.geometry?.out
 // Her land as on her title (24 Oct, the leader's Assets map): the title's fields from its metadata (the node's `shape`),
 // else the record's fields or areas.
 const addFields = (m, tf) => { if (tf?.fields?.length) m.fields.push(...tf.fields); };
+// A title whose field record is not built yet (28 Oct): its place on the map is the title's own outline (else its
+// fields), as the Assets map draws it, so the Members map and G2 show the land too.
+const addTitlePlace = (m, t, tf) => {
+  if (!tf) return;
+  const shapes = tf.outline ? [tf.outline] : tf.fields.map((f) => f.geometry);
+  shapes.forEach((geometry, i) => m.places.push({ id: `land-${t.title_id}${i ? `-${i}` : ''}`, geometry }));
+};
 
 // The list as it was last seen, kept on the phone per account and union (22 Oct): G1 shows it at once on the next open
 // and refreshes it in the background. Only the list fields are kept (no field records), so it stays small.
@@ -84,7 +92,8 @@ export function useUnionMembers(api) {
   const acct = s?.stellarAddress || '';
   return useQuery({
     queryKey: ['stellar', 'unionMembers', cfg?.union], enabled: !!api && !!s?.signHash && !!cfg?.contracts?.fund_core,
-    staleTime: 2 * 60_000,
+    // Asked again every minute (26 Oct): only the rows changed since (cheap), so a removed or new member shows soon.
+    staleTime: 2 * 60_000, refetchInterval: 60_000,
     placeholderData: () => (cfg?.union && acct ? readKept(acct, cfg.union) : undefined),
     queryFn: async () => {
       // The node's compact members list (map-centred lane, 23 Oct): one row per member, with its crop shares (25 Oct);
@@ -102,6 +111,7 @@ export function useUnionMembers(api) {
             const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
             if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
             addFields(m, shapeToFields(t.shape) || recordFields(record));
+            if (!record) addTitlePlace(m, t, shapeToFields(t.shape));
           }));
           return m;
         })));
@@ -110,7 +120,7 @@ export function useUnionMembers(api) {
       }
       const by = new Map();
       const get = (key) => {
-        if (!by.has(key)) by.set(key, { key, address: key.startsWith('G') ? key : '', name: '', phone: '', lands: new Set(), loans: [], places: [], fields: [], note: '' });
+        if (!by.has(key)) by.set(key, { key, address: /^[GC]/.test(key) ? key : '', name: '', phone: '', lands: new Set(), loans: [], places: [], fields: [], note: '' });
         return by.get(key);
       };
       const border = borderClient(s);
@@ -120,6 +130,7 @@ export function useUnionMembers(api) {
         border.jobs().then((r) => r || []).catch(() => []),
         api.unionLoans().then((r) => r.loans || []).catch(() => []),
       ]);
+      const keyOf = Object.fromEntries(keypad.filter((k) => k.device && k.account).map((k) => [`keypad:${k.id}`, k.account]));
       const hexes = loanList.map((l) => String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'));
       const [, , fts] = await Promise.all([
         // Titles: the membership, and each property on the map from its field record.
@@ -128,10 +139,12 @@ export function useUnionMembers(api) {
           const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
           if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
           addFields(m, shapeToFields(t.shape) || recordFields(record));
+          if (!record) addTitlePlace(m, t, shapeToFields(t.shape));
         })),
         Promise.all(jobs.map(async (j) => {
           if (!j.member) return;
-          const m = get(j.member); m.name = m.name || j.farm || j.name || ''; m.job = j.id;
+          // A keypad member is one row under the phone's account once it is set up (26 Oct), not a "Joining" twin.
+          const m = get(keyOf[j.member] || j.member); m.name = m.name || j.farm || j.name || ''; m.job = j.id;
           if (!m.lands.size) m.note = `Fields sent · ${j.fields} field${j.fields === 1 ? '' : 's'} · borders ${j.status === 'minting' ? 'done, title on its way' : 'to check'}`;
           const full = await border.job(j.id).catch(() => null);
           const pts = (full?.job || full)?.fields || [];
@@ -142,7 +155,7 @@ export function useUnionMembers(api) {
         hexes.length ? readFoodTokens(cfg, cfg.union, hexes).catch(() => ({})) : {},
       ]);
       for (const k of keypad) {
-        const m = get(`keypad:${k.id}`); m.name = m.name || k.name || ''; m.phone = k.phone || '';
+        const m = get(k.device && k.account ? k.account : `keypad:${k.id}`); m.name = m.name || k.name || ''; m.phone = k.phone || '';
         if (!m.lands.size) m.note = k.device ? 'Keypad phone set up' : k.link?.opened ? 'Opened the app link' : 'App link sent';
       }
       // Loans: what is left and whether it is overdue, from the loan inside its crop share (one batched read).
@@ -226,4 +239,5 @@ export function useLoanDues(loans) {
 }
 
 /** Her wallet QR (A1a: a Stellar address, possibly as a stellar: / web+stellar: URI) → that address. */
-export const addressFromQr = (text) => (String(text || '').match(/G[A-Z2-7]{55}/) || [])[0] || '';
+// An address QR, a pasted address, or the member's help QR (26 Oct: the one QR at the office carries the account).
+export const addressFromQr = (text) => accountOfQr(text) || (String(text || '').match(/[GC][A-Z2-7]{55}/) || [])[0] || '';

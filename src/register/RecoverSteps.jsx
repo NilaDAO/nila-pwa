@@ -6,9 +6,9 @@
 // R5–R8 and R14 are always skipped. When her union is on the phone, R9 is not shown but its record is written again
 // (Init 'union', the leader checked on the Polygon RolesRegistry), so a leader opens the leader start. Then the app:
 // StellarGate decides member, leader or the move (M1 for a Polygon wallet).
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
-import { useIsLeader } from '../hooks/useLoadFunds.ts';
+import { checkLeader } from '../shell/leader';
 import { ModeStep, NotifyStep, UNIONS_ONE, UnionStep, readUnion, saveUnionRecord, unionByPolygon } from './Registration';
 import { useNilaSigner } from '../wallet/signer';
 import { useLandTitles } from '../plan/hooks';
@@ -23,11 +23,7 @@ const notifyAllowed = () => {
 
 export default function RecoverSteps({ evm, onDone }) {
   const { data: cfg } = useStellarConfig();
-  const { isLeader } = useIsLeader({ address: evm });
-  // isLeader answers undefined until its roles contract is loaded; the no-screen restore asks at once, so it reads the
-  // current function through a ref and asks again until there is an answer (else a leader was saved as a member).
-  const isLeaderRef = useRef(isLeader);
-  isLeaderRef.current = isLeader;
+  // The leader flag from shell/leader.js (it retries until the chain answers).
   const [stored] = useState(() => unionByPolygon(readUnion(evm)?.polygon));
   const [rep, setRep] = useState(stored?.rep);
   // Her union is known from her land title (24 Oct): the union minted it, so a title holder skips R9 and her union is
@@ -49,7 +45,7 @@ export default function RecoverSteps({ evm, onDone }) {
   useEffect(() => { const t = setTimeout(() => setStep((v) => v || 'union'), 8000); return () => clearTimeout(t); }, []);
 
   const after = (from) => {
-    const order = ['union', 'mode', 'notify'];
+    const order = ['union', 'notify'];   // no R13 (26 Oct): assist mode until K1 or the Settings toggle
     for (const s of order.slice(order.indexOf(from) + 1)) {
       if (s === 'mode' && !hasMode()) return setStep('mode');
       if (s === 'notify' && !notifyAllowed()) return setStep('notify');
@@ -61,13 +57,7 @@ export default function RecoverSteps({ evm, onDone }) {
   useEffect(() => {
     if (step !== 'restore') return;
     let live = true;
-    (async () => {
-      for (let i = 0; i < 16 && live; i++) {
-        const leader = await saveUnionRecord((u, a) => isLeaderRef.current(u, a), restoreUnion, evm);
-        if (leader !== undefined) break;
-        await new Promise((ok) => setTimeout(ok, 500));
-      }
-    })().finally(() => { if (live) { setRep(restoreUnion?.rep); after('union'); } });
+    saveUnionRecord(checkLeader, restoreUnion, evm).finally(() => { if (live) { setRep(restoreUnion?.rep); after('union'); } });
     return () => { live = false; };
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 

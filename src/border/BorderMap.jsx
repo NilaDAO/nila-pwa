@@ -24,13 +24,14 @@ export default function BorderMap(props) {
   const { ok } = useFieldMapLoaded();
   return ok ? <GoogleBorderMap {...props} /> : <LeafletBorderMap {...props} />;
 }
+BorderMap.ownMap = true;   // not the shell's land map: a Sheet draws it behind its card (plan/ui.jsx)
 
 // maxZoom 20: satellite imagery stops there in rural Tamil Nadu (zoom 22 tiles answer 404); no + / − buttons.
 const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, zoomControl: false, maxZoom: 20, gestureHandling: 'greedy', tilt: 0,
   clickableIcons: false, mapId: '8fa18e8fd7e4c318' };
 
 /** Google: the same drawing rules as below, on the satellite map. */
-function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360 }) {
+function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360, fitBottom, plots = [], plotOn, onPlot }) {
   const map = useRef(null);
   const drawn = useRef([]);
   const fitKey = useRef();
@@ -72,10 +73,26 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
         if (on && !shape) { focus.extend(p); hasFocus = true; }
       }
     });
+    // Neighbour plots (28 Oct): a thin dotted outline; the one picked in amber. A tap opens its choices.
+    plots.forEach((p) => {
+      const ring = p.geometry?.coordinates?.[0];
+      if (!ring?.length) return;
+      const path = ring.map(([lng, lat]) => ({ lat, lng }));
+      const on = p.id === plotOn;
+      const poly = new g.Polygon({ map: m, paths: path, clickable: !!onPlot, strokeOpacity: on ? 1 : 0, strokeColor: C.accent, strokeWeight: 2,
+        fillColor: on ? C.accent : '#ffffff', fillOpacity: on ? 0.2 : 0.04 });
+      if (onPlot) poly.addListener('click', () => onPlot(p.id));
+      drawn.current.push(poly);
+      if (!on) {
+        drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false,
+          icons: [{ icon: { path: g.SymbolPath.CIRCLE, fillOpacity: 1, fillColor: '#ffffff', strokeOpacity: 0, scale: 1.5 }, offset: '0', repeat: '8px' }] }));
+      }
+    });
     const key = `${active || 'all'}:${fields.length}`;
     if (fitKey.current !== key && !bounds.isEmpty()) {
       fitKey.current = key;
-      m.fitBounds(hasFocus ? focus : bounds, 32);
+      // Full height behind a card (26 Oct): the fields sit in the part above the card.
+      m.fitBounds(hasFocus ? focus : bounds, fitBottom ? { top: 72, left: 32, right: 32, bottom: fitBottom } : 32);
     }
   };
   useEffect(draw); // eslint-disable-line react-hooks/exhaustive-deps
@@ -90,7 +107,7 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
 }
 
 /** Leaflet + Esri: only when Google Maps cannot load. */
-function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360 }) {
+function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360, plots = [], plotOn, onPlot }) {
   const ready = useLeaflet();
   const box = useRef();
   const map = useRef();
@@ -136,6 +153,13 @@ function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawi
         if (on && !shape) focus.push(L.latLngBounds([p.lat, p.lng], [p.lat, p.lng]).pad(0.002));
       }
     });
+    plots.forEach((p) => {
+      const on = p.id === plotOn;
+      const shp = L.geoJSON(p.geometry, { style: on ? { color: C.accent, weight: 2, fillColor: C.accent, fillOpacity: 0.2 }
+        : { color: '#ffffff', weight: 1.5, dashArray: '1 6', fillOpacity: 0.04, fillColor: '#ffffff' } });
+      if (onPlot) shp.on('click', () => onPlot(p.id));
+      shp.addTo(g);
+    });
     // Fit once per view (all fields, or the field being checked); later redraws keep her pan and zoom.
     const key = `${active || 'all'}:${fields.length}`;
     if (fitKey.current !== key && g.getLayers().length) {
@@ -143,7 +167,7 @@ function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawi
       const b = focus.length ? focus.reduce((a, x) => a.extend(x), L.latLngBounds(focus[0].getSouthWest(), focus[0].getNorthEast())) : g.getBounds();
       m.fitBounds(b, { padding: [32, 32], maxZoom: 18 });
     }
-  }, [ready, fields, plan, active, shapeOverride, drawing, onField]);
+  }, [ready, fields, plan, active, shapeOverride, drawing, onField, plots, plotOn, onPlot]);
   return <div ref={box} style={{ height, width: '100%', background: '#25361f' }} aria-label="Satellite map with field shapes" />;
 }
 

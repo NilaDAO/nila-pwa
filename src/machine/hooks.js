@@ -1,12 +1,14 @@
 // P6 machinery vouchers (executive decision, 17 Oct; LOAN_RULES §5 "Machinery vouchers (P6)"), read from the
 // Stellar machinery contract (the design's Polygon voucher contract is replaced by C5; query keys moved
-// to `stellar`). Vouchers in tractor hours (executive decision 23 Oct): held on-chain in hundredths (units); an hour
-// of a machine uses its rate ÷ the tractor's (type 1) rate, rounded up to a unit, as machinery.claim counts it.
+// to `stellar`). Vouchers in tractor ACRES (executive decision 27 Oct; were tractor hours): held on-chain in hundredths
+// (units); an acre of a machine's work uses its price an acre ÷ the tractor's (type 1), rounded up to a unit, as
+// machinery.claim counts it. The union may price a machine for one crop (trailer × sugarcane): rate_for_crop.
 // The contract has no list views: machine types are found by reading rate(union, 1..16), machines by
 // reading machine(1..) until the first empty id, her vouchers through fund_core.loans_of.
 import { useQuery } from '@tanstack/react-query';
+import { useMyShares } from '../loan/MyShares';
 import { useStellarConfig } from '../stellar/hooks';
-import { readContract, sv } from '../stellar/soroban';
+import { readContract, sv, tokenHex } from '../stellar/soroban';
 
 const NIN = 10_000_000;
 export const num = (v) => Number(BigInt(v ?? 0)) / NIN;
@@ -25,20 +27,39 @@ export const PARTS = [['diesel', 'Diesel'], ['driver', 'Driver'], ['maintenance'
   ['insurance', 'Insurance'], ['depreciation', 'Depreciation'], ['margin', 'Margin']];
 export const HOLD_REASONS = { 1: 'In repair', 2: 'Driver not available', 3: 'Other' };
 const MAX_TYPES = 16;
-/** The machine type whose hour is the voucher's unit. */
+/** The machine type whose acre is the voucher's unit. */
 export const TRACTOR = 1;
-/** Units (centi tractor hours) as tractor hours with one decimal. */
-export const th = (u) => (Math.round(Number(u || 0) / 10) / 10).toFixed(1);
-/** Hours worked as the contract takes them: hundredths of an hour (23 Oct). */
-export const centi = (hours) => Math.round(Number(hours || 0) * 100);
-/** Units that `hours` of a machine at `rate` (₹ an hour) use against a tractor at `tractor` (as the contract:
- *  ceil(hundredths worked × rate ÷ tractor rate)). */
-export const unitsOf = (hours, rate, tractor) => (tractor > 0 ? Math.ceil(Math.round((centi(hours) * rate) / tractor * 1e6) / 1e6) : 0);
-/** Hours of a machine at `rate` that `units` pay for, down to a tenth of an hour. */
-export const hoursFor = (units, rate, tractor) => (rate > 0 ? Math.floor(Math.round((units * tractor) / (10 * rate) * 1e6) / 1e6) / 10 : 0);
+/** Units (centi tractor acres) as tractor acres with one decimal. */
+export const ta = (u) => (Math.round(Number(u || 0) / 10) / 10).toFixed(1);
+/** Acres worked as the contract takes them: hundredths of an acre (27 Oct). */
+export const centi = (acres) => Math.round(Number(acres || 0) * 100);
+/** Units that `acres` of a machine at `rate` (₹ an acre) use against a tractor at `tractor` (as the contract:
+ *  ceil(hundredths worked × price ÷ tractor price)). */
+export const unitsOf = (acres, rate, tractor) => (tractor > 0 ? Math.ceil(Math.round((centi(acres) * rate) / tractor * 1e6) / 1e6) : 0);
+/** Acres of a machine at `rate` that `units` pay for, down to a hundredth of an acre. */
+export const acresFor = (units, rate, tractor) => (rate > 0 ? Math.floor(Math.round((units * tractor) / rate * 1e6) / 1e6) / 100 : 0);
+/** Acres with up to two decimals ("1.07 ac"). */
+export const acresText = (a) => `${Math.round(Number(a || 0) * 100) / 100} ac`;
+
+/** A crop share's crop family and area as machinery reads them from its token id (FoodToken packTokenId: crop code
+ *  at bit 204, area in m² at bit 148): { family, centiAcres } (rounded up, as the contract's area cap). */
+export function shareOfToken(token) {
+  const t = BigInt(`0x${String(token).replace(/^0x/, '').padStart(64, '0')}`);
+  const bits = (shift, width) => Number((t >> BigInt(shift)) & ((1n << BigInt(width)) - 1n));
+  const m2 = bits(148, 24);
+  return { family: Math.floor(bits(204, 20) / 1000), centiAcres: Math.ceil((m2 * 1_000_000) / 40_468_564) };
+}
+
+/** The price an acre of `type` on a crop family: the union's crop price if set, else the type's (machinery.rate_for_crop). */
+export async function rateForCrop(cfg, type, family) {
+  const r = await readContract(cfg, 'machinery', 'rate_for_crop', [sv.address(cfg.union), sv.u32(type), sv.u32(family)]).catch(() => null);
+  if (!r) return null;
+  const parts = Object.fromEntries(PARTS.map(([k]) => [k, num(r[k])]));
+  return { parts, total: Object.values(parts).reduce((x, y) => x + y, 0) };
+}
 const MAX_MACHINES = 500;
 
-/** The union's rate table: [{type, name, parts (₹ an hour), total}] (machinery.rate, set by the union account). */
+/** The union's price table: [{type, name, parts (₹ an acre), total}] (machinery.rate, set by the union account). */
 export function useRates() {
   const { data: cfg } = useStellarConfig();
   return useQuery({
@@ -57,23 +78,26 @@ export function useRates() {
   });
 }
 
-// Her voucher code (A8a, 23 Oct): { entry, token, hours, type, used, until }, the one signed code on this phone.
+// Her voucher code (A8a, 23 Oct): { entry, token, units, type, used, until }, the one signed code on this phone.
 const CODE_KEY = 'nila.voucher.signed';
 export const loadVoucherCode = () => { try { return JSON.parse(localStorage.getItem(CODE_KEY)) || null; } catch { return null; } };
 export const saveVoucherCode = (c) => { try { if (c) localStorage.setItem(CODE_KEY, JSON.stringify(c)); else localStorage.removeItem(CODE_KEY); } catch { /* private */ } };
 
-/** Her vouchers: one per loan with hours (fund_core.loans_of → machinery.voucher), in units. Left = hours − used. */
+/** Her vouchers: one per crop share with machine work (machinery.voucher), in units. Left = units − used. They stay hers
+ *  after the loan is repaid (26 Oct), and a repaid loan leaves fund_core.loans_of: so her drawn crop shares (her plans'
+ *  mint lists, `tokens`) are read too, not only her open loans. */
 export function useVouchers(member) {
   const { data: cfg } = useStellarConfig();
+  const tokens = (useMyShares().data || []).filter((x) => x.drawn).map((x) => tokenHex(x.token_id));
   return useQuery({
-    queryKey: ['stellar', 'vouchers', cfg?.union, member], enabled: !!cfg?.contracts?.machinery && !!member, staleTime: 30_000,
+    queryKey: ['stellar', 'vouchers', cfg?.union, member, tokens.join(',')], enabled: !!cfg?.contracts?.machinery && !!member, staleTime: 30_000,
     queryFn: async () => {
-      const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(member)]);
-      const rows = await Promise.all((ids || []).map(async (id) => {
-        const token = hexOf(id);
+      const open = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(member)]);
+      const all = [...new Set([...(open || []).map(hexOf), ...tokens.map((t) => String(t).replace(/^0x/, '').toLowerCase().padStart(64, '0'))])];
+      const rows = await Promise.all(all.map(async (token) => {
         const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null);
-        if (!v || v.void) return null;
-        return { token, hours: Number(v.hours), used: Number(v.used), left: Number(v.hours) - Number(v.used) };
+        if (!v || v.void || v.member !== member) return null;
+        return { token, units: Number(v.units), used: Number(v.used), left: Number(v.units) - Number(v.used) };
       }));
       return rows.filter(Boolean);
     },
@@ -93,7 +117,7 @@ export function useMachines({ poll = false, on = true } = {}) {
       for (let id = 1; id <= MAX_MACHINES; id++) {
         const m = await readContract(cfg, 'machinery', 'machine', [sv.u64(id)]);
         if (!m) break;
-        if (m.union === cfg.union) out.push({ id, ...m, machine_type: Number(m.machine_type), hours_per_week: Number(m.hours_per_week), hold_reason: Number(m.hold_reason) });
+        if (m.union === cfg.union) out.push({ id, ...m, machine_type: Number(m.machine_type), acres_per_week: Number(m.acres_per_week), hold_reason: Number(m.hold_reason) });
       }
       return out;
     },
@@ -101,7 +125,7 @@ export function useMachines({ poll = false, on = true } = {}) {
 }
 
 /** Her machines as owner (A13): `pick` (machine id) or the first not confirmed yet, else the newest; with this
- *  week's hours and `all` her machines. */
+ *  week's acres and `all` her machines. */
 export function useMyMachine(owner, { pick, poll } = {}) {
   const machines = useMachines({ poll });
   const { data: cfg } = useStellarConfig();
@@ -109,35 +133,30 @@ export function useMyMachine(owner, { pick, poll } = {}) {
   const mine = all.find((m) => m.id === pick) || all.find((m) => !m.confirmed) || all[all.length - 1];
   const week = useQuery({
     queryKey: ['stellar', 'machine', mine?.id, 'week'], enabled: !!mine && !!cfg, staleTime: 30_000,
-    queryFn: () => readContract(cfg, 'machinery', 'hours_this_week', [sv.u64(mine.id)]),
+    queryFn: () => readContract(cfg, 'machinery', 'acres_this_week', [sv.u64(mine.id)]),
   });
   return { ...machines, data: machines.data && (mine ? { ...mine, usedThisWeek: Number(week.data ?? 0) / 100, all } : null) };
 }
 
-// The owner's jobs, kept on her phone from her claim results (no indexer yet, 17 Oct): the pending part
-// is read again from each loan's voucher_book.
+// The owner's jobs, kept on her phone from her claim results (no indexer yet, 17 Oct). Since 26 Oct an owner is paid in
+// full at the claim, so nothing is pending; `ready` is only a balance left from before (owner_balance).
 const JOBS = 'nila.machine.jobs';
 export const loadJobs = () => { try { return JSON.parse(localStorage.getItem(JOBS)) || []; } catch { return []; } };
 export const saveJob = (j) => { try { localStorage.setItem(JOBS, JSON.stringify([...loadJobs(), j])); } catch { /* private */ } };
 
-/** A13 "Paid to you": received at the job (her claims), pending per job, ready to collect (owner_balance). */
+/** A13 "Paid to you": paid at each claim, and any balance left to collect from before 26 Oct (owner_balance). */
 export function useOwnerDues(owner) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
     queryKey: ['stellar', 'dues', cfg?.union, owner], enabled: !!cfg && !!owner, staleTime: 30_000,
     queryFn: async () => {
       const jobs = loadJobs().filter((j) => j.owner === owner);
-      const books = {};
-      for (const t of new Set(jobs.map((j) => j.token))) {
-        books[t] = await readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(t)]).catch(() => null);
-      }
-      const pendingOf = (t) => num((books[t]?.dues || []).filter((d) => d.owner === owner).reduce((a, d) => a + BigInt(d.amount), 0n));
-      const ready = num(await readContract(cfg, 'fund_core', 'owner_balance', [sv.address(cfg.union), sv.address(owner)]));
+      const ready = num(await readContract(cfg, 'fund_core', 'owner_balance', [sv.address(cfg.union), sv.address(owner)]).catch(() => 0n));
       return {
         received: jobs.reduce((a, j) => a + j.prepay, 0),
-        pending: [...new Set(jobs.map((j) => j.token))].reduce((a, t) => a + pendingOf(t), 0),
+        pending: 0,
         ready,
-        jobs: jobs.map((j) => ({ ...j, pendingNow: pendingOf(j.token) })),
+        jobs: jobs.map((j) => ({ ...j, pendingNow: 0 })),
       };
     },
   });
