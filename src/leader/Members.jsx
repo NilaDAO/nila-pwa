@@ -15,6 +15,8 @@ import CameraView from '../shell/CameraView';
 import ListRow from '../shell/ListRow';
 import { inr } from '../plan/ui';
 import { addressFromQr, useUnionMembers } from './unionMembers';
+import { scannedNewMember } from './AddMember';
+import { memberOfQr } from '../stellar/session';
 import { useLeaderMap } from './unionMap';
 
 const PAGE = 10;
@@ -55,8 +57,13 @@ export default function Members({ go }) {
     const share = /^nila:share:(\w+):/.exec(String(text || '').trim());
     if (share) { go(`loan/${share[1]}`); return; }
     const g = addressFromQr(text);
-    const m = g && membersAll.find((x) => x.address === g);
-    if (m) pick(m.key); else setMsg('Not a member of your union.');
+    const m = g && all.find((x) => x.address === g);
+    if (m) { pick(m.key); return; }
+    // Someone not in the list yet (29 Oct): an assist-mode smartphone's QR carries the Polygon address, so the
+    // leader goes on to Add a member with it (name, phone, then the field points).
+    const n = memberOfQr(text);
+    if (n) { scannedNewMember(n); go('tasks/member/qr'); return; }
+    setMsg('Not a member of your union.');
   };
   const head = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

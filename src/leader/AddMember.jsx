@@ -147,8 +147,8 @@ export default function AddMember({ id, go }) {
       setTries((x) => x + 1);
       return;
     }
-    try { sessionStorage.setItem(SCANNED, JSON.stringify(m)); } catch { /* kept for this screen only */ }
-    go('tasks/member/qr/points');
+    scannedNewMember(m);
+    go('tasks/member/qr');
   };
   const submit = () => send.mutate({ name: name.trim(), phone: phoneValue(phone), phoneType: type, unionName: union.name, leaderName: union.rep },
     // A keypad member (26 Oct): all in one go at the farm — the link is sent and the leader goes straight on to the
@@ -157,7 +157,7 @@ export default function AddMember({ id, go }) {
   return (
     <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: 'Add a member', onBack: () => go('tasks'), onSettings: () => go('settings') }}>
-      {id ? <Sent id={id} go={go} /> : (
+      {id === 'qr' ? <NewSmartphone go={go} /> : id ? <Sent id={id} go={go} /> : (
         <>
           <Card title="The member's phone">
             <div role="radiogroup" aria-label="The member's phone" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -211,17 +211,45 @@ export function KeypadPoints({ id, go }) {
 }
 
 const SCANNED = 'nila.l14.scanned';
+const readScanned = () => { try { return JSON.parse(sessionStorage.getItem(SCANNED) || 'null'); } catch { return null; } };
+const writeScanned = (m) => { try { sessionStorage.setItem(SCANNED, JSON.stringify(m)); } catch { /* this tab only */ } };
+
+/** A smartphone member's help QR was scanned (L14 or the Members scan, 29 Oct): { account, polygon }. */
+export const scannedNewMember = (m) => writeScanned({ account: m.account, polygon: m.polygon });
+
+/** tasks/member/qr (29 Oct): the scanned member's name and phone number, typed by the leader (nothing else knows
+ *  them: no SMS, no node link), then the field points. */
+function NewSmartphone({ go }) {
+  const [m] = useState(readScanned);
+  const [name, setName] = useState(m?.name || '');
+  const [phone, setPhone] = useState(m?.phone || '+91');
+  useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
+  if (!m) return null;
+  const ok = name.trim() && phoneOk(phone);
+  const next = () => { writeScanned({ ...m, name: name.trim(), phone: phoneValue(phone) }); go('tasks/member/qr/points'); };
+  return (
+    <Card title="New member">
+      <label style={label} htmlFor="l14-name">Name</label>
+      <input id="l14-name" style={field} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+      <label style={label} htmlFor="l14-phone">Phone number</label>
+      <PhoneField id="l14-phone" value={phone} onChange={setPhone} />
+      <Row k={<b style={{ color: C.text }}>Account</b>} v={`${m.account.slice(0, 4)}…${m.account.slice(-4)}`} />
+      <Notice kind="info">Do this at the farm: next you take the field points on your phone.</Notice>
+      <Primary disabled={!ok} onClick={next}>Take field points</Primary>
+    </Card>
+  );
+}
 
 /** tasks/member/qr/points (29 Oct): a smartphone member scanned on L14; the leader takes the field points on the
  *  leader's phone (R5–R7) and they start the member's border job for the QR's account and Polygon address. */
 export function SmartphonePoints({ go }) {
   const api = useBorderClient();
-  const [m] = useState(() => { try { return JSON.parse(sessionStorage.getItem(SCANNED) || 'null'); } catch { return null; } });
+  const [m] = useState(readScanned);
   const key = m ? `smart-${m.account}` : 'smart-none';
   useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
   const send = useMutation({ mutationFn: () => {
     const q = readPoints(key);
-    return api.leaderPoints({ account: m.account, polygon: m.polygon, farm: (q.farm || '').trim(),
+    return api.leaderPoints({ account: m.account, polygon: m.polygon, name: m.name, phone: m.phone, farm: (q.farm || '').trim(),
       points: q.points.map(({ lat, lng, acc }) => ({ lat, lng, acc })) });
   } });
   const done = () => send.mutate(undefined, { onSuccess: (job) => {
@@ -234,13 +262,13 @@ export function SmartphonePoints({ go }) {
   if (send.error) {
     return (
       <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}
-        header={{ title: 'Field points', onBack: () => go('tasks/member') }}>
+        header={{ title: 'Field points', onBack: () => go('tasks/member/qr') }}>
         <Text style={{ color: C.coral }}>{send.error.message}</Text>
         <Primary onClick={done}>Try again</Primary>
       </MapCard>
     );
   }
-  return <PointsStep evm={key} forName="the member" onDone={done} onBack={() => go('tasks/member')} />;
+  return <PointsStep evm={key} forName={m.name || 'the member'} onDone={done} onBack={() => go('tasks/member/qr')} />;
 }
 
 /** The leader's own land title (28 Oct, executive decision): one flow on the leader's phone, as for a keypad member —
