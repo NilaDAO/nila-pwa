@@ -25,6 +25,26 @@ const FIELDS = [
   ['bank_branch_number', 'IFSC', 'text'],
 ];
 
+// The anchor's own field rules (nila-anchor k1.py), checked before sending (29 Oct): the Anchor Platform passes the
+// anchor's 400 on without its reason, so a wrong field only showed as "K1: 400".
+const PAN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const IFSC = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+function fieldError(k, raw) {
+  const v = String(raw || '').trim();
+  if (!v) return 'Fill this in.';
+  if (k === 'first_name' && (v.length < 2 || v.length > 100)) return 'The name as on your PAN card.';
+  if (k === 'tax_id' && !PAN.test(v.toUpperCase().replace(/\s/g, ''))) return 'A PAN looks like ABCDE1234F.';
+  if (k === 'bank_account_number' && !/^[0-9]{9,18}$/.test(v.replace(/\s/g, ''))) return 'A bank account number has 9 to 18 digits.';
+  if (k === 'bank_branch_number' && !IFSC.test(v.toUpperCase().replace(/\s/g, ''))) return 'An IFSC looks like SBIN0001234.';
+  if (k === 'birth_date') {
+    const d = new Date(`${v}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return 'Pick your date of birth.';
+    const t = new Date(); const age = t.getFullYear() - d.getFullYear() - ((t.getMonth() < d.getMonth() || (t.getMonth() === d.getMonth() && t.getDate() < d.getDate())) ? 1 : 0);
+    if (age < 18) return 'You must be 18 or older.';
+  }
+  return null;
+}
+
 async function selfieBlob(file) {
   const img = await createImageBitmap(file);
   const k = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
@@ -72,7 +92,11 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
   const status = k1.data?.status;
   const needs = status === 'NEEDS_INFO' && Object.values(k1.data.provided_fields || {}).some((f) => f.error);
   const asked = needs ? Object.keys(k1.data.fields || {}) : [...FIELDS.map(([k]) => k), 'proof_of_liveness'];
+  const [fieldErrors, setFieldErrors] = useState({});
   const send = async () => {
+    const errs = Object.fromEntries(FIELDS.filter(([k]) => asked.includes(k)).map(([k]) => [k, fieldError(k, vals[k])]).filter(([, e]) => e));
+    setFieldErrors(errs);
+    if (Object.keys(errs).length) { setError('Check the fields marked above.'); return; }
     setBusy(true); setError(undefined);
     try {
       const t = await getToken();
@@ -136,7 +160,8 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
             <span style={{ ...muted, display: 'block', marginBottom: 4 }}>{label}</span>
             <input aria-label={label} type={type === 'date' ? 'date' : 'text'} inputMode={type === 'numeric' ? 'numeric' : undefined}
               autoCapitalize={k === 'first_name' ? 'words' : 'characters'} value={vals[k] || ''}
-              onChange={(e) => setVals((v) => ({ ...v, [k]: e.target.value }))} style={input} />
+              onChange={(e) => { setVals((v) => ({ ...v, [k]: e.target.value })); setFieldErrors((f) => ({ ...f, [k]: undefined })); }} style={input} />
+            {fieldErrors[k] && <span style={{ color: C.coral, fontSize: 14, display: 'block', marginTop: 4 }}>{fieldErrors[k]}</span>}
           </label>
         ))}
         {asked.includes('proof_of_liveness') && <h2 style={{ fontSize: 14, marginTop: 8 }}>Selfie</h2>}

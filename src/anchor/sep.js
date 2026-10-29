@@ -13,7 +13,9 @@ const b64 = (u8) => btoa(String.fromCharCode(...u8));
 async function json(r, what) {
   const body = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const err = new Error(body.error || body.detail || `${what}: ${r.status}`);
+    // The Anchor Platform passes the anchor's 400 on without its reason (29 Oct): say what it means.
+    const plain = r.status === 400 && /^K1/.test(what) ? 'The anchor did not accept these details. Check each field and the selfie.' : `${what}: ${r.status}`;
+    const err = new Error(body.error || body.detail || plain);
     err.status = r.status;
     throw err;
   }
