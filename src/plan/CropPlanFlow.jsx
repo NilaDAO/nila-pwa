@@ -220,12 +220,16 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   // and make the crop shares in one go (no separate L12). The leader's own plan likewise (29 Oct): the leader's "I accept"
   // approves it and makes the crop shares. A self-mode member's own plan still waits for a leader (L12).
   const [making, setMaking] = useState(false);
+  const [makeError, setMakeError] = useState();
+  // The N sequence shows from the scan (or "I accept") on, through accept and approve to the last crop share (29 Oct:
+  // it showed only from the mint, so the plan flashed back in between).
   const makeMine = async () => {
-    setError(undefined);
+    setError(undefined); setMakeError(undefined); setMaking(true);
     try {
       if (plan.status !== 'accepted') await accept.mutateAsync(plan);
       await approve.mutateAsync({ planId: plan.id, decision: 'approve' });
-      setMaking(true);
+    } catch (e) { setMakeError(e.message); return; }
+    try {
       await mint.run(plan.id);
       qc.invalidateQueries({ queryKey: qkPlan.plan(landId) });
       qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });
@@ -343,12 +347,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   // Plain loading (titles, plan, record not fetched yet) is S1 (executive decision 21 Oct); CP1's pending card is only
   // for a record that is really not there yet.
   if (making) {
-    const seq = { busy: 'pending', done: 'success', failed: 'failed', partial: 'failed' }[mint.status] || 'pending';
+    const seq = makeError ? 'failed' : { busy: 'pending', done: 'success', failed: 'failed', partial: 'failed' }[mint.status] || 'pending';
     if (seq !== 'success') when.current = new Date();
     const tx = { status: seq, label: 'Making the crop shares', when: when.current,
       rows: [['Crop shares', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Member', forLand?.label || `Land ${landId}`]],
-      reason: (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
-    return <TxScreens tx={tx} network="Polygon" onClose={() => { window.location.hash = '#/members'; }} onRetry={() => mint.run(plan.id)} />;
+      reason: makeError || (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
+    return <TxScreens tx={tx} network="Polygon" onClose={() => { window.location.hash = '#/members'; }}
+      onRetry={() => (makeError ? makeMine() : mint.run(plan.id))} />;
   }
   if (scanToAccept) {
     return (
