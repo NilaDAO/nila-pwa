@@ -6,7 +6,7 @@ import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { makeSessionQr } from '../stellar/session';
-import { muted, Primary } from '../plan/ui';
+import { muted } from '../plan/ui';
 import MapCard from '../shell/MapCard';
 import { C, FONT } from '../shell/tokens';
 import { QrCircle } from './AssetParts';
@@ -42,12 +42,11 @@ export default function HelpQr({ note, onBack } = {}) {
   return (
     <MapCard header={{ title: 'Your QR', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}
       style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {!over && !error && <QrCircle img={qr ? img : undefined} alt="Your QR" />}
+      {over || error ? <QrCircle onRefresh={make} /> : <QrCircle img={qr ? img : undefined} alt="Your QR" />}
       <p style={{ ...muted, textAlign: 'center', margin: 0 }}>
-        {over ? 'This QR has expired.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop share, start or collect a withdrawal.'}
+        {over ? 'This QR has expired. Tap the circle for a new one.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop share, start or collect a withdrawal.'}
       </p>
       {error && <p style={{ color: C.coral, textAlign: 'center', margin: 0 }}>{error}</p>}
-      {(over || error) && <Primary onClick={make}>Make a new QR</Primary>}
     </MapCard>
   );
 }

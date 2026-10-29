@@ -6,6 +6,7 @@ import { useContext, useEffect, useState } from 'react';
 import { SheetLowCtx } from '../shell/stageCtx';
 import { C, FONT, R, SHADOW, TAB_BAR_HEIGHT } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
+import { RefreshIcon } from '../shell/icons';
 
 const settings = () => { window.location.hash = '#/settings'; };
 
@@ -104,8 +105,17 @@ export function NoteBar({ children }) {
 }
 
 /** A QR in the white circle (A1a, A7b). */
-export function QrCircle({ img, alt }) {
+export function QrCircle({ img, alt, onRefresh }) {
   // While the QR is being made (26 Oct): the same white circle, pulsing, with the app's skeleton timing — no jump.
+  // An expired QR (29 Oct): the same white circle with a refresh icon inside; a tap makes a new QR.
+  if (onRefresh) {
+    return (
+      <button type="button" onClick={onRefresh} aria-label="Make a new QR" style={{ width: '100%', aspectRatio: '1', borderRadius: R.round,
+        background: '#FFFFFF', border: 0, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+        <RefreshIcon size={64} color="#121212" />
+      </button>
+    );
+  }
   return (
     <div aria-busy={!img} style={{ width: '100%', aspectRatio: '1', borderRadius: R.round, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
       animation: img ? 'none' : 'nila-skel 1.4s ease-in-out infinite' }}>
