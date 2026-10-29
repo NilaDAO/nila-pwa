@@ -13,7 +13,7 @@ import PhoneField, { phoneOk, phoneValue } from './PhoneField';
 import { createItem } from '../utils/db';
 import { signUp, initAuth, respondToAuthChallenge, getUserAttributes } from '../utils/cognito_helpers';
 import { announceAuthChange } from '../wallet/session';
-import { DEMO_COGNITO } from '../utils/demoMode';
+import { DEMO_COGNITO, DEMO_STATIC } from '../utils/demoMode';
 import RegFrame, { Bouncing, btnDisabled, btnPrimary, btnSecondary, cardTitle } from './RegFrame';
 
 const NEW_CHAIN = 'stellar';
@@ -47,7 +47,13 @@ async function storeLocal({ phone, salt, attrs, refresh, access }) {
     try {
       sessionStorage.setItem(`nila.demoNew.${a}`, fresh ? '1' : '0');
       // A demo wallet handed out fresh starts registration from R5: drop what an earlier run left on this phone.
-      if (fresh) { localStorage.removeItem(`nila.reg.${a}`); localStorage.removeItem(`nila.border.points.${a}`); localStorage.removeItem(`nila.privyNew.${a}`); }
+      if (fresh) {
+        ['nila.reg.', 'nila.reg.onboarded.', 'nila.reg.sent.', 'nila.border.points.', 'nila.privyNew.', 'nila.union.']
+          .forEach((k) => localStorage.removeItem(`${k}${a}`));
+        // The hosted static demo (28 Oct): the fresh number registers again on every login, in self mode, so the
+        // whole start (R9, R10, the Crop plan, Mint a new land title, R5–R8) can be shown each time.
+        if (DEMO_STATIC) localStorage.setItem('nila.mode', 'self');
+      }
     } catch { /* not kept */ }
   }
 }
