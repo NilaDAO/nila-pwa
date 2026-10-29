@@ -217,7 +217,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const mint = useMintCropShares();
   const approve = useApprovePlan();
   // Assist mode (26 Oct): the leader made the plan, so the member's scan at CP11 is the whole consent: accept, approve
-  // and make the crop shares in one go (no separate L12).
+  // and make the crop shares in one go (no separate L12). The leader's own plan likewise (29 Oct): the leader's "I accept"
+  // approves it and makes the crop shares. A self-mode member's own plan still waits for a leader (L12).
   const [making, setMaking] = useState(false);
   const makeMine = async () => {
     setError(undefined);
@@ -613,7 +614,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       setError(undefined);
       // The leader accepts for the member only in the member's session: scan the help QR first (26 Oct).
       if (forLand && !(sessionUntil > Date.now() / 1000 + 10)) { setScanToAccept(true); return; }
-      if (forLand) { await makeMine(); return; }
+      if (forLand || self) { await makeMine(); return; }
       try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
     };
     return (
@@ -701,11 +702,12 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     );
   }
   if (self) {
-    // Leader app (26 Oct): the leader's own plan waits for a leader; this leader may approve it now (L12, 23 Oct).
+    // The leader's own plan accepted before the one-go rule (29 Oct): approve it and make the crop shares here.
     return (
       <Sheet map={map} landName={name} title="Plan accepted">
-        <p style={muted}>You accepted your plan. A leader of the union approves it next.</p>
-        <Primary disabled={!plan?.id} onClick={() => { window.location.hash = `#/approvals/${plan.id}`; }}>Check and approve</Primary>
+        <p style={muted}>You accepted your plan. Approve it to make your crop shares.</p>
+        {error && <p style={{ color: C.coral }}>{error}</p>}
+        <Primary disabled={!plan?.id} onClick={makeMine}>Approve and make the crop shares</Primary>
         <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 10, fontSize: 14, fontFamily: 'inherit' }}>See the plan</button>
       </Sheet>
     );
