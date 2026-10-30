@@ -5,11 +5,10 @@
 //   done) and claims (machinery.claim, with that authorization): the whole amount (the price an acre on the share's crop
 //   × the acres) reaches her wallet in nIN at once, from the voucher's senior reserve (26 Oct: the
 //   member's debt is separate, nothing waits for a repayment);
-// - a balance left from before 26 Oct can still be collected (collect_dues);
 // - on hold / available (machinery.set_hold) with a reason.
 // DESIGN GAPs: no per-job names (no member names on the node; jobs are kept on her phone from her claims,
 // no indexer yet); photos are shown as the 8 positions, not the images; the hold switch sits here, not in
-// Settings (A11 #machine); a "Collect" button the board does not have; the claim screen has no board.
+// Settings (A11 #machine); the claim screen has no board.
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
@@ -149,9 +148,6 @@ export default function MyMachine({ onBack, pick: first }) {
         {d && (
           <>
             <Paid k="Received" sub="In nIN, in full at each job" v={inr(d.received)} color={C.accent} />
-            {d.ready > 0 && <Paid k="Left from before" sub="Ready to move to your wallet" v={inr(d.ready)} />}
-            {d.ready > 0 && <Primary disabled={!tx.ready} onClick={() => tx.run({ label: 'Collect', rows: [['Amount', inr(d.ready)]], contractName: 'fund_core', fn: 'collect_dues',
-              args: [sv.address(me), sv.address(cfg.union)], invalidate: [['stellar', 'dues'], ['stellar', 'account']] })}>Collect {inr(d.ready)}</Primary>}
             {d.jobs.map((j) => (
               <div key={`${j.token}-${j.ts}`} style={{ borderTop: `1px solid ${C.raised}`, paddingTop: 12 }}>
                 <Paid k={j.acres != null ? acresText(j.acres) : `${j.hours} h`} sub={new Date(j.ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} v={`${inr(j.prepay)} paid`} />

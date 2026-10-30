@@ -139,23 +139,21 @@ export function useMyMachine(owner, { pick, poll } = {}) {
 }
 
 // The owner's jobs, kept on her phone from her claim results (no indexer yet, 17 Oct). Since 26 Oct an owner is paid in
-// full at the claim, so nothing is pending; `ready` is only a balance left from before (owner_balance).
+// full at the claim, so nothing is pending or left to collect (fund_core's owner balance was dropped 30 Oct).
 const JOBS = 'nila.machine.jobs';
 export const loadJobs = () => { try { return JSON.parse(localStorage.getItem(JOBS)) || []; } catch { return []; } };
 export const saveJob = (j) => { try { localStorage.setItem(JOBS, JSON.stringify([...loadJobs(), j])); } catch { /* private */ } };
 
-/** A13 "Paid to you": paid at each claim, and any balance left to collect from before 26 Oct (owner_balance). */
+/** A13 "Paid to you": paid at each claim. */
 export function useOwnerDues(owner) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
     queryKey: ['stellar', 'dues', cfg?.union, owner], enabled: !!cfg && !!owner, staleTime: 30_000,
     queryFn: async () => {
       const jobs = loadJobs().filter((j) => j.owner === owner);
-      const ready = num(await readContract(cfg, 'fund_core', 'owner_balance', [sv.address(cfg.union), sv.address(owner)]).catch(() => 0n));
       return {
         received: jobs.reduce((a, j) => a + j.prepay, 0),
         pending: 0,
-        ready,
         jobs: jobs.map((j) => ({ ...j, pendingNow: 0 })),
       };
     },
