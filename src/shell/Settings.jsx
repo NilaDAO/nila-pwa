@@ -40,7 +40,7 @@ export function LpCard({ onIdCheck, onOffers }) {
   const ready = lp.data.lp && lp.data.trustline;
   return (
     <Card title={lp.data.lp ? 'You are an LP' : 'Become an LP'}>
-      <Text>Bring or collect cash at the union office for USDC. You earn 1% on each swap.</Text>
+      <Text>Take the union's cash for a while against your locked USDC, and bring it back. You earn 1% when you bring it back.</Text>
       <CardButton onClick={ready ? onOffers : onIdCheck}>{ready ? 'Cash offers' : 'Check my identity'}</CardButton>
     </Card>
   );

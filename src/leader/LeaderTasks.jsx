@@ -102,7 +102,7 @@ export default function LeaderTasks({ go }) {
     items.unshift({ key: 'settle', title: `Settle cash ${inr(cash.atHand)}`, who: h != null ? `${h} h left` : '', to: 'cash/settle', urgent: h != null && h < 24 });
   }
   for (const o of offers.filter((x) => x.state === 1 && x.expires > now)) {
-    items.unshift({ key: `lp-${o.id}`, title: o.kind === 0 ? 'LP brings cash' : 'LP collects cash', amount: o.inr, who: `LP ${short(o.lp)} · Here`, to: 'cash/lpscan' });
+    items.unshift({ key: `lp-${o.id}`, title: o.kind === 0 ? 'LP brings cash back' : 'LP takes cash', amount: o.inr, who: `LP ${short(o.lp)} · Here`, to: 'cash/lpscan' });
   }
   for (const j of borders.filter((x) => x.status !== 'minted')) {
     items.unshift({ key: `border-${j.id}`, title: 'Check field borders', who: `${memberName(j)} · ${j.fields} fields`, to: `tasks/border/${j.id}`, ready: j.status === 'ready' });

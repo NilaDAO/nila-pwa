@@ -48,4 +48,4 @@ export function useDeskRoom() {
 /** The line shown when a count is more than the office may take in. */
 export const overRoom = (r, total) => `The office may take in ${r.room.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })} more, `
   + `not ${total.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}: treasury, withdrawals waiting and Ready crop shares, less the cash already here. `
-  + 'Let an LP collect cash, or pay out a withdrawal or crop share first.';
+  + 'Let an LP take cash, or pay out a withdrawal or crop share first.';

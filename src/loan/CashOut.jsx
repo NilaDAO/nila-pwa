@@ -22,7 +22,7 @@ import { Loading } from '../register/Boot';
 import CameraView from '../shell/CameraView';
 import { useFxRate } from '../shell/UsdcAsset';
 import AssetSwapLayout, { AssetForm, SwapTarget, money } from '../shell/AssetSwapLayout';
-import { useLpStatus } from '../anchor/hooks';
+import { useLpOwed, useLpStatus } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
 import { BRING } from '../anchor/sep';
 import { AssetScreen, Card, CardTitle, KV, MarkCircle, QrCircle, Secondary, Stepper, useOnline, when } from './AssetParts';
@@ -238,11 +238,13 @@ export function PayOut({ onBack, initial, onInvest }) {
   const [got, setGot] = useState();        // { kind, member, inr, entry } | { old: code }
   const [error, setError] = useState();
   // Cash at the office (25 Oct): a payout is booked against it, so a short office cannot pay. The gap goes to the
-  // union's LPs as a Bring by itself, once per withdrawal QR (fx_pool adds it to an open Bring no LP has accepted).
+  // union's LPs as a Bring by itself, once per withdrawal QR (fx_pool adds it to an open Bring no LP has accepted);
+  // since the LP pledge (30 Oct) only LPs who hold the union's cash can bring it, so at most what they hold.
   const desk = useQuery({ queryKey: ['stellar', 'deskRoom', 'payout', cfg?.union, got?.member, got?.exp], enabled: !!cfg && !!got && !got.old,
     staleTime: 10_000, refetchInterval: 15_000,
     queryFn: async () => Number(BigInt(await readContract(cfg, 'fx_pool', 'cash_at_hand', [sv.address(cfg.union)]) || 0n) / BigInt(NIN)) });
-  const gap = got && !got.old && desk.data != null && got.inr > desk.data ? Math.ceil(got.inr - desk.data) : 0;
+  const lpOwed = useLpOwed().data || 0;
+  const gap = got && !got.old && desk.data != null && got.inr > desk.data ? Math.min(Math.ceil(got.inr - desk.data), lpOwed) : 0;
   const bring = usePost();
   const asking = useRef('');
   useEffect(() => {

@@ -229,7 +229,10 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
             ? <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="Digital US dollar" value={(lp.usdc || 0).toFixed(2)} valueSub={rate ? `≈ ${inr(usdcInr)}` : ""} onClick={onUsdc} />
             : <Row label="USDC, identity check needed" icon={<UsdcTile />} title="USDC" warn="Identity check (KYC) needed" />
         ) : lp?.trustline && (
-          <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="For cash offers as an LP" value={lp.usdc.toFixed(2)} valueSub="" onClick={onOffers} />
+          // The LP pledge (30 Oct): the part locked against the union's cash she holds, and how much cash that is.
+          <Row label="Open USDC" icon={<UsdcTile />} title="USDC"
+            sub={lp.position ? `${inr(lp.position.owed)} of the union's cash with you` : 'For cash offers as an LP'}
+            value={lp.usdc.toFixed(2)} valueSub={lp.locked ? `${lp.locked.toFixed(2)} locked` : ''} onClick={onOffers} />
         )}
         {/* Vouchers under their own label (any voucher kind; machine work today): one row for her machine vouchers,
             all her crop shares' work left together, in tractor acres (27 Oct); no crop named. */}

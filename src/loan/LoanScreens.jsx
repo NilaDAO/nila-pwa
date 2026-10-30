@@ -24,6 +24,7 @@ import StartHelp from './StartHelp';
 import { useSessionUntil } from '../stellar/session';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import { usePost } from '../anchor/LeaderLp';
+import { useLpOwed } from '../anchor/hooks';
 import { BRING } from '../anchor/sep';
 import { TRACTOR, acresFor, ta, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
 import ConfirmShare from './ConfirmShare';
@@ -128,6 +129,7 @@ export function LeaderLoan({ initial }) {
   const [own, setOwn] = useState(false);
   const tx = useSorobanTx();
   const bring = usePost();   // L11 #short, automatic (25 Oct): see askBring
+  const lpOwed = useLpOwed();
   const [error, setError] = useState();
   const helpUntil = useSessionUntil(shares.data?.find((x) => x.token_id === pick)?.ft?.member);
 
@@ -209,9 +211,10 @@ export function LeaderLoan({ initial }) {
   const rows = checkRows(checks.data, cash, hours, caps);
   // L11 #short, automatic (25 Oct): when the office has less cash than this crop share, the gap goes to the union's
   // LPs as a Bring when the leader shows the QR (or takes up an own share); fx_pool adds it to an open Bring no LP
-  // has accepted yet. Kept per crop share on this phone, so showing the QR again never asks twice.
+  // has accepted yet. Kept per crop share on this phone, so showing the QR again never asks twice. Since the LP pledge
+  // (30 Oct) only LPs who hold the union's cash bring it back: at most what they hold.
   const short = !!rows?.[0]?.[2] && !!cfg?.anchor_url && !!checks.data;
-  const gap = short ? Math.ceil(cash - checks.data.onHand) : 0;
+  const gap = short ? Math.min(Math.ceil(cash - checks.data.onHand), lpOwed.data || 0) : 0;
   const askBring = async () => {
     if (!short || gap <= 0 || !sel) return true;
     const k = `nila.bring.${tokenHex(sel.token_id)}`;

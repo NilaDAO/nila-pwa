@@ -2,7 +2,10 @@
 // reviewed by hand by a trust operator for Nov 7 on testnet (LOAN_RULES §5, 19 Oct). Fields as SEP-9 names
 // (nila-anchor k1.py). When accepted: her USDC trustline (sponsored by the node, R11; none for a smart account, which
 // holds USDC in the USDC contract), then the offers.
-// DESIGN GAPs: "We send ₹1 to your bank account" is left out (no penny-drop vendor yet); "Accepted on <date>"
+// LP pledge (executive decision 30 Oct): only name as on PAN, PAN and date of birth; no bank account, IFSC, selfie or
+// phone and location consent (an LP's USDC never changes owner, so no VDA rule binds the flow). PAN is asked for tax,
+// in case the union ever claims locked USDC.
+// DESIGN GAPs: "Accepted on <date>"
 // has no date (the SEP-12 answer carries none); "Get offers from <union>" is "Get cash offers" (no union
 // names on the node); a "Start" step before the form (her SEP-10 signature) and the REJECTED and
 // "Waiting for the network" states have no board. #leader (22 Oct): the same form and store (SEP-12 type leader);
@@ -10,33 +13,27 @@
 import { Loading } from '../register/Boot';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CheckRow, Primary, muted } from '../plan/ui';
+import { Primary, muted } from '../plan/ui';
 import MapCard from '../shell/MapCard';
-import { C, FONT, R } from '../shell/tokens';
+import { C, FONT } from '../shell/tokens';
 import { useAnchorInfo, useLpStatus, useSep10Token, useUsdcTrustline } from './hooks';
-import CameraView from '../shell/CameraView';
-import { getCustomer, putConsent, putCustomer } from './sep';
+import { getCustomer, putCustomer } from './sep';
 
 const MAX_SIDE = 1280;
 const FIELDS = [
   ['first_name', 'Name as on your PAN card', 'text'],
   ['tax_id', 'PAN', 'text'],
   ['birth_date', 'Date of birth', 'date'],
-  ['bank_account_number', 'Bank account number', 'numeric'],
-  ['bank_branch_number', 'IFSC', 'text'],
 ];
 
 // The anchor's own field rules (nila-anchor k1.py), checked before sending (29 Oct): the Anchor Platform passes the
 // anchor's 400 on without its reason, so a wrong field only showed as "K1: 400".
 const PAN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
-const IFSC = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 function fieldError(k, raw) {
   const v = String(raw || '').trim();
   if (!v) return 'Fill this in.';
   if (k === 'first_name' && (v.length < 2 || v.length > 100)) return 'The name as on your PAN card.';
   if (k === 'tax_id' && !PAN.test(v.toUpperCase().replace(/\s/g, ''))) return 'A PAN looks like ABCDE1234F.';
-  if (k === 'bank_account_number' && !/^[0-9]{9,18}$/.test(v.replace(/\s/g, ''))) return 'A bank account number has 9 to 18 digits.';
-  if (k === 'bank_branch_number' && !IFSC.test(v.toUpperCase().replace(/\s/g, ''))) return 'An IFSC looks like SBIN0001234.';
   if (k === 'birth_date') {
     const d = new Date(`${v}T00:00:00`);
     if (Number.isNaN(d.getTime())) return 'Pick your date of birth.';
@@ -44,15 +41,6 @@ function fieldError(k, raw) {
     if (age < 18) return 'You must be 18 or older.';
   }
   return null;
-}
-
-async function selfieBlob(file) {
-  const img = await createImageBitmap(file);
-  const k = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(img.width * k); canvas.height = Math.round(img.height * k);
-  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-  return new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.8));
 }
 
 const input = { width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, padding: '0 12px', boxSizing: 'border-box', fontSize: 15, marginBottom: 10 };
@@ -64,9 +52,6 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
   const lp = useLpStatus();
   const trust = useUsdcTrustline();
   const [vals, setVals] = useState({});
-  const [selfie, setSelfie] = useState();
-  const [shooting, setShooting] = useState(false);
-  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState();
   // Her K1 at the anchor, read as soon as the screen opens (26 Oct: no Start step; the SEP-10 signature is silent),
@@ -88,11 +73,10 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
   useEffect(() => {
     if (leader && k1.data?.status === 'ACCEPTED' && lpNow) onAccepted?.();
   }, [leader, k1.data?.status, lpNow]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [selfieError, setSelfieError] = useState();
 
   const status = k1.data?.status;
   const needs = status === 'NEEDS_INFO' && Object.values(k1.data.provided_fields || {}).some((f) => f.error);
-  const asked = needs ? Object.keys(k1.data.fields || {}) : [...FIELDS.map(([k]) => k), 'proof_of_liveness'];
+  const asked = needs ? Object.keys(k1.data.fields || {}) : FIELDS.map(([k]) => k);
   const [fieldErrors, setFieldErrors] = useState({});
   const send = async () => {
     const errs = Object.fromEntries(FIELDS.filter(([k]) => asked.includes(k)).map(([k]) => [k, fieldError(k, vals[k])]).filter(([, e]) => e));
@@ -101,9 +85,8 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
     setBusy(true); setError(undefined);
     try {
       const t = await getToken();
-      if (!needs) await putConsent(info.data, t, kind);
       const fields = Object.fromEntries(Object.entries(vals).filter(([k, v]) => asked.includes(k) && v));
-      await putCustomer(info.data, t, fields, asked.includes('proof_of_liveness') ? selfie?.blob : null, kind);
+      await putCustomer(info.data, t, fields, null, kind);
       await k1.refetch();
     } catch (e) { setError(e.message); }
     setBusy(false);
@@ -135,7 +118,7 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
     body = (
       <>
         <h2 style={{ fontSize: 16 }}>Identity checked</h2>
-        <p style={muted}>Accepted. You can now bring or collect cash at the union office for USDC.</p>
+        <p style={muted}>Accepted. You can now take the union's cash against your locked USDC, and bring it back.</p>
         {trust.isError && <p style={{ color: C.coral }}>{trust.error.message}</p>}
         <Primary disabled={trust.isPending || !lp.data?.lp} onClick={async () => {
           if (!lp.data.trustline) await trust.mutateAsync().catch(() => null);
@@ -165,40 +148,9 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
             {fieldErrors[k] && <span style={{ color: C.coral, fontSize: 14, display: 'block', marginTop: 4 }}>{fieldErrors[k]}</span>}
           </label>
         ))}
-        {asked.includes('proof_of_liveness') && <h2 style={{ fontSize: 14, marginTop: 8 }}>Selfie</h2>}
-        {asked.includes('proof_of_liveness') && (
-          // The app's own camera, front facing (27 Oct): a file input opens the file picker on a computer.
-          shooting ? (
-            <div style={{ background: C.raised, borderRadius: 12, padding: 12, marginBottom: 10 }}>
-              <CameraView mode="photo" facing="user" title="Take a selfie" hint="Look into the camera." onPhoto={async (blob) => {
-                setShooting(false);
-                try {
-                  const b = await selfieBlob(blob);
-                  if (selfie?.url) URL.revokeObjectURL(selfie.url);
-                  setSelfie({ blob: b, url: URL.createObjectURL(b) }); setSelfieError(undefined);
-                } catch { setSelfieError('That photo could not be read. Take it again.'); }
-              }} />
-              <button type="button" onClick={() => setShooting(false)} style={{ display: 'block', margin: '4px auto 0', border: 0, background: 'transparent',
-                color: C.muted, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>Cancel</button>
-            </div>
-          ) : (
-            <button type="button" onClick={() => setShooting(true)} style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, color: C.text,
-              fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', background: C.raised, borderRadius: 12, padding: 12, marginBottom: 10 }}>
-              <span style={{ fontWeight: 700 }}>{selfie ? 'Selfie taken · take it again' : 'Take a selfie'}</span>
-              <span style={{ ...muted, display: 'block' }}>We check it is really you, live.</span>
-              {selfie && <img src={selfie.url} alt="Your selfie" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: R.round, marginTop: 8 }} />}
-            </button>
-          )
-        )}
-        {selfieError && <p style={{ color: C.coral }}>{selfieError}</p>}
-        {!needs && (
-          <CheckRow on={consent} onClick={() => setConsent((v) => !v)} style={{ margin: '8px 0' }}>
-            I agree that Nila checks my phone and location during this check.
-          </CheckRow>
-        )}
-        <p style={muted}>Nila keeps this data for 5 years, as the law requires. Members of your union do not see it.</p>
+        <p style={muted}>Your PAN is asked for tax: if the union ever has to claim your locked USDC, it deducts tax under your PAN. Nila keeps this data for 5 years. Members of your union do not see it.</p>
         {error && <p style={{ color: C.coral }}>{error}</p>}
-        <Primary disabled={busy || (!needs && !consent) || asked.some((k) => (k === 'proof_of_liveness' ? !selfie : !vals[k]))}
+        <Primary disabled={busy || asked.some((k) => !vals[k])}
           onClick={send}>{busy ? '…' : needs ? 'Fix it' : 'Send for checking'}</Primary>
       </>
     );

@@ -46,7 +46,8 @@ export default function UsdcAsset({ onBack }) {
   const [amount, setAmount] = useState(0);
   const [to, setTo] = useState('');
   const [scan, setScan] = useState(false);
-  const usdc = lp ? lp.usdc || 0 : 0;
+  // Only the free part moves: USDC locked against the union's cash she holds stays (the LP pledge, 30 Oct).
+  const usdc = lp ? lp.free ?? lp.usdc ?? 0 : 0;
   // Her identity is checked (K1), so the node sponsors her USDC trustline; until it exists she holds no USDC.
   const noLine = lp && lp.idChecked && !lp.trustline;
   const a = Math.max(0, Math.min(amount, Math.floor(usdc)));
@@ -60,8 +61,10 @@ export default function UsdcAsset({ onBack }) {
   });
   const send = () => tx.run({
     label: `Send ${a} USDC`, rows: [['To', `${to.slice(0, 4)}…${to.slice(-4)}`], ['Amount', `${a} USDC`]],
-    contractName: 'usdc', fn: 'transfer',
-    args: [sv.address(s.stellarAddress), sv.address(to), sv.i128(BigInt(a) * UNIT)],
+    // A Nila account sends with its own send_usdc, which keeps any lien covered (no direct USDC transfer while one stands).
+    ...(/^C/.test(s.stellarAddress)
+      ? { contractName: s.stellarAddress, fn: 'send_usdc', args: [sv.address(to), sv.i128(BigInt(a) * UNIT)] }
+      : { contractName: 'usdc', fn: 'transfer', args: [sv.address(s.stellarAddress), sv.address(to), sv.i128(BigInt(a) * UNIT)] }),
     invalidate: [['stellar', 'lp']],
   });
   const form = (
