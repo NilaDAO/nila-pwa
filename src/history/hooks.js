@@ -26,7 +26,9 @@ const CALLS = {
   request_cash_out: ['Cash out', 'At the union office'],
   pay_out: ['Cashed out at the union office', ''],
   reclaim_cash_out: ['Cash-out taken back', 'Your nIN back'],
+  // Before 30 Oct; since then request_unbond, and fund_core's claim (below, by contract).
   request_unbond_junior: ['Withdrawal started', 'Union investment'],
+  request_unbond: ['Withdrawal started', 'Union investment'],
   claim_junior: ['Withdrawal paid', 'Union investment'],
   claim_junior_cash: ['Collected at the office', 'Union investment, in cash'],
   open_code: ['Machine code made', 'Machinery voucher'],
@@ -86,7 +88,9 @@ async function stellarRows(cfg, sender, account) {
     // a12-spec: account set-up, trustlines and fee wrappers are hidden.
     if (op.type !== 'invoke_host_function') continue;
     const fn = callName(op);
-    const [title, sub] = CALLS[fn] || [fn.replace(/_/g, ' ') || 'Contract call', ''];
+    // fund_core's claim (30 Oct) is a withdrawal; machinery's claim is a machine job.
+    const [title, sub] = (fn === 'claim' && params(op)[0] === cfg.contracts?.fund_core ? CALLS.claim_junior : CALLS[fn])
+      || [fn.replace(/_/g, ' ') || 'Contract call', ''];
     // Her nIN / USDC moved by the call (SAC balance changes).
     let nin = 0; let usdc = 0;
     for (const c of op.asset_balance_changes || []) {

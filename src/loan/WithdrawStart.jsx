@@ -1,5 +1,5 @@
 // G2 → Withdraw for a member the leader is helping (A2, 26 Oct): in the session the leader starts the withdrawal for
-// the member (fund_core.request_unbond_junior, the member's account approved by the leader); the cash is collected
+// the member (fund_core.request_unbond, junior, the member's account approved by the leader); the cash is collected
 // after 14 days. The shares are fixed from the member's free part read just before, less 1 nIN while a loan is open
 // (as A3), so the call does not fail on interest that accrues meanwhile.
 import { useState } from 'react';
@@ -28,8 +28,8 @@ export default function WithdrawStart({ cfg, member, label, free, tx, map, onBac
       if (take <= 0n) throw new Error('Nothing of this investment is free to withdraw.');
       tx.run({
         label: `Withdrawal · ${label}`, rows: [['Withdraw', inr(Number(take / ONE_NIN))], ['Cash ready', 'in 14 days']],
-        contractName: 'fund_core', fn: 'request_unbond_junior', session: member,
-        args: [...u, sv.i128((take * RAY) / BigInt(m.index))], invalidate: [['stellar', 'investment']],
+        contractName: 'fund_core', fn: 'request_unbond', session: member,
+        args: [...u, sv.i128((take * RAY) / BigInt(m.index)), sv.bool(false)], invalidate: [['stellar', 'investment']],
       });
     } catch (e) { setError(e.message); }
   };
