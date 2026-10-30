@@ -58,9 +58,9 @@ export function MarkCircle({ size = 56, bg = C.accent }) {
 const sq = { width: 44, height: 44, flexShrink: 0, border: 0, borderRadius: R.button, background: C.raised, color: C.text, fontFamily: 'inherit',
   fontSize: 18, fontWeight: 700, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
-/** − [amount unit] + Max. The typed amount is kept between min and max. */
+/** − [amount unit] + Max. The typed amount is kept between min and max; without a max there is no Max button. */
 export function Stepper({ value, set, step = 100, min = 0, max, unit, label }) {
-  const clamp = (x) => Math.max(min, Math.min(max, x));
+  const clamp = (x) => Math.max(min, max == null ? x : Math.min(max, x));
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
       <button type="button" aria-label="Less" style={sq} onClick={() => set(clamp(value - step))}>−</button>
@@ -71,7 +71,7 @@ export function Stepper({ value, set, step = 100, min = 0, max, unit, label }) {
         <span style={{ fontSize: 14, color: C.muted }}>{unit}</span>
       </label>
       <button type="button" aria-label="More" style={sq} onClick={() => set(clamp(value + step))}>+</button>
-      <button type="button" style={{ ...sq, width: 'auto', fontSize: 14, padding: '0 14px' }} onClick={() => set(clamp(max))}>Max</button>
+      {max != null && <button type="button" style={{ ...sq, width: 'auto', fontSize: 14, padding: '0 14px' }} onClick={() => set(clamp(max))}>Max</button>}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // The union checks on a crop share (board LeaderRedeem rows "Cash on hand", "Seed and machine stock",
 // "Loan limit of the union"), read from the contracts. HARD caps: the ones fund_core.draw_loan enforces —
-// - cash: the union's max_loan (₹10,000) and the junior cash above its reserve
+// - cash: the junior cash above its reserve (no ₹10,000 cap in code since 30 Oct: the crop plan and the leaders
+//   hold it for the first cycle; max_loan is kept as that recommendation)
 //   (claimable × (1 + safety_bp) + safety_floor; ReserveStop / InsufficientCash);
 // - machine work: free senior money ÷ the value of a tractor acre (NoSeniorBacking);
 // - with the union's switch on, the attested amount and hours of her token (AboveFoodToken);
@@ -35,7 +36,7 @@ export function useUnionChecks(member) {
         readContract(cfg, 'fx_pool', 'cash_at_hand', u).catch(() => 0n),
         // A voucher hour is lent at the tractor hour's whole value (26 Oct), out of free senior money.
         cfg.contracts.machinery ? readContract(cfg, 'machinery', 'value_per_tractor_acre', u).catch(() => 0n) : 0n,
-        readContract(cfg, 'fund_core', 'on_hold', u),
+        readContract(cfg, 'fund_core', 'union_book', u).then((b) => b?.on_hold ?? 0),
         readContract(cfg, 'fund_core', 'position', um),
         readContract(cfg, 'fund_core', 'loans_of', um),
       ]);
@@ -56,7 +57,7 @@ export function useUnionChecks(member) {
       return {
         maxLoan,
         // Whole rupees: the request is in whole rupees.
-        cashCap: Math.max(0, Math.floor(Math.min(maxLoan, num(lendable)))),
+        cashCap: Math.max(0, Math.floor(num(lendable))),
         // No machine price set for the union → no machine work can be granted yet.
         // In units (centi tractor acres, 27 Oct): the senior money free for the value of tractor acres.
         hoursCap: ph > 0 ? Math.max(0, Math.floor((seniorFree * 100) / ph)) : 0,

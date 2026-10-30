@@ -1,11 +1,11 @@
 // A3 Union investment (board StNinWithdraw; member and leader alike, the leader with her tab bar): invested, earned,
 // locked (what she owes); Invest = bring cash to the office (A7b #invest: her wallet QR for the leader, who counts the
 // cash on C6 and records it with fx_pool.cash_scan_mint); a leader invests her own cash with Photo count (Cash → Invest,
-// L5 → C6). Withdraw = fund_core.request_unbond_junior (an amount of her free part, as shares), claimable 14 days later
+// L5 → C6). Withdraw = fund_core.request_unbond (junior: an amount of her free part, as shares), claimable 14 days later
 // (the contract; 14 days confirmed 24 Oct). A member collects it in cash at the office (24 Oct, LOAN_RULES "Two
 // withdrawals"): Collect shows her signed QR for fund_core.claim_junior_cash (deskCode.js); the leader hands over the
 // cash, scans it (Tasks → Pay out cash), checks the 14 days and submits. Starting the withdrawal is hers: on her own
-// phone, the leader driving it in assisted mode. A leader claims her own to her wallet with claim_junior. An Invest | Withdraw segmented control (component book) at the top of
+// phone, the leader driving it in assisted mode. A leader claims her own to her wallet with fund_core.claim (junior). An Invest | Withdraw segmented control (component book) at the top of
 // the card shows one of the two at a time (22 Oct).
 // DESIGN GAPs: no union name, no rate arrow and so no "In a year" line (Q5); no "Your loan · Fully backed" row (the tree
 // discount is not in Nov 7, LOAN_RULES); no leader name ("Rosalie"); Cash teller is shown as soon.
@@ -90,10 +90,10 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
     const take = want < freeNow ? want : freeNow;
     if (take <= 0n) return;
     const shares = (take * RAY) / BigInt(m.index);
-    return run('request_unbond_junior', [...u, sv.i128(shares)], `Withdraw ${inr(n(take))}`);
+    return run('request_unbond', [...u, sv.i128(shares), sv.bool(false)], `Withdraw ${inr(n(take))}`);
   };
-  // claim_junior itself moves the pending shares to claimable after 14 days; 0 = all of them.
-  const claim = () => run('claim_junior', [sv.address(cfg.union), sv.address(s.stellarAddress), sv.i128(0n)], 'Your withdrawal');
+  // claim itself moves the pending shares to claimable after 14 days; 0 = all of them.
+  const claim = () => run('claim', [sv.address(cfg.union), sv.address(s.stellarAddress), sv.i128(0n), sv.bool(false)], 'Your withdrawal');
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); }} onRetry={() => tx.retry()} />;
   if (!p) return <Loading />;
 
@@ -139,7 +139,7 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
         ) : (
           <>
             <p style={muted}>Bring cash to the office</p>
-            <Stepper value={bring} set={setBring} min={0} max={10000} unit="₹" label="Rupees to invest" />
+            <Stepper value={bring} set={setBring} min={0} unit="₹" label="Rupees to invest" />
             <Line />
             <KV k="After" v={`${fmt(invested + bring)} nIN`} />
             {leader ? (

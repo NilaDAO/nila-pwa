@@ -1,8 +1,9 @@
-// A2 cash offers (board Tasks "Cash offers", #lp-bring / #lp-collect dialogs) and A7b her code (board
-// MemberAssetTractorScrolled-h3n0 #lp-bring / #lp-collect). Accept = SEP-38 firm quote → SEP-24 at the
-// trust's anchor (in the app) → fx_pool.accept(lp, offer, sep24_id, quote_id), fee-bumped by the node.
-// The rate is fixed at accept; a no-show costs nothing (LOAN_RULES §5, 12 Oct). The leader scans her code
-// (A1b, Cash → Scan an LP code) and fx_pool moves the USDC.
+// A2 cash offers and A7b her code, as the LP pledge (executive decision 30 Oct, replaces the swap): an LP takes the
+// union's cash for a while (Collect) and her own account locks USDC worth 110% of it; she brings it back (Bring, only
+// what she holds) and the USDC unlocks pro rata; her 1% fee comes off the cash she brings back. Her USDC never leaves
+// her account, unless the union claims it after asking for the cash back and 7 days' notice.
+// Accept = SEP-38 firm quote → SEP-24 at the trust's anchor (its own page in a frame, A3) → fx_pool.accept, fee-bumped
+// by the node. The leader scans her code (A1b, Cash → Scan an LP code). Never says sell, buy or swap.
 // DESIGN GAPs: "Where: Union office · <leader>" without a name (the node has no names); the board's
 // "Cancel" on A7b only goes back (an LP cannot cancel an accepted offer on-chain; it lapses at expiry).
 import { useEffect, useState } from 'react';
@@ -14,7 +15,7 @@ import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { CODE_TTL, loadSwaps, saveSwap, signedCode, useAnchorInfo, useLpStatus, useOfferQuote, useSep10Token, useUnionOffers, usdcOf } from './hooks';
+import { CALL_NOTICE, CODE_TTL, U, loadSwaps, saveSwap, signedCode, useAnchorInfo, useBringUnlock, useLpStatus, useOfferQuote, useSep10Token, useUnionOffers, usdcOf } from './hooks';
 import { BRING, firmQuote, openSwap, swapStatus } from './sep';
 
 const until = (ts) => {
@@ -34,10 +35,26 @@ function Row({ k, v }) {
 }
 
 function OfferRow({ o, onOpen }) {
+  const bring = o.kind === BRING;
   const q = useOfferQuote(o.kind, o.inr);
-  const usdc = q.data ? usdcOf(q.data.usdc) : '…';
-  const sub = o.kind === BRING ? `Get ${usdc} USDC · ${until(o.expires)}` : `Pay ${usdc} USDC · ${until(o.expires)}`;
-  return <Choice sub={sub} onClick={onOpen}>{o.kind === BRING ? 'Bring' : 'Collect'} {inr(o.inr)}</Choice>;
+  const un = useBringUnlock(o.inr, bring);
+  const usdc = bring ? (un.data != null ? un.data.toFixed(2) : '…') : (q.data ? usdcOf(q.data.usdc) : '…');
+  const sub = bring ? `Unlocks ${usdc} USDC · ${until(o.expires)}` : `Locks ${usdc} USDC · ${until(o.expires)}`;
+  return <Choice sub={sub} onClick={onOpen}>{bring ? `Bring ${inr(o.inr)} back` : `Take ${inr(o.inr)}`}</Choice>;
+}
+
+/** The union's cash she holds: owed, locked, since when, and the date to bring it back by once a leader asked. */
+function HeldCard({ p }) {
+  const since = new Date(p.opened * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return (
+    <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>Union cash with you</div>
+      <Row k="Cash" v={inr(p.owed)} />
+      <Row k="Locked in your account" v={`${p.locked.toFixed(2)} USDC`} />
+      <Row k="Since" v={since} />
+      {p.calledAt != null && <p style={{ color: C.coral, margin: '4px 0 0' }}>Your leader asked for it back: bring it by {by(p.calledAt + CALL_NOTICE)}, or the union may claim your locked USDC.</p>}
+    </div>
+  );
 }
 
 /** A7b: her code for the leader to scan, and how far the swap is. */
@@ -62,10 +79,10 @@ export function LpCode({ swap, onBack }) {
   const bring = swap.kind === BRING;
   const done = state === 2;
   return (
-    <Sheet landName="Nila" title={`${bring ? 'Bring' : 'Collect'} ${inr(swap.inr)}`} onBack={onBack}>
+    <Sheet landName="Nila" title={bring ? `Bring ${inr(swap.inr)} back` : `Take ${inr(swap.inr)}`} onBack={onBack}>
       {done ? (
         <>
-          <p style={{ textAlign: 'center', fontWeight: 700 }}>{bring ? `${swap.usdc} USDC reached your wallet.` : `The union took ${swap.usdc} USDC.`}</p>
+          <p style={{ textAlign: 'center', fontWeight: 700 }}>{bring ? `${swap.usdc} USDC unlocked in your wallet.` : `You took the cash. ${swap.usdc} USDC stays locked in your wallet.`}</p>
           <p style={{ ...muted, textAlign: 'center' }}>{st.data?.status === 'completed' ? 'Recorded by the anchor.' : 'The anchor is recording it…'}</p>
         </>
       ) : state === 3 || state === 4 ? (
@@ -80,11 +97,12 @@ export function LpCode({ swap, onBack }) {
               <p style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{code.data}</p>
             </details>
           )}
-          <Row k={bring ? 'You get' : 'You pay'} v={`${swap.usdc} USDC`} />
+          {bring && swap.hand != null && <Row k="You hand over" v={inr(swap.hand)} />}
+          <Row k={bring ? 'Unlocks in your account' : 'Locked in your account'} v={`${swap.usdc} USDC`} />
           <Row k="Where" v="Union office" />
-          <Row k={bring ? 'Bring it by' : 'Collect it by'} v={by(swap.expires)} />
-          <p style={muted}>{bring ? 'Show this to your leader when you hand over the cash. The USDC reaches your wallet when your leader scans it.'
-            : 'Show this to your leader. When your leader scans it, the union takes the USDC and hands you the cash.'}</p>
+          <Row k={bring ? 'Bring it by' : 'Take it by'} v={by(swap.expires)} />
+          <p style={muted}>{bring ? 'Show this to your leader when you hand over the cash. Your USDC unlocks when your leader scans it.'
+            : 'Show this to your leader. Your leader scans it and hands you the cash; your USDC stays in your wallet, locked until you bring the cash back.'}</p>
         </>
       )}
       <Primary onClick={onBack}>Done</Primary>
@@ -92,7 +110,7 @@ export function LpCode({ swap, onBack }) {
   );
 }
 
-/** A2: the union's cash offers for an LP; Accept opens the SEP-24 swap and accepts on-chain. */
+/** A2: the union's cash offers for an LP; Accept confirms on the trust's page and accepts on-chain. */
 export default function LpOffers({ onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -108,23 +126,28 @@ export default function LpOffers({ onBack }) {
   const [pending, setPending] = useState();   // the swap being accepted, for the code after a retry
   const me = s?.stellarAddress;
   const q = useOfferQuote(open?.kind, open?.inr || 0);
+  const unlock = useBringUnlock(open?.inr || 0, open?.kind === BRING);
   const mine = (offers.data || []).filter((o) => o.state === 1 && o.lp === me);
-  const free = (offers.data || []).filter((o) => o.state === 0 && o.expires > Date.now() / 1000 + 60);
+  const owed = lp.data?.position?.owed || 0;
+  // A Bring is only for an LP who holds that much of the union's cash.
+  const free = (offers.data || []).filter((o) => o.state === 0 && o.expires > Date.now() / 1000 + 60 && (o.kind !== BRING || o.inr <= owed));
 
   const accept = async (o) => {
     setBusy(true); setError(undefined);
     try {
       const t = await getToken();
       const quote = await firmQuote(info.data, t, `stellar:${cfg.usdc_asset}`, o.kind, o.inr);
-      const signed = await openSwap(info.data, t, cfg.usdc_asset, me, o.kind, o.id, quote);
+      // SEP-24 names her SEP-10 key (G…); the anchor signs the accept for her account (C…), which accept() names.
+      const signed = await openSwap(info.data, t, cfg.usdc_asset, s.senderAddress || me, o.kind, o.id, quote);
       const sep24 = signed.id;
       const usdc = o.kind === BRING ? quote.buy_amount : quote.sell_amount;
-      const swap = { offer: o.id, sep24, quote: quote.id, kind: o.kind, inr: o.inr, usdc: Number(usdc).toFixed(2), expires: o.expires, lp: me };
+      const hand = o.kind === BRING && q.data ? o.inr - Number(BigInt(q.data.fee_inr) / BigInt(U)) : null;
+      const swap = { offer: o.id, sep24, quote: quote.id, kind: o.kind, inr: o.inr, usdc: Number(usdc).toFixed(2), hand, expires: o.expires, lp: me };
       saveSwap(swap);
       setPending(swap);
       const out = await tx.run({
-        label: `${o.kind === BRING ? 'Bring' : 'Collect'} ${inr(o.inr)}`,
-        rows: [[o.kind === BRING ? 'You get' : 'You pay', `${swap.usdc} USDC`], ['By', by(o.expires)]],
+        label: o.kind === BRING ? `Bring ${inr(o.inr)} back` : `Take ${inr(o.inr)}`,
+        rows: [[o.kind === BRING ? 'Unlocks' : 'Locks', `${swap.usdc} USDC`], ['By', by(o.expires)]],
         contractName: 'fx_pool', fn: 'accept',
         args: [sv.address(me), sv.u64(o.id), sv.string(sep24), sv.string(quote.id), sv.i128(signed.usdc), sv.u64(signed.validUntil), sv.bytes(hexBytes(signed.sig))],
         invalidate: [['stellar', 'offers']],
@@ -141,22 +164,34 @@ export default function LpOffers({ onBack }) {
   if (code) return <LpCode swap={code} onBack={() => setCode(undefined)} />;
   if (open) {
     const bring = open.kind === BRING;
-    const usdc = q.data ? usdcOf(q.data.usdc) : '…';
-    const fee = q.data ? Math.round((open.inr * q.data.fee_bp) / 10_000) : null;
+    const usdc = bring ? (unlock.data != null ? unlock.data.toFixed(2) : '…') : (q.data ? usdcOf(q.data.usdc) : '…');
+    const fee = bring && q.data ? Number(BigInt(q.data.fee_inr) / BigInt(U)) : 0;
+    const short = !bring && lp.data && lp.data.free < Number(usdc);
     return (
-      <Sheet landName="Nila" title={`${bring ? 'Bring' : 'Collect'} ${inr(open.inr)} ${bring ? 'to' : 'at'} the union office`} onBack={() => setOpen(undefined)}>
-        <Row k={bring ? 'You bring' : 'You collect'} v={inr(open.inr)} />
-        <Row k={`Your fee (${q.data ? q.data.fee_bp / 100 : 1}%)`} v={fee != null ? inr(fee) : '…'} />
-        <Row k={bring ? 'You get' : 'You pay'} v={`${usdc} USDC`} />
-        <Row k={bring ? 'Bring it by' : 'Collect it by'} v={by(open.expires)} />
-        <p style={muted}>{bring ? 'Your leader scans your code when the cash is there. The USDC then reaches your wallet.'
-          : `Accepting lets the union take ${usdc} USDC from your wallet when your leader scans your code.`}</p>
-        {!bring && lp.data && lp.data.usdc < Number(usdc) && <p style={{ color: C.coral }}>You have {lp.data.usdc.toFixed(2)} USDC: not enough for this offer.</p>}
+      <Sheet landName="Nila" title={bring ? `Bring ${inr(open.inr)} back to the union office` : `Take ${inr(open.inr)} at the union office`} onBack={() => setOpen(undefined)}>
+        {bring ? (
+          <>
+            <Row k="Union cash you bring back" v={inr(open.inr)} />
+            <Row k={`Your fee (${q.data ? q.data.fee_bp / 100 : 1}%)`} v={q.data ? `−${inr(fee)}` : '…'} />
+            <Row k="You hand over" v={q.data ? inr(open.inr - fee) : '…'} />
+            <Row k="Unlocks in your account" v={`${usdc} USDC`} />
+            <Row k="Bring it by" v={by(open.expires)} />
+            <p style={muted}>Your leader scans your code when the cash is there. The USDC was always yours; it unlocks then.</p>
+          </>
+        ) : (
+          <>
+            <Row k="You take" v={inr(open.inr)} />
+            <Row k="Locked in your account" v={`${usdc} USDC`} />
+            <Row k="Take it by" v={by(open.expires)} />
+            <p style={muted}>{usdc} USDC stays in your wallet, locked until you bring the cash back. If your leader asks for the cash back and it is not back within 7 days, the union may claim it.</p>
+          </>
+        )}
+        {short && <p style={{ color: C.coral }}>You have {lp.data.free.toFixed(2)} USDC free: not enough to lock {usdc} USDC.</p>}
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" onClick={() => setOpen(undefined)} style={{ flex: 1, height: 44, marginTop: 16, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontWeight: 700 }}>Not now</button>
           <div style={{ flex: 1 }}>
-            <Primary disabled={busy || !tx.ready || !info.data || !q.data || (!bring && lp.data?.usdc < Number(usdc))} onClick={() => accept(open)}>{busy ? '…' : 'Accept'}</Primary>
+            <Primary disabled={busy || !tx.ready || !info.data || !q.data || (bring && unlock.data == null) || short} onClick={() => accept(open)}>{busy ? '…' : 'Accept'}</Primary>
           </div>
         </div>
       </Sheet>
@@ -165,10 +200,11 @@ export default function LpOffers({ onBack }) {
   const saved = loadSwaps().filter((x) => x.lp === me);
   return (
     <Sheet landName="Nila" title="Cash offers" onBack={onBack}>
-      {lp.data && lp.data.trustline && <p style={{ ...muted, textAlign: 'center' }}>Your USDC: {lp.data.usdc.toFixed(2)}</p>}
+      {lp.data?.position && <HeldCard p={lp.data.position} />}
+      {lp.data && lp.data.trustline && <p style={{ ...muted, textAlign: 'center' }}>Your USDC: {lp.data.free.toFixed(2)} free{lp.data.locked ? ` · ${lp.data.locked.toFixed(2)} locked` : ''}</p>}
       {mine.map((o) => {
         const sw = saved.find((x) => x.offer === o.id) || { offer: o.id, kind: o.kind, inr: o.inr, usdc: usdcOf(o.usdc), expires: o.expires };
-        return <Choice key={o.id} sub={`Accepted · show your code ${until(o.expires)}`} onClick={() => setCode(sw)}>{o.kind === BRING ? 'Bring' : 'Collect'} {inr(o.inr)}</Choice>;
+        return <Choice key={o.id} sub={`Accepted · show your code ${until(o.expires)}`} onClick={() => setCode(sw)}>{o.kind === BRING ? `Bring ${inr(o.inr)} back` : `Take ${inr(o.inr)}`}</Choice>;
       })}
       {offers.isLoading && <p style={muted}>…</p>}
       {offers.isError && <p style={{ color: C.coral }}>Could not read the offers. Try again.</p>}

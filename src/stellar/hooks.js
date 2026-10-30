@@ -116,7 +116,10 @@ export function useSetupAccount({ stellarAddress, account, evmWallet, signHash }
       if (!cfg || !stellarAddress || !evmWallet) throw new Error('not ready');
       const existing = await getAccount(cfg.horizon_url, stellarAddress);
       if (existing) {
-        const out = hasNin(existing, cfg) ? { existed: true } : await addNinTrustline(cfg, stellarAddress, signHash);
+        // With a smart account the nIN sits on the account (C…), so the sending key needs no nIN trustline (and an old
+        // key on a fresh deployment, unpaired on its node, would be refused one).
+        const smart = account && account !== stellarAddress;
+        const out = hasNin(existing, cfg) || smart ? { existed: true } : await addNinTrustline(cfg, stellarAddress, signHash);
         await createSmartAccount(cfg, stellarAddress, account, signHash);
         return out;
       }

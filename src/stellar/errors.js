@@ -4,19 +4,21 @@
 const MESSAGES = {
   fx_pool: {
     4: 'The amount is zero.',
-    5: 'Above the most one count may record (₹10,000).',
+    5: 'Above the most this call may move (a swap, USDC into the treasury or the daily USDC limit).',
     6: 'The rupee rate is out of date. Try again in a few minutes.',
     8: 'The cash desk is paused.',
     9: 'Only a leader of the union can do this.',
     10: 'This account is not a member of the union.',
     11: "The cash at the office would be more than the union's treasury.",
-    13: 'Too many open cash batches at the office. Let an LP collect cash first.',
+    13: 'Too many open cash batches at the office. Let an LP take cash first.',
     15: 'This has expired.',
     16: 'This code was used already.',
     18: 'The repay names no loan.',
     25: 'This account is not an accepted LP.',
     28: "The union's USDC does not cover this.",
     33: "The anchor has not checked this account's identity yet.",
+    34: "This LP holds less of the union's cash than this.",
+    35: 'Nothing to claim yet: the cash was not asked back, or the 7 days are not over.',
   },
   fund_core: {
     2: 'The amount is zero.',

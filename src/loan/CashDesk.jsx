@@ -23,8 +23,9 @@ import { ScanLp } from '../anchor/LeaderLp';
 import CashBoard from '../leader/CashBoard';
 import CameraView from '../shell/CameraView';
 import { addressFromQr, useUnionMembers } from '../leader/unionMembers';
+import { overRoom, useDeskRoom } from './deskRoom';
 import { Secondary } from './AssetParts';
-import { owedOf } from './owed';
+import { loanOf, owedOf } from './owed';
 import StartHelp from './StartHelp';
 
 const PURPOSE = { invest: 0, repay: 1 };
@@ -41,7 +42,7 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
   let change = 0;
   if (purpose === 'repay' && token) {
     const [loan, vb] = await Promise.all([
-      readContract(cfg, 'fund_core', 'get_loan', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null),
+      readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(token)]).then(loanOf).catch(() => null),
       readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null),
     ]);
     if (loan) {
@@ -63,7 +64,7 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
 }
 const isG = (a) => /^[GC][A-Z2-7]{55}$/.test(a || '');
 
-function Amount({ value, set, max = 10000 }) {
+function Amount({ value, set, max = Infinity }) {
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, margin: '12px 0' }}>
@@ -103,7 +104,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
         return Promise.all((ids || []).map(async (id) => {
           const h = Buffer.from(id).toString('hex');
           const [loan, vb] = await Promise.all([
-            readContract(cfg, 'fund_core', 'get_loan', [sv.address(cfg.union), sv.bytes32(h)]),
+            readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(h)]).then(loanOf),
             readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(h)]).catch(() => null),
           ]);
           return loan && !loan.closed ? { token: h, ...(crops[h] || { crop: 'Crop share' }), loan, vb } : null;
@@ -118,19 +119,11 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
   useEffect(() => {
     if (!fixed || token || !loans.data) return;
     const l = loans.data.find((x) => x.token === initialToken) || (loans.data.length === 1 ? loans.data[0] : null);
-    if (l) { setToken(l.token); setAmount(Math.min(10000, owed(l))); }
+    if (l) { setToken(l.token); setAmount(owed(l)); }
   }, [loans.data]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Cash at the office above the union's treasury is offered to its LPs to collect (executive decision 24 Oct): the
-  // part of this count above it is said before counting.
-  const room = useQuery({ queryKey: ['stellar', 'deskRoom', cfg?.union], enabled: !!cfg, staleTime: 10_000,
-    queryFn: async () => {
-      const [t, h] = await Promise.all([
-        readContract(cfg, 'fund_core', 'union_treasury', [sv.address(cfg.union)]),
-        readContract(cfg, 'fx_pool', 'cash_at_hand', [sv.address(cfg.union)]),
-      ]);
-      return Math.max(0, Math.floor(Number(BigInt(t) - BigInt(h)) / Number(NIN)));
-    } });
-  const over = room.data != null && amount > room.data ? amount - room.data : 0;
+  // What the office may still take in (30 Oct): said before counting, and checked again on the count.
+  const desk = useDeskRoom();
+  const over = desk.data && amount > desk.data.room;
   const sel = loans.data?.find((l) => l.token === token);
   const who = purpose === 'repay' ? sel?.loan?.borrower : member.trim();
   const record = async ({ total, s3Keys }) => {
@@ -140,7 +133,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   if (counting) {
-    return <PhotoCount name={purpose === 'invest' ? 'Invest' : `Repay · ${sel?.crop || ''}`} target={amount} verb={purpose === 'invest' ? 'Invest' : 'Repay'}
+    return <PhotoCount name={purpose === 'invest' ? 'Invest' : `Repay · ${sel?.crop || ''}`} target={amount} verb={purpose === 'invest' ? 'Invest' : 'Repay'} desk={desk.data}
       onBack={() => setCounting(false)} onDone={(c) => { setCounting(false); record(c); }} />;
   }
   return (
@@ -158,15 +151,15 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
           {loans.isError && <p style={{ color: C.coral }}>Could not read the loans. Try again.</p>}
           {loans.isSuccess && !loans.data.length && <p style={muted}>No open loans.</p>}
           {loans.data?.map((l) => (
-            <Choice key={l.token} on={token === l.token} sub={`${l.land ? `Land ${l.land} · ` : ''}owes about ${inr(owed(l))}`} onClick={() => { setToken(l.token); setAmount(Math.min(10000, owed(l))); }}>{l.crop}</Choice>
+            <Choice key={l.token} on={token === l.token} sub={`${l.land ? `Land ${l.land} · ` : ''}owes about ${inr(owed(l))}`} onClick={() => { setToken(l.token); setAmount(owed(l)); }}>{l.crop}</Choice>
           ))}
         </>
       )}
       <p style={{ ...muted, textAlign: 'center' }}>{purpose === 'invest' ? 'The member brings' : 'The member repays'}</p>
       <Amount value={amount} set={setAmount} />
-      {over > 0 && <p style={{ color: C.gold, margin: 0 }}>{inr(over)} of this is more cash than the union's treasury: it is offered to your LPs to collect.</p>}
+      {over && <p style={{ color: C.coral, margin: 0 }}>{overRoom(desk.data, amount)}</p>}
       {noPhotos && <p style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</p>}
-      <Primary disabled={!amount || !isG(who) || !tx.ready} onClick={() => { setNoPhotos(false); setCounting(true); }}>Photo count</Primary>
+      <Primary disabled={!amount || !isG(who) || !tx.ready || !desk.data || over} onClick={() => { setNoPhotos(false); setCounting(true); }}>Photo count</Primary>
       <Secondary disabled>Cash teller · soon</Secondary>
     </DeskCard>
   );

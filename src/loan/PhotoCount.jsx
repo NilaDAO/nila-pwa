@@ -5,10 +5,13 @@ import { useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
 import { Primary, inr, muted } from '../plan/ui';
 import CameraView from '../shell/CameraView';
+import { overRoom } from './deskRoom';
 
 const API = process.env.REACT_APP_API_BASE_URL;
 
-export default function PhotoCount({ name, target, verb, onDone, onBack }) {
+// desk: useDeskRoom()'s data (30 Oct): a count above what the office may take in is not recorded. limit={false} for an
+// LP's Bring: rupees the office is short of, which go out again with the draw or payout.
+export default function PhotoCount({ name, target, verb, onDone, onBack, desk, limit = true }) {
   const [groups, setGroups] = useState([]);       // one per photo: { items, total, s3Key }
   const [state, setState] = useState('idle');     // idle | counting | error
   const shoot = async (blob) => {
@@ -37,6 +40,7 @@ export default function PhotoCount({ name, target, verb, onDone, onBack }) {
   const total = list.reduce((a, r) => a + r.denomination * r.count, 0);
   const remove = (d) => setGroups((g) => g.map((x) => ({ ...x, items: x.items.filter((it) => it.denomination !== d) })).filter((x) => x.items.length));
   const left = target ? target - total : 0;
+  const tooMuch = limit && !!desk && total > desk.room;
   return (
     <div style={{ fontFamily: FONT, color: C.text, padding: '16px 8px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -65,7 +69,8 @@ export default function PhotoCount({ name, target, verb, onDone, onBack }) {
         {target > 0 && total > 0 && (
           <p style={muted}>{left <= 0 ? '✓ Full amount counted.' : `ⓘ ${inr(left)} still to count.${verb === 'Repay' ? ' The member can also repay part now.' : ''}`}</p>
         )}
-        <Primary disabled={!total} onClick={() => onDone({ total, s3Keys: groups.map((g) => g.s3Key).filter(Boolean) })}>{verb} {inr(total)}</Primary>
+        {tooMuch && <p style={{ ...muted, color: C.coral }}>{overRoom(desk, total)}</p>}
+        <Primary disabled={!total || (limit && !desk) || tooMuch} onClick={() => onDone({ total, s3Keys: groups.map((g) => g.s3Key).filter(Boolean) })}>{verb} {inr(total)}</Primary>
       </div>
     </div>
   );
