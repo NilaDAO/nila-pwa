@@ -145,7 +145,7 @@ export function ScanLp({ onBack }) {
   };
   const again = () => { setId(undefined); setProof(undefined); setBad(undefined); setTyped(''); setCounted(null); };
   if (counting) {
-    return <PhotoCount name="LP brings cash" target={inrAmt} verb="Counted" onBack={() => setCounting(false)}
+    return <PhotoCount name="LP brings cash" target={inrAmt} verb="Counted" limit={false} onBack={() => setCounting(false)}
       onDone={({ total }) => { setCounted(total); setCounting(false); }} />;
   }
   const live = o.data && Number(o.data.expires) > Date.now() / 1000;
