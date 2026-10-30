@@ -3,8 +3,7 @@
 // (nila-anchor k1.py). When accepted: her USDC trustline (sponsored by the node, R11; none for a smart account, which
 // holds USDC in the USDC contract), then the offers.
 // LP pledge (executive decision 30 Oct): only name as on PAN, PAN and date of birth; no bank account, IFSC, selfie or
-// phone and location consent (an LP's USDC never changes owner, so no VDA rule binds the flow). PAN is asked for tax,
-// in case the union ever claims locked USDC.
+// phone and location consent (an LP's USDC never changes owner, so no VDA rule binds the flow). PAN is asked for tax.
 // DESIGN GAPs: "Accepted on <date>"
 // has no date (the SEP-12 answer carries none); "Get offers from <union>" is "Get cash offers" (no union
 // names on the node); a "Start" step before the form (her SEP-10 signature) and the REJECTED and
@@ -148,7 +147,7 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
             {fieldErrors[k] && <span style={{ color: C.coral, fontSize: 14, display: 'block', marginTop: 4 }}>{fieldErrors[k]}</span>}
           </label>
         ))}
-        <p style={muted}>Your PAN is asked for tax: if the union ever has to claim your locked USDC, it deducts tax under your PAN. Nila keeps this data for 5 years. Members of your union do not see it.</p>
+        <p style={muted}>Your PAN is asked for tax. Nila keeps this data for 5 years. Members of your union do not see it.</p>
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <Primary disabled={busy || asked.some((k) => !vals[k])}
           onClick={send}>{busy ? '…' : needs ? 'Fix it' : 'Send for checking'}</Primary>

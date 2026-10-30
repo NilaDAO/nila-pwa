@@ -1,7 +1,7 @@
 // A2 cash offers and A7b her code, as the LP pledge (executive decision 30 Oct, replaces the swap): an LP takes the
 // union's cash for a while (Collect) and her own account locks USDC worth 110% of it; she brings it back (Bring, only
 // what she holds) and the USDC unlocks pro rata; her 1% fee comes off the cash she brings back. Her USDC never leaves
-// her account, unless the union claims it after asking for the cash back and 7 days' notice.
+// her account; the only change she sees is the locked part on her USDC row in the wallet (A1, 30 Oct).
 // Accept = SEP-38 firm quote → SEP-24 at the trust's anchor (its own page in a frame, A3) → fx_pool.accept, fee-bumped
 // by the node. The leader scans her code (A1b, Cash → Scan an LP code). Never says sell, buy or swap.
 // DESIGN GAPs: "Where: Union office · <leader>" without a name (the node has no names); the board's
@@ -15,7 +15,7 @@ import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { CALL_NOTICE, CODE_TTL, U, loadSwaps, saveSwap, signedCode, useAnchorInfo, useBringUnlock, useLpStatus, useOfferQuote, useSep10Token, useUnionOffers, usdcOf } from './hooks';
+import { CODE_TTL, U, loadSwaps, saveSwap, signedCode, useAnchorInfo, useBringUnlock, useLpStatus, useOfferQuote, useSep10Token, useUnionOffers, usdcOf } from './hooks';
 import { BRING, firmQuote, openSwap, swapStatus } from './sep';
 
 const until = (ts) => {
@@ -44,19 +44,6 @@ function OfferRow({ o, onOpen }) {
 }
 
 /** The union's cash she holds: owed, locked, since when, and the date to bring it back by once a leader asked. */
-function HeldCard({ p }) {
-  const since = new Date(p.opened * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  return (
-    <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
-      <div style={{ fontWeight: 700, marginBottom: 6 }}>Union cash with you</div>
-      <Row k="Cash" v={inr(p.owed)} />
-      <Row k="Locked in your account" v={`${p.locked.toFixed(2)} USDC`} />
-      <Row k="Since" v={since} />
-      {p.calledAt != null && <p style={{ color: C.coral, margin: '4px 0 0' }}>Your leader asked for it back: bring it by {by(p.calledAt + CALL_NOTICE)}, or the union may claim your locked USDC.</p>}
-    </div>
-  );
-}
-
 /** A7b: her code for the leader to scan, and how far the swap is. */
 export function LpCode({ swap, onBack }) {
   const s = useNilaSigner();
@@ -183,7 +170,7 @@ export default function LpOffers({ onBack }) {
             <Row k="You take" v={inr(open.inr)} />
             <Row k="Locked in your account" v={`${usdc} USDC`} />
             <Row k="Take it by" v={by(open.expires)} />
-            <p style={muted}>{usdc} USDC stays in your wallet, locked until you bring the cash back. If your leader asks for the cash back and it is not back within 7 days, the union may claim it.</p>
+            <p style={muted}>{usdc} USDC stays in your wallet, locked until you bring the cash back.</p>
           </>
         )}
         {short && <p style={{ color: C.coral }}>You have {lp.data.free.toFixed(2)} USDC free: not enough to lock {usdc} USDC.</p>}
@@ -200,7 +187,6 @@ export default function LpOffers({ onBack }) {
   const saved = loadSwaps().filter((x) => x.lp === me);
   return (
     <Sheet landName="Nila" title="Cash offers" onBack={onBack}>
-      {lp.data?.position && <HeldCard p={lp.data.position} />}
       {lp.data && lp.data.trustline && <p style={{ ...muted, textAlign: 'center' }}>Your USDC: {lp.data.free.toFixed(2)} free{lp.data.locked ? ` · ${lp.data.locked.toFixed(2)} locked` : ''}</p>}
       {mine.map((o) => {
         const sw = saved.find((x) => x.offer === o.id) || { offer: o.id, kind: o.kind, inr: o.inr, usdc: usdcOf(o.usdc), expires: o.expires };

@@ -64,9 +64,8 @@ export function useLpStatus() {
       ]);
       const base = { member: !!title, lp: !!m?.accepted, idChecked: !!idc };
       const locked = Number(lien || 0) / U;
-      // The union's cash she holds, against her locked USDC; called: the leader asked for it back (7 days' notice).
-      const position = pos ? { owed: Number(BigInt(pos.owed) / BigInt(U)), locked: Number(pos.locked) / U, opened: Number(pos.opened),
-        calledAt: pos.called_at != null ? Number(pos.called_at) : null } : null;
+      // The union's cash she holds, against her locked USDC: shown on her USDC row in the wallet (A1).
+      const position = pos ? { owed: Number(BigInt(pos.owed) / BigInt(U)), locked: Number(pos.locked) / U, opened: Number(pos.opened) } : null;
       // A smart account (C…) holds USDC in the USDC contract itself: no trustline, nothing for the node to sponsor.
       if (smart) {
         const units = await readContract(cfg, 'usdc', 'balance', [sv.address(me)]).catch(() => 0n);
@@ -93,22 +92,6 @@ export function useBringUnlock(inr, on = true) {
   });
 }
 
-/** The union's LPs who hold its cash, each with its position (fx_pool.lps_owing → position): the leader's list. */
-export function useLpsOwing() {
-  const { data: cfg } = useStellarConfig();
-  return useQuery({
-    queryKey: ['stellar', 'lpsOwing', cfg?.union], enabled: !!cfg?.contracts?.fx_pool, refetchInterval: 30_000,
-    queryFn: async () => {
-      const lps = (await readContract(cfg, 'fx_pool', 'lps_owing', [sv.address(cfg.union)]).catch(() => [])) || [];
-      return Promise.all(lps.map(async (lp) => {
-        const p = await readContract(cfg, 'fx_pool', 'position', [sv.address(cfg.union), sv.address(lp)]);
-        return { lp, owed: Number(BigInt(p.owed) / BigInt(U)), locked: Number(p.locked) / U, opened: Number(p.opened),
-          calledAt: p.called_at != null ? Number(p.called_at) : null };
-      }));
-    },
-  });
-}
-
 /** Rupees the union's LPs hold in all (fx_pool.lp_owed): the most an automatic Bring may ask back (30 Oct). */
 export function useLpOwed() {
   const { data: cfg } = useStellarConfig();
@@ -118,8 +101,6 @@ export function useLpOwed() {
   });
 }
 
-/** Seven days' notice after a call, before the union may claim (fx_pool CALL_NOTICE). */
-export const CALL_NOTICE = 7 * 86_400;
 
 /** The union's open and accepted LP offers (fx_pool.offers_of → offer). */
 export function useUnionOffers({ poll = true, on = true } = {}) {

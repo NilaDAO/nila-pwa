@@ -1,6 +1,6 @@
 // The leader's Cash tab (P10): C1 (board LeaderCash) with the C2 reconcile chip (LeaderCashOff), the Funds card
 // and its Adjust panel (C3, LeaderCashAdjust), the Lending card, the Cash card with "Let an LP take it" (the LP pledge,
-// 30 Oct: the LP's own USDC is locked for the cash), the union's cash held by LPs (Ask for it back, then the claim) and
+// 30 Oct: the LP's own USDC is locked for the cash) and
 // the LP cards (C4, LeaderCashSettle #settle). Values: useUnionCash (contracts) and useUnionBook (the node's loan
 // list + food_token, O15). Deposit = her own nIN into the treasury (C10); withdraw = to her wallet; both sponsored.
 // DESIGN GAPs: "Member contributions" and the fund total have no formula in the design (see useUnionBook); no
@@ -12,7 +12,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { CALL_NOTICE, useLpsOwing, useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
+import { useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
 import { COLLECT } from '../anchor/sep';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
@@ -184,51 +184,6 @@ function useCountdown(ts) {
   return timeLeft(ts - now);
 }
 
-/** The union's cash held by LPs (the LP pledge, 30 Oct): each LP's cash and locked USDC; "Ask for it back" calls the
- *  position (fx_pool.call_position); after 7 days' notice the union's multisig may claim the locked USDC through the
- *  LP's own account (account.claim): the app shows it, the multisig signs it. */
-function LpHeld() {
-  const s = useNilaSigner();
-  const { data: cfg } = useStellarConfig();
-  const held = useLpsOwing();
-  const tx = useSorobanTx();
-  const [sure, setSure] = useState();
-  if (tx.status !== 'idle') return <Over><TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} /></Over>;
-  if (!held.data?.length) return null;
-  const now = Date.now() / 1000;
-  const day = (t) => new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  return (
-    <section style={card} aria-label="Cash with LPs">
-      <div style={head}>
-        <h2 style={title}>Cash with LPs</h2>
-        <span style={{ fontSize: 16, fontWeight: 700 }}>{inr(held.data.reduce((t, p) => t + p.owed, 0))}</span>
-      </div>
-      {held.data.map((p) => {
-        const due = p.calledAt != null ? p.calledAt + CALL_NOTICE : null;
-        return (
-          <div key={p.lp} style={rows}>
-            <Row k={`LP ${short(p.lp)}`} v={inr(p.owed)} />
-            <Row k="USDC locked" v={p.locked.toFixed(2)} />
-            <Row k="Since" v={day(p.opened)} />
-            {due == null ? (
-              <button type="button" disabled={!tx.ready} onClick={() => (sure === p.lp ? tx.run({
-                label: `Ask LP ${short(p.lp)} for ${inr(p.owed)} back`, rows: [['Cash', inr(p.owed)], ['Bring it by', '7 days from now']],
-                contractName: 'fx_pool', fn: 'call_position', args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.address(p.lp)],
-                invalidate: [['stellar', 'lpsOwing']],
-              }) : setSure(p.lp))} style={{ ...primary, opacity: tx.ready ? 1 : 0.5 }}>{sure === p.lp ? 'Tap again to ask for it back' : 'Ask for it back'}</button>
-            ) : due > now ? (
-              <Row k="Asked back · bring it by" v={day(due)} coral />
-            ) : (
-              <p style={{ margin: 0, color: C.coral }}>Not back by {day(due)}. The union's multisig may now claim the LP's locked USDC
-                (account {short(p.lp)}, claim): ask your union's signers.</p>
-            )}
-          </div>
-        );
-      })}
-    </section>
-  );
-}
-
 /** C4: the Cash card (time left, let an LP take it) and the LP cards. */
 function CashCard({ cash, onScanLp }) {
   const s = useNilaSigner();
@@ -377,7 +332,6 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
         </section>
         <CashAhead api={api} cash={cash} style={card} />
         <CashCard cash={cash} onScanLp={onScanLp} />
-        <LpHeld />
         {tasks}
       </div>
     </MapCard>
