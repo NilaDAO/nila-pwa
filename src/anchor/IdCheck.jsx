@@ -1,6 +1,7 @@
 // K1 identity check for an LP (board IdCheck #lp: -needs, -checking, -accepted). SEP-12 at the trust's anchor;
 // reviewed by hand by a trust operator for Nov 7 on testnet (LOAN_RULES §5, 19 Oct). Fields as SEP-9 names
-// (nila-anchor k1.py). When accepted: her USDC trustline (sponsored by the node, R11), then the offers.
+// (nila-anchor k1.py). When accepted: her USDC trustline (sponsored by the node, R11; none for a smart account, which
+// holds USDC in the USDC contract), then the offers.
 // DESIGN GAPs: "We send ₹1 to your bank account" is left out (no penny-drop vendor yet); "Accepted on <date>"
 // has no date (the SEP-12 answer carries none); "Get offers from <union>" is "Get cash offers" (no union
 // names on the node); a "Start" step before the form (her SEP-10 signature) and the REJECTED and

@@ -17,7 +17,7 @@ import { Secondary } from '../loan/AssetParts';
 import PhotoCount from '../loan/PhotoCount';
 import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { Keypair } from '@stellar/stellar-sdk';
+import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import { CODE_TTL, U, codeHash, useOfferQuote, useUnionOffers, usdcOf } from './hooks';
 import { BRING, COLLECT } from './sep';
 
@@ -126,7 +126,16 @@ export function ScanLp({ onBack }) {
   const mine = useQuery({ queryKey: ['anchor', 'codeCheck', id, proof?.ts, o.data?.lp], enabled: !!proof && !!o.data?.lp,
     queryFn: async () => {
       if (Math.abs(Date.now() / 1000 - proof.ts) > CODE_TTL) return false;
-      try { return Keypair.fromPublicKey(o.data.lp).verify(Buffer.from(await codeHash(id, proof.ts)), Buffer.from(proof.sig, 'hex')); } catch { return false; }
+      try {
+        // A smart account (C…) signs with its current signer key (an LP's is Ed25519: a smartphone), read on-chain.
+        let key = o.data.lp;
+        if (/^C/.test(key)) {
+          const sg = await readContract(cfg, key, 'signer');
+          if (!Array.isArray(sg) || sg[0] !== 'Ed25519') return false;
+          key = StrKey.encodeEd25519PublicKey(Buffer.from(sg[1]));
+        }
+        return Keypair.fromPublicKey(key).verify(Buffer.from(await codeHash(id, proof.ts)), Buffer.from(proof.sig, 'hex'));
+      } catch { return false; }
     } });
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   const read = (t) => {

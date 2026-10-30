@@ -54,10 +54,15 @@ export function useLpStatus() {
       const [title, m, a, idc] = await Promise.all([
         readContract(cfg, 'land_title', 'holds_title', um).catch(() => false),
         readContract(cfg, 'fx_pool', 'lp_member', um).catch(() => null),
-        getAccount(cfg.horizon_url, me).catch(() => null),
+        /^C/.test(me) ? null : getAccount(cfg.horizon_url, me).catch(() => null),
         // K1 (22 Oct): the anchor marked her identity checked on fx_pool (a leader's USDC, A9).
         readContract(cfg, 'fx_pool', 'id_checked', [sv.address(me)]).catch(() => false),
       ]);
+      // A smart account (C…) holds USDC in the USDC contract itself: no trustline, nothing for the node to sponsor.
+      if (/^C/.test(me)) {
+        const units = await readContract(cfg, 'usdc', 'balance', [sv.address(me)]).catch(() => 0n);
+        return { member: !!title, lp: !!m?.accepted, idChecked: !!idc, trustline: true, usdc: Number(units || 0) / U };
+      }
       const [code, issuer] = (cfg.usdc_asset || ':').split(':');
       const line = a?.balances?.find((b) => b.asset_code === code && b.asset_issuer === issuer);
       return { member: !!title, lp: !!m?.accepted, idChecked: !!idc, trustline: !!line, usdc: line ? Number(line.balance) : 0 };
