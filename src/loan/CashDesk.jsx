@@ -64,7 +64,7 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
 }
 const isG = (a) => /^[GC][A-Z2-7]{55}$/.test(a || '');
 
-function Amount({ value, set, max = 10000 }) {
+function Amount({ value, set, max = Infinity }) {
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, margin: '12px 0' }}>
@@ -119,7 +119,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
   useEffect(() => {
     if (!fixed || token || !loans.data) return;
     const l = loans.data.find((x) => x.token === initialToken) || (loans.data.length === 1 ? loans.data[0] : null);
-    if (l) { setToken(l.token); setAmount(Math.min(10000, owed(l))); }
+    if (l) { setToken(l.token); setAmount(owed(l)); }
   }, [loans.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // What the office may still take in (30 Oct): said before counting, and checked again on the count.
   const desk = useDeskRoom();
@@ -151,7 +151,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
           {loans.isError && <p style={{ color: C.coral }}>Could not read the loans. Try again.</p>}
           {loans.isSuccess && !loans.data.length && <p style={muted}>No open loans.</p>}
           {loans.data?.map((l) => (
-            <Choice key={l.token} on={token === l.token} sub={`${l.land ? `Land ${l.land} · ` : ''}owes about ${inr(owed(l))}`} onClick={() => { setToken(l.token); setAmount(Math.min(10000, owed(l))); }}>{l.crop}</Choice>
+            <Choice key={l.token} on={token === l.token} sub={`${l.land ? `Land ${l.land} · ` : ''}owes about ${inr(owed(l))}`} onClick={() => { setToken(l.token); setAmount(owed(l)); }}>{l.crop}</Choice>
           ))}
         </>
       )}

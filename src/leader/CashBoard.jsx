@@ -191,7 +191,7 @@ function CashCard({ cash, onScanLp }) {
   const cancel = useSorobanTx();
   const [sure, setSure] = useState();   // a second tap cancels (an accepted offer is the LP's swap too)
   const promised = offers.filter((o) => o.kind === COLLECT && o.state <= 1).reduce((t, o) => t + o.inr, 0);
-  const max = Math.max(0, Math.min(10000, Math.floor(cash.atHand) - promised));
+  const max = Math.max(0, Math.floor(cash.atHand) - promised);
   const [amount, setAmount] = useState(0);
   const a = Math.min(amount, max);
   const first = cash.escrows.find((e) => e.remaining > 0);

@@ -139,7 +139,7 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
         ) : (
           <>
             <p style={muted}>Bring cash to the office</p>
-            <Stepper value={bring} set={setBring} min={0} max={10000} unit="₹" label="Rupees to invest" />
+            <Stepper value={bring} set={setBring} min={0} unit="₹" label="Rupees to invest" />
             <Line />
             <KV k="After" v={`${fmt(invested + bring)} nIN`} />
             {leader ? (

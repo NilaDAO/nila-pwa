@@ -4,7 +4,7 @@
 const MESSAGES = {
   fx_pool: {
     4: 'The amount is zero.',
-    5: 'Above the most one count may record (₹10,000).',
+    5: 'Above the most this call may move (a swap, USDC into the treasury or the daily USDC limit).',
     6: 'The rupee rate is out of date. Try again in a few minutes.',
     8: 'The cash desk is paused.',
     9: 'Only a leader of the union can do this.',
