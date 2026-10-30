@@ -11,9 +11,19 @@ const isTokenExpired = (token) => {
     return Date.now() >= exp * 1000;
     };
 
+// null: Cognito keeps no key for her (deleted after the move to Privy, or a member who never had one; key backup,
+// 29 Oct). undefined (from handleGetEncryptedPrivateKey): it could not be read.
 const getEncryptedKey = async (token) => {
     const attr = await getUserAttributes(token)
-    return attr.UserAttributes.filter(item => item.Name === 'custom:encryptedPrivateKey')[0]['Value']
+    return attr.UserAttributes.find(item => item.Name === 'custom:encryptedPrivateKey')?.Value ?? null
+}
+
+/** A Cognito access token that has not expired (refreshed and stored when it had). */
+export const freshAccessToken = async (db) => {
+    if (!isTokenExpired(db['jwt_token'])) return db['jwt_token']
+    const response = await refreshSession(db['refresh_token'])
+    await updateItem({ id: 'jwt_token', value: response.AccessToken },'Init');
+    return response.AccessToken
 }
 
 // Decrypt the private key
@@ -36,19 +46,7 @@ try {
         return db['local_pk'];
     }
 
-    const refresh_token = db['refresh_token']
-    const jwt_token = db['jwt_token']
-
-    if (isTokenExpired(jwt_token)) {
-        // refresh token
-        const response = await refreshSession(refresh_token)
-        // set new jwt
-        await updateItem({ id: 'jwt_token', value: response.AccessToken },'Init'); // temporary jwt token
-        // use new jwt to fetch EPK
-        return getEncryptedKey(response.AccessToken)
-    } else {
-        return getEncryptedKey(db['jwt_token'])
-    }
+    return getEncryptedKey(await freshAccessToken(db))
 } catch (e) {
     console.error(e)
 }
