@@ -87,11 +87,40 @@ export async function firmQuote(info, token, usdcId, kind, inr) {
   }), 'SEP-38');
 }
 
+/** The anchor's SEP-24 page (T1-A A3, 30 Oct) in a frame over the app: resolves with the swap's id once the member
+ *  confirms there, rejects when the page refuses or the member cancels. The page posts only the id and the outcome. */
+function confirmOnPage(url, origin) {
+  return new Promise((resolve, reject) => {
+    const wrap = document.createElement('div');
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-label', 'Confirm your swap with the Nila trust');
+    Object.assign(wrap.style, { position: 'fixed', inset: '0', zIndex: '9999', display: 'flex', flexDirection: 'column', background: 'rgba(0,0,0,0.6)' });
+    const frame = document.createElement('iframe');
+    frame.src = url;
+    frame.title = 'Nila trust';
+    Object.assign(frame.style, { flex: '1', width: '100%', border: '0', background: '#fff' });
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    Object.assign(cancel.style, { height: '56px', border: '0', font: 'inherit', fontWeight: '600', background: '#1F1E1C', color: '#EDEBE6' });
+    const done = (fn, v) => { window.removeEventListener('message', onMessage); wrap.remove(); fn(v); };
+    function onMessage(e) {
+      if (e.origin !== origin || e.data?.type !== 'nila-sep24') return;
+      if (e.data.status === 'confirmed') done(resolve, e.data.id);
+      else done(reject, new Error(e.data.reason || 'The Nila trust did not open this swap.'));
+    }
+    window.addEventListener('message', onMessage);
+    cancel.onclick = () => done(reject, new Error('Swap cancelled.'));
+    wrap.append(frame, cancel);
+    document.body.appendChild(wrap);
+  });
+}
+
 /**
- * SEP-24 for one offer: open the deposit (Bring) or withdraw (Collect) with the quote, then finish the in-app
- * step at the anchor's business server, which checks the offer, her LP status and the quote, and signs the
- * accept with its swap key (fx_pool pays only a swap the anchor signed, C16). Returns { id, usdc (units),
- * valid_until, sig (hex) } for fx_pool.accept.
+ * SEP-24 for one offer: open the deposit (Bring) or withdraw (Collect) with the quote, then the member confirms on
+ * the anchor's own page (A3), where the business server checks the offer, the LP status and the quote; the app then
+ * takes the accept the anchor signed with its swap key (fx_pool pays only a swap the anchor signed, C16). Returns
+ * { id, usdc (units), valid_until, sig (hex) } for fx_pool.accept.
  */
 export async function openSwap(info, token, usdcAsset, account, kind, offerId, quote) {
   const [code, issuer] = usdcAsset.split(':');
@@ -100,10 +129,12 @@ export async function openSwap(info, token, usdcAsset, account, kind, offerId, q
   const t = await json(await fetch(`${info.TRANSFER_SERVER_SEP0024}/transactions/${kind === BRING ? 'deposit' : 'withdraw'}/interactive`, {
     method: 'POST', headers: { ...auth(token), 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }), 'SEP-24');
-  const step = new URL(t.url).searchParams.get('token');
-  const signed = await json(await fetch(`${info.NILA_ANCHOR_SERVER}/sep24/interactive`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: step, offer_id: Number(offerId) }),
-  }), 'anchor');
+  const page = new URL(t.url);
+  const step = page.searchParams.get('token');
+  page.searchParams.set('offer_id', String(Number(offerId)));
+  const confirmed = await confirmOnPage(page.href, new URL(info.NILA_ANCHOR_SERVER).origin);
+  if (confirmed !== t.id) throw new Error('the anchor answered for another swap');
+  const signed = await json(await fetch(`${info.NILA_ANCHOR_SERVER}/sep24/signed?token=${encodeURIComponent(step)}`), 'anchor');
   if (signed.sep24_id !== t.id || signed.quote_id !== quote.id) throw new Error('the anchor answered for another swap');
   return { id: t.id, usdc: signed.usdc, validUntil: signed.valid_until, sig: signed.sig };
 }

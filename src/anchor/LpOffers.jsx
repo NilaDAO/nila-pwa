@@ -1,6 +1,6 @@
 // A2 cash offers (board Tasks "Cash offers", #lp-bring / #lp-collect dialogs) and A7b her code (board
 // MemberAssetTractorScrolled-h3n0 #lp-bring / #lp-collect). Accept = SEP-38 firm quote → SEP-24 at the
-// trust's anchor (in the app) → fx_pool.accept(lp, offer, sep24_id, quote_id), fee-bumped by the node.
+// trust's anchor (its own page in a frame, A3 30 Oct) → fx_pool.accept(lp, offer, sep24_id, quote_id), fee-bumped by the node.
 // The rate is fixed at accept; a no-show costs nothing (LOAN_RULES §5, 12 Oct). The leader scans her code
 // (A1b, Cash → Scan an LP code) and fx_pool moves the USDC.
 // DESIGN GAPs: "Where: Union office · <leader>" without a name (the node has no names); the board's
