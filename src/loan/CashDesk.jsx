@@ -25,7 +25,7 @@ import CameraView from '../shell/CameraView';
 import { addressFromQr, useUnionMembers } from '../leader/unionMembers';
 import { overRoom, useDeskRoom } from './deskRoom';
 import { Secondary } from './AssetParts';
-import { owedOf } from './owed';
+import { loanOf, owedOf } from './owed';
 import StartHelp from './StartHelp';
 
 const PURPOSE = { invest: 0, repay: 1 };
@@ -42,7 +42,7 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
   let change = 0;
   if (purpose === 'repay' && token) {
     const [loan, vb] = await Promise.all([
-      readContract(cfg, 'fund_core', 'get_loan', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null),
+      readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(token)]).then(loanOf).catch(() => null),
       readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(token)]).catch(() => null),
     ]);
     if (loan) {
@@ -104,7 +104,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
         return Promise.all((ids || []).map(async (id) => {
           const h = Buffer.from(id).toString('hex');
           const [loan, vb] = await Promise.all([
-            readContract(cfg, 'fund_core', 'get_loan', [sv.address(cfg.union), sv.bytes32(h)]),
+            readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(h)]).then(loanOf),
             readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(h)]).catch(() => null),
           ]);
           return loan && !loan.closed ? { token: h, ...(crops[h] || { crop: 'Crop share' }), loan, vb } : null;

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { useUnionMembers } from './unionMembers';
+import { loanOf } from '../loan/owed';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -44,7 +45,7 @@ export const SEARCH_WINDOWS = [['24h', 'the last 24 hours'], ['week', 'the last 
 
 /**
  * The union's book (C1/C2, LOAN_RULES §5 20 Oct): the node's loan list (async list, O15) with each loan's live
- * numbers from fund_core.get_loan. Interest pending = accrued and unpaid plus simple interest since the last accrual
+ * numbers from fund_core.food_token (its loan). Interest pending = accrued and unpaid plus simple interest since the last accrual
  * at the loan's rate (as fund_core accrues); earnings pending = the union's cut of it as fund_core pays it
  * (treasury + rainy-day fee, in basis points of the interest). Accounted for: the list's outstanding cash principal against the chain's junior
  * borrows (fund_core.get_junior_market.total_borrows). DESIGN GAP: "Member contributions" and the fund total have no
@@ -63,7 +64,7 @@ export function useUnionBook(api) {
       const now = Date.now() / 1000;
       const rows = await Promise.all(loans.map(async (l) => {
         const [g, v] = await Promise.all([
-          readContract(cfg, 'fund_core', 'get_loan', [u, sv.bytes32(l.token_id)]).catch(() => null),
+          readContract(cfg, 'fund_core', 'food_token', [u, sv.bytes32(l.token_id)]).then(loanOf).catch(() => null),
           // Her voucher's tractor acres left, from the chain (27 Oct; the node's list carries no units).
           cfg.contracts.machinery ? readContract(cfg, 'machinery', 'voucher', [u, sv.bytes32(l.token_id)]).catch(() => null) : null,
         ]);

@@ -1,7 +1,7 @@
 // The leader's Cash tab (P10): C1 (board LeaderCash) with the C2 reconcile chip (LeaderCashOff), the Funds card
 // and its Adjust panel (C3, LeaderCashAdjust), the Lending card, and the Cash card with "Let an LP collect it" and
 // the LP cards (C4, LeaderCashSettle #settle). Values: useUnionCash (contracts) and useUnionBook (the node's loan
-// list + get_loan, O15). Deposit = her own nIN into the treasury (C10); withdraw = to her wallet; both sponsored.
+// list + food_token, O15). Deposit = her own nIN into the treasury (C10); withdraw = to her wallet; both sponsored.
 // DESIGN GAPs: "Member contributions" and the fund total have no formula in the design (see useUnionBook); no
 // waiting cash-outs list (executive decision 20 Oct: the leader scans her code when she comes); LP names are
 // short addresses; "Take a tour" is not built; the cash tasks the board leaves to L1 are listed below the cards.
