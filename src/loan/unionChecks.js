@@ -36,7 +36,7 @@ export function useUnionChecks(member) {
         readContract(cfg, 'fx_pool', 'cash_at_hand', u).catch(() => 0n),
         // A voucher hour is lent at the tractor hour's whole value (26 Oct), out of free senior money.
         cfg.contracts.machinery ? readContract(cfg, 'machinery', 'value_per_tractor_acre', u).catch(() => 0n) : 0n,
-        readContract(cfg, 'fund_core', 'on_hold', u),
+        readContract(cfg, 'fund_core', 'union_book', u).then((b) => b?.on_hold ?? 0),
         readContract(cfg, 'fund_core', 'position', um),
         readContract(cfg, 'fund_core', 'loans_of', um),
       ]);
