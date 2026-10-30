@@ -25,6 +25,7 @@ import { useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
 import { useNilaSigner } from '../wallet/signer';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
+import { useDeskRoom } from '../loan/deskRoom';
 import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
 import { useSessionUntil } from '../stellar/session';
@@ -75,6 +76,7 @@ const btn = (enabled = true) => ({ flex: 1, height: 44, borderRadius: R.button, 
 export default function MemberStatus({ id, go }) {
   const api = usePlanClient();
   const members = useUnionMembers(api);
+  const desk = useDeskRoom();
   const { data: cfg } = useStellarConfig();
   const found = (members.data || []).find((x) => x.route === id);
   // While a member's G2 is open the list is asked every 20 s (only changed rows): crop shares just made show soon (26 Oct).
@@ -151,7 +153,7 @@ export default function MemberStatus({ id, go }) {
     );
   }
   if (step === 'count') {
-    return <PhotoCount name={`Invest · ${m.label}`} target={0} verb="Invest"
+    return <PhotoCount name={`Invest · ${m.label}`} target={0} verb="Invest" desk={desk.data}
       onBack={() => setStep()} onDone={async (c) => {
         setStep();
         if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose: 'invest', who: m.address, total: c.total, s3Keys: c.s3Keys }))) setNoPhotos(true);
