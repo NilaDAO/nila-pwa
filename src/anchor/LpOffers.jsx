@@ -116,7 +116,8 @@ export default function LpOffers({ onBack }) {
     try {
       const t = await getToken();
       const quote = await firmQuote(info.data, t, `stellar:${cfg.usdc_asset}`, o.kind, o.inr);
-      const signed = await openSwap(info.data, t, cfg.usdc_asset, me, o.kind, o.id, quote);
+      // SEP-24 names her SEP-10 key (G…); the anchor signs the accept for her account (C…), which accept() names.
+      const signed = await openSwap(info.data, t, cfg.usdc_asset, s.senderAddress || me, o.kind, o.id, quote);
       const sep24 = signed.id;
       const usdc = o.kind === BRING ? quote.buy_amount : quote.sell_amount;
       const swap = { offer: o.id, sep24, quote: quote.id, kind: o.kind, inr: o.inr, usdc: Number(usdc).toFixed(2), expires: o.expires, lp: me };
