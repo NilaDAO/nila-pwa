@@ -118,9 +118,11 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   // A member handles nIN (and USDC) only once the anchor has checked their identity (K1, executive decision 24 Oct); a
   // leader always. Without the check the nIN row and its value in the total stay hidden.
   const nin = leader || lp?.idChecked ? ninHeld : 0;
-  // A leader's USDC in rupees at fx_pool's current rate (22 Oct); an expired rate leaves it out of the total.
+  // USDC in rupees at fx_pool's current rate (22 Oct; an expired rate leaves it out of the total). 31 Oct: members' too,
+  // all of it: the wallet's (its locked part included) and a Collect position's USDC locked with the union.
   const rate = useFxRate().data;
-  const usdcInr = leader && lp?.idChecked && rate ? (lp.usdc || 0) * rate : 0;
+  const withUnion = lp?.position?.kind === 1 ? lp.position.usdc : 0;
+  const usdcInr = (leader || lp?.idChecked) && rate ? ((lp?.usdc || 0) + withUnion) * rate : 0;
   const shares = useMyShares().data || [];
   const refresh = () => { qc.invalidateQueries({ queryKey: ['stellar'] }); qc.invalidateQueries({ queryKey: ['oracle', 'myShares'] }); };
   const fetching = useIsFetching({ queryKey: ['stellar'] }) > 0;
