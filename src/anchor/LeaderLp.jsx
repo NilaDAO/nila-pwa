@@ -21,7 +21,8 @@ import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import { CODE_TTL, U, codeHash, useOfferQuote, useUnionOffers, usdcOf } from './hooks';
 import { BRING, COLLECT } from './sep';
 
-export const OFFER_TTL = 48 * 3600;
+// No fixed period (31 Oct): an offer stays open until an LP accepts it or a leader cancels it.
+export const OPEN_END = 18446744073709551615n;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 const left = (ts) => { const s = ts - Date.now() / 1000; return s <= 0 ? 'expired' : s < 86400 ? `${Math.ceil(s / 3600)} h left` : `In ${Math.round(s / 86400)} d`; };
 const STATE = ['Waiting', 'Accepted', 'Done', 'Cancelled', 'Expired'];
@@ -32,10 +33,10 @@ export function usePost() {
   const tx = useSorobanTx();
   const post = (kind, amount) => tx.run({
     label: kind === BRING ? `Ask LPs to bring ${inr(amount)}` : `Let an LP take ${inr(amount)}`,
-    rows: [['Amount', inr(amount)], ['Open for', '48 hours']],
+    rows: [['Amount', inr(amount)], ['Open', 'Until an LP takes it up, or you cancel']],
     contractName: 'fx_pool', fn: 'post_offer',
     args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.u32(kind), sv.i128(BigInt(amount) * BigInt(U)),
-      sv.u64(Math.floor(Date.now() / 1000) + OFFER_TTL)],
+      sv.u64(OPEN_END)],
     invalidate: [['stellar', 'offers']],
   });
   return { tx, post };
@@ -51,7 +52,7 @@ function OfferList({ onCancel }) {
       {offers.data.map((o) => (
         <div key={o.id} style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 8, fontSize: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-            <span>{o.kind === BRING ? 'LP brings cash' : 'LP takes cash'} · {inr(o.inr)}</span><span>{left(o.expires)}</span>
+            <span>{o.kind === BRING ? 'LP brings cash' : 'LP takes cash'} · {inr(o.inr)}</span><span>{o.expires > 4e9 ? '' : left(o.expires)}</span>
           </div>
           <div style={{ color: C.muted }}>{STATE[o.state]}{o.lp ? ` · LP ${short(o.lp)}` : ''}{o.state === 1 ? ` · ${usdcOf(o.usdc)} USDC` : ''}</div>
           <button type="button" onClick={() => (sure === o.id ? onCancel(o) : setSure(o.id))} style={{ background: 'none', border: 0, padding: 0, color: C.coral, fontWeight: 700, marginTop: 4 }}>

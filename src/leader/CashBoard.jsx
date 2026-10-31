@@ -220,6 +220,7 @@ function CashCard({ cash }) {
   const left = useCountdown(first?.expires);
   const q = useOfferQuote(COLLECT, a);
   if (tx.status !== 'idle') return createPortal(<TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />, document.body);
+  const now = Date.now() / 1000;
   return (
     <>
       {/* C4 (22 Oct): the amount beside the title; the details and the primary action only while there is cash at hand. */}

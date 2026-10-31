@@ -69,10 +69,10 @@ export function useLeaderSlides({ on = true, onSettle, onScanLp, onMachine }) {
     const bring = o.kind === 0;
     const here = o.state === 1;
     const steps = bring
-      ? [here ? `LP ${short(o.lp)} accepted: they bring ${inr(o.inr)} to the office.` : `An LP accepts it on their phone (expires in ${expiresIn(o.expires, now)}).`,
+      ? [here ? `LP ${short(o.lp)} accepted: they bring ${inr(o.inr)} to the office.` : `An LP accepts it on their phone${o.expires < 4e9 ? ` (expires in ${expiresIn(o.expires, now)})` : ''}.`,
         'Take the cash, then scan the LP\'s code.',
         'The LP gets USDC: back from its position, or the union\'s, locked in the LP\'s wallet.']
-      : [here ? `LP ${short(o.lp)} accepted: they come to collect ${inr(o.inr)}.` : `An LP accepts it on their phone (expires in ${expiresIn(o.expires, now)}).`,
+      : [here ? `LP ${short(o.lp)} accepted: they come to collect ${inr(o.inr)}.` : `An LP accepts it on their phone${o.expires < 4e9 ? ` (expires in ${expiresIn(o.expires, now)})` : ''}.`,
         'Scan the LP\'s code, then hand over the cash.',
         'The LP\'s USDC is locked with the union, or the union\'s comes back; the cash at the office goes down.'];
     // Step 2 carries the scan (25 Oct, as the repay card's "Show your QR"); the state is the title.

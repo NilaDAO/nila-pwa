@@ -20,15 +20,15 @@ import { inr } from '../plan/ui';
 import { Title, card, small } from '../shell/MessageSlider';
 import MapCard from '../shell/MapCard';
 import ListRow, { ListSection } from '../shell/ListRow';
-import { BanknoteIcon } from '../shell/icons';
 import { muted } from '../plan/ui';
 import { KV, QrCircle } from '../loan/AssetParts';
-import { UsdcTile } from '../shell/icons';
+import { RupeeIcon } from '../shell/icons';
 import { C, FONT, R } from '../shell/tokens';
 import { CODE_TTL, saveSwap, signedCode, useAnchorInfo, useLpQuote, useLpStatus, useSep10Token, useUnionOffers } from './hooks';
 import { BRING, firmQuote, openSwap } from './sep';
 
 const by = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const ends = (ts) => ts < 4e9;   // an offer posted with an end (before 31 Oct); new ones stay open
 const hexBytes = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 const button = { height: 44, borderRadius: R.button, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: FONT,
   fontSize: 14, cursor: 'pointer' };
@@ -68,7 +68,7 @@ function OfferCard({ o }) {
       saveSwap({ offer: o.id, sep24: signed.id, quote: quote.id, kind: o.kind, inr: o.inr, expires: o.expires, lp: me });
       const out = await tx.run({
         label: bring ? `Bring ${inr(o.inr)}` : `Take ${inr(o.inr)}`,
-        rows: [['USDC', `${(Number(signed.usdc) / 1e7).toFixed(2)} USDC`], ['By', by(o.expires)]],
+        rows: [['USDC', `${(Number(signed.usdc) / 1e7).toFixed(2)} USDC`], ...(ends(o.expires) ? [['By', by(o.expires)]] : [])],
         contractName: 'fx_pool', fn: 'accept',
         args: [sv.address(me), sv.u64(o.id), sv.string(signed.id), sv.string(quote.id), sv.i128(signed.usdc), sv.u64(signed.validUntil), sv.bytes(hexBytes(signed.sig))],
         invalidate: [['stellar', 'offers']],
@@ -83,12 +83,12 @@ function OfferCard({ o }) {
   const fee = q?.fee || 0;
   return (
     <section aria-label="Cash offer" style={card}>
-      <Title Icon={UsdcTile}>{title}</Title>
+      <Title Icon={RupeeIcon}>{title}</Title>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {q && fee > 0 && <KV k={bring ? 'You hand over (less your 2% fee)' : 'Of which your 2% fee'} v={inr(bring ? o.inr - fee : fee)} />}
         {q && q.close > 0 && <KV k={bring ? 'USDC back to you' : 'Your locked USDC back to the union'} v={q.close.toFixed(2)} />}
         {q && q.open > 0 && <KV k={bring ? 'USDC to your wallet, locked' : 'Your USDC locked with the union'} v={q.open.toFixed(2)} />}
-        <KV k="By" v={by(o.expires)} />
+        {ends(o.expires) && <KV k="By" v={by(o.expires)} />}
       </div>
       {short && <span style={{ ...small, color: C.coral }}>You have {lp.data.free.toFixed(2)} USDC free: not enough.</span>}
       {error && <span style={{ ...small, color: C.coral }}>{error}</span>}
@@ -130,7 +130,7 @@ export function LpTaskRows({ go }) {
   if (!mine.length) return null;
   return (
     <ListSection title="Cash offers">
-      {mine.map((o, i) => <ListRow key={o.id} first={i === 0} icon={BanknoteIcon} tone="new" title={titleOf(o)} sub="Show your code to your leader"
+      {mine.map((o, i) => <ListRow key={o.id} first={i === 0} icon={RupeeIcon} tone="new" title={titleOf(o)} sub="Show your code to your leader"
         onClick={() => go(`lpcode/${o.id}`)} />)}
     </ListSection>
   );
@@ -152,7 +152,7 @@ export function LpCodeScreen({ id, onBack }) {
         <>
           <OfferQr id={Number(id)} />
           <p style={{ ...muted, textAlign: 'center', margin: 0 }}>
-            {o ? `${titleOf(o)}. ${bring ? 'Hand over the cash, then let your leader scan this.' : 'Let your leader scan this, then take the cash.'} By ${by(o.expires)}.` : '…'}
+            {o ? `${titleOf(o)}. ${bring ? 'Hand over the cash, then let your leader scan this.' : 'Let your leader scan this, then take the cash.'}${ends(o.expires) ? ` By ${by(o.expires)}.` : ''}` : '…'}
           </p>
         </>
       )}
