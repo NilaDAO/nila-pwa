@@ -137,18 +137,19 @@ export function LpTaskRows({ go }) {
 }
 
 /** The LP's code on the standard QR screen (as the help QR): close it any time, open it again from Tasks. After the
- *  leader's scan it says so, and the wallet reads again. */
+ *  leader's scan it closes by itself and the wallet reads again. */
 export function LpCodeScreen({ id, onBack }) {
   const offers = useUnionOffers().data;
   const qc = useQueryClient();
   const o = offers?.find((x) => x.id === Number(id));
   const done = offers && !o;   // scanned (or cancelled / expired): no longer among the union's open offers
-  useEffect(() => { if (done) qc.invalidateQueries({ queryKey: ['stellar', 'lp'] }); }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Scanned: the screen simply closes to Assets (31 Oct), where the wallet reads again.
+  useEffect(() => { if (done) { qc.invalidateQueries({ queryKey: ['stellar', 'lp'] }); onBack(); } }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
   const bring = o?.kind === BRING;
   return (
     <MapCard header={{ title: 'Your code', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}
       style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {done ? <p style={{ ...muted, textAlign: 'center' }}>Done. Your wallet shows the USDC.</p> : (
+      {done ? null : (
         <>
           <OfferQr id={Number(id)} />
           <p style={{ ...muted, textAlign: 'center', margin: 0 }}>
