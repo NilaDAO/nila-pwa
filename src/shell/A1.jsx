@@ -15,7 +15,7 @@ import { ShareRows, useMyLand, useMyShares } from '../loan/MyShares';
 import { loadVoucherCode, ta, typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
-import { UnionRows, useLeaderSlides } from '../leader/UnionCards';
+import { UnionRows, useLeaderSlides, useLpSlides } from '../leader/UnionCards';
 import { C, FONT, R, SHADOW } from './tokens';
 import { CashTile, ChevronIcon, HistoryIcon, InvestedTile, LandIcon, MachineryTile, MyMachineTile, NinTile, QrIcon, RefreshIcon, TreasuryTile, UsdcTile } from './icons';
 import RoundButton, { SettingsButton } from './RoundButton';
@@ -142,7 +142,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     </section>
   )] : [];
   // The LP offers come first in the slider (25 Oct): an LP may be on the way; then her machine, the union's cards, hers.
-  const lpSlides = leaderSlides.filter((el) => String(el.key).startsWith('lp-'));
+  // An LP's own cards (31 Oct): one per offer it can answer or has accepted, first.
+  const mySlides = useLpSlides({ on: !leader && !!lp?.lp, onOffers });
+  const lpSlides = [...mySlides, ...leaderSlides.filter((el) => String(el.key).startsWith('lp-'))];
   const slides = [...lpSlides, ...confirmSlide, ...leaderSlides.filter((el) => !lpSlides.includes(el)), ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans, onRepayQr: (t) => onShare(`${t}/qr`),
     index: juniorIndex.data, onWithdrawal: onInvested, leader: !!leader })];
 
@@ -229,9 +231,11 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
             ? <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="Digital US dollar" value={(lp.usdc || 0).toFixed(2)} valueSub={rate ? `≈ ${inr(usdcInr)}` : ""} onClick={onUsdc} />
             : <Row label="USDC, identity check needed" icon={<UsdcTile />} title="USDC" warn="Identity check (KYC) needed" />
         ) : lp?.trustline && (
-          // The LP pledge (30 Oct): the part locked against the union's cash she holds, and how much cash that is.
+          // LP positions (31 Oct), the only change on her wallet: a Bring position's USDC is locked in her wallet; a
+          // Collect position's USDC is hers, locked with the union.
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC"
-            sub={lp.position ? `${inr(lp.position.owed)} of the union's cash with you` : 'For cash offers as an LP'}
+            sub={!lp.position ? 'For cash offers as an LP' : lp.position.kind === 0 ? `Locked for the ${inr(lp.position.inr)} you brought`
+              : `${lp.position.usdc.toFixed(2)} locked with the union for ${inr(lp.position.inr)}`}
             value={lp.usdc.toFixed(2)} valueSub={lp.locked ? `${lp.locked.toFixed(2)} locked` : ''} onClick={onOffers} />
         )}
         {/* Vouchers under their own label (any voucher kind; machine work today): one row for her machine vouchers,

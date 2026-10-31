@@ -1,7 +1,8 @@
-// A2 cash offers and A7b her code, as the LP pledge (executive decision 30 Oct, replaces the swap): an LP takes the
-// union's cash for a while (Collect) and her own account locks USDC worth 110% of it; she brings it back (Bring, only
-// what she holds) and the USDC unlocks pro rata; her 1% fee comes off the cash she brings back. Her USDC never leaves
-// her account; the only change she sees is the locked part on her USDC row in the wallet (A1, 30 Oct).
+// A2 cash offers and A7b her code, as LP positions (executive decision 31 Oct): every position is USDC locked until
+// the LP's opposite offer closes it. Take (Collect): it first ends a Bring position (the union pays its rupees plus the
+// 2% fee; that USDC goes back), the rest locks her own USDC with the union. Bring: it first ends a Collect position
+// (she hands over its rupees less the fee and gets that USDC back), the rest brings the union's USDC to her wallet,
+// locked. Open ended; past a 5% rate move anyone settles. The only change on her wallet: the locked part (A1).
 // Accept = SEP-38 firm quote → SEP-24 at the trust's anchor (its own page in a frame, A3) → fx_pool.accept, fee-bumped
 // by the node. The leader scans her code (A1b, Cash → Scan an LP code). Never says sell, buy or swap.
 // DESIGN GAPs: "Where: Union office · <leader>" without a name (the node has no names); the board's
@@ -15,7 +16,7 @@ import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { CODE_TTL, U, loadSwaps, saveSwap, signedCode, useAnchorInfo, useBringUnlock, useLpStatus, useOfferQuote, useSep10Token, useUnionOffers, usdcOf } from './hooks';
+import { CODE_TTL, U, loadSwaps, saveSwap, signedCode, useAnchorInfo, useLpQuote, useLpStatus, useSep10Token, useUnionOffers, usdcOf } from './hooks';
 import { BRING, firmQuote, openSwap, swapStatus } from './sep';
 
 const until = (ts) => {
@@ -34,16 +35,26 @@ function Row({ k, v }) {
   );
 }
 
-function OfferRow({ o, onOpen }) {
-  const bring = o.kind === BRING;
-  const q = useOfferQuote(o.kind, o.inr);
-  const un = useBringUnlock(o.inr, bring);
-  const usdc = bring ? (un.data != null ? un.data.toFixed(2) : '…') : (q.data ? usdcOf(q.data.usdc) : '…');
-  const sub = bring ? `Unlocks ${usdc} USDC · ${until(o.expires)}` : `Locks ${usdc} USDC · ${until(o.expires)}`;
-  return <Choice sub={sub} onClick={onOpen}>{bring ? `Bring ${inr(o.inr)} back` : `Take ${inr(o.inr)}`}</Choice>;
+/** What an accept moves for her, in words (lp_quote): USDC back or locked, on her side. */
+function moves(bring, q) {
+  if (!q) return '…';
+  const p = [];
+  if (bring) {
+    if (q.close) p.push(`${q.close.toFixed(2)} USDC back`);
+    if (q.open) p.push(`${q.open.toFixed(2)} USDC to your wallet, locked`);
+  } else {
+    if (q.close) p.push(`${q.close.toFixed(2)} locked USDC back to the union`);
+    if (q.open) p.push(`${q.open.toFixed(2)} USDC locked with the union`);
+  }
+  return p.join(' · ') || '—';
 }
 
-/** The union's cash she holds: owed, locked, since when, and the date to bring it back by once a leader asked. */
+function OfferRow({ o, onOpen }) {
+  const bring = o.kind === BRING;
+  const q = useLpQuote(o.kind, o.inr);
+  return <Choice sub={`${moves(bring, q.data)} · ${until(o.expires)}`} onClick={onOpen}>{bring ? `Bring ${inr(o.inr)}` : `Take ${inr(o.inr)}`}</Choice>;
+}
+
 /** A7b: her code for the leader to scan, and how far the swap is. */
 export function LpCode({ swap, onBack }) {
   const s = useNilaSigner();
@@ -66,10 +77,10 @@ export function LpCode({ swap, onBack }) {
   const bring = swap.kind === BRING;
   const done = state === 2;
   return (
-    <Sheet landName="Nila" title={bring ? `Bring ${inr(swap.inr)} back` : `Take ${inr(swap.inr)}`} onBack={onBack}>
+    <Sheet landName="Nila" title={bring ? `Bring ${inr(swap.inr)}` : `Take ${inr(swap.inr)}`} onBack={onBack}>
       {done ? (
         <>
-          <p style={{ textAlign: 'center', fontWeight: 700 }}>{bring ? `${swap.usdc} USDC unlocked in your wallet.` : `You took the cash. ${swap.usdc} USDC stays locked in your wallet.`}</p>
+          <p style={{ textAlign: 'center', fontWeight: 700 }}>{bring ? `${swap.usdc} USDC came to your wallet.` : `You took the cash. ${swap.usdc} USDC moved for it.`}</p>
           <p style={{ ...muted, textAlign: 'center' }}>{st.data?.status === 'completed' ? 'Recorded by the anchor.' : 'The anchor is recording it…'}</p>
         </>
       ) : state === 3 || state === 4 ? (
@@ -85,11 +96,11 @@ export function LpCode({ swap, onBack }) {
             </details>
           )}
           {bring && swap.hand != null && <Row k="You hand over" v={inr(swap.hand)} />}
-          <Row k={bring ? 'Unlocks in your account' : 'Locked in your account'} v={`${swap.usdc} USDC`} />
+          <Row k="USDC that moves" v={`${swap.usdc} USDC`} />
           <Row k="Where" v="Union office" />
           <Row k={bring ? 'Bring it by' : 'Take it by'} v={by(swap.expires)} />
-          <p style={muted}>{bring ? 'Show this to your leader when you hand over the cash. Your USDC unlocks when your leader scans it.'
-            : 'Show this to your leader. Your leader scans it and hands you the cash; your USDC stays in your wallet, locked until you bring the cash back.'}</p>
+          <p style={muted}>{bring ? 'Show this to your leader when you hand over the cash. The USDC moves when your leader scans it.'
+            : 'Show this to your leader. Your leader scans it and hands you the cash; the USDC moves then.'}</p>
         </>
       )}
       <Primary onClick={onBack}>Done</Primary>
@@ -112,12 +123,10 @@ export default function LpOffers({ onBack }) {
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState();   // the swap being accepted, for the code after a retry
   const me = s?.stellarAddress;
-  const q = useOfferQuote(open?.kind, open?.inr || 0);
-  const unlock = useBringUnlock(open?.inr || 0, open?.kind === BRING);
+  const q = useLpQuote(open?.kind, open?.inr || 0, !!open);
   const mine = (offers.data || []).filter((o) => o.state === 1 && o.lp === me);
-  const owed = lp.data?.position?.owed || 0;
-  // A Bring is only for an LP who holds that much of the union's cash.
-  const free = (offers.data || []).filter((o) => o.state === 0 && o.expires > Date.now() / 1000 + 60 && (o.kind !== BRING || o.inr <= owed));
+  // Any LP may answer any offer (31 Oct); one accepted offer at a time (the contract).
+  const free = mine.length ? [] : (offers.data || []).filter((o) => o.state === 0 && o.expires > Date.now() / 1000 + 60);
 
   const accept = async (o) => {
     setBusy(true); setError(undefined);
@@ -128,13 +137,13 @@ export default function LpOffers({ onBack }) {
       const signed = await openSwap(info.data, t, cfg.usdc_asset, s.senderAddress || me, o.kind, o.id, quote);
       const sep24 = signed.id;
       const usdc = o.kind === BRING ? quote.buy_amount : quote.sell_amount;
-      const hand = o.kind === BRING && q.data ? o.inr - Number(BigInt(q.data.fee_inr) / BigInt(U)) : null;
+      const hand = o.kind === BRING && q.data ? o.inr - q.data.fee : null;
       const swap = { offer: o.id, sep24, quote: quote.id, kind: o.kind, inr: o.inr, usdc: Number(usdc).toFixed(2), hand, expires: o.expires, lp: me };
       saveSwap(swap);
       setPending(swap);
       const out = await tx.run({
-        label: o.kind === BRING ? `Bring ${inr(o.inr)} back` : `Take ${inr(o.inr)}`,
-        rows: [[o.kind === BRING ? 'Unlocks' : 'Locks', `${swap.usdc} USDC`], ['By', by(o.expires)]],
+        label: o.kind === BRING ? `Bring ${inr(o.inr)}` : `Take ${inr(o.inr)}`,
+        rows: [['USDC that moves', `${swap.usdc} USDC`], ['By', by(o.expires)]],
         contractName: 'fx_pool', fn: 'accept',
         args: [sv.address(me), sv.u64(o.id), sv.string(sep24), sv.string(quote.id), sv.i128(signed.usdc), sv.u64(signed.validUntil), sv.bytes(hexBytes(signed.sig))],
         invalidate: [['stellar', 'offers']],
@@ -151,34 +160,27 @@ export default function LpOffers({ onBack }) {
   if (code) return <LpCode swap={code} onBack={() => setCode(undefined)} />;
   if (open) {
     const bring = open.kind === BRING;
-    const usdc = bring ? (unlock.data != null ? unlock.data.toFixed(2) : '…') : (q.data ? usdcOf(q.data.usdc) : '…');
-    const fee = bring && q.data ? Number(BigInt(q.data.fee_inr) / BigInt(U)) : 0;
-    const short = !bring && lp.data && lp.data.free < Number(usdc);
+    const d = q.data;
+    const fee = d ? d.fee : 0;
+    const short = !bring && d && lp.data && lp.data.free < d.open;
     return (
-      <Sheet landName="Nila" title={bring ? `Bring ${inr(open.inr)} back to the union office` : `Take ${inr(open.inr)} at the union office`} onBack={() => setOpen(undefined)}>
-        {bring ? (
-          <>
-            <Row k="Union cash you bring back" v={inr(open.inr)} />
-            <Row k={`Your fee (${q.data ? q.data.fee_bp / 100 : 1}%)`} v={q.data ? `−${inr(fee)}` : '…'} />
-            <Row k="You hand over" v={q.data ? inr(open.inr - fee) : '…'} />
-            <Row k="Unlocks in your account" v={`${usdc} USDC`} />
-            <Row k="Bring it by" v={by(open.expires)} />
-            <p style={muted}>Your leader scans your code when the cash is there. The USDC was always yours; it unlocks then.</p>
-          </>
-        ) : (
-          <>
-            <Row k="You take" v={inr(open.inr)} />
-            <Row k="Locked in your account" v={`${usdc} USDC`} />
-            <Row k="Take it by" v={by(open.expires)} />
-            <p style={muted}>{usdc} USDC stays in your wallet, locked until you bring the cash back.</p>
-          </>
-        )}
-        {short && <p style={{ color: C.coral }}>You have {lp.data.free.toFixed(2)} USDC free: not enough to lock {usdc} USDC.</p>}
+      <Sheet landName="Nila" title={bring ? `Bring ${inr(open.inr)} to the union office` : `Take ${inr(open.inr)} at the union office`} onBack={() => setOpen(undefined)}>
+        {bring ? <Row k="Cash you bring" v={inr(open.inr)} /> : <Row k="You take" v={inr(open.inr)} />}
+        {d && fee > 0 && (bring
+          ? <><Row k="Your fee (2%)" v={`−${inr(fee)}`} /><Row k="You hand over" v={inr(open.inr - fee)} /></>
+          : <Row k="Of which your fee (2%)" v={inr(fee)} />)}
+        {d && d.close > 0 && <Row k={bring ? 'Comes back to you, free' : 'Locked USDC back to the union'} v={`${d.close.toFixed(2)} USDC`} />}
+        {d && d.open > 0 && <Row k={bring ? 'Comes to your wallet, locked' : 'Your USDC locked with the union'} v={`${d.open.toFixed(2)} USDC`} />}
+        <Row k={bring ? 'Bring it by' : 'Take it by'} v={by(open.expires)} />
+        {q.isSuccess && !d && <p style={{ color: C.coral }}>This offer cannot be taken by you now (the rate fix, or the union's USDC).</p>}
+        <p style={muted}>{bring ? 'Locked USDC stays locked until you take the union\'s cash again, or the rate moves more than 5%.'
+          : 'USDC locked with the union comes back when you bring cash again, or stays with the union if the rate moves more than 5%.'}</p>
+        {short && <p style={{ color: C.coral }}>You have {lp.data.free.toFixed(2)} USDC free: not enough to lock {d.open.toFixed(2)} USDC.</p>}
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" onClick={() => setOpen(undefined)} style={{ flex: 1, height: 44, marginTop: 16, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontWeight: 700 }}>Not now</button>
           <div style={{ flex: 1 }}>
-            <Primary disabled={busy || !tx.ready || !info.data || !q.data || (bring && unlock.data == null) || short} onClick={() => accept(open)}>{busy ? '…' : 'Accept'}</Primary>
+            <Primary disabled={busy || !tx.ready || !info.data || !d || short} onClick={() => accept(open)}>{busy ? '…' : 'Accept'}</Primary>
           </div>
         </div>
       </Sheet>
@@ -190,7 +192,7 @@ export default function LpOffers({ onBack }) {
       {lp.data && lp.data.trustline && <p style={{ ...muted, textAlign: 'center' }}>Your USDC: {lp.data.free.toFixed(2)} free{lp.data.locked ? ` · ${lp.data.locked.toFixed(2)} locked` : ''}</p>}
       {mine.map((o) => {
         const sw = saved.find((x) => x.offer === o.id) || { offer: o.id, kind: o.kind, inr: o.inr, usdc: usdcOf(o.usdc), expires: o.expires };
-        return <Choice key={o.id} sub={`Accepted · show your code ${until(o.expires)}`} onClick={() => setCode(sw)}>{o.kind === BRING ? `Bring ${inr(o.inr)} back` : `Take ${inr(o.inr)}`}</Choice>;
+        return <Choice key={o.id} sub={`Accepted · show your code ${until(o.expires)}`} onClick={() => setCode(sw)}>{o.kind === BRING ? `Bring ${inr(o.inr)}` : `Take ${inr(o.inr)}`}</Choice>;
       })}
       {offers.isLoading && <p style={muted}>…</p>}
       {offers.isError && <p style={{ color: C.coral }}>Could not read the offers. Try again.</p>}

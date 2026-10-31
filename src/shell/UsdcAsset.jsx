@@ -46,8 +46,9 @@ export default function UsdcAsset({ onBack }) {
   const [amount, setAmount] = useState(0);
   const [to, setTo] = useState('');
   const [scan, setScan] = useState(false);
-  // Only the free part moves: USDC locked against the union's cash she holds stays (the LP pledge, 30 Oct).
-  const usdc = lp ? lp.free ?? lp.usdc ?? 0 : 0;
+  // Her balance as before; only the free part can be sent or swapped (USDC locked by a Bring position stays, 31 Oct).
+  const total = lp ? lp.usdc || 0 : 0;
+  const usdc = lp ? lp.free ?? total : 0;
   // Her identity is checked (K1), so the node sponsors her USDC trustline; until it exists she holds no USDC.
   const noLine = lp && lp.idChecked && !lp.trustline;
   const a = Math.max(0, Math.min(amount, Math.floor(usdc)));
@@ -89,7 +90,7 @@ export default function UsdcAsset({ onBack }) {
   );
   return (
     <AssetSwapLayout onBack={onBack} icon={<UsdcTile size={72} />} name="USDC" sub={`Digital US dollar${rate ? ` · ₹${money(rate)}` : ''}`}
-      amount={lp ? money(usdc) : '…'} value={rate ? `₹${money(usdc * rate, 0)}` : null}
+      amount={lp ? money(total) : '…'} value={rate ? `₹${money(total * rate, 0)}` : null}
       head={noLine && (
         <>
           <Primary disabled={trust.isPending} onClick={() => trust.mutate()}>{trust.isPending ? 'Opening your USDC account…' : 'Open your USDC account'}</Primary>

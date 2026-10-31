@@ -2,8 +2,8 @@
 // reviewed by hand by a trust operator for Nov 7 on testnet (LOAN_RULES §5, 19 Oct). Fields as SEP-9 names
 // (nila-anchor k1.py). When accepted: her USDC trustline (sponsored by the node, R11; none for a smart account, which
 // holds USDC in the USDC contract), then the offers.
-// LP pledge (executive decision 30 Oct): only name as on PAN, PAN and date of birth; no bank account, IFSC, selfie or
-// phone and location consent (an LP's USDC never changes owner, so no VDA rule binds the flow). PAN is asked for tax.
+// K1 fields (executive decision 30 Oct): only name as on PAN, PAN and date of birth; no bank account, IFSC, selfie or
+// phone and location consent. PAN is asked for tax.
 // DESIGN GAPs: "Accepted on <date>"
 // has no date (the SEP-12 answer carries none); "Get offers from <union>" is "Get cash offers" (no union
 // names on the node); a "Start" step before the form (her SEP-10 signature) and the REJECTED and
@@ -117,7 +117,7 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
     body = (
       <>
         <h2 style={{ fontSize: 16 }}>Identity checked</h2>
-        <p style={muted}>Accepted. You can now take the union's cash against your locked USDC, and bring it back.</p>
+        <p style={muted}>Accepted. You can now take or bring the union's cash for USDC.</p>
         {trust.isError && <p style={{ color: C.coral }}>{trust.error.message}</p>}
         <Primary disabled={trust.isPending || !lp.data?.lp} onClick={async () => {
           if (!lp.data.trustline) await trust.mutateAsync().catch(() => null);

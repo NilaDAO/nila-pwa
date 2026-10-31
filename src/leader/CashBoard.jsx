@@ -1,6 +1,6 @@
 // The leader's Cash tab (P10): C1 (board LeaderCash) with the C2 reconcile chip (LeaderCashOff), the Funds card
-// and its Adjust panel (C3, LeaderCashAdjust), the Lending card, the Cash card with "Let an LP take it" (the LP pledge,
-// 30 Oct: the LP's own USDC is locked for the cash) and
+// and its Adjust panel (C3, LeaderCashAdjust), the Lending card, the Cash card with "Let an LP take it" (LP positions,
+// 31 Oct) and
 // the LP cards (C4, LeaderCashSettle #settle). Values: useUnionCash (contracts) and useUnionBook (the node's loan
 // list + food_token, O15). Deposit = her own nIN into the treasury (C10); withdraw = to her wallet; both sponsored.
 // DESIGN GAPs: "Member contributions" and the fund total have no formula in the design (see useUnionBook); no
@@ -12,7 +12,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
+import { useUnionOffers, usdcOf } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
 import { COLLECT } from '../anchor/sep';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
@@ -197,8 +197,6 @@ function CashCard({ cash, onScanLp }) {
   const a = Math.min(amount, max);
   const first = cash.escrows.find((e) => e.remaining > 0);
   const left = useCountdown(first?.expires);
-  const q = useOfferQuote(COLLECT, a);
-  const feeBp = q.data ? Number(q.data.fee_bp) : 100;
   const t = tx.status !== 'idle' ? tx : cancel.status !== 'idle' ? cancel : null;
   if (t) return <Over><TxScreens tx={t} onClose={() => t.reset()} onRetry={() => t.retry()} /></Over>;
   const until = (ts) => { const sec = ts - Date.now() / 1000; return sec < 86400 ? `${Math.max(1, Math.ceil(sec / 3600))} h left` : `In ${Math.ceil(sec / 86400)} d`; };
@@ -217,8 +215,8 @@ function CashCard({ cash, onScanLp }) {
                 <span style={{ color: o.state === 1 ? C.accent : C.muted, fontWeight: 700 }}>{o.state === 1 ? 'Here' : until(o.expires)}</span>
               </div>
               <Row k="Amount" v={inr(o.inr)} />
-              {o.kind === 0 && <Row k={`LP fee (${feeBp / 100}%)`} v={inr(Math.floor((o.inr * feeBp) / 10_000))} />}
-              {o.state === 1 ? <Row k={o.kind === 0 ? 'USDC unlocks' : 'USDC locked'} v={usdcOf(o.usdc)} /> : <Row k="Status" v="Waiting" />}
+              {o.state === 1 && Number(o.from_offshore || 0) > 0 && <Row k="LP fee (2%)" v={inr(Number(BigInt(o.from_offshore) / 10_000_000n))} />}
+              {o.state === 1 ? <Row k="USDC" v={usdcOf(o.usdc)} /> : <Row k="Status" v="Waiting" />}
               {o.state === 1 && <button type="button" style={primary} onClick={onScanLp}>Scan code</button>}
               <button type="button" onClick={() => (sure === o.id ? cancel.run({
                 label: `Cancel the offer of ${inr(o.inr)}`, rows: [['Offer', `${o.kind === 0 ? 'LP brings cash back' : 'LP takes cash'} ${inr(o.inr)}`]],

@@ -17,8 +17,8 @@ const MESSAGES = {
     25: 'This account is not an accepted LP.',
     28: "The union's USDC does not cover this.",
     33: "The anchor has not checked this account's identity yet.",
-    34: "This LP holds less of the union's cash than this.",
-    35: 'Nothing to claim yet: the cash was not asked back, or the 7 days are not over.',
+    34: 'This LP has no position here.',
+    35: 'The rate has not moved more than 5% yet.',
   },
   fund_core: {
     2: 'The amount is zero.',
