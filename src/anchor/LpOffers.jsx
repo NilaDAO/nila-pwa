@@ -9,6 +9,7 @@
 // Accept = SEP-38 firm quote → SEP-24 at the trust's anchor, which records it and signs the accept without a page of
 // its own → fx_pool.accept, fee-bumped by the node. Never says sell, buy or swap.
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
@@ -76,13 +77,8 @@ function OfferCard({ o }) {
     } catch (e) { setError(e.message); }
     setBusy(false);
   };
-  if (tx.status !== 'idle') {
-    return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 60, overflowY: 'auto', background: C.ink }}>
-        <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />
-      </div>
-    );
-  }
+  // Over the whole app, not inside the card (a fixed screen inside the A1 card showed the map stage's logo above it).
+  if (tx.status !== 'idle') return createPortal(<TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />, document.body);
   const title = bring ? `Bring ${inr(o.inr)} to the office` : `Take ${inr(o.inr)} at the office`;
   const fee = q?.fee || 0;
   return (

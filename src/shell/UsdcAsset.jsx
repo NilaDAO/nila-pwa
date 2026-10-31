@@ -26,7 +26,7 @@ const isG = (a) => /^[GC][A-Z2-7]{55}$/.test(a);
 export function useFxRate() {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['stellar', 'fxRate'], enabled: !!cfg?.contracts?.fx_pool, staleTime: 60_000,
+    queryKey: ['stellar', 'fxRate'], enabled: !!cfg?.contracts?.fx_pool, staleTime: 30_000, refetchInterval: 30_000,   // live
     queryFn: async () => {
       const r = await readContract(cfg, 'fx_pool', 'rate', []);
       if (!r || Number(r.valid_until) * 1000 < Date.now()) return null;
@@ -105,6 +105,10 @@ export default function UsdcAsset({ onBack, leader = true }) {
           <KV k={lp.position.kind === 0 ? 'In your wallet' : 'With the union'} v={`${money(lp.position.usdc)} USDC`} />
           <KV k={lp.position.kind === 0 ? 'For the cash you brought' : 'For the cash you took'} v={`₹${money(lp.position.inr, 0)}`} />
           <KV k="Since" v={new Date(lp.position.opened * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} />
+          {/* The live rate against the opening one (the margin is 5% either way), and the 2% fee if it ended now. */}
+          <KV k="Rate now" v={rate ? `₹${money(rate)}` : '—'} />
+          <KV k="Rate at opening" v={`₹${money(lp.position.inr / lp.position.usdc)}`} />
+          <KV k="Your fee if it ends now (2%)" v={rate ? `₹${money(Math.floor(lp.position.usdc * rate * 0.02), 0)}` : '—'} />
           <span style={{ fontSize: 14, color: C.muted }}>{lp.position.kind === 0 ? 'Unlocks when you take the union\'s cash again, or if the rate moves more than 5%.'
             : 'Comes back when you bring cash again; stays with the union if the rate moves more than 5%.'}</span>
         </section>
