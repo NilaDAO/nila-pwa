@@ -86,8 +86,7 @@ export function Secondary({ children, disabled, onClick, icon }) {
 
 /** The info note fixed above the tab bar (boards A1a, A7, A3). */
 export function NoteBar({ children }) {
-  // Into the body (24 Oct): inside a map card (a moved, transformed sheet) a fixed note would follow the card instead
-  // of sitting above the tab bar.
+  // Out of the map card (24 Oct): inside it (a moved, transformed sheet) a fixed note would follow the card.
   // A lowered card takes its note down with it (24 Oct): it slides down and fades out, nothing of it under the tab bar.
   const low = useContext(SheetLowCtx);
   return createPortal(
@@ -101,7 +100,10 @@ export function NoteBar({ children }) {
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
       </div>
       <div style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>{children}</div>
-    </div>, document.body
+    </div>,
+    // Inside the shell's own layer (z 1, which holds the tab bar at z 10), so the bar is drawn over it; the body when
+    // there is no shell.
+    document.querySelector('[data-testid="shell"]') || document.body
   );
 }
 
