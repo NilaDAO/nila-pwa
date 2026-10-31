@@ -48,7 +48,7 @@ export function forecast(members, atHand, treasury, uptake = 1, now = Date.now()
   return weeks;
 }
 
-export default function CashAhead({ api, cash, style }) {
+export default function CashAhead({ api, cash, style, children }) {
   const members = useUnionMembers(api);
   const [uptake, setUptake] = useState('all');
   const weeks = useMemo(() => (cash && members.data ? forecast(members.data, cash.atHand, cash.treasury, uptake === 'all' ? 1 : 0.5) : null),
@@ -88,12 +88,13 @@ export default function CashAhead({ api, cash, style }) {
           <div key={w.start} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
             <span style={{ color: C.muted }}>Week of {day(w.start)}</span>
             <span style={{ fontWeight: 700, textAlign: 'right', color: w.bring ? C.coral : C.text }}>
-              {w.bring ? `Short ${inr(w.bring)} · LPs bring back` : w.collect ? `Over the treasury ${inr(w.collect)} · an LP takes` : ''}
+              {w.bring ? `Short ${inr(w.bring)} · LPs bring cash` : w.collect ? `Over the treasury ${inr(w.collect)} · an LP takes` : ''}
               {w.scans > MAX_ESCROWS ? `${w.bring || w.collect ? ' · ' : ''}${w.scans} repayments: more cash scans than the office can hold (${MAX_ESCROWS})` : ''}
             </span>
           </div>
         )) : <span style={{ color: C.muted }}>No LP needed in the next 8 weeks.</span>}
       </div>
+      {children}
     </section>
   );
 }

@@ -7,14 +7,15 @@
 // waiting cash-outs list (executive decision 20 Oct: the leader scans her code when she comes); LP names are
 // short addresses; "Take a tour" is not built; the cash tasks the board leaves to L1 are listed below the cards.
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
+import { useBringRoom, useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
-import { COLLECT } from '../anchor/sep';
+import { BRING, COLLECT } from '../anchor/sep';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
 import { SkeletonRows } from '../shell/Skeleton';
 import MapCard from '../shell/MapCard';
@@ -184,6 +185,28 @@ function useCountdown(ts) {
   return timeLeft(ts - now);
 }
 
+/** Ask LPs to bring cash (31 Oct): a union that sees it will be short posts a Bring itself, at most what the union's USDC
+ *  can serve (less the Bring already open), merged into an open Bring by the contract. */
+function AskBring() {
+  const offers = useUnionOffers().data || [];
+  const room = useBringRoom().data || 0;
+  const { tx, post } = usePost();
+  const asked = offers.filter((o) => o.kind === BRING && o.state <= 1).reduce((t, o) => t + o.inr, 0);
+  const max = Math.max(0, Math.floor(room) - asked);
+  const [amount, setAmount] = useState(0);
+  const a = Math.min(amount, max);
+  // Over the whole app (a fixed screen inside the map card stays inside it).
+  if (tx.status !== 'idle') return createPortal(<TxScreens tx={tx} onClose={() => { tx.reset(); setAmount(0); }} onRetry={() => tx.retry()} />, document.body);
+  return (
+    <>
+      <span style={{ fontWeight: 700 }}>Ask LPs to bring cash</span>
+      <Stepper value={a} set={setAmount} max={max} />
+      {asked > 0 && <span style={{ color: C.muted }}>{inr(asked)} is asked from LPs already.</span>}
+      <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={() => post(BRING, a)}>Ask LPs to bring {inr(a)}</button>
+    </>
+  );
+}
+
 /** C4: the Cash card (time left, let an LP take it) and the LP cards. */
 function CashCard({ cash, onScanLp }) {
   const s = useNilaSigner();
@@ -212,7 +235,7 @@ function CashCard({ cash, onScanLp }) {
             // One offer takes the full width; several swipe, the next one peeking in (25 Oct).
             <section key={o.id} style={{ ...card, flex: live.length > 1 ? '0 0 85%' : '0 0 100%', scrollSnapAlign: 'center', marginBottom: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <b>{o.state === 1 ? `LP ${short(o.lp)}` : o.kind === 0 ? 'LP brings cash back' : 'LP takes cash'}</b>
+                <b>{o.state === 1 ? `LP ${short(o.lp)}` : o.kind === 0 ? 'LP brings cash' : 'LP takes cash'}</b>
                 <span style={{ color: o.state === 1 ? C.accent : C.muted, fontWeight: 700 }}>{o.state === 1 ? 'Here' : until(o.expires)}</span>
               </div>
               <Row k="Amount" v={inr(o.inr)} />
@@ -220,7 +243,7 @@ function CashCard({ cash, onScanLp }) {
               {o.state === 1 ? <Row k="USDC" v={usdcOf(o.usdc)} /> : <Row k="Status" v="Waiting" />}
               {o.state === 1 && <button type="button" style={primary} onClick={onScanLp}>Scan code</button>}
               <button type="button" onClick={() => (sure === o.id ? cancel.run({
-                label: `Cancel the offer of ${inr(o.inr)}`, rows: [['Offer', `${o.kind === 0 ? 'LP brings cash back' : 'LP takes cash'} ${inr(o.inr)}`]],
+                label: `Cancel the offer of ${inr(o.inr)}`, rows: [['Offer', `${o.kind === 0 ? 'LP brings cash' : 'LP takes cash'} ${inr(o.inr)}`]],
                 contractName: 'fx_pool', fn: 'cancel_offer', args: [sv.address(s.stellarAddress), sv.u64(o.id)], invalidate: [['stellar', 'offers']],
               }) : setSure(o.id))} style={{ background: 'none', border: 0, padding: 0, color: C.coral, fontWeight: 700, marginTop: 8 }}>
                 {sure === o.id ? (o.state === 1 ? 'Tap again: the LP accepted it' : 'Tap again to cancel') : 'Cancel'}
@@ -329,7 +352,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
               : <Row k="Available to cash in" v={inr(cash.free)} accent />}
           </div>
         </section>
-        <CashAhead api={api} cash={cash} style={card} />
+        <CashAhead api={api} cash={cash} style={card}><AskBring /></CashAhead>
         <CashCard cash={cash} onScanLp={onScanLp} />
         {tasks}
       </div>
