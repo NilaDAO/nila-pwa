@@ -9,7 +9,8 @@ import { NIN } from './request';
 
 const rupees = (v) => Number(BigInt(v ?? 0)) / Number(NIN);
 
-/** { room, treasury, withdrawals, shares, atHand } in rupees; room = what one more scan may add. */
+/** { limit, room, treasury, withdrawals, shares, atHand } in rupees; limit = fund_core.cash_room, room = what one more
+ *  scan may add. */
 export function useDeskRoom() {
   const { data: cfg } = useStellarConfig();
   return useQuery({
@@ -25,7 +26,7 @@ export function useDeskRoom() {
       ]);
       const parts = { treasury: rupees(treasury), withdrawals: rupees(junior?.claimable_principal), atHand: rupees(atHand) };
       parts.shares = Math.max(0, rupees(cashRoom) - parts.treasury - parts.withdrawals);
-      return { ...parts, room: Math.max(0, Math.floor(rupees(cashRoom) - parts.atHand)) };
+      return { ...parts, limit: rupees(cashRoom), room: Math.max(0, Math.floor(rupees(cashRoom) - parts.atHand)) };
     },
   });
 }

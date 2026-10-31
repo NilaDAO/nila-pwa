@@ -28,6 +28,7 @@ import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
 import CashAhead from './CashAhead';
 import { useUnionMembers } from './unionMembers';
 import { timeLeft } from '../shell/timeLeft';
+import { useDeskRoom } from '../loan/deskRoom';
 
 const U = 10_000_000n;
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
@@ -252,6 +253,7 @@ function CashCard({ cash }) {
 export default function CashBoard({ settle, onScanLp, tasks }) {
   const api = usePlanClient();
   const cashQ = useUnionCash();
+  const room = useDeskRoom().data;
   const bookQ = useUnionBook(api);
   const [adjust, setAdjust] = useState(null);   // null (closed), 'deposit' or 'withdraw'
   const cash = cashQ.data;
@@ -316,11 +318,14 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
               </a>
             )}
             <Row k="Member contributions" v={book ? inr(book.contributions) : '…'} />
-            {/* Cash at the office may pass the treasury (24 Oct): the part above it is offered to an LP to take. */}
             <Row k="Cash at the office" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}% of the treasury)`} />
-            {cash.atHand > cash.treasury
-              ? <Row k="Above the treasury" v={`${inr(cash.atHand - cash.treasury)} · due back to members`} />
-              : <Row k="Available to cash in" v={inr(cash.free)} accent />}
+            {/* What the office may hold (fund_core.cash_room, on-chain since 31 Oct): the treasury plus the cash members
+                are due to take out again; a count above it is refused. */}
+            <Row k="The office may hold" v={room ? inr(room.limit) : '…'} />
+            {room && (room.withdrawals > 0 || room.shares > 0) && (
+              <span style={{ color: C.muted, fontSize: 14, marginTop: -6 }}>Treasury {inr(room.treasury)}{room.withdrawals > 0 ? ` + withdrawals waiting ${inr(room.withdrawals)}` : ''}{room.shares > 0 ? ` + crop shares within 9 weeks ${inr(room.shares)}` : ''}</span>
+            )}
+            <Row k="Room for more cash" v={room ? inr(room.room) : '…'} accent />
           </div>
         </section>
         <CashAhead api={api} cash={cash} style={card}><AskBring /></CashAhead>
