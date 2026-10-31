@@ -257,7 +257,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   );
   if (stage) {
     // Her map comes with the card; before her record is read the card stands on the map stage alone.
-    return <Sheet map={(leader ? union.map : titleMap) || <span />} head={buttons} top={top} startLow={memory.low} onLowered={(v) => { memory.low = v; }}>{content}</Sheet>;
+    return <Sheet map={(leader ? union.map : titleMap || home.map) || <span />} head={buttons} top={top} startLow={memory.low} onLowered={(v) => { memory.low = v; }}>{content}</Sheet>;
   }
   return (
     <div style={{ fontFamily: FONT, color: C.text, padding: '8px 8px 0' }}>

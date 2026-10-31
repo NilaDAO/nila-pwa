@@ -75,6 +75,9 @@ export function shareOn(shares, seasons, i, zone) {
     && (x.crop === row.crop || x.crop === row.name) && (rowOf(x)?.sow === row.sow));
 }
 
+/** Where a map looks with nothing of the member's to draw (the demo union's area; also the union map's start). */
+export const UNION_START = { lat: 11.8872, lng: 78.9659 };
+
 /** Where A1's card opens (its top, px): a strip of map above it. */
 export const homeTop = () => Math.round(window.innerHeight * 0.34);
 
@@ -97,6 +100,8 @@ export function useHomeMap(onShare, fitBottom) {
     const x = z && i >= 0 ? shareOn(shares, seasons, i, z) : undefined;
     if (x) onShare(x.token_id);
   }, [shares, plan, i, onShare]); // eslint-disable-line react-hooks/exhaustive-deps
-  const map = record ? <AreaMap record={record} labels={labels} onSelect={i >= 0 ? onSelect : undefined} fitBottom={fitBottom} /> : null;
+  // No land title record (none yet, or a title without one): the union's area, never a black stage (31 Oct).
+  const map = record ? <AreaMap record={record} labels={labels} onSelect={i >= 0 ? onSelect : undefined} fitBottom={fitBottom} />
+    : <AreaMap center={UNION_START} fitBottom={fitBottom} />;
   return { map, record, loading: field.isLoading };
 }

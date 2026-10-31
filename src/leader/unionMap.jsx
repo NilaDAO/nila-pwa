@@ -15,10 +15,10 @@ import { useNilaSigner } from '../wallet/signer';
 import { useMachines, typeName } from '../machine/hooks';
 import { C } from '../shell/tokens';
 import { useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
+import { UNION_START } from '../shell/MapStage';
 
 const DAY = 86_400;
-// Where the union map looks before any member has land on it (the demo union's area, as AreaMap's start).
-const UNION_START = { lat: 11.8872, lng: 78.9659 };
+// Where the union map looks before any member has land on it: UNION_START (MapStage).
 
 /** The middle of all the union's land (every member's property and title fields), for a filter with nothing in it. */
 export function unionCentre(members) {
