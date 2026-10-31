@@ -16,9 +16,13 @@ import HelpQr from '../loan/HelpQr';
 const SHADOW = 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px';
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
 
-/** A member's QR is the help QR (executive decision 26 Oct: one QR at the office); a leader's is her account number. */
+// As HelpQr's assisted(): the member's mode on this phone (every member starts in assist mode).
+const assisted = () => { try { return localStorage.getItem('nila.mode') !== 'self'; } catch { return true; } };
+
+/** A member in assist mode shows the help QR (executive decision 26 Oct); a member in self mode and a leader show the
+ *  plain account number (revised 31 Oct, executive decision). */
 export default function WalletQr({ onBack, leader }) {
-  return leader ? <AccountQr onBack={onBack} leader={leader} /> : <HelpQr onBack={onBack} />;
+  return leader || !assisted() ? <AccountQr onBack={onBack} leader={leader} /> : <HelpQr onBack={onBack} />;
 }
 
 function AccountQr({ onBack, leader }) {
