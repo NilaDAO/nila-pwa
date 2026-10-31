@@ -9,7 +9,7 @@ const MESSAGES = {
     8: 'The cash desk is paused.',
     9: 'Only a leader of the union can do this.',
     10: 'This account is not a member of the union.',
-    11: "The cash at the office would be more than the union's treasury.",
+    11: "The cash at the office would be more than the union may hold: its treasury, withdrawals waiting and crop shares to be taken up.",
     13: 'Too many open cash batches at the office. Let an LP take cash first.',
     15: 'This has expired.',
     16: 'This code was used already.',

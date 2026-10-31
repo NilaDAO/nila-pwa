@@ -319,7 +319,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
             {/* Cash at the office may pass the treasury (24 Oct): the part above it is offered to an LP to take. */}
             <Row k="Cash at the office" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}% of the treasury)`} />
             {cash.atHand > cash.treasury
-              ? <Row k="Above the treasury" v={`${inr(cash.atHand - cash.treasury)} · offered to LPs`} />
+              ? <Row k="Above the treasury" v={`${inr(cash.atHand - cash.treasury)} · due back to members`} />
               : <Row k="Available to cash in" v={inr(cash.free)} accent />}
           </div>
         </section>
