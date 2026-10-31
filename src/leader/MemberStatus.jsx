@@ -7,7 +7,7 @@
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Card, CardButton, ConfirmCard, Text } from '../shell/SettingsParts';
+import { CardButton, ConfirmCard, Text } from '../shell/SettingsParts';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
@@ -347,18 +347,20 @@ function RemoveMember({ m, inv, go }) {
   const why = m.shares.length ? 'The member has crop shares.'
     : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
       : investment > 0 ? 'The member has an investment: pay it out first.' : null;
+  // Only the button on G2 (31 Oct); the confirm says what it does, or why it cannot be done now.
   return (
-    <Card title="Remove member">
-      <Text>Burns the member's land title, which ends the membership of the union. nIN, USDC and vouchers stay in the member's wallet.</Text>
-      {why && <Text style={{ color: C.gold }}>{why}</Text>}
-      <CardButton color={C.coral} onClick={why ? undefined : () => setAsk(true)}>Remove member</CardButton>
+    <>
+      <CardButton color={C.coral} onClick={() => setAsk(true)} style={{ marginTop: 0 }}>Remove member</CardButton>
       {rm.error && <Text style={{ color: C.coral }}>{rm.error.message}</Text>}
-      {ask && (
-        <ConfirmCard ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending}
+      {ask && (why ? (
+        <ConfirmCard title="Remove member" ok="OK" onCancel={() => setAsk(false)} onOk={() => setAsk(false)}
+          warn={`${why} A member can be removed only with no crop share and no investment.`} />
+      ) : (
+        <ConfirmCard title="Remove member" ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending}
           onCancel={() => setAsk(false)} onOk={() => rm.mutate()}
-          warn={`Remove ${m.label} from the union? The land title ${titleId} is burned; this cannot be undone. To join again the member needs a new land title.`} />
-      )}
-    </Card>
+          warn={`Remove ${m.label} from the union? The land title ${titleId} is burned, which ends the membership; this cannot be undone. nIN, USDC and vouchers stay in the member's wallet. To join again the member needs a new land title.`} />
+      ))}
+    </>
   );
 }
 
