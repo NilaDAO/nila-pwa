@@ -122,7 +122,7 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
         <Primary disabled={trust.isPending || !lp.data?.lp} onClick={async () => {
           if (!lp.data.trustline) await trust.mutateAsync().catch(() => null);
           if ((await lp.refetch()).data?.trustline) onOffers();
-        }}>{trust.isPending ? 'Opening your USDC account…' : 'Get cash offers'}</Primary>
+        }}>{trust.isPending ? 'Opening your USDC account…' : 'See the offers on Assets'}</Primary>
         {!lp.data?.lp && <p style={muted}>Waiting for the network…</p>}
       </>
     );

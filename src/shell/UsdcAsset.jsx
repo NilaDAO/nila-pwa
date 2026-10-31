@@ -1,19 +1,20 @@
 // A9 (board MemberAssetUsdc #leader, #send, #swap): the leader's USDC, opened from A1L's USDC row once her identity is
-// checked. Top card: the USDC logo, her balance and its rupee value. Below: Send | Swap (executive decision 22 Oct).
+// checked; an LP's too (31 Oct), from A1's USDC row: Send only (the swap to nIN is a leader's), and one card more, the
+// locked USDC of the LP's position. Top card: the USDC logo, her balance and its rupee value. Below: Send | Swap (executive decision 22 Oct).
 //  - Send: to any Stellar address she scans or pastes; a plain USDC transfer from her wallet (the node pays the fee
 //    once her identity is checked). DESIGN GAP: the board's contact list (union, providers) has no source yet.
 //  - Swap: USDC → nIN in her wallet at fx_pool's rate (fx_pool.swap_usdc_to_nin); no fee. The way back is on A7.
 // No Receive button (22 Oct). Layout shared with A7 (AssetSwapLayout).
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import AssetSwapLayout, { AssetForm, SwapTarget, money } from './AssetSwapLayout';
+import AssetSwapLayout, { AssetForm, SwapTarget, assetCard, money } from './AssetSwapLayout';
 import { useLpStatus, useUsdcTrustline } from '../anchor/hooks';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import CameraView from './CameraView';
-import { Stepper } from '../loan/AssetParts';
+import { KV, Stepper } from '../loan/AssetParts';
 import { Primary } from '../plan/ui';
 import { ScanIcon, UsdcTile } from './icons';
 import { C, R } from './tokens';
@@ -35,14 +36,14 @@ export function useFxRate() {
 }
 
 
-export default function UsdcAsset({ onBack }) {
+export default function UsdcAsset({ onBack, leader = true }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const lp = useLpStatus().data;
   const trust = useUsdcTrustline();
   const rate = useFxRate().data;
   const tx = useSorobanTx();
-  const [tab, setTab] = useState('swap');
+  const [tab, setTab] = useState(leader ? 'swap' : 'send');
   const [amount, setAmount] = useState(0);
   const [to, setTo] = useState('');
   const [scan, setScan] = useState(false);
@@ -97,8 +98,19 @@ export default function UsdcAsset({ onBack }) {
           {trust.isError && <p style={{ color: C.coral, fontSize: 14 }}>{trust.error.message}</p>}
         </>
       )}
-      switchLabel="Send or swap" options={[['send', 'Send'], ['swap', 'Swap']]} tab={tab} onTab={setTab}
-      note="Worth US dollars, so its rupee value moves with the exchange rate. Swapping to nIN is free.">
+      below={lp?.position && (
+        // LP positions (31 Oct): the locked USDC card.
+        <section aria-label="Locked USDC" style={{ ...assetCard, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 16, fontWeight: 700 }}>Locked USDC</span>
+          <KV k={lp.position.kind === 0 ? 'In your wallet' : 'With the union'} v={`${money(lp.position.usdc)} USDC`} />
+          <KV k={lp.position.kind === 0 ? 'For the cash you brought' : 'For the cash you took'} v={`₹${money(lp.position.inr, 0)}`} />
+          <KV k="Since" v={new Date(lp.position.opened * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} />
+          <span style={{ fontSize: 14, color: C.muted }}>{lp.position.kind === 0 ? 'Unlocks when you take the union\'s cash again, or if the rate moves more than 5%.'
+            : 'Comes back when you bring cash again; stays with the union if the rate moves more than 5%.'}</span>
+        </section>
+      )}
+      switchLabel={leader ? 'Send or swap' : 'Send'} options={leader ? [['send', 'Send'], ['swap', 'Swap']] : null} tab={tab} onTab={setTab}
+      note={leader ? 'Worth US dollars, so its rupee value moves with the exchange rate. Swapping to nIN is free.' : 'Worth US dollars, so its rupee value moves with the exchange rate.'}>
       {lp?.trustline ? form : null}
     </AssetSwapLayout>
   );

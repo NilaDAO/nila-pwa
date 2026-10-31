@@ -8,7 +8,6 @@ import { useMachines } from '../machine/hooks';
 import { MachineryTile } from '../shell/icons';
 import { timeLeft } from '../shell/timeLeft';
 import { useUnionOffers } from '../anchor/hooks';
-import { useNilaSigner } from '../wallet/signer';
 import { C, FONT, R } from '../shell/tokens';
 import { useUnionCash } from './hooks';
 
@@ -102,32 +101,6 @@ export function useLeaderSlides({ on = true, onSettle, onScanLp, onMachine }) {
     );
   }
   return slides;
-}
-
-/** An LP's own cards on A1 (31 Oct): one per union offer the LP can answer, and the LP's accepted ones first, in steps;
- *  the button opens the cash offers. */
-export function useLpSlides({ on = true, onOffers }) {
-  const offers = useUnionOffers({ on }).data || [];
-  const me = useNilaSigner()?.stellarAddress;
-  const now = useNow();
-  if (!on) return [];
-  const live = offers.filter((o) => o.expires > now + 60 && (o.state === 0 || (o.state === 1 && o.lp === me)));
-  return [...live].sort((a, b) => b.state - a.state).map((o) => {
-    const bring = o.kind === 0;
-    const mine = o.state === 1;
-    const steps = bring
-      ? [mine ? `You accepted: bring ${inr(o.inr)} to the office.` : `Accept it in Cash offers (expires in ${expiresIn(o.expires, now)}).`,
-        'Hand over the cash; your leader scans your code.', 'USDC comes to your wallet.']
-      : [mine ? `You accepted: take ${inr(o.inr)} at the office.` : `Accept it in Cash offers (expires in ${expiresIn(o.expires, now)}).`,
-        'Show your code; your leader hands you the cash.', 'Your USDC is locked with the union until you bring cash again.'];
-    return (
-      <section key={`lpme-${o.id}`} aria-label="Cash offer" style={card}>
-        <Title Icon={LpBadge}>{bring ? `Bring ${inr(o.inr)} to the office` : `Take ${inr(o.inr)} at the office`}</Title>
-        <Steps items={steps} />
-        <button type="button" style={mine ? primary : secondary} onClick={onOffers}>{mine ? 'Show your code' : 'See the offer'}</button>
-      </section>
-    );
-  });
 }
 
 /** The "Union" rows of the Assets card. */

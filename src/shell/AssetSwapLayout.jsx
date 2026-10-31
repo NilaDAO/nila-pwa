@@ -33,7 +33,7 @@ export function AssetForm({ to, amount, rows = [], button }) {
   );
 }
 
-export default function AssetSwapLayout({ onBack, icon, name, sub, amount, value, head, options, tab, onTab, switchLabel, children, after, note }) {
+export default function AssetSwapLayout({ onBack, icon, name, sub, amount, value, head, below, options, tab, onTab, switchLabel, children, after, note }) {
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, minHeight: `calc(100dvh - ${TAB_BAR_HEIGHT + 16}px)`, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: '', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}>
@@ -51,6 +51,7 @@ export default function AssetSwapLayout({ onBack, icon, name, sub, amount, value
         </div>
         {head}
       </section>
+      {below}
       {children && (
         <section aria-label={switchLabel} style={{ ...assetCard, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {options && <Segmented label={switchLabel} options={options} value={tab} onChange={onTab} />}

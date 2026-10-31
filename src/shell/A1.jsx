@@ -15,7 +15,8 @@ import { ShareRows, useMyLand, useMyShares } from '../loan/MyShares';
 import { loadVoucherCode, ta, typeName, useMyMachine, useVouchers } from '../machine/hooks';
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
-import { UnionRows, useLeaderSlides, useLpSlides } from '../leader/UnionCards';
+import { UnionRows, useLeaderSlides } from '../leader/UnionCards';
+import { useLpSlides } from '../anchor/LpOffers';
 import { C, FONT, R, SHADOW } from './tokens';
 import { CashTile, ChevronIcon, HistoryIcon, InvestedTile, LandIcon, MachineryTile, MyMachineTile, NinTile, QrIcon, RefreshIcon, TreasuryTile, UsdcTile } from './icons';
 import RoundButton, { SettingsButton } from './RoundButton';
@@ -142,8 +143,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     </section>
   )] : [];
   // The LP offers come first in the slider (25 Oct): an LP may be on the way; then her machine, the union's cards, hers.
-  // An LP's own cards (31 Oct): one per offer it can answer or has accepted, first.
-  const mySlides = useLpSlides({ on: !leader && !!lp?.lp, onOffers });
+  // An LP's own cards (31 Oct): accept an offer on its card, then the same card shows the QR; first in the slider.
+  const mySlides = useLpSlides({ on: !leader && !!lp?.lp });
   const lpSlides = [...mySlides, ...leaderSlides.filter((el) => String(el.key).startsWith('lp-'))];
   const slides = [...lpSlides, ...confirmSlide, ...leaderSlides.filter((el) => !lpSlides.includes(el)), ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans, onRepayQr: (t) => onShare(`${t}/qr`),
     index: juniorIndex.data, onWithdrawal: onInvested, leader: !!leader })];
@@ -236,7 +237,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC"
             sub={!lp.position ? 'For cash offers as an LP' : lp.position.kind === 0 ? `Locked for the ${inr(lp.position.inr)} you brought`
               : `${lp.position.usdc.toFixed(2)} locked with the union for ${inr(lp.position.inr)}`}
-            value={lp.usdc.toFixed(2)} valueSub={lp.locked ? `${lp.locked.toFixed(2)} locked` : ''} onClick={onOffers} />
+            value={lp.usdc.toFixed(2)} valueSub={lp.locked ? `${lp.locked.toFixed(2)} locked` : ''} onClick={onUsdc} />
         )}
         {/* Vouchers under their own label (any voucher kind; machine work today): one row for her machine vouchers,
             all her crop shares' work left together, in tractor acres (27 Oct); no crop named. */}

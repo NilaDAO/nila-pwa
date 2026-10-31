@@ -41,7 +41,7 @@ export function LpCard({ onIdCheck, onOffers }) {
   return (
     <Card title={lp.data.lp ? 'You are an LP' : 'Become an LP'}>
       <Text>Take or bring the union's cash for USDC. You earn 2% when a position ends.</Text>
-      <CardButton onClick={ready ? onOffers : onIdCheck}>{ready ? 'Cash offers' : 'Check my identity'}</CardButton>
+      {ready ? <Text>The union's offers show as cards on your Assets.</Text> : <CardButton onClick={onIdCheck}>Check my identity</CardButton>}
     </Card>
   );
 }
