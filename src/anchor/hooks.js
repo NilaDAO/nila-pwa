@@ -66,7 +66,7 @@ export function useLpStatus() {
       const locked = Number(lien || 0) / U;
       // Her position (31 Oct): Collect = her USDC locked in fx_pool for the union's cash she took; Bring = the union's
       // USDC locked in her account for the cash she brought. Shown on her USDC row in the wallet (A1).
-      const position = pos ? { kind: Number(pos.kind), usdc: Number(pos.usdc) / U, inr: Number(BigInt(pos.inr) / BigInt(U)), opened: Number(pos.opened) } : null;
+      const position = pos ? { kind: Number(pos.kind), usdc: Number(pos.usdc) / U, inr: Math.round(Number(pos.inr) / U), opened: Number(pos.opened) } : null;
       // A smart account (C…) holds USDC in the USDC contract itself: no trustline, nothing for the node to sponsor.
       if (smart) {
         const units = await readContract(cfg, 'usdc', 'balance', [sv.address(me)]).catch(() => 0n);

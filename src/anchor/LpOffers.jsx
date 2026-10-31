@@ -9,7 +9,7 @@
 // Accept = SEP-38 firm quote → SEP-24 at the trust's anchor, which records it and signs the accept without a page of
 // its own → fx_pool.accept, fee-bumped by the node. Never says sell, buy or swap.
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
@@ -113,10 +113,18 @@ function OfferCard({ o }) {
 export function useLpSlides({ on = true } = {}) {
   const offers = useUnionOffers({ on }).data || [];
   const me = useNilaSigner()?.stellarAddress;
-  if (!on) return [];
+  const qc = useQueryClient();
   const now = Date.now() / 1000;
   const live = offers.filter((o) => o.expires > now + 60);
   const mine = live.filter((o) => o.state === 1 && o.lp === me);
+  // The leader scanned (the LP's accepted offer is gone): the wallet's USDC and its locked part read again.
+  const ids = mine.map((o) => o.id).join(',');
+  const [seen, setSeen] = useState(ids);
+  useEffect(() => {
+    if (seen && seen !== ids) qc.invalidateQueries({ queryKey: ['stellar', 'lp'] });
+    setSeen(ids);
+  }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!on) return [];
   const list = mine.length ? mine : live.filter((o) => o.state === 0);
   return list.map((o) => <OfferCard key={`lpme-${o.id}`} o={o} />);
 }
