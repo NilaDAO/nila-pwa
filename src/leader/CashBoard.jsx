@@ -207,13 +207,11 @@ function AskBring() {
   );
 }
 
-/** C4: the Cash card (time left, let an LP take it) and the LP cards. */
-function CashCard({ cash, onScanLp }) {
-  const s = useNilaSigner();
+/** C4: the Cash card (time left, let an LP take it). No LP offer cards (31 Oct): an accepted offer is a task to scan
+ *  (Tasks and A1's slider). */
+function CashCard({ cash }) {
   const offers = useUnionOffers().data || [];
   const { tx, post } = usePost();
-  const cancel = useSorobanTx();
-  const [sure, setSure] = useState();   // a second tap cancels (an accepted offer is the LP's swap too)
   const promised = offers.filter((o) => o.kind === COLLECT && o.state <= 1).reduce((t, o) => t + o.inr, 0);
   const max = Math.max(0, Math.floor(cash.atHand) - promised);
   const [amount, setAmount] = useState(0);
@@ -221,37 +219,9 @@ function CashCard({ cash, onScanLp }) {
   const first = cash.escrows.find((e) => e.remaining > 0);
   const left = useCountdown(first?.expires);
   const q = useOfferQuote(COLLECT, a);
-  const t = tx.status !== 'idle' ? tx : cancel.status !== 'idle' ? cancel : null;
-  if (t) return <Over><TxScreens tx={t} onClose={() => t.reset()} onRetry={() => t.retry()} /></Over>;
-  const until = (ts) => { const sec = ts - Date.now() / 1000; return sec < 86400 ? `${Math.max(1, Math.ceil(sec / 3600))} h left` : `In ${Math.ceil(sec / 86400)} d`; };
-  const now = Date.now() / 1000;
-  const live = offers.filter((o) => o.state <= 1 && o.expires > now);
+  if (tx.status !== 'idle') return createPortal(<TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />, document.body);
   return (
     <>
-      {/* The open LP offers first (25 Oct): above the Cash card, so they are seen. */}
-      {live.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollSnapType: 'x mandatory' }} aria-label="LP">
-          {live.map((o) => (
-            // One offer takes the full width; several swipe, the next one peeking in (25 Oct).
-            <section key={o.id} style={{ ...card, flex: live.length > 1 ? '0 0 85%' : '0 0 100%', scrollSnapAlign: 'center', marginBottom: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <b>{o.state === 1 ? `LP ${short(o.lp)}` : o.kind === 0 ? 'LP brings cash' : 'LP takes cash'}</b>
-                <span style={{ color: o.state === 1 ? C.accent : C.muted, fontWeight: 700 }}>{o.state === 1 ? 'Here' : until(o.expires)}</span>
-              </div>
-              <Row k="Amount" v={inr(o.inr)} />
-              {o.state === 1 && Number(o.from_offshore || 0) > 0 && <Row k="LP fee (2%)" v={inr(Number(BigInt(o.from_offshore) / 10_000_000n))} />}
-              {o.state === 1 ? <Row k="USDC" v={usdcOf(o.usdc)} /> : <Row k="Status" v="Waiting" />}
-              {o.state === 1 && <button type="button" style={primary} onClick={onScanLp}>Scan code</button>}
-              <button type="button" onClick={() => (sure === o.id ? cancel.run({
-                label: `Cancel the offer of ${inr(o.inr)}`, rows: [['Offer', `${o.kind === 0 ? 'LP brings cash' : 'LP takes cash'} ${inr(o.inr)}`]],
-                contractName: 'fx_pool', fn: 'cancel_offer', args: [sv.address(s.stellarAddress), sv.u64(o.id)], invalidate: [['stellar', 'offers']],
-              }) : setSure(o.id))} style={{ background: 'none', border: 0, padding: 0, color: C.coral, fontWeight: 700, marginTop: 8 }}>
-                {sure === o.id ? (o.state === 1 ? 'Tap again: the LP accepted it' : 'Tap again to cancel') : 'Cancel'}
-              </button>
-            </section>
-          ))}
-        </div>
-      )}
       {/* C4 (22 Oct): the amount beside the title; the details and the primary action only while there is cash at hand. */}
       <section style={card} aria-label="Cash">
         <div style={head}>
@@ -353,7 +323,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
           </div>
         </section>
         <CashAhead api={api} cash={cash} style={card}><AskBring /></CashAhead>
-        <CashCard cash={cash} onScanLp={onScanLp} />
+        <CashCard cash={cash} />
         {tasks}
       </div>
     </MapCard>
