@@ -1,7 +1,7 @@
 // An LP's cash offers as cards on A1's slider (executive decision 31 Oct: no Cash offers screen, no confirm sheet, no
-// trust page). One card per union offer the LP can answer: what moves, and Accept. Once accepted the same card shows
-// the LP's code as the standard QR (QrCircle) for the leader to scan; after the scan the card is gone and the wallet's
-// USDC row shows the locked part.
+// trust page). One card per union offer the LP can answer: what moves, and Accept. Accepting opens the LP's code on the
+// standard QR screen (as the help QR), which can be closed and opened again from Tasks; after the leader's scan it says
+// so and the wallet's USDC row shows the locked part.
 // LP positions: every position is USDC locked until the LP's opposite offer ends it. Take (Collect) first ends a Bring
 // position (the union pays its rupees plus the 2% fee; that USDC goes back), the rest locks the LP's own USDC with the
 // union. Bring first ends a Collect position (the LP hands over its rupees less the fee and gets that USDC back), the
@@ -17,6 +17,10 @@ import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { inr } from '../plan/ui';
 import { Title, card, small } from '../shell/MessageSlider';
+import MapCard from '../shell/MapCard';
+import ListRow, { ListSection } from '../shell/ListRow';
+import { BanknoteIcon } from '../shell/icons';
+import { muted } from '../plan/ui';
 import { KV, QrCircle } from '../loan/AssetParts';
 import { UsdcTile } from '../shell/icons';
 import { C, FONT, R } from '../shell/tokens';
@@ -68,7 +72,7 @@ function OfferCard({ o }) {
         args: [sv.address(me), sv.u64(o.id), sv.string(signed.id), sv.string(quote.id), sv.i128(signed.usdc), sv.u64(signed.validUntil), sv.bytes(hexBytes(signed.sig))],
         invalidate: [['stellar', 'offers']],
       });
-      if (out) tx.reset();
+      if (out) { tx.reset(); window.location.hash = `#/lpcode/${o.id}`; }
     } catch (e) { setError(e.message); }
     setBusy(false);
   };
@@ -80,17 +84,6 @@ function OfferCard({ o }) {
     );
   }
   const title = bring ? `Bring ${inr(o.inr)} to the office` : `Take ${inr(o.inr)} at the office`;
-  if (mine) {
-    return (
-      <section aria-label="Cash offer" style={card}>
-        <Title Icon={UsdcTile}>{title}</Title>
-        <OfferQr id={o.id} />
-        <span style={{ ...small, color: C.muted, textAlign: 'center' }}>
-          {bring ? 'Hand over the cash, then let your leader scan this.' : 'Let your leader scan this, then take the cash.'} By {by(o.expires)}.
-        </span>
-      </section>
-    );
-  }
   const fee = q?.fee || 0;
   return (
     <section aria-label="Cash offer" style={card}>
@@ -109,14 +102,20 @@ function OfferCard({ o }) {
   );
 }
 
-/** A1's slider cards for an LP: the LP's accepted offer first, then the offers it can answer (one accepted at a time). */
-export function useLpSlides({ on = true } = {}) {
-  const offers = useUnionOffers({ on }).data || [];
+const titleOf = (o) => (o.kind === BRING ? `Bring ${inr(o.inr)} to the office` : `Take ${inr(o.inr)} at the office`);
+
+/** The LP's accepted offers (one at a time, the contract). */
+function useMine(on = true) {
+  const offers = useUnionOffers({ on }).data;
   const me = useNilaSigner()?.stellarAddress;
+  return { offers, mine: (offers || []).filter((o) => o.state === 1 && o.lp === me && o.expires > Date.now() / 1000) };
+}
+
+/** A1's slider cards for an LP: the offers it can answer, while it has none accepted (one accepted at a time). The
+ *  accepted one is on Tasks and its own QR screen. */
+export function useLpSlides({ on = true } = {}) {
+  const { offers, mine } = useMine(on);
   const qc = useQueryClient();
-  const now = Date.now() / 1000;
-  const live = offers.filter((o) => o.expires > now + 60);
-  const mine = live.filter((o) => o.state === 1 && o.lp === me);
   // The leader scanned (the LP's accepted offer is gone): the wallet's USDC and its locked part read again.
   const ids = mine.map((o) => o.id).join(',');
   const [seen, setSeen] = useState(ids);
@@ -124,7 +123,43 @@ export function useLpSlides({ on = true } = {}) {
     if (seen && seen !== ids) qc.invalidateQueries({ queryKey: ['stellar', 'lp'] });
     setSeen(ids);
   }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!on) return [];
-  const list = mine.length ? mine : live.filter((o) => o.state === 0);
-  return list.map((o) => <OfferCard key={`lpme-${o.id}`} o={o} />);
+  if (!on || mine.length) return [];
+  const now = Date.now() / 1000;
+  return (offers || []).filter((o) => o.state === 0 && o.expires > now + 60).map((o) => <OfferCard key={`lpme-${o.id}`} o={o} />);
+}
+
+/** Tasks: the LP's accepted offer, a row that opens its QR screen. */
+export function LpTaskRows({ go }) {
+  const { mine } = useMine();
+  if (!mine.length) return null;
+  return (
+    <ListSection title="Cash offers">
+      {mine.map((o, i) => <ListRow key={o.id} first={i === 0} icon={BanknoteIcon} tone="new" title={titleOf(o)} sub="Show your code to your leader"
+        onClick={() => go(`lpcode/${o.id}`)} />)}
+    </ListSection>
+  );
+}
+
+/** The LP's code on the standard QR screen (as the help QR): close it any time, open it again from Tasks. After the
+ *  leader's scan it says so, and the wallet reads again. */
+export function LpCodeScreen({ id, onBack }) {
+  const offers = useUnionOffers().data;
+  const qc = useQueryClient();
+  const o = offers?.find((x) => x.id === Number(id));
+  const done = offers && !o;   // scanned (or cancelled / expired): no longer among the union's open offers
+  useEffect(() => { if (done) qc.invalidateQueries({ queryKey: ['stellar', 'lp'] }); }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
+  const bring = o?.kind === BRING;
+  return (
+    <MapCard header={{ title: 'Your code', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}
+      style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {done ? <p style={{ ...muted, textAlign: 'center' }}>Done. Your wallet shows the USDC.</p> : (
+        <>
+          <OfferQr id={Number(id)} />
+          <p style={{ ...muted, textAlign: 'center', margin: 0 }}>
+            {o ? `${titleOf(o)}. ${bring ? 'Hand over the cash, then let your leader scan this.' : 'Let your leader scan this, then take the cash.'} By ${by(o.expires)}.` : '…'}
+          </p>
+        </>
+      )}
+    </MapCard>
+  );
 }

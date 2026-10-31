@@ -21,6 +21,7 @@ import CashOut from '../loan/CashOut';
 import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
 import { ReadyShareRows, TakeUp, rowOf, useMyShares } from '../loan/MyShares';
+import { LpCodeScreen, LpTaskRows } from '../anchor/LpOffers';
 import MapStage from './MapStage';
 import { ShellLookCtx } from './stageCtx';
 import { firstTab, screenToOpen } from './start';
@@ -104,6 +105,7 @@ function TasksView({ leader, go }) {
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: 'Tasks', onBack: () => go('assets'), onSettings: () => go('settings') }}>
+      <LpTaskRows go={go} />
       <ListSection title="To do">
         <ReadyShareRows go={go} />
         <ListRow first={!ready} icon={CropIcon} title="Your crop plan" sub="Make, check or follow your plan" onClick={() => go('crop')} />
@@ -262,6 +264,7 @@ export default function Shell({ leader }) {
   else if (view === 'cash' && leader) body = <CashDesk key={window.location.hash} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} leader={leader} />;
   else if (view === 'usdc') body = <UsdcAsset leader={leader} onBack={() => go('assets')} />;
+  else if (view === 'lpcode') body = <LpCodeScreen key={readArg()} id={readArg()} onBack={() => go('assets')} />;
   else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
   else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go(`cash/invest/${s?.stellarAddress}`)} />;
   // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.
@@ -285,7 +288,7 @@ export default function Shell({ leader }) {
   // No tab is active on task, settings, history and wallet screens; a crop share (A4/A4a, and taking it up) belongs to
   // the Crop plan tab (21 Oct).
   // nIN and nIN invested (A7, A3) are Assets screens (boards MemberAssetNin, StNinWithdraw).
-  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' || view === 'usdc' ? 'assets' : view;
+  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' || view === 'usdc' || view === 'lpcode' ? 'assets' : view;
   const active = tabs.some(([id]) => id === tabOf) ? tabOf : undefined;
   return (
     // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.
