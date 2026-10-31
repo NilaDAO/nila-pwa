@@ -12,7 +12,7 @@ import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { useUnionOffers, usdcOf } from '../anchor/hooks';
+import { useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
 import { COLLECT } from '../anchor/sep';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
@@ -197,6 +197,7 @@ function CashCard({ cash, onScanLp }) {
   const a = Math.min(amount, max);
   const first = cash.escrows.find((e) => e.remaining > 0);
   const left = useCountdown(first?.expires);
+  const q = useOfferQuote(COLLECT, a);
   const t = tx.status !== 'idle' ? tx : cancel.status !== 'idle' ? cancel : null;
   if (t) return <Over><TxScreens tx={t} onClose={() => t.reset()} onRetry={() => t.retry()} /></Over>;
   const until = (ts) => { const sec = ts - Date.now() / 1000; return sec < 86400 ? `${Math.max(1, Math.ceil(sec / 3600))} h left` : `In ${Math.ceil(sec / 86400)} d`; };
@@ -243,7 +244,7 @@ function CashCard({ cash, onScanLp }) {
             <span style={{ fontWeight: 700 }}>Cash for an LP to take</span>
             <Stepper value={a} set={setAmount} max={max} />
             <div style={rows}>
-              <Row k="The LP's USDC locked for it" v={a && q.data ? `${usdcOf(q.data.usdc)} USDC` : '—'} />
+              <Row k="At today's rate" v={a && q.data ? `${usdcOf(q.data.usdc)} USDC` : '—'} />
             </div>
             {promised > 0 && <span style={{ color: C.muted }}>{inr(promised)} is offered to LPs already.</span>}
             <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={() => post(COLLECT, a)}>Let an LP take {inr(a)}</button>
