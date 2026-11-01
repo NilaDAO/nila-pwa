@@ -19,6 +19,7 @@ import { areasOf, summarize, useFieldRecord } from './record';
 import { useTitleName } from './hooks';
 import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
+import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
 import { AreaCard, CropSelect, SEASON, SlideBar, sortedCrops, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
@@ -329,8 +330,11 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const x = z && shareOn(myShares.data, ss, Math.min(season, ss.length - 1), z);
     if (x) window.location.hash = `#/cropshare/${x.token_id}`;
   }, [plan, season, myShares.data]);
+  // Before the field record (CP1, 1 Nov): the land title's field outlines, as on the land title screen (A5).
+  const titleShape = fieldsMap(useTitleFields(landId, onPolygon, stellarTitle, null));
   const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
-    fitBottom={pickable ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
+    fitBottom={pickable ? Math.round(window.innerHeight / 2) + 72 : undefined} />
+    : titleShape.record ? <AreaMap record={titleShape.record} labels={titleShape.labels} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
 
   // While her titles load (the Stellar list also waits for her signer), CP1's pending sheet — never "No land title"
