@@ -97,7 +97,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp, onRegisterMachine }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp, onRegisterMachine }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const ninHeld = s?.stellarAccount?.nin?.balance ?? 0;
@@ -253,7 +253,6 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         )}
         {/* Her crop shares last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}
         <ShareRows onOpen={onShare} />
-        {moveNote && <p style={{ color: C.muted, fontSize: 14, margin: '4px 0 0' }} role="note">{moveNote}</p>}
       </section>
     </>
   );
