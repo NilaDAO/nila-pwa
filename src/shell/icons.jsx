@@ -29,6 +29,7 @@ export const HarvestsIcon = (p) => line(<>
   <path d="M19.47 9.47 21 11l-1.53 1.53a3.5 3.5 0 0 1-4.94 0L13 11l1.53-1.53a3.5 3.5 0 0 1 4.94 0Z" />
 </>, p);
 export const HistoryIcon = (p) => line(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5h4" /></>, { size: 24, ...p });
+export const TrashIcon = (p) => line(<><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5M14 11v5" /></>, p);
 export const RefreshIcon = (p) => line(<>
   <path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" /><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8" />
   <path d="M21 3v5h-5" /><path d="M3 21v-5h5" />

@@ -14,6 +14,8 @@ import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
 import { TxScreens } from '../stellar/TxStatus';
 import { Notice, Sheet } from '../plan/ui';
+import { TrashIcon } from '../shell/icons';
+import { ConfirmCard } from '../shell/SettingsParts';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
@@ -147,9 +149,10 @@ function Check({ job, n, onDone, onBack }) {
   const start = f?.accepted || job.plan?.[String(n)] || shapes[0]?.id;
   const [sel, setSel] = useState(start);
   const [plan, setPlan] = useState(job.plan);
-  const { accept, noneFit, preview, retry } = useBorderDecision(job.id);
-  const busy = accept.isPending || noneFit.isPending || retry.isPending;
-  const err = accept.error || noneFit.error || preview.error;
+  const { accept, noneFit, preview, retry, remove } = useBorderDecision(job.id);
+  const [ask, setAsk] = useState(false);   // the delete confirm (1 Nov)
+  const busy = accept.isPending || noneFit.isPending || retry.isPending || remove.isPending;
+  const err = accept.error || noneFit.error || preview.error || remove.error;
   const pick = async (id) => {
     setSel(id);
     if (id === (job.plan?.[String(n)])) { setPlan(job.plan); return; }
@@ -201,10 +204,20 @@ function Check({ job, n, onDone, onBack }) {
       {moved.length > 0 && <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>{moved.map((k) => `Field ${k}`).join(', ')} {moved.length > 1 ? 'change' : 'changes'} too</p>}
       {err && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{err.message}</p>}
       <div style={{ display: 'flex', gap: 8 }}>
+        {/* Delete the field and its point (executive decision 1 Nov), after a confirm. */}
+        <button type="button" aria-label={`Delete field ${n}`} disabled={busy} onClick={() => setAsk(true)}
+          style={{ ...btn(false), flex: 'none', width: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+          <TrashIcon color={C.coral} size={20} />
+        </button>
         <button type="button" disabled={busy} style={btn(false)} onClick={() => noneFit.mutate({ field: n }, { onSuccess: onDone })}>None fit</button>
         <button type="button" disabled={busy || !sel} style={{ ...btn(true), opacity: busy || !sel ? 0.4 : 1 }}
           onClick={() => accept.mutate({ field: n, shape: sel }, { onSuccess: onDone })}>{accept.isPending ? 'Accepting…' : 'Accept'}</button>
       </div>
+      {ask && (
+        <ConfirmCard title={`Delete field ${n}`} ok={remove.isPending ? 'Deleting…' : 'Delete'} okStyle={{ background: C.coral }} okDisabled={remove.isPending}
+          warn="The field and its point are removed from this land. To add it again, use + Add a point."
+          onCancel={() => setAsk(false)} onOk={() => remove.mutate({ field: n }, { onSuccess: () => { setAsk(false); onDone(); }, onError: () => setAsk(false) })} />
+      )}
     </Frame>
   );
 }
