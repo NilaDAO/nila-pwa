@@ -20,7 +20,9 @@ const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 export const memberName = (job) => job?.farm || job?.name || short(job?.polygon || job?.member);
 const btn = (primary) => ({ flex: 1, height: 44, borderRadius: R.button, border: 0, fontWeight: 700, fontSize: 14, fontFamily: FONT,
   background: primary ? C.accent : C.raised, color: primary ? C.ink : C.text });
-const DONE = ['accepted', 'left_out'];
+// 'inside' (1 Nov): the field's point lies in another field's accepted shape, so that field holds it; minted with it.
+const DONE = ['accepted', 'left_out', 'inside'];
+const insideText = (f) => `Inside field ${f.inside}`;
 
 // The map fills the screen behind the card; the card is the app's one map card (plan/ui.jsx Sheet, 28 Oct): header row
 // inside the card, drag line, clear of the tab bar. It starts at 40 % of the screen.
@@ -67,7 +69,7 @@ function Fetch({ job, onBack, onAdd }) {
       map={<BorderMap fields={job.fields} plan={job.plan} drawing active={again?.n} />}>
       <Head title={again ? `Drawing field ${again.n} again` : 'Finding field borders'} sub="Drawing shapes, please wait" />
       {job.fields.map((f) => (
-        <FieldRow key={f.n} f={f} right={f.state === 'drawing' ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.state === 'accepted' ? 'Accepted' : f.state === 'left_out' ? 'Left out' : 'Waiting'} />
+        <FieldRow key={f.n} f={f} right={f.state === 'drawing' ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.state === 'accepted' ? 'Accepted' : f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : 'Waiting'} />
       ))}
       <AddRow onClick={onAdd} />
     </Frame>
@@ -127,7 +129,7 @@ function Plan({ job, onField, onBack, onAdd }) {
       {job.fields.map((f) => {
         const s = shapeFor(f, job.plan);
         const busy = f.state === 'drawing';
-        return <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : busy ? 'Drawing the shapes, please wait' : f.state === 'empty' ? 'No shape left: check it' : s ? acres(s.acres) : ''}
+        return <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : busy ? 'Drawing the shapes, please wait' : f.state === 'inside' ? insideText(f) : f.state === 'empty' ? 'No shape left: check it' : s ? acres(s.acres) : ''}
           right={busy ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.accepted ? 'Accepted' : undefined}
           onClick={f.state === 'left_out' || busy ? undefined : () => onField(f.n)} />;
       })}
@@ -187,7 +189,9 @@ function Check({ job, n, onDone, onBack }) {
       {/* DESIGN GAP: no board for a field whose every shape overlaps an accepted field (e.g. two points a few metres
           apart): say so, Accept stays off, None fit draws it again from a moved point. */}
       {shapes.length === 0 && (
-        <p role="note" style={{ margin: 0, fontSize: 14, color: C.text }}>No shape left for this field. Press None fit to draw it again from a point a few metres away.</p>
+        <p role="note" style={{ margin: 0, fontSize: 14, color: C.text }}>{f.state === 'inside'
+          ? `This point lies inside field ${f.inside}, so it is part of that field and the land title can be minted. Is it a field of its own? Press None fit to draw it again from a point a few metres away.`
+          : 'No shape left for this field. Press None fit to draw it again from a point a few metres away.'}</p>
       )}
       {holds > 0 && (
         <Notice kind="warn" title={`This shape covers field ${chosen.holds.join(', ')} too`}>
@@ -239,7 +243,7 @@ function Done({ job, onField, onBack, onAdd }) {
       {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
       <Head title={`${ok.length} fields · all accepted`} sub={`Total ${total.toFixed(2)} acres`} />
       {job.fields.map((f) => (
-        <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
+        <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
           onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} />
       ))}
       {!st && <AddRow onClick={onAdd} />}
