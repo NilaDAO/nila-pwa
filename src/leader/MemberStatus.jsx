@@ -28,6 +28,7 @@ import { recordCash } from '../loan/CashDesk';
 import { useDeskRoom } from '../loan/deskRoom';
 import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
+import { PersonalName } from '../union/UnionCards';
 import { useSessionUntil } from '../stellar/session';
 
 const U = 10_000_000;
@@ -226,6 +227,8 @@ export default function MemberStatus({ id, go }) {
             the record's areas are only for the crops on the map. "—" when the record lists none. */}
         {hasLand && <Row k="Fields" v={fields.length || '—'} />}
         {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
+        {/* The leaders' contact book (1 Nov): the member's personal name, beside the public farm name in the header. */}
+        {m.address && <PersonalName address={m.address} />}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
       </div>
       {m.recordHash && !m.shares.length && (
