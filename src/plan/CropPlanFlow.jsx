@@ -166,9 +166,10 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
 }
 
 /** CP1 (board CropPlanPending): her field record is on its way. Shown while titles and the record load. */
-function Pending({ map, name, error }) {
+function Pending({ map, error }) {
+  // The header says what is happening (1 Nov), not the land's name; no second title.
   return (
-    <Sheet map={map} landName={name} title="Getting your field record">
+    <Sheet map={map} landName="Getting your field record">
       <Bouncing top={40} bottom={40} label="Waiting for your record" />
       <p style={{ ...muted, textAlign: 'center' }}>This can take up to an hour.</p>
       {error && <p style={muted}>Your field record could not be loaded. It is tried again in a moment.</p>}
@@ -437,7 +438,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           rows={[['Member', forLand.label || name], ['Land title', String(forLand.landId)]]} />
       );
     }
-    if (!record) return <Pending map={map} name={name} error={field.error} />;
+    if (!record) return <Pending map={map} error={field.error} />;
     const sum = summarize(record);
     return (
       <Sheet map={map} landName={name} title={forLand ? 'Field record' : 'Your field record'}>
