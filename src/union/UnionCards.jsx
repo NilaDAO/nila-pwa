@@ -54,24 +54,46 @@ function NameFields({ address, ed, setEd }) {
 
 /** One signer: the lock and the leader's full name from the contact book (else the short key), "You" for this phone's
  *  key, and + to give the key a name (Close while the fields are open). */
-function SignerRow({ s, me, book, onLock, note }) {
+const pencil = <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>;
+/** The red × of Change signers (the Segmented square, coral cross): marks the signer who leaves; a second tap unmarks. */
+const LeaveToggle = ({ on, onToggle }) => (
+  <div style={{ display: 'flex', padding: 2, borderRadius: 12, background: C.ink, boxShadow: `inset 0 0 0 1px ${C.raised}` }}>
+    <button type="button" onClick={onToggle} aria-pressed={on} aria-label={on ? 'Keep this signer' : 'This signer leaves'}
+      style={{ width: 40, height: 40, border: 0, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        background: on ? C.raised : 'transparent', color: C.coral }}>{cross}</button>
+  </div>
+);
+
+/** One signer: the lock (a tap shows who can read names), the leader's full name from the contact book (else the
+ *  short key) and "(you)". No name yet: + adds one. A name: a tap on it shows the edit icon. While changing signers
+ *  every row has the red × instead; the one marked leaves (struck through). */
+function SignerRow({ s, me, book, onLock, note, replacing, leaving, onLeave }) {
   const cur = book?.names.get(s.key) || { name: '', phone: '' };
   const [ed, setEd] = useState(null);
+  const [showEdit, setShowEdit] = useState(false);
   const ok = book?.state === 'ok';
+  const plain = { border: 0, background: 'none', padding: 0, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center' };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 36, fontSize: 14 }}>
-        <button type="button" onClick={onLock} aria-label="Who can read the names" aria-pressed={note} style={{ display: 'flex', alignItems: 'center', gap: 6,
-          border: 0, background: 'none', padding: 0, color: cur.name ? C.text : C.muted, fontFamily: 'inherit', fontSize: 14, fontWeight: cur.name ? 700 : 400, cursor: 'pointer' }}>
-          <LockIcon size={14} color={note ? C.text : C.muted} />{cur.name || short(s.key)}
-          {s.key === me && <span style={{ color: C.muted, fontWeight: 400 }}>(you)</span>}
-        </button>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {ok && <AddToggle on={!!ed} label={cur.name ? 'Change the full name' : 'Add a full name'}
-            onToggle={() => setEd(ed ? null : { name: cur.name, phone: cur.phone })} />}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44, fontSize: 14 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <button type="button" onClick={onLock} aria-label="Who can read the names" aria-pressed={note} style={plain}>
+            <LockIcon size={14} color={note ? C.text : C.muted} />
+          </button>
+          <button type="button" onClick={() => !replacing && cur.name && ok && setShowEdit(!showEdit)} style={{ ...plain, gap: 6,
+            color: leaving || !cur.name ? C.muted : C.text, fontWeight: cur.name ? 700 : 400, textDecoration: leaving ? 'line-through' : 'none', cursor: cur.name && !replacing ? 'pointer' : 'default' }}>
+            {cur.name || short(s.key)}
+            {s.key === me && <span style={{ color: C.muted, fontWeight: 400 }}>(you)</span>}
+          </button>
         </span>
+        {replacing ? <LeaveToggle on={leaving} onToggle={onLeave} />
+          : ok && (!cur.name || showEdit || ed) && (
+            <Segmented icon width="hug" label={ed ? 'Close' : cur.name ? 'Change the full name' : 'Add a full name'} value={ed ? 'x' : null}
+              onChange={() => { setEd(ed ? null : { name: cur.name, phone: cur.phone }); if (ed) setShowEdit(false); }}
+              options={[['x', ed ? cross : cur.name ? pencil : plus, ed ? 'Close' : 'Add a full name']]} />
+          )}
       </div>
-      {ed && <NameFields address={s.key} ed={ed} setEd={setEd} />}
+      {ed && <NameFields address={s.key} ed={ed} setEd={(v) => { setEd(v); if (!v) setShowEdit(false); }} />}
     </div>
   );
 }
@@ -101,10 +123,9 @@ function SignersChange({ p, signers, book, me, act }) {
   );
 }
 
-/** Change signers: pick the signer who leaves, scan the new signer's account QR (a leader's app shows it), propose.
- *  The proposer signs at once; the other signers sign in their own apps. */
-function ChangeSigners({ signers, book, act, onDone, addOnly = false, isSigner = true }) {
-  const [leave, setLeave] = useState(addOnly ? '' : null);
+/** Change signers, under the rows: once a signer is marked with the red × (replace) or Add a signer is open, scan the
+ *  new signer's account QR (a leader's app shows it), then Propose. The proposer signs at once; the others in their apps. */
+function ChangeSigners({ book, act, onDone, leave, addOnly = false, isSigner = true }) {
   const [add, setAdd] = useState('');
   const [scan, setScan] = useState(false);
   const [msg, setMsg] = useState('');
@@ -118,24 +139,17 @@ function ChangeSigners({ signers, book, act, onDone, addOnly = false, isSigner =
   const ready = (addOnly || leave) && add;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}>
-      {!addOnly && (
-        <>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>Who leaves?</span>
-          <Segmented label="The signer who leaves" value={leave} onChange={setLeave}
-            options={(signers?.list || []).map((s) => [s.key, nameOf(book, s.key)])} />
-        </>
-      )}
-      <span style={{ fontSize: 14, fontWeight: 700, marginTop: addOnly ? 0 : 8 }}>{addOnly ? 'New signer' : 'Who comes in?'}</span>
-      {add ? (
-        <Row k="New signer" v={<span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>{nameOf(book, add)}<AddToggle on label="Scan again" onToggle={() => setAdd('')} /></span>} />
+      {!addOnly && !leave && <Text>Tap × on the signer who leaves.</Text>}
+      {(addOnly || leave) && (add ? (
+        <Row k="New signer" v={nameOf(book, add)} />
       ) : (
         <button type="button" onClick={() => setScan(!scan)} style={btn}>{scan ? 'Stop scanning' : "Scan the new signer's QR"}</button>
-      )}
+      ))}
       {scan && <CameraView mode="qr" onText={onQr} hint="The new signer shows the account QR in the Nila app." />}
       {msg && <Text style={{ color: C.coral }}>{msg}</Text>}
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button type="button" onClick={onDone} style={{ ...btn, flex: 1 }}>Cancel</button>
-        <button type="button" disabled={!ready || act.proposeSigners.isPending} onClick={() => act.proposeSigners.mutate({ remove: leave, add, sign: isSigner }, { onSuccess: onDone })}
+        <button type="button" disabled={!ready || act.proposeSigners.isPending} onClick={() => act.proposeSigners.mutate({ remove: addOnly ? '' : leave, add, sign: isSigner }, { onSuccess: onDone })}
           style={{ ...btn, flex: 1, background: C.accent, color: C.ink, opacity: ready ? 1 : 0.5 }}>{act.proposeSigners.isPending ? 'Proposing…' : 'Propose'}</button>
       </div>
       <Err e={act.proposeSigners.error} />
@@ -151,6 +165,8 @@ export function SignersCard() {
   const me = useMyKey();
   const [note, setNote] = useState(false);
   const [changing, setChanging] = useState(null);     // 'replace' | 'add'
+  const [leave, setLeave] = useState(null);           // the signer marked with the red × (replace)
+  const stop = () => { setChanging(null); setLeave(null); };
   // The union account's own key (master) is not a signer of the union: shown nowhere, counted apart.
   const list = (signers.data?.signers || []).filter((s) => s.key !== signers.data?.union);
   const d = signers.data && { ...signers.data, list, members: list.length };
@@ -161,17 +177,18 @@ export function SignersCard() {
     <Card title="Union signers">
       {signers.isLoading && <Text>…</Text>}
       <div style={{ display: 'flex', flexDirection: 'column', margin: '8px 0' }}>
-        {list.map((s) => <SignerRow key={s.key} s={s} me={me} book={book.data} note={note} onLock={() => setNote(!note)} />)}
+        {list.map((s) => <SignerRow key={s.key} s={s} me={me} book={book.data} note={note} onLock={() => setNote(!note)}
+          replacing={changing === 'replace'} leaving={leave === s.key} onLeave={() => setLeave(leave === s.key ? null : s.key)} />)}
         {/* Until there are five (2 Nov): one Add a signer row; the fifth makes the union account 3 of 5. */}
         {d && list.length < 5 && !waiting && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44, fontSize: 14 }}>
             <span style={{ color: C.muted }}>Add a signer ({list.length} of 5)</span>
-            {canAdd && <AddToggle on={changing === 'add'} label="Add a signer" onToggle={() => setChanging(changing === 'add' ? null : 'add')} />}
+            {canAdd && <AddToggle on={changing === 'add'} label="Add a signer" onToggle={() => (changing === 'add' ? stop() : setChanging('add'))} />}
           </div>
         )}
       </div>
       {waiting && <SignersChange p={waiting} signers={d} book={book.data} me={me} act={act} />}
-      {changing && !waiting && <ChangeSigners signers={d} book={book.data} act={act} addOnly={changing === 'add'} isSigner={isSigner} onDone={() => setChanging(null)} />}
+      {changing && !waiting && <ChangeSigners book={book.data} act={act} leave={leave} addOnly={changing === 'add'} isSigner={isSigner} onDone={stop} />}
       <Err e={signers.error || act.sign.error || act.withdraw.error} />
       {!changing && !waiting && list.length === 5 && <CardButton onClick={isSigner ? () => setChanging('replace') : undefined}>Change signers</CardButton>}
       {note && <NoteBar>{NOTE}</NoteBar>}

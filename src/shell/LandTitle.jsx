@@ -1,8 +1,10 @@
 // A5 (board MemberAssetLand): her land title over the map of her areas — the title and its id, water on her land,
-// and burning the title. DESIGN GAPs (no hook yet, so not shown or not active): marking a well or bore (A5a,
-// useWaterSources / useSaveWaterSources), farm improvements (useImprovements, useImprovementInterest), the trees row
-// (useTreeCheck, TreeMap) and burning the title (useBurnLandTitle).
+// and burning the title (2 Nov: POST /stellar/titles/burn, the holder). DESIGN GAPs (no hook yet, so not shown or not
+// active): marking a well or bore (A5a, useWaterSources / useSaveWaterSources), farm improvements (useImprovements,
+// useImprovementInterest), the trees row (useTreeCheck, TreeMap).
 import { useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ConfirmCard } from './SettingsParts';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarTitles } from '../stellar/hooks';
 import { useLandTitles, useTitleName } from '../plan/hooks';
@@ -38,6 +40,15 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
   // Map taps (24 Oct rule): a field opens its details in the card; the same field again → the title view; another
   // field → its details.
   const [picked, setPicked] = useState(null);
+  const [ask, setAsk] = useState(false);
+  const qc = useQueryClient();
+  const burn = useMutation({
+    mutationFn: async () => {
+      const { signedCall } = await import('../plan/api');
+      return signedCall(s)('POST', '/stellar/titles/burn', { title_id: Number(landId) });
+    },
+    onSuccess: () => { setAsk(false); qc.invalidateQueries({ queryKey: ['stellar', 'titleList'] }); window.location.hash = '#/assets'; },
+  });
   const onTap = tapRule(picked, { open: setPicked, back: () => setPicked(null) });
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
   if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched) || field.isLoading) return <Loading />;
@@ -84,11 +95,19 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
         </button>
       </section>
       <hr style={line} />
-      {/* DESIGN GAP: burning the title (useBurnLandTitle, with the board's confirm) is not built. */}
-      <button type="button" disabled aria-disabled="true" style={{ ...btn, background: C.raised, color: C.coral, opacity: 0.5, cursor: 'default' }}>
+      {/* A5 Burn my land title (R68, executive decision 2 Nov): a Stellar title only (Polygon has no burn); the node checks
+          no crop share and no investment. Membership ends; a leader stays a leader (roles). */}
+      <button type="button" onClick={() => setAsk(true)} disabled={!stellarTitle}
+        style={{ ...btn, background: C.raised, color: C.coral, opacity: stellarTitle ? 1 : 0.5, cursor: stellarTitle ? 'pointer' : 'default' }}>
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.coral} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
         Burn my land title
       </button>
+      {burn.error && <p style={{ ...muted, color: C.coral, marginTop: 8 }}>{burn.error.message}</p>}
+      {ask && (
+        <ConfirmCard title="Burn my land title" ok={burn.isPending ? 'Burning…' : 'Burn'} okStyle={{ background: C.coral }} okDisabled={burn.isPending}
+          onCancel={() => setAsk(false)} onOk={() => burn.mutate()}
+          warn={`Burn land title ${landId}? This ends your membership of the union and cannot be undone. nIN, USDC and vouchers stay in your wallet. To join again you need a new land title (Crop plan). Not possible while you have a crop share or an investment.`} />
+      )}
     </Sheet>
   );
 }
