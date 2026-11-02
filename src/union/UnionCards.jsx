@@ -8,7 +8,7 @@
 // PersonalName: G2's personal name and phone for a member's address (the leaders' reference, not the farm name).
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { C, R } from '../shell/tokens';
+import { C } from '../shell/tokens';
 import CameraView from '../shell/CameraView';
 import { Card, CardButton, ConfirmCard, Row, Text, btn } from '../shell/SettingsParts';
 import { PARTS, useRates, typeName } from '../machine/hooks';
@@ -80,12 +80,13 @@ export function ContactBookCard() {
           <button type="button" onClick={() => (show ? setShow(false) : setAsk(true))} disabled={st !== 'ok'}
             style={{ ...btn, flex: 1, opacity: st === 'ok' ? 1 : 0.5 }}>{show ? 'Hide key' : 'Show key'}</button>
         )}
-        <button type="button" onClick={() => { setScan(!scan); setShow(false); setMsg(''); }} style={{ ...btn, flex: 1 }}>Scan a key</button>
+        <button type="button" onClick={() => { setScan(!scan); setShow(false); setMsg(''); }} style={{ ...btn, flex: 1 }}>{scan ? 'Stop scanning' : 'Scan a key'}</button>
       </div>
       {img && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <div style={{ width: '80%', aspectRatio: '1', borderRadius: R.card, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img src={img} alt="Union key QR code" style={{ width: '86%', height: '86%', imageRendering: 'pixelated' }} />
+          {/* The standard QR (A1a, WalletQr): a white circle, the code at 62% inside it. */}
+          <div style={{ width: '100%', aspectRatio: '1', borderRadius: 9999, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src={img} alt="Union key QR code" style={{ width: '62%', height: '62%', imageRendering: 'pixelated' }} />
           </div>
           <Text>Let only another leader of your union scan this.</Text>
         </div>
@@ -94,7 +95,7 @@ export function ContactBookCard() {
       {msg && <Text style={{ color: C.coral }}>{msg}</Text>}
       <Err e={useKey.error} />
       {ask && (
-        <ConfirmCard title="Show the union key" ok="Show" onCancel={() => setAsk(false)} onOk={() => { setAsk(false); setShow(true); }}
+        <ConfirmCard title="Show the union key" ok="Show" onCancel={() => setAsk(false)} onOk={() => { setAsk(false); setScan(false); setShow(true); }}
           warn="Anyone who scans this key can read every name in the contact book. Show it only to another leader of your union, face to face." />
       )}
     </Card>
