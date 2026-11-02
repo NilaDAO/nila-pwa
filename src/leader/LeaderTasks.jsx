@@ -72,9 +72,7 @@ export function PlanFor({ go }) {
 // "Scan an LP code" has no board row (LP scan, P9): it keeps the cash icon.
 const START = [
   ['Members', [['Add a member', 'Scan their QR or send a keypad link', 'tasks/member', UserPlusIcon],
-    ['Make a crop plan', 'Scan the member\'s QR', 'tasks/planfor', CropIcon],
-    // A lost keypad phone (2 Nov) shows no QR: the leader picks the member, sends the link, recovers the new phone.
-    ['Recover a keypad phone', 'Pick the member by name or number', 'tasks/recover', UserPlusIcon]]],
+    ['Make a crop plan', 'Scan the member\'s QR', 'tasks/planfor', CropIcon]]],
   // One scan for her (executive decision 24 Oct): the QR says which kind, the chain picks invest, withdraw, use or
   // repay. Her G2 in Members stays a second way in.
   ['Cash', [['Scan a member QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
@@ -113,11 +111,6 @@ export default function LeaderTasks({ go }) {
   // with or without the member's phone set up.
   for (const m of keypads.filter((x) => x.phone_type === 'keypad' && !x.job)) {
     items.unshift({ key: `border-pts-${m.id}`, title: 'Take field points', who: m.name, to: `tasks/member/${m.id}/points`, ready: true });
-  }
-  // A keypad member's new phone (2 Nov): the leader recovers it (the SMS link and one leader) on the member's page.
-  for (const m of keypads.filter((x) => x.recovery && ['needed', 'pending'].includes(x.recovery.state))) {
-    items.unshift({ key: `recover-${m.id}`, title: m.recovery.state === 'needed' ? 'Recover a phone' : 'Phone recovery waiting',
-      who: m.name, to: `tasks/member/${m.id}` });
   }
   const shown = items.filter((t) => !q || `${t.title} ${t.who}`.toLowerCase().includes(q.toLowerCase()));
   const row = (t, i) => {
