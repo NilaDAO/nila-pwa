@@ -34,7 +34,7 @@ import Settings from './Settings';
 import LeaderTasks, { PlanFor } from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
-import AddMember, { KeypadPoints, LeaderOwnPoints, SmartphonePoints } from '../leader/AddMember';
+import AddMember, { KeypadPoints, LeaderOwnPoints, RecoverPick, SmartphonePoints } from '../leader/AddMember';
 import { KeypadAccounts } from '../keypad/hooks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { onboarded } from '../register/Registration';
@@ -85,6 +85,7 @@ function TasksView({ leader, go }) {
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
   if (leader && window.location.hash.startsWith('#/tasks/planfor')) return <PlanFor go={go} />;
+  if (leader && window.location.hash.startsWith('#/tasks/recover')) return <RecoverPick go={go} />;
   const member = readMember();
   if (leader && member && member[1] === 'qr' && member[2]) return <SmartphonePoints go={go} />;
   if (leader && member && member[2]) return <KeypadPoints key={member[1]} id={member[1]} go={go} />;

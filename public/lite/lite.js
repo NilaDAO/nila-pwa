@@ -337,6 +337,7 @@
    *  the union's wait). Until then nothing here can show a working QR. */
   function recovering(d) {
     var r = d.me.recovery;
+    qrKey = false;       // its QR would not work: the account does not sign with this phone's key yet
     screen('<h1>Waiting for recovery</h1>' +
       (r.state === 'pending' ? '<p>This phone works from ' + new Date(r.at * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</p>'
         : '<p class="muted">Ask your union leader to recover this phone.</p>'),

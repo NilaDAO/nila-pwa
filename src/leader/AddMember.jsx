@@ -19,7 +19,8 @@ import MapCard from '../shell/MapCard';
 import { Card, CardButton, Row, Text } from '../shell/SettingsParts';
 import { useUnionInfo } from '../shell/SettingsParts';
 import { Notice, Primary } from '../plan/ui';
-import { useInviteLink, useKeypadClient, useKeypadMember, useRecoverPhone } from '../keypad/hooks';
+import { useInviteLink, useKeypadClient, useKeypadMember, useKeypadMembers, useRecoverPhone } from '../keypad/hooks';
+import ListRow, { ListSection } from '../shell/ListRow';
 import { useBorderClient, useSendFieldPoints } from '../border/hooks';
 import CameraView from '../shell/CameraView';
 import { accountOfQr, memberOfQr } from '../stellar/session';
@@ -172,7 +173,7 @@ export default function AddMember({ id, go }) {
     { onSuccess: (m) => go(m.phone_type === 'keypad' && !m.job ? `tasks/member/${m.id}/points` : `tasks/member/${m.id}`) });
   return (
     <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
-      header={{ title: 'Add a member', onBack: () => go('tasks'), onSettings: () => go('settings') }}>
+      header={{ title: id && id !== 'qr' ? 'Member' : 'Add a member', onBack: () => go('tasks'), onSettings: () => go('settings') }}>
       {id === 'qr' ? <NewSmartphone go={go} /> : id ? <Sent id={id} go={go} /> : (
         <>
           <Card title="The member's phone">
@@ -207,6 +208,28 @@ export default function AddMember({ id, go }) {
 
 /** tasks/member/<id>/points (26 Oct): the leader takes a keypad member's field points on the leader's phone, as R5–R7;
  *  sent together, they start the member's border job and the leader goes on to match the shapes (L2a). */
+/** tasks/recover (2 Nov): a lost keypad phone shows no QR, so the leader picks the member by name or number, then on
+ *  the member's page sends the link again and recovers the phone once the new phone has opened it. */
+export function RecoverPick({ go }) {
+  const list = useKeypadMembers();
+  const [q, setQ] = useState('');
+  const state = (m) => ({ needed: 'New phone · recover it', pending: 'Recovery waiting' }[m.recovery?.state] || 'Phone set up');
+  const rows = (list.data || []).filter((m) => m.phone_type === 'keypad' && m.device)
+    .filter((m) => !q || `${m.name} ${m.phone}`.toLowerCase().includes(q.toLowerCase().replace(/\s/g, '')) || m.name.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
+      header={{ title: 'Recover a keypad phone', onBack: () => go('tasks'), onSettings: () => go('settings') }}>
+      <input type="search" aria-label="Name or number" placeholder="Name or number" value={q} onChange={(e) => setQ(e.target.value)}
+        style={{ ...field, marginTop: -12, fontSize: 16 }} />
+      <ListSection title="Keypad members">
+        {list.isLoading && <li style={{ color: C.muted, padding: '12px 0' }}>…</li>}
+        {rows.map((m, i) => <ListRow key={m.id} first={i === 0} title={m.name} sub={`${phoneText(m.phone)} · ${state(m)}`} onClick={() => go(`tasks/member/${m.id}`)} />)}
+        {list.isSuccess && !rows.length && <li style={{ color: C.muted, padding: '12px 0' }}>{q ? 'No member matches.' : 'No keypad members yet.'}</li>}
+      </ListSection>
+    </MapCard>
+  );
+}
+
 export function KeypadPoints({ id, go }) {
   const api = useKeypadClient();
   const m = useKeypadMember(id).data;
