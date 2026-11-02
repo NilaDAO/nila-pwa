@@ -30,6 +30,7 @@ import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
 import { PersonalName } from '../union/UnionCards';
 import { useSessionUntil } from '../stellar/session';
+import { useKeypadMembers } from '../keypad/hooks';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -326,10 +327,19 @@ export default function MemberStatus({ id, go }) {
           <Row k="Record" v={<span style={{ color: C.accent }}>{`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`}</span>} />
         </Section>
       )}
+      <KeypadPhone address={m.address} go={go} />
       <RemoveMember m={m} inv={inv} go={go} />
       </div>
     </MapCard>
   );
+}
+
+/** A keypad member's phone (2 Nov): a lost phone is recovered from the member's L14 page (send the link again, then
+ *  Recover this phone). */
+function KeypadPhone({ address, go }) {
+  const k = (useKeypadMembers().data || []).find((x) => x.phone_type === 'keypad' && x.account && x.account === address);
+  if (!k) return null;
+  return <CardButton onClick={() => go(`tasks/member/${k.id}`)} style={{ marginTop: 0 }}>Keypad phone · lost or new phone</CardButton>;
 }
 
 /** G2 Remove member (executive decision 28 Oct; the look of Settings → Reset account): the node burns the member's land

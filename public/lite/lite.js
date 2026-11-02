@@ -317,6 +317,8 @@
   /** #/home: pending until the land title exists, the property once, then the assets screen. */
   function home() {
     withData('Nila', function (d) {
+      var rec = d.me.recovery && d.me.recovery.state;
+      if (rec === 'needed' || rec === 'pending' || rec === 'other') { recovering(d); return; }
       if (!d.me.title) { pending(d); return; }
       if (!stored('nila.lite.seen.' + d.me.title.title_id)) { go('#/property'); return; }
       assetsHome(d);
@@ -328,6 +330,16 @@
     screen('<h1>Waiting for your land title</h1>' +
       (f.length ? '<p>' + f.length + (f.length === 1 ? ' field' : ' fields') + ' with your union leader</p>' : '') +
       '<p class="muted">Your union leader maps your fields and makes your land title. You get an SMS when it is ready.</p>',
+      ['Refresh', function () { data = null; home(); }], null, null, 'Nila');
+  }
+
+  /** A new phone (2 Nov): it signs for the account only once the recovery has run (the SMS link and one leader, then
+   *  the union's wait). Until then nothing here can show a working QR. */
+  function recovering(d) {
+    var r = d.me.recovery;
+    screen('<h1>Waiting for recovery</h1>' +
+      (r.state === 'pending' ? '<p>This phone works from ' + new Date(r.at * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</p>'
+        : '<p class="muted">Ask your union leader to recover this phone.</p>'),
       ['Refresh', function () { data = null; home(); }], null, null, 'Nila');
   }
 

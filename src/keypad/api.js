@@ -11,6 +11,9 @@ export function keypadClient(signer) {
     member: (id) => call('GET', `/keypad/members/${id}`),
     list: () => call('GET', '/keypad/members'),
     // 26 Oct: the leader's phone takes the keypad member's field points; they start the member's border job.
+    // 2 Nov: a lost phone. The node returns the leader's payload hash for recover_by_sms; the leader signs it.
+    recoverAsk: (id) => call('POST', `/keypad/members/${id}/recover`, {}),
+    recoverSign: (id, signature) => call('POST', `/keypad/members/${id}/recover/sign`, { signature }),
     points: (id, points) => call('POST', `/keypad/members/${id}/points`, { points }),
   };
 }

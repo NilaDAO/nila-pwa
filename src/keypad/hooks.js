@@ -27,6 +27,23 @@ export function useInviteLink() {
   });
 }
 
+/** A lost keypad phone (executive decision 2 Nov): once the new phone has opened the newest SMS link, the leader asks
+ *  the node for the recovery and signs its payload hash with the leader's own key; the node adds the SMS key and sends
+ *  recover_by_sms. The account works with the new phone after the union's wait. */
+export function useRecoverPhone(id) {
+  const api = useKeypadClient();
+  const s = useNilaSigner();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { hash } = await api.recoverAsk(id);
+      const sig = await s.signHash(Uint8Array.from(hash.match(/../g), (x) => parseInt(x, 16)));
+      return api.recoverSign(id, btoa(String.fromCharCode(...new Uint8Array(sig))));
+    },
+    onSuccess: (m) => qc.setQueryData(qkKeypad.member(id), m),
+  });
+}
+
 /** L14 #sent: her progress (link, consent, device key, fields; no PIN), polled while the leader waits with her. */
 export function useKeypadMember(id) {
   const api = useKeypadClient();
