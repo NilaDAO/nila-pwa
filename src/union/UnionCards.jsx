@@ -54,13 +54,16 @@ function NameFields({ address, ed, setEd }) {
 
 /** One signer: the lock and the leader's full name from the contact book (else the short key), "You" for this phone's
  *  key, and + to give the key a name (Close while the fields are open). */
+// The signer marked to leave: very dark grey, struck through.
+const GONE = '#374151';
 const pencil = <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>;
-/** The red × of Change signers (the Segmented square, coral cross): marks the signer who leaves; a second tap unmarks. */
+/** The red × of Change signers (the Segmented square, coral cross; filled coral once marked): marks the signer who
+ *  leaves; a second tap unmarks. */
 const LeaveToggle = ({ on, onToggle }) => (
   <div style={{ display: 'flex', padding: 2, borderRadius: 12, background: C.ink, boxShadow: `inset 0 0 0 1px ${C.raised}` }}>
     <button type="button" onClick={onToggle} aria-pressed={on} aria-label={on ? 'Keep this signer' : 'This signer leaves'}
       style={{ width: 40, height: 40, border: 0, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        background: on ? C.raised : 'transparent', color: C.coral }}>{cross}</button>
+        background: on ? C.coral : 'transparent', color: on ? C.ink : C.coral }}>{cross}</button>
   </div>
 );
 
@@ -78,12 +81,12 @@ function SignerRow({ s, me, book, onLock, note, replacing, leaving, onLeave }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44, fontSize: 14 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           <button type="button" onClick={onLock} aria-label="Who can read the names" aria-pressed={note} style={plain}>
-            <LockIcon size={14} color={note ? C.text : C.muted} />
+            <LockIcon size={14} color={leaving ? GONE : note ? C.text : C.muted} />
           </button>
           <button type="button" onClick={() => !replacing && cur.name && ok && setShowEdit(!showEdit)} style={{ ...plain, gap: 6,
-            color: leaving || !cur.name ? C.muted : C.text, fontWeight: cur.name ? 700 : 400, textDecoration: leaving ? 'line-through' : 'none', cursor: cur.name && !replacing ? 'pointer' : 'default' }}>
+            color: leaving ? GONE : !cur.name ? C.muted : C.text, fontWeight: cur.name ? 700 : 400, textDecoration: leaving ? 'line-through' : 'none', cursor: cur.name && !replacing ? 'pointer' : 'default' }}>
             {cur.name || short(s.key)}
-            {s.key === me && <span style={{ color: C.muted, fontWeight: 400 }}>(you)</span>}
+            {s.key === me && <span style={{ color: leaving ? GONE : C.muted, fontWeight: 400 }}>(you)</span>}
           </button>
         </span>
         {replacing ? <LeaveToggle on={leaving} onToggle={onLeave} />
