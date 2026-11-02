@@ -229,16 +229,20 @@ export function ContactBookCard() {
       <Text>Members' full names and phone numbers, given by your leaders. They are locked with the union key: share it only face to face.</Text>
       <Row k="Union key" v={<span style={{ fontWeight: 700, color: st === 'mismatch' ? C.coral : C.text }}>{label}</span>} />
       {st === 'mismatch' && <Text style={{ color: C.coral }}>Your key is not the union's: you cannot read or add names. Scan the key from another leader.</Text>}
+      {/* One button for where the phone stands (2 Nov): no key anywhere → make it; the union has one this phone lacks
+          or differs from → scan it; the key is set → show it to another leader. */}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        {(st === 'none' || st === 'unsent') ? (
+        {(st === 'none' || st === 'unsent') && (
           <button type="button" onClick={() => useKey.mutate(st === 'unsent' ? loadKey(cfg.union) : undefined)} disabled={useKey.isPending} style={{ ...btn, flex: 1 }}>
             {useKey.isPending ? 'Making…' : 'Make the union key'}
           </button>
-        ) : (
-          <button type="button" onClick={() => (show ? setShow(false) : setAsk(true))} disabled={st !== 'ok'}
-            style={{ ...btn, flex: 1, opacity: st === 'ok' ? 1 : 0.5 }}>{show ? 'Hide key' : 'Show key'}</button>
         )}
-        <button type="button" onClick={() => { setScan(!scan); setShow(false); setMsg(''); }} style={{ ...btn, flex: 1 }}>{scan ? 'Stop scanning' : 'Scan a key'}</button>
+        {st === 'ok' && (
+          <button type="button" onClick={() => (show ? setShow(false) : setAsk(true))} style={{ ...btn, flex: 1 }}>{show ? 'Hide key' : 'Show key'}</button>
+        )}
+        {(st === 'scan' || st === 'mismatch') && (
+          <button type="button" onClick={() => { setScan(!scan); setShow(false); setMsg(''); }} style={{ ...btn, flex: 1 }}>{scan ? 'Stop scanning' : 'Scan a key'}</button>
+        )}
       </div>
       {img && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
