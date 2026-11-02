@@ -27,20 +27,69 @@ const field = { height: 44, borderRadius: 12, border: 0, background: C.raised, c
   padding: '0 14px', boxSizing: 'border-box', outline: 'none' };
 const Err = ({ e }) => (e ? <span style={{ color: C.coral, fontSize: 14 }}>{e.message || String(e)}</span> : null);
 
+const NOTE = "Only your union's leaders can read the full name and phone. They are locked with the union key. The farm name is public.";
+const linkBtn = { border: 0, background: 'none', padding: 0, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', textAlign: 'right' };
+
+/** The name fields under a row: full name, optional phone and a secondary Save (the contact book entry for `address`). */
+function NameFields({ address, ed, setEd }) {
+  const { setName } = useBookActions();
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '4px 0 8px' }}>
+      <input value={ed.name} onChange={(e) => setEd({ ...ed, name: e.target.value })} placeholder="Full name" aria-label="Full name" style={field} />
+      <input value={ed.phone} onChange={(e) => setEd({ ...ed, phone: e.target.value })} placeholder="Phone (optional)" aria-label="Phone (optional)"
+        inputMode="tel" style={field} />
+      <button type="button" disabled={setName.isPending} onClick={() => setName.mutate({ address, ...ed }, { onSuccess: () => setEd(null) })}
+        style={{ ...btn, marginTop: 4 }}>{setName.isPending ? 'Saving…' : 'Save'}</button>
+      <Err e={setName.error} />
+    </div>
+  );
+}
+
+/** One signer: the lock and the leader's full name from the contact book (else the short key), "You" for this phone's
+ *  key, and + to give the key a name (Close while the fields are open). */
+function SignerRow({ s, me, book, onLock, note }) {
+  const cur = book?.names.get(s.key) || { name: '', phone: '' };
+  const [ed, setEd] = useState(null);
+  const ok = book?.state === 'ok';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 36, fontSize: 14 }}>
+        <button type="button" onClick={onLock} aria-label="Who can read the names" aria-pressed={note} style={{ display: 'flex', alignItems: 'center', gap: 6,
+          border: 0, background: 'none', padding: 0, color: cur.name ? C.text : C.muted, fontFamily: 'inherit', fontSize: 14, fontWeight: cur.name ? 700 : 400, cursor: 'pointer' }}>
+          <LockIcon size={14} color={note ? C.accent : C.muted} />{cur.name || short(s.key)}
+        </button>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {s.key === me && <span style={{ fontWeight: 700 }}>You</span>}
+          {ok && (ed ? <button type="button" onClick={() => setEd(null)} style={{ ...linkBtn, color: C.text }}>Close</button>
+            : (
+              <button type="button" onClick={() => setEd({ name: cur.name, phone: cur.phone })} aria-label={cur.name ? 'Change the full name' : 'Add a full name'}
+                style={{ ...linkBtn, color: C.accent, display: 'flex', alignItems: 'center' }}>
+                {cur.name ? 'Edit' : <PlusIcon size={20} color={C.accent} />}
+              </button>
+            ))}
+        </span>
+      </div>
+      {ed && <NameFields address={s.key} ed={ed} setEd={setEd} />}
+    </div>
+  );
+}
+
 export function SignersCard() {
   const signers = useUnionSigners();
   const book = useContactBook();
   const me = useMyKey();
+  const [note, setNote] = useState(false);
   const d = signers.data;
   return (
     <Card title="Union signers">
       <Text>{d ? `${d.threshold} of ${d.signers.length}` : '3 of 5'} must sign: a new leader, the voucher price list and a change of signers.</Text>
       {signers.isLoading && <Text>…</Text>}
-      {(d?.signers || []).map((s) => (
-        <Row key={s.key} k={book.data?.names.get(s.key)?.name || short(s.key)} v={s.key === me ? 'You' : ''} />
-      ))}
+      <div style={{ display: 'flex', flexDirection: 'column', margin: '8px 0' }}>
+        {(d?.signers || []).map((s) => <SignerRow key={s.key} s={s} me={me} book={book.data} note={note} onLock={() => setNote(!note)} />)}
+      </div>
       <Err e={signers.error} />
       <CardButton>Change signers</CardButton>
+      {note && <NoteBar>{NOTE}</NoteBar>}
     </Card>
   );
 }
@@ -245,7 +294,6 @@ export function VoucherPrices() {
  *  alone logged in with an SMS code, but that number stays with the login (Cognito) and is not known to the union. */
 export function PersonalName({ address, phone: knownPhone }) {
   const book = useContactBook();
-  const { setName } = useBookActions();
   const cur = book.data?.names.get(address) || { name: '', phone: '' };
   const [ed, setEd] = useState(null);
   const [note, setNote] = useState(false);
@@ -258,7 +306,6 @@ export function PersonalName({ address, phone: knownPhone }) {
       <LockIcon size={14} color={note ? C.accent : C.muted} />Full name
     </button>
   );
-  const link = { border: 0, background: 'none', padding: 0, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', textAlign: 'right' };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 36, fontSize: 14 }}>
@@ -266,24 +313,15 @@ export function PersonalName({ address, phone: knownPhone }) {
         {locked ? (
           <span style={{ color: C.muted, textAlign: 'right' }}>{book.data.state === 'mismatch' ? 'Union key does not match' : 'No union key on this phone'}</span>
         ) : ed ? (
-          <button type="button" onClick={() => setEd(null)} style={{ ...link, color: C.text }}>Close</button>
+          <button type="button" onClick={() => setEd(null)} style={{ ...linkBtn, color: C.text }}>Close</button>
         ) : (
-          <button type="button" onClick={() => setEd({ name: cur.name, phone: cur.phone || knownPhone || '' })} aria-label={cur.name ? 'Change the full name' : 'Add a full name'} style={{ ...link, color: cur.name ? C.text : C.accent, display: 'flex', alignItems: 'center' }}>
+          <button type="button" onClick={() => setEd({ name: cur.name, phone: cur.phone || knownPhone || '' })} aria-label={cur.name ? 'Change the full name' : 'Add a full name'} style={{ ...linkBtn, color: cur.name ? C.text : C.accent, display: 'flex', alignItems: 'center' }}>
             {cur.name ? `${cur.name}${cur.phone ? ` · ${cur.phone}` : ''}` : <PlusIcon size={20} color={C.accent} />}
           </button>
         )}
       </div>
-      {ed && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '4px 0 8px' }}>
-          <input value={ed.name} onChange={(e) => setEd({ ...ed, name: e.target.value })} placeholder="Full name" aria-label="Full name" style={field} />
-          <input value={ed.phone} onChange={(e) => setEd({ ...ed, phone: e.target.value })} placeholder="Phone (optional)" aria-label="Phone (optional)"
-            inputMode="tel" style={field} />
-          <button type="button" disabled={setName.isPending} onClick={() => setName.mutate({ address, ...ed }, { onSuccess: () => setEd(null) })}
-            style={{ ...btn, marginTop: 4 }}>{setName.isPending ? 'Saving…' : 'Save'}</button>
-          <Err e={setName.error} />
-        </div>
-      )}
-      {note && <NoteBar>Only your union's leaders can read the full name and phone. They are locked with the union key. The farm name is public.</NoteBar>}
+      {ed && <NameFields address={address} ed={ed} setEd={setEd} />}
+      {note && <NoteBar>{NOTE}</NoteBar>}
     </div>
   );
 }
