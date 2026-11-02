@@ -1,9 +1,8 @@
-// Leader side of the LP offers, as the LP pledge (executive decision 30 Oct): C4 "Let an LP take it" posts a Collect
-// (an LP takes the union's cash; her own account locks USDC for it); L11 #short and Pay out cash ask LPs who hold the
-// union's cash to bring it back (a Bring); A1b #leader scans an LP's code and confirms (fx_pool.confirm: no USDC moves;
-// a Bring unlocks hers). The node sponsors post_offer, confirm and cancel_offer for a leader of the union (O14).
-// Offers run 48 h (≤ 7 days in fx_pool). On a Bring the leader counts the LP's rupees (the amount less her 1% fee,
-// whole rupees) with the C6 photo count before confirming.
+// Leader side of the LP offers (LP positions, executive decision 31 Oct): C4 "Let an LP take it" posts a Collect;
+// L11 #short and Pay out cash post a Bring; A1b #leader scans an LP's code and confirms (fx_pool.confirm moves the USDC
+// as fixed at accept). The node sponsors post_offer, confirm and cancel_offer for a leader of the union (O14). Offers
+// run 48 h (≤ 7 days in fx_pool). On a Bring the leader counts the LP's rupees (less the 2% fee when it ends the LP's
+// position, whole rupees) with the C6 photo count before confirming.
 // DESIGN GAP: LP names ("LP Suresh K.") are shown as short wallet addresses. Her code is signed by her Stellar
 // key (offer id + time, 10 min): the scan checks it is the LP who accepted (the offer id alone is public).
 import DeskCard from '../shell/DeskCard';
@@ -22,7 +21,8 @@ import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import { CODE_TTL, U, codeHash, useOfferQuote, useUnionOffers, usdcOf } from './hooks';
 import { BRING, COLLECT } from './sep';
 
-export const OFFER_TTL = 48 * 3600;
+// No fixed period (31 Oct): an offer stays open until an LP accepts it or a leader cancels it.
+export const OPEN_END = 18446744073709551615n;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 const left = (ts) => { const s = ts - Date.now() / 1000; return s <= 0 ? 'expired' : s < 86400 ? `${Math.ceil(s / 3600)} h left` : `In ${Math.round(s / 86400)} d`; };
 const STATE = ['Waiting', 'Accepted', 'Done', 'Cancelled', 'Expired'];
@@ -32,11 +32,11 @@ export function usePost() {
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
   const post = (kind, amount) => tx.run({
-    label: kind === BRING ? `Ask LPs to bring ${inr(amount)} back` : `Let an LP take ${inr(amount)}`,
-    rows: [['Amount', inr(amount)], ['Open for', '48 hours']],
+    label: kind === BRING ? `Ask LPs to bring ${inr(amount)}` : `Let an LP take ${inr(amount)}`,
+    rows: [['Amount', inr(amount)], ['Open', 'Until an LP takes it up, or you cancel']],
     contractName: 'fx_pool', fn: 'post_offer',
     args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.u32(kind), sv.i128(BigInt(amount) * BigInt(U)),
-      sv.u64(Math.floor(Date.now() / 1000) + OFFER_TTL)],
+      sv.u64(OPEN_END)],
     invalidate: [['stellar', 'offers']],
   });
   return { tx, post };
@@ -52,9 +52,9 @@ function OfferList({ onCancel }) {
       {offers.data.map((o) => (
         <div key={o.id} style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 8, fontSize: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-            <span>{o.kind === BRING ? 'LP brings cash back' : 'LP takes cash'} · {inr(o.inr)}</span><span>{left(o.expires)}</span>
+            <span>{o.kind === BRING ? 'LP brings cash' : 'LP takes cash'} · {inr(o.inr)}</span><span>{o.expires > 4e9 ? '' : left(o.expires)}</span>
           </div>
-          <div style={{ color: C.muted }}>{STATE[o.state]}{o.lp ? ` · LP ${short(o.lp)}` : ''}{o.state === 1 ? ` · ${usdcOf(o.usdc)} USDC ${o.kind === BRING ? 'unlocks' : 'locked'}` : ''}</div>
+          <div style={{ color: C.muted }}>{STATE[o.state]}{o.lp ? ` · LP ${short(o.lp)}` : ''}{o.state === 1 ? ` · ${usdcOf(o.usdc)} USDC` : ''}</div>
           <button type="button" onClick={() => (sure === o.id ? onCancel(o) : setSure(o.id))} style={{ background: 'none', border: 0, padding: 0, color: C.coral, fontWeight: 700, marginTop: 4 }}>
             {sure === o.id ? (o.state === 1 ? 'Tap again: the LP accepted it' : 'Tap again to cancel') : 'Cancel'}
           </button>
@@ -64,7 +64,7 @@ function OfferList({ onCancel }) {
   );
 }
 
-/** C4: spare cash at the office for an LP to take against locked USDC (Collect offer). */
+/** C4: spare cash at the office for an LP to take (Collect offer). */
 export function LetCollect({ onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -92,11 +92,11 @@ export function LetCollect({ onBack }) {
         <button type="button" style={{ ...b, width: 'auto', padding: '0 14px', fontSize: 14 }} onClick={() => setAmount(max)}>Max</button>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '4px 0' }}>
-        <span style={{ color: C.muted }}>The LP's USDC locked for it</span><span style={{ fontWeight: 700 }}>{q.data && a ? `${usdcOf(q.data.usdc)} USDC` : '—'}</span>
+        <span style={{ color: C.muted }}>At today's rate</span><span style={{ fontWeight: 700 }}>{q.data && a ? `${usdcOf(q.data.usdc)} USDC` : '—'}</span>
       </div>
       <Primary disabled={!a || !tx.ready} onClick={() => post(COLLECT, a)}>Let an LP take {inr(a)}</Primary>
       <OfferList onCancel={(o) => cancel.run({
-        label: `Cancel the offer of ${inr(o.inr)}`, rows: [['Offer', `${o.kind === BRING ? 'Bring back' : 'Take'} ${inr(o.inr)}`]],
+        label: `Cancel the offer of ${inr(o.inr)}`, rows: [['Offer', `${o.kind === BRING ? 'Bring' : 'Take'} ${inr(o.inr)}`]],
         contractName: 'fx_pool', fn: 'cancel_offer', args: [sv.address(s.stellarAddress), sv.u64(o.id)], invalidate: [['stellar', 'offers']],
       })} />
     </DeskCard>
@@ -119,9 +119,9 @@ export function ScanLp({ onBack }) {
   const [counted, setCounted] = useState(null);   // rupees counted on C6 for a Bring
   const kind = Number(o.data?.kind);
   const inrAmt = o.data ? Number(BigInt(o.data.inr) / BigInt(U)) : 0;
-  // A Bring: the LP hands over the amount less her fee (whole rupees, fx_pool's quote).
-  const bq = useOfferQuote(BRING, kind === BRING ? inrAmt : 0);
-  const hand = kind === BRING && bq.data ? inrAmt - Number(BigInt(bq.data.fee_inr) / BigInt(U)) : inrAmt;
+  // A Bring: the LP hands over the amount less the close fee fixed at accept (offer.from_offshore, whole rupees).
+  const fee = o.data ? Number(BigInt(o.data.from_offshore || 0) / BigInt(U)) : 0;
+  const hand = kind === BRING ? inrAmt - fee : inrAmt;
   // The code is hers: signed by the LP who accepted this offer, less than 10 minutes ago.
   const mine = useQuery({ queryKey: ['anchor', 'codeCheck', id, proof?.ts, o.data?.lp], enabled: !!proof && !!o.data?.lp,
     queryFn: async () => {
@@ -145,7 +145,7 @@ export function ScanLp({ onBack }) {
   };
   const again = () => { setId(undefined); setProof(undefined); setBad(undefined); setTyped(''); setCounted(null); };
   if (counting) {
-    return <PhotoCount name="LP brings cash back" target={hand} verb="Counted" limit={false} onBack={() => setCounting(false)}
+    return <PhotoCount name="LP brings cash" target={hand} verb="Counted" limit={false} onBack={() => setCounting(false)}
       onDone={({ total }) => { setCounted(total); setCounting(false); }} />;
   }
   const live = o.data && Number(o.data.expires) > Date.now() / 1000;
@@ -172,15 +172,15 @@ export function ScanLp({ onBack }) {
       {id != null && !ok && <Secondary onClick={again}>Scan again</Secondary>}
       {ok && (
         <>
-          <Choice sub={`LP ${short(o.data.lp)} · ${usdcOf(o.data.usdc)} USDC ${kind === BRING ? 'unlocks' : 'locked'}`}>{kind === BRING ? `The LP brings ${inr(inrAmt)} back` : `The LP takes ${inr(inrAmt)}`}</Choice>
-          <p style={muted}>{kind === BRING ? `Count the cash the LP hands over: ${inr(hand)} (${inr(inrAmt)} less the LP's fee). Confirming unlocks the LP's own USDC.`
-            : 'Hand over the cash. The LP\'s USDC stays locked in the LP\'s own account until the cash comes back.'}</p>
-          {kind === BRING && counted == null && <Primary disabled={!tx.ready || !bq.data} onClick={() => setCounting(true)}>Count the cash</Primary>}
+          <Choice sub={`LP ${short(o.data.lp)} · ${usdcOf(o.data.usdc)} USDC`}>{kind === BRING ? `The LP brings ${inr(inrAmt)}` : `The LP takes ${inr(inrAmt)}`}</Choice>
+          <p style={muted}>{kind === BRING ? `Count the cash the LP hands over: ${inr(hand)}${fee ? ` (${inr(inrAmt)} less the LP's fee)` : ''}. Confirming moves the USDC to the LP.`
+            : 'Hand over the cash. Confirming locks the LP\'s USDC with the union.'}</p>
+          {kind === BRING && counted == null && <Primary disabled={!tx.ready} onClick={() => setCounting(true)}>Count the cash</Primary>}
           {kind === BRING && counted != null && counted < hand && <p style={{ color: C.coral }}>Counted {inr(counted)} of {inr(hand)}: count again before you confirm.</p>}
           {(kind !== BRING || (counted != null && counted >= hand)) && <Primary disabled={!tx.ready} onClick={() => tx.run({
-            label: kind === BRING ? `Got ${inr(hand)} back from the LP` : `Gave ${inr(inrAmt)} to the LP`,
-            rows: [['LP', short(o.data.lp)], [kind === BRING ? 'USDC unlocks' : 'USDC locked', usdcOf(o.data.usdc)]],
-            contractName: 'fx_pool', fn: 'confirm', args: [sv.address(s.stellarAddress), sv.u64(id)], invalidate: [['stellar', 'offers'], ['stellar', 'cashAtHand'], ['stellar', 'lpsOwing']],
+            label: kind === BRING ? `Got ${inr(hand)} from the LP` : `Gave ${inr(inrAmt)} to the LP`,
+            rows: [['LP', short(o.data.lp)], ['USDC', usdcOf(o.data.usdc)]],
+            contractName: 'fx_pool', fn: 'confirm', args: [sv.address(s.stellarAddress), sv.u64(id)], invalidate: [['stellar', 'offers'], ['stellar', 'cashAtHand'], ['stellar', 'bringRoom']],
           })}>{kind === BRING ? `I got ${inr(hand)}` : `I gave ${inr(inrAmt)}`}</Primary>}
           {kind === BRING && counted != null && counted < hand && <button type="button" onClick={() => setCounting(true)} style={{ background: 'none', border: 0, color: C.accent, fontWeight: 700, width: '100%' }}>Count again</button>}
         </>

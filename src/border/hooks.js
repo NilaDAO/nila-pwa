@@ -72,12 +72,13 @@ export function useBorderDecision(id) {
   const accept = useJobWrite(id, (a, { field, shape }) => a.accept(id, field, shape));
   const noneFit = useJobWrite(id, (a, { field }) => a.noneFit(id, field));
   const retry = useJobWrite(id, (a, { field }) => a.retry(id, field));
+  const remove = useJobWrite(id, (a, { field }) => a.remove(id, field));   // delete the field and its point (1 Nov)
   const preview = useMutation({ mutationFn: ({ field, shape }) => api.preview(id, field, shape) });
   // 28 Oct: the proposed plan at once (L2), and a neighbour plot added to a field or made a field of its own.
   const acceptPlan = useJobWrite(id, (a) => a.acceptPlan(id));
   const addPlot = useJobWrite(id, (a, { field, plot }) => a.addPlot(id, field, plot));
   const newField = useJobWrite(id, (a, { plot }) => a.newField(id, plot));
-  return { accept, noneFit, preview, retry, acceptPlan, addPlot, newField };
+  return { accept, noneFit, preview, retry, remove, acceptPlan, addPlot, newField };
 }
 
 /** L4: the leader asks the node to mint her land title (signed by the node's title key). */

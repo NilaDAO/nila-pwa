@@ -20,6 +20,7 @@ export function borderClient(signer) {
     preview: (id, field, shape) => call('POST', `/border/job/${id}/preview`, { field, shape }),
     accept: (id, field, shape) => call('POST', `/border/job/${id}/decide`, { field, action: 'accept', shape }).then(jobOf),
     noneFit: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit' }).then(jobOf),
+    remove: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'delete' }).then(jobOf),   // 1 Nov
     retry: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'retry' }).then(jobOf),
     acceptPlan: (id) => call('POST', `/border/job/${id}/decide`, { field: 0, action: 'accept_plan' }).then(jobOf),
     addPlot: (id, field, plot) => call('POST', `/border/job/${id}/decide`, { field, action: 'add_plot', shape: plot }).then(jobOf),

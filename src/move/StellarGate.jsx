@@ -51,5 +51,5 @@ export default function StellarGate({ children }) {
   if (open === 'old') return children;
   if (open === 'app') return <Shell leader={leader} />;
   if (open === 'leaderStart') return <LeaderStart onOld={() => choose('old')} onNew={() => { signer.stellarSetup?.run(); choose('new'); }} />;
-  return <MoveFlow onMoved={() => window.location.reload()} onRepay={() => choose('old')} />;
+  return <MoveFlow onRepay={() => choose('old')} />;
 }

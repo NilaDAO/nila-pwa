@@ -1,19 +1,20 @@
 // A9 (board MemberAssetUsdc #leader, #send, #swap): the leader's USDC, opened from A1L's USDC row once her identity is
-// checked. Top card: the USDC logo, her balance and its rupee value. Below: Send | Swap (executive decision 22 Oct).
+// checked; an LP's too (31 Oct), from A1's USDC row: Send only (the swap to nIN is a leader's), and one card more, the
+// locked USDC of the LP's position. Top card: the USDC logo, her balance and its rupee value. Below: Send | Swap (executive decision 22 Oct).
 //  - Send: to any Stellar address she scans or pastes; a plain USDC transfer from her wallet (the node pays the fee
 //    once her identity is checked). DESIGN GAP: the board's contact list (union, providers) has no source yet.
 //  - Swap: USDC → nIN in her wallet at fx_pool's rate (fx_pool.swap_usdc_to_nin); no fee. The way back is on A7.
 // No Receive button (22 Oct). Layout shared with A7 (AssetSwapLayout).
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import AssetSwapLayout, { AssetForm, SwapTarget, money } from './AssetSwapLayout';
+import AssetSwapLayout, { AssetForm, SwapTarget, assetCard, money } from './AssetSwapLayout';
 import { useLpStatus, useUsdcTrustline } from '../anchor/hooks';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import CameraView from './CameraView';
-import { Stepper } from '../loan/AssetParts';
+import { KV, Stepper } from '../loan/AssetParts';
 import { Primary } from '../plan/ui';
 import { ScanIcon, UsdcTile } from './icons';
 import { C, R } from './tokens';
@@ -25,7 +26,7 @@ const isG = (a) => /^[GC][A-Z2-7]{55}$/.test(a);
 export function useFxRate() {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['stellar', 'fxRate'], enabled: !!cfg?.contracts?.fx_pool, staleTime: 60_000,
+    queryKey: ['stellar', 'fxRate'], enabled: !!cfg?.contracts?.fx_pool, staleTime: 30_000, refetchInterval: 30_000,   // live
     queryFn: async () => {
       const r = await readContract(cfg, 'fx_pool', 'rate', []);
       if (!r || Number(r.valid_until) * 1000 < Date.now()) return null;
@@ -35,19 +36,20 @@ export function useFxRate() {
 }
 
 
-export default function UsdcAsset({ onBack }) {
+export default function UsdcAsset({ onBack, leader = true }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const lp = useLpStatus().data;
   const trust = useUsdcTrustline();
   const rate = useFxRate().data;
   const tx = useSorobanTx();
-  const [tab, setTab] = useState('swap');
+  const [tab, setTab] = useState(leader ? 'swap' : 'send');
   const [amount, setAmount] = useState(0);
   const [to, setTo] = useState('');
   const [scan, setScan] = useState(false);
-  // Only the free part moves: USDC locked against the union's cash she holds stays (the LP pledge, 30 Oct).
-  const usdc = lp ? lp.free ?? lp.usdc ?? 0 : 0;
+  // Her balance as before; only the free part can be sent or swapped (USDC locked by a Bring position stays, 31 Oct).
+  const total = lp ? lp.usdc || 0 : 0;
+  const usdc = lp ? lp.free ?? total : 0;
   // Her identity is checked (K1), so the node sponsors her USDC trustline; until it exists she holds no USDC.
   const noLine = lp && lp.idChecked && !lp.trustline;
   const a = Math.max(0, Math.min(amount, Math.floor(usdc)));
@@ -89,15 +91,30 @@ export default function UsdcAsset({ onBack }) {
   );
   return (
     <AssetSwapLayout onBack={onBack} icon={<UsdcTile size={72} />} name="USDC" sub={`Digital US dollar${rate ? ` · ₹${money(rate)}` : ''}`}
-      amount={lp ? money(usdc) : '…'} value={rate ? `₹${money(usdc * rate, 0)}` : null}
+      amount={lp ? money(total) : '…'} value={rate ? `₹${money(total * rate, 0)}` : null}
       head={noLine && (
         <>
           <Primary disabled={trust.isPending} onClick={() => trust.mutate()}>{trust.isPending ? 'Opening your USDC account…' : 'Open your USDC account'}</Primary>
           {trust.isError && <p style={{ color: C.coral, fontSize: 14 }}>{trust.error.message}</p>}
         </>
       )}
-      switchLabel="Send or swap" options={[['send', 'Send'], ['swap', 'Swap']]} tab={tab} onTab={setTab}
-      note="Worth US dollars, so its rupee value moves with the exchange rate. Swapping to nIN is free.">
+      below={lp?.position && (
+        // LP positions (31 Oct): the locked USDC card.
+        <section aria-label="Locked USDC" style={{ ...assetCard, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 16, fontWeight: 700 }}>Locked USDC</span>
+          <KV k={lp.position.kind === 0 ? 'In your wallet' : 'With the union'} v={`${money(lp.position.usdc)} USDC`} />
+          <KV k={lp.position.kind === 0 ? 'For the cash you brought' : 'For the cash you took'} v={`₹${money(lp.position.inr, 0)}`} />
+          <KV k="Since" v={new Date(lp.position.opened * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} />
+          {/* The live rate against the opening one (the margin is 5% either way), and the 2% fee if it ended now. */}
+          <KV k="Rate now" v={rate ? `₹${money(rate)}` : '—'} />
+          <KV k="Rate at opening" v={`₹${money(lp.position.inr / lp.position.usdc)}`} />
+          <KV k="Your fee if it ends now (2%)" v={rate ? `₹${money(Math.floor(lp.position.usdc * rate * 0.02), 0)}` : '—'} />
+          <span style={{ fontSize: 14, color: C.muted }}>{lp.position.kind === 0 ? 'Unlocks when you take the union\'s cash again, or if the rate moves more than 5%.'
+            : 'Comes back when you bring cash again; stays with the union if the rate moves more than 5%.'}</span>
+        </section>
+      )}
+      switchLabel={leader ? 'Send or swap' : 'Send'} options={leader ? [['send', 'Send'], ['swap', 'Swap']] : null} tab={tab} onTab={setTab}
+      note={leader ? 'Worth US dollars, so its rupee value moves with the exchange rate. Swapping to nIN is free.' : 'Worth US dollars, so its rupee value moves with the exchange rate.'}>
       {lp?.trustline ? form : null}
     </AssetSwapLayout>
   );

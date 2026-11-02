@@ -86,21 +86,24 @@ export function Secondary({ children, disabled, onClick, icon }) {
 
 /** The info note fixed above the tab bar (boards A1a, A7, A3). */
 export function NoteBar({ children }) {
-  // Into the body (24 Oct): inside a map card (a moved, transformed sheet) a fixed note would follow the card instead
-  // of sitting above the tab bar.
+  // Out of the map card (24 Oct): inside it (a moved, transformed sheet) a fixed note would follow the card.
   // A lowered card takes its note down with it (24 Oct): it slides down and fades out, nothing of it under the tab bar.
   const low = useContext(SheetLowCtx);
   return createPortal(
-    // Above the tab bar, not under it (24 Oct): it no longer tucks its lower edge behind the bar.
-    <div role="note" style={{ position: 'fixed', left: 8, right: 8, bottom: TAB_BAR_HEIGHT + 8, zIndex: 5, background: C.ink, borderRadius: 24,
-      padding: '14px 16px', boxSizing: 'border-box', boxShadow: SHADOW, display: 'flex', gap: 12, alignItems: 'flex-start',
+    // Down to the screen's bottom edge, behind the tab bar (31 Oct, revises 24 Oct): rounded at the top only; its text
+    // sits above the bar.
+    <div role="note" style={{ position: 'fixed', left: 8, right: 8, bottom: 0, zIndex: 5, background: C.ink, borderRadius: '24px 24px 0 0',
+      padding: `14px 16px ${TAB_BAR_HEIGHT + 14}px`, boxSizing: 'border-box', boxShadow: SHADOW, display: 'flex', gap: 12, alignItems: 'flex-start',
       transform: low ? 'translateY(calc(100% + 24px))' : 'none', opacity: low ? 0 : 1, visibility: low ? 'hidden' : 'visible',
       transition: low ? 'transform 250ms ease, opacity 150ms ease, visibility 0s 250ms' : 'transform 250ms ease, opacity 150ms ease' }}>
       <div style={{ width: 32, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
       </div>
       <div style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>{children}</div>
-    </div>, document.body
+    </div>,
+    // Inside the shell's own layer (z 1, which holds the tab bar at z 10), so the bar is drawn over it; the body when
+    // there is no shell.
+    document.querySelector('[data-testid="shell"]') || document.body
   );
 }
 

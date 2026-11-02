@@ -16,6 +16,7 @@ import { loadVoucherCode, ta, typeName, useMyMachine, useVouchers } from '../mac
 import { useLpStatus } from '../anchor/hooks';
 import { useFxRate } from './UsdcAsset';
 import { UnionRows, useLeaderSlides } from '../leader/UnionCards';
+import { useLpSlides } from '../anchor/LpOffers';
 import { C, FONT, R, SHADOW } from './tokens';
 import { CashTile, ChevronIcon, HistoryIcon, InvestedTile, LandIcon, MachineryTile, MyMachineTile, NinTile, QrIcon, RefreshIcon, TreasuryTile, UsdcTile } from './icons';
 import RoundButton, { SettingsButton } from './RoundButton';
@@ -96,7 +97,7 @@ const NinIcon = () => (
   }}>₹</span>
 );
 
-export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, moveNote, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp, onRegisterMachine }) {
+export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr, onLand, onNin, onInvested, onShare, onMachinery, onMachine, onOffers, onUsdc, onTreasury, onSettle, onScanLp, onRegisterMachine }) {
   const s = useNilaSigner();
   const qc = useQueryClient();
   const ninHeld = s?.stellarAccount?.nin?.balance ?? 0;
@@ -117,9 +118,11 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   // A member handles nIN (and USDC) only once the anchor has checked their identity (K1, executive decision 24 Oct); a
   // leader always. Without the check the nIN row and its value in the total stay hidden.
   const nin = leader || lp?.idChecked ? ninHeld : 0;
-  // A leader's USDC in rupees at fx_pool's current rate (22 Oct); an expired rate leaves it out of the total.
+  // USDC in rupees at fx_pool's current rate (22 Oct; an expired rate leaves it out of the total). 31 Oct: members' too,
+  // all of it: the wallet's (its locked part included) and a Collect position's USDC locked with the union.
   const rate = useFxRate().data;
-  const usdcInr = leader && lp?.idChecked && rate ? (lp.usdc || 0) * rate : 0;
+  const withUnion = lp?.position?.kind === 1 ? lp.position.usdc : 0;
+  const usdcInr = (leader || lp?.idChecked) && rate ? ((lp?.usdc || 0) + withUnion) * rate : 0;
   const shares = useMyShares().data || [];
   const refresh = () => { qc.invalidateQueries({ queryKey: ['stellar'] }); qc.invalidateQueries({ queryKey: ['oracle', 'myShares'] }); };
   const fetching = useIsFetching({ queryKey: ['stellar'] }) > 0;
@@ -142,7 +145,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     </section>
   )] : [];
   // The LP offers come first in the slider (25 Oct): an LP may be on the way; then her machine, the union's cards, hers.
-  const lpSlides = leaderSlides.filter((el) => String(el.key).startsWith('lp-'));
+  // An LP's own cards (31 Oct): accept an offer on its card, then the same card shows the QR; first in the slider.
+  const mySlides = useLpSlides({ on: !leader && !!lp?.lp });
+  const lpSlides = [...mySlides, ...leaderSlides.filter((el) => String(el.key).startsWith('lp-'))];
   const slides = [...lpSlides, ...confirmSlide, ...leaderSlides.filter((el) => !lpSlides.includes(el)), ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans, onRepayQr: (t) => onShare(`${t}/qr`),
     index: juniorIndex.data, onWithdrawal: onInvested, leader: !!leader })];
 
@@ -229,10 +234,12 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
             ? <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="Digital US dollar" value={(lp.usdc || 0).toFixed(2)} valueSub={rate ? `≈ ${inr(usdcInr)}` : ""} onClick={onUsdc} />
             : <Row label="USDC, identity check needed" icon={<UsdcTile />} title="USDC" warn="Identity check (KYC) needed" />
         ) : lp?.trustline && (
-          // The LP pledge (30 Oct): the part locked against the union's cash she holds, and how much cash that is.
+          // LP positions (31 Oct), the only change on her wallet: a Bring position's USDC is locked in her wallet; a
+          // Collect position's USDC is hers, locked with the union.
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC"
-            sub={lp.position ? `${inr(lp.position.owed)} of the union's cash with you` : 'For cash offers as an LP'}
-            value={lp.usdc.toFixed(2)} valueSub={lp.locked ? `${lp.locked.toFixed(2)} locked` : ''} onClick={onOffers} />
+            sub={!lp.position ? 'For cash offers as an LP' : lp.position.kind === 0 ? `Locked for the ${inr(lp.position.inr)} you brought`
+              : `${lp.position.usdc.toFixed(2)} locked with the union for ${inr(lp.position.inr)}`}
+            value={lp.usdc.toFixed(2)} valueSub={lp.locked ? `${lp.locked.toFixed(2)} locked` : ''} onClick={onUsdc} />
         )}
         {/* Vouchers under their own label (any voucher kind; machine work today): one row for her machine vouchers,
             all her crop shares' work left together, in tractor acres (27 Oct); no crop named. */}
@@ -246,13 +253,12 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         )}
         {/* Her crop shares last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}
         <ShareRows onOpen={onShare} />
-        {moveNote && <p style={{ color: C.muted, fontSize: 14, margin: '4px 0 0' }} role="note">{moveNote}</p>}
       </section>
     </>
   );
   if (stage) {
     // Her map comes with the card; before her record is read the card stands on the map stage alone.
-    return <Sheet map={(leader ? union.map : titleMap) || <span />} head={buttons} top={top} startLow={memory.low} onLowered={(v) => { memory.low = v; }}>{content}</Sheet>;
+    return <Sheet map={(leader ? union.map : titleMap || home.map) || <span />} head={buttons} top={top} startLow={memory.low} onLowered={(v) => { memory.low = v; }}>{content}</Sheet>;
   }
   return (
     <div style={{ fontFamily: FONT, color: C.text, padding: '8px 8px 0' }}>

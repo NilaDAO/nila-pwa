@@ -41,8 +41,8 @@ export function useSep10Token() {
   }, [s, cfg, info]);
 }
 
-/** Her LP standing in the union: a title (may apply, R20), accepted by the anchor, her identity checked (K1), her USDC
- *  and, under the LP pledge (30 Oct), the part locked in her own account and the union's cash she holds. */
+/** Her LP standing in the union: a title (may apply, R20), accepted by the anchor, her identity checked (K1), her USDC,
+ *  the part locked in her account (a Bring position) and her position (LP positions, 31 Oct). */
 export function useLpStatus() {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -64,9 +64,9 @@ export function useLpStatus() {
       ]);
       const base = { member: !!title, lp: !!m?.accepted, idChecked: !!idc };
       const locked = Number(lien || 0) / U;
-      // The union's cash she holds, against her locked USDC; called: the leader asked for it back (7 days' notice).
-      const position = pos ? { owed: Number(BigInt(pos.owed) / BigInt(U)), locked: Number(pos.locked) / U, opened: Number(pos.opened),
-        calledAt: pos.called_at != null ? Number(pos.called_at) : null } : null;
+      // Her position (31 Oct): Collect = her USDC locked in fx_pool for the union's cash she took; Bring = the union's
+      // USDC locked in her account for the cash she brought. Shown on her USDC row in the wallet (A1).
+      const position = pos ? { kind: Number(pos.kind), usdc: Number(pos.usdc) / U, inr: Math.round(Number(pos.inr) / U), opened: Number(pos.opened) } : null;
       // A smart account (C…) holds USDC in the USDC contract itself: no trustline, nothing for the node to sponsor.
       if (smart) {
         const units = await readContract(cfg, 'usdc', 'balance', [sv.address(me)]).catch(() => 0n);
@@ -81,45 +81,36 @@ export function useLpStatus() {
   });
 }
 
-/** What a Bring of `inr` rupees unlocks in her account now (fx_pool.bring_unlock; null without that much union cash). */
-export function useBringUnlock(inr, on = true) {
+/** What her accept of a `kind` offer of `inr` rupees does now (fx_pool.lp_quote, 31 Oct): USDC that moves (`usdc`),
+ *  of which `close` ends her opposite position and `open` starts one, and the close fee in rupees; null if refused. */
+export function useLpQuote(kind, inr, on = true) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const me = s?.stellarAddress;
   return useQuery({
-    queryKey: ['stellar', 'bringUnlock', me, inr], enabled: on && !!cfg?.contracts?.fx_pool && !!me && inr > 0, staleTime: 30_000,
-    queryFn: () => readContract(cfg, 'fx_pool', 'bring_unlock', [sv.address(cfg.union), sv.address(me), sv.i128(BigInt(inr) * BigInt(U))])
-      .then((v) => Number(v) / U).catch(() => null),
+    queryKey: ['stellar', 'lpQuote', me, kind, inr], enabled: on && kind != null && !!cfg?.contracts?.fx_pool && !!me && inr > 0, staleTime: 30_000,
+    queryFn: () => readContract(cfg, 'fx_pool', 'lp_quote', [sv.address(cfg.union), sv.address(me), sv.u32(kind), sv.i128(BigInt(inr) * BigInt(U))])
+      .then((q) => ({ usdc: Number(q.usdc) / U, raw: q.usdc, close: Number(q.close_usdc) / U, open: Number(q.open_usdc) / U,
+        fee: Number(BigInt(q.fee_inr) / BigInt(U)) }))
+      .catch(() => null),
   });
 }
 
-/** The union's LPs who hold its cash, each with its position (fx_pool.lps_owing → position): the leader's list. */
-export function useLpsOwing() {
+/** Rupees a Bring can be served for now (31 Oct): the union's own USDC and the USDC held for LPs' Collect positions, at
+ *  fx_pool's rate. The most an automatic Bring asks for. */
+export function useBringRoom() {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['stellar', 'lpsOwing', cfg?.union], enabled: !!cfg?.contracts?.fx_pool, refetchInterval: 30_000,
+    queryKey: ['stellar', 'bringRoom', cfg?.union], enabled: !!cfg?.contracts?.fx_pool, staleTime: 15_000,
     queryFn: async () => {
-      const lps = (await readContract(cfg, 'fx_pool', 'lps_owing', [sv.address(cfg.union)]).catch(() => [])) || [];
-      return Promise.all(lps.map(async (lp) => {
-        const p = await readContract(cfg, 'fx_pool', 'position', [sv.address(cfg.union), sv.address(lp)]);
-        return { lp, owed: Number(BigInt(p.owed) / BigInt(U)), locked: Number(p.locked) / U, opened: Number(p.opened),
-          calledAt: p.called_at != null ? Number(p.called_at) : null };
-      }));
+      const u = [sv.address(cfg.union)];
+      const [own, held, r] = await Promise.all([readContract(cfg, 'fx_pool', 'treasury_usdc', u).catch(() => 0n),
+        readContract(cfg, 'fx_pool', 'lp_usdc', u).catch(() => 0n), readContract(cfg, 'fx_pool', 'rate', []).catch(() => null)]);
+      if (!r || Number(r.valid_until) * 1000 < Date.now()) return 0;
+      return Number(((BigInt(own || 0) + BigInt(held || 0)) * BigInt(r.inr_per_usd)) / BigInt(U) / BigInt(U));
     },
   });
 }
-
-/** Rupees the union's LPs hold in all (fx_pool.lp_owed): the most an automatic Bring may ask back (30 Oct). */
-export function useLpOwed() {
-  const { data: cfg } = useStellarConfig();
-  return useQuery({
-    queryKey: ['stellar', 'lpOwed', cfg?.union], enabled: !!cfg?.contracts?.fx_pool, staleTime: 15_000,
-    queryFn: async () => Number(BigInt(await readContract(cfg, 'fx_pool', 'lp_owed', [sv.address(cfg.union)]).catch(() => 0n) || 0n) / BigInt(U)),
-  });
-}
-
-/** Seven days' notice after a call, before the union may claim (fx_pool CALL_NOTICE). */
-export const CALL_NOTICE = 7 * 86_400;
 
 /** The union's open and accepted LP offers (fx_pool.offers_of → offer). */
 export function useUnionOffers({ poll = true, on = true } = {}) {
@@ -135,7 +126,7 @@ export function useUnionOffers({ poll = true, on = true } = {}) {
   });
 }
 
-/** fx_pool.quote: what a Collect locks in her account (110% at the fix), or a Bring is worth, and its rupee fee. */
+/** fx_pool.quote: the rupees' USDC at today's fix and the 2% close fee on them (31 Oct). */
 export function useOfferQuote(kind, inr) {
   const { data: cfg } = useStellarConfig();
   return useQuery({

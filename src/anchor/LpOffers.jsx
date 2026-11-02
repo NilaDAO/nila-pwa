@@ -1,215 +1,162 @@
-// A2 cash offers and A7b her code, as the LP pledge (executive decision 30 Oct, replaces the swap): an LP takes the
-// union's cash for a while (Collect) and her own account locks USDC worth 110% of it; she brings it back (Bring, only
-// what she holds) and the USDC unlocks pro rata; her 1% fee comes off the cash she brings back. Her USDC never leaves
-// her account, unless the union claims it after asking for the cash back and 7 days' notice.
-// Accept = SEP-38 firm quote → SEP-24 at the trust's anchor (its own page in a frame, A3) → fx_pool.accept, fee-bumped
-// by the node. The leader scans her code (A1b, Cash → Scan an LP code). Never says sell, buy or swap.
-// DESIGN GAPs: "Where: Union office · <leader>" without a name (the node has no names); the board's
-// "Cancel" on A7b only goes back (an LP cannot cancel an accepted offer on-chain; it lapses at expiry).
+// An LP's cash offers as cards on A1's slider (executive decision 31 Oct: no Cash offers screen, no confirm sheet, no
+// trust page). One card per union offer the LP can answer: what moves, and Accept. Accepting opens the LP's code on the
+// standard QR screen (as the help QR), which can be closed and opened again from Tasks; after the leader's scan it says
+// so and the wallet's USDC row shows the locked part.
+// LP positions: every position is USDC locked until the LP's opposite offer ends it. Take (Collect) first ends a Bring
+// position (the union pays its rupees plus the 2% fee; that USDC goes back), the rest locks the LP's own USDC with the
+// union. Bring first ends a Collect position (the LP hands over its rupees less the fee and gets that USDC back), the
+// rest brings the union's USDC to the LP's wallet, locked. Open ended; past a 5% rate move anyone settles.
+// Accept = SEP-38 firm quote → SEP-24 at the trust's anchor, which records it and signs the accept without a page of
+// its own → fx_pool.accept, fee-bumped by the node. Never says sell, buy or swap.
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { createPortal } from 'react-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { readContract, sv } from '../stellar/soroban';
+import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
-import { Choice, Primary, Sheet, inr, muted } from '../plan/ui';
-import { C, R } from '../shell/tokens';
-import { CALL_NOTICE, CODE_TTL, U, loadSwaps, saveSwap, signedCode, useAnchorInfo, useBringUnlock, useLpStatus, useOfferQuote, useSep10Token, useUnionOffers, usdcOf } from './hooks';
-import { BRING, firmQuote, openSwap, swapStatus } from './sep';
+import { inr } from '../plan/ui';
+import { Title, card, small } from '../shell/MessageSlider';
+import MapCard from '../shell/MapCard';
+import ListRow, { ListSection } from '../shell/ListRow';
+import { muted } from '../plan/ui';
+import { KV, QrCircle } from '../loan/AssetParts';
+import { RupeeIcon } from '../shell/icons';
+import { C, FONT, R } from '../shell/tokens';
+import { CODE_TTL, saveSwap, signedCode, useAnchorInfo, useLpQuote, useLpStatus, useSep10Token, useUnionOffers } from './hooks';
+import { BRING, firmQuote, openSwap } from './sep';
 
-const until = (ts) => {
-  const s = ts - Date.now() / 1000;
-  if (s < 86400) return `within ${Math.max(1, Math.round(s / 3600))} h`;
-  return `within ${Math.round(s / 86400)} days`;
-};
 const by = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const ends = (ts) => ts < 4e9;   // an offer posted with an end (before 31 Oct); new ones stay open
 const hexBytes = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
+const button = { height: 44, borderRadius: R.button, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: FONT,
+  fontSize: 14, cursor: 'pointer' };
 
-function Row({ k, v }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 8 }}>
-      <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700 }}>{v}</span>
-    </div>
-  );
-}
-
-function OfferRow({ o, onOpen }) {
-  const bring = o.kind === BRING;
-  const q = useOfferQuote(o.kind, o.inr);
-  const un = useBringUnlock(o.inr, bring);
-  const usdc = bring ? (un.data != null ? un.data.toFixed(2) : '…') : (q.data ? usdcOf(q.data.usdc) : '…');
-  const sub = bring ? `Unlocks ${usdc} USDC · ${until(o.expires)}` : `Locks ${usdc} USDC · ${until(o.expires)}`;
-  return <Choice sub={sub} onClick={onOpen}>{bring ? `Bring ${inr(o.inr)} back` : `Take ${inr(o.inr)}`}</Choice>;
-}
-
-/** The union's cash she holds: owed, locked, since when, and the date to bring it back by once a leader asked. */
-function HeldCard({ p }) {
-  const since = new Date(p.opened * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  return (
-    <div style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 12 }}>
-      <div style={{ fontWeight: 700, marginBottom: 6 }}>Union cash with you</div>
-      <Row k="Cash" v={inr(p.owed)} />
-      <Row k="Locked in your account" v={`${p.locked.toFixed(2)} USDC`} />
-      <Row k="Since" v={since} />
-      {p.calledAt != null && <p style={{ color: C.coral, margin: '4px 0 0' }}>Your leader asked for it back: bring it by {by(p.calledAt + CALL_NOTICE)}, or the union may claim your locked USDC.</p>}
-    </div>
-  );
-}
-
-/** A7b: her code for the leader to scan, and how far the swap is. */
-export function LpCode({ swap, onBack }) {
+/** The LP's code for the leader, made again before it runs out (10 min), so only the LP who accepted can show it. */
+function OfferQr({ id }) {
   const s = useNilaSigner();
-  const info = useAnchorInfo();
-  const getToken = useSep10Token();
-  const { data: cfg } = useStellarConfig();
   const [img, setImg] = useState();
-  // Her code is signed with her Stellar key (offer id + time) and made again before it runs out (10 min),
-  // so only the LP who accepted can show it (the offer id is public).
-  const code = useQuery({ queryKey: ['anchor', 'code', swap.offer], enabled: !!s?.signHash, staleTime: (CODE_TTL - 60) * 1000,
-    refetchInterval: (CODE_TTL - 60) * 1000, queryFn: () => signedCode(swap.offer, s.signHash) });
-  useEffect(() => { if (code.data) QRCode.toDataURL(code.data, { width: 260, margin: 1 }).then(setImg); }, [code.data]);
-  const chain = useQuery({ queryKey: ['stellar', 'offer', swap.offer], enabled: !!cfg, refetchInterval: 10_000,
-    queryFn: () => readContract(cfg, 'fx_pool', 'offer', [sv.u64(swap.offer)]) });
-  const sep24 = swap.sep24 || chain.data?.sep24_id;
-  const st = useQuery({ queryKey: ['anchor', 'sep24', sep24], enabled: !!info.data && !!sep24 && Number(chain.data?.state) === 2,
-    refetchInterval: (q) => (q.state.data?.status === 'completed' ? false : 10_000),
-    queryFn: async () => swapStatus(info.data, await getToken(), sep24) });
-  const state = Number(chain.data?.state);
-  const bring = swap.kind === BRING;
-  const done = state === 2;
-  return (
-    <Sheet landName="Nila" title={bring ? `Bring ${inr(swap.inr)} back` : `Take ${inr(swap.inr)}`} onBack={onBack}>
-      {done ? (
-        <>
-          <p style={{ textAlign: 'center', fontWeight: 700 }}>{bring ? `${swap.usdc} USDC unlocked in your wallet.` : `You took the cash. ${swap.usdc} USDC stays locked in your wallet.`}</p>
-          <p style={{ ...muted, textAlign: 'center' }}>{st.data?.status === 'completed' ? 'Recorded by the anchor.' : 'The anchor is recording it…'}</p>
-        </>
-      ) : state === 3 || state === 4 ? (
-        <p style={muted}>This offer {state === 3 ? 'was cancelled by the union' : 'expired'}. Nothing moved.</p>
-      ) : (
-        <>
-          {code.isError && <p style={{ color: C.coral }}>Your code could not be made. Go back and open it again.</p>}
-          {img && <img src={img} alt="Your LP code" style={{ display: 'block', margin: '0 auto', width: 260, height: 260, background: '#fff', borderRadius: 12 }} />}
-          {code.data && (
-            <details style={{ margin: '8px 0', fontSize: 13 }}>
-              <summary style={{ color: C.accent, fontWeight: 700 }}>No camera? Type this</summary>
-              <p style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{code.data}</p>
-            </details>
-          )}
-          {bring && swap.hand != null && <Row k="You hand over" v={inr(swap.hand)} />}
-          <Row k={bring ? 'Unlocks in your account' : 'Locked in your account'} v={`${swap.usdc} USDC`} />
-          <Row k="Where" v="Union office" />
-          <Row k={bring ? 'Bring it by' : 'Take it by'} v={by(swap.expires)} />
-          <p style={muted}>{bring ? 'Show this to your leader when you hand over the cash. Your USDC unlocks when your leader scans it.'
-            : 'Show this to your leader. Your leader scans it and hands you the cash; your USDC stays in your wallet, locked until you bring the cash back.'}</p>
-        </>
-      )}
-      <Primary onClick={onBack}>Done</Primary>
-    </Sheet>
-  );
+  const code = useQuery({ queryKey: ['anchor', 'code', id], enabled: !!s?.signHash, staleTime: (CODE_TTL - 60) * 1000,
+    refetchInterval: (CODE_TTL - 60) * 1000, queryFn: () => signedCode(id, s.signHash) });
+  useEffect(() => { if (code.data) QRCode.toDataURL(code.data, { width: 400, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [code.data]);
+  // The code also sits on the wrapper (it is the QR's content anyway), for the leader's typed fallback and the demo check.
+  return <div data-lp-code={code.data || ''}><QrCircle img={img} alt="Your LP code" /></div>;
 }
 
-/** A2: the union's cash offers for an LP; Accept confirms on the trust's page and accepts on-chain. */
-export default function LpOffers({ onBack }) {
+function OfferCard({ o }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const lp = useLpStatus();
-  const offers = useUnionOffers();
   const info = useAnchorInfo();
   const getToken = useSep10Token();
   const tx = useSorobanTx();
-  const [open, setOpen] = useState();
-  const [code, setCode] = useState();
-  const [error, setError] = useState();
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState();   // the swap being accepted, for the code after a retry
+  const [error, setError] = useState();
   const me = s?.stellarAddress;
-  const q = useOfferQuote(open?.kind, open?.inr || 0);
-  const unlock = useBringUnlock(open?.inr || 0, open?.kind === BRING);
-  const mine = (offers.data || []).filter((o) => o.state === 1 && o.lp === me);
-  const owed = lp.data?.position?.owed || 0;
-  // A Bring is only for an LP who holds that much of the union's cash.
-  const free = (offers.data || []).filter((o) => o.state === 0 && o.expires > Date.now() / 1000 + 60 && (o.kind !== BRING || o.inr <= owed));
-
-  const accept = async (o) => {
+  const mine = o.state === 1 && o.lp === me;
+  const bring = o.kind === BRING;
+  const q = useLpQuote(o.kind, o.inr, !mine).data;
+  const short = !bring && q && lp.data && lp.data.free < q.open;
+  const accept = async () => {
     setBusy(true); setError(undefined);
     try {
       const t = await getToken();
       const quote = await firmQuote(info.data, t, `stellar:${cfg.usdc_asset}`, o.kind, o.inr);
-      // SEP-24 names her SEP-10 key (G…); the anchor signs the accept for her account (C…), which accept() names.
+      // SEP-24 names the LP's SEP-10 key (G…); the anchor signs the accept for the account (C…), which accept() names.
       const signed = await openSwap(info.data, t, cfg.usdc_asset, s.senderAddress || me, o.kind, o.id, quote);
-      const sep24 = signed.id;
-      const usdc = o.kind === BRING ? quote.buy_amount : quote.sell_amount;
-      const hand = o.kind === BRING && q.data ? o.inr - Number(BigInt(q.data.fee_inr) / BigInt(U)) : null;
-      const swap = { offer: o.id, sep24, quote: quote.id, kind: o.kind, inr: o.inr, usdc: Number(usdc).toFixed(2), hand, expires: o.expires, lp: me };
-      saveSwap(swap);
-      setPending(swap);
+      saveSwap({ offer: o.id, sep24: signed.id, quote: quote.id, kind: o.kind, inr: o.inr, expires: o.expires, lp: me });
       const out = await tx.run({
-        label: o.kind === BRING ? `Bring ${inr(o.inr)} back` : `Take ${inr(o.inr)}`,
-        rows: [[o.kind === BRING ? 'Unlocks' : 'Locks', `${swap.usdc} USDC`], ['By', by(o.expires)]],
+        label: bring ? `Bring ${inr(o.inr)}` : `Take ${inr(o.inr)}`,
+        rows: [['USDC', `${(Number(signed.usdc) / 1e7).toFixed(2)} USDC`], ...(ends(o.expires) ? [['By', by(o.expires)]] : [])],
         contractName: 'fx_pool', fn: 'accept',
-        args: [sv.address(me), sv.u64(o.id), sv.string(sep24), sv.string(quote.id), sv.i128(signed.usdc), sv.u64(signed.validUntil), sv.bytes(hexBytes(signed.sig))],
+        args: [sv.address(me), sv.u64(o.id), sv.string(signed.id), sv.string(quote.id), sv.i128(signed.usdc), sv.u64(signed.validUntil), sv.bytes(hexBytes(signed.sig))],
         invalidate: [['stellar', 'offers']],
       });
-      if (out) { tx.reset(); setOpen(undefined); setCode(swap); setPending(undefined); }
+      if (out) { tx.reset(); window.location.hash = `#/lpcode/${o.id}`; }
     } catch (e) { setError(e.message); }
     setBusy(false);
   };
-  if (tx.status !== 'idle') {
-    // After "Try again" lands, Close goes to her code, not back to the offer.
-    const close = () => { const ok = tx.status === 'success'; tx.reset(); if (ok && pending) { setOpen(undefined); setCode(pending); setPending(undefined); } };
-    return <TxScreens tx={tx} onClose={close} onRetry={() => tx.retry()} />;
-  }
-  if (code) return <LpCode swap={code} onBack={() => setCode(undefined)} />;
-  if (open) {
-    const bring = open.kind === BRING;
-    const usdc = bring ? (unlock.data != null ? unlock.data.toFixed(2) : '…') : (q.data ? usdcOf(q.data.usdc) : '…');
-    const fee = bring && q.data ? Number(BigInt(q.data.fee_inr) / BigInt(U)) : 0;
-    const short = !bring && lp.data && lp.data.free < Number(usdc);
-    return (
-      <Sheet landName="Nila" title={bring ? `Bring ${inr(open.inr)} back to the union office` : `Take ${inr(open.inr)} at the union office`} onBack={() => setOpen(undefined)}>
-        {bring ? (
-          <>
-            <Row k="Union cash you bring back" v={inr(open.inr)} />
-            <Row k={`Your fee (${q.data ? q.data.fee_bp / 100 : 1}%)`} v={q.data ? `−${inr(fee)}` : '…'} />
-            <Row k="You hand over" v={q.data ? inr(open.inr - fee) : '…'} />
-            <Row k="Unlocks in your account" v={`${usdc} USDC`} />
-            <Row k="Bring it by" v={by(open.expires)} />
-            <p style={muted}>Your leader scans your code when the cash is there. The USDC was always yours; it unlocks then.</p>
-          </>
-        ) : (
-          <>
-            <Row k="You take" v={inr(open.inr)} />
-            <Row k="Locked in your account" v={`${usdc} USDC`} />
-            <Row k="Take it by" v={by(open.expires)} />
-            <p style={muted}>{usdc} USDC stays in your wallet, locked until you bring the cash back. If your leader asks for the cash back and it is not back within 7 days, the union may claim it.</p>
-          </>
-        )}
-        {short && <p style={{ color: C.coral }}>You have {lp.data.free.toFixed(2)} USDC free: not enough to lock {usdc} USDC.</p>}
-        {error && <p style={{ color: C.coral }}>{error}</p>}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" onClick={() => setOpen(undefined)} style={{ flex: 1, height: 44, marginTop: 16, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontWeight: 700 }}>Not now</button>
-          <div style={{ flex: 1 }}>
-            <Primary disabled={busy || !tx.ready || !info.data || !q.data || (bring && unlock.data == null) || short} onClick={() => accept(open)}>{busy ? '…' : 'Accept'}</Primary>
-          </div>
-        </div>
-      </Sheet>
-    );
-  }
-  const saved = loadSwaps().filter((x) => x.lp === me);
+  // Over the whole app, not inside the card (a fixed screen inside the A1 card showed the map stage's logo above it).
+  if (tx.status !== 'idle') return createPortal(<TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />, document.body);
+  const title = bring ? `Bring ${inr(o.inr)} to the office` : `Take ${inr(o.inr)} at the office`;
+  const fee = q?.fee || 0;
   return (
-    <Sheet landName="Nila" title="Cash offers" onBack={onBack}>
-      {lp.data?.position && <HeldCard p={lp.data.position} />}
-      {lp.data && lp.data.trustline && <p style={{ ...muted, textAlign: 'center' }}>Your USDC: {lp.data.free.toFixed(2)} free{lp.data.locked ? ` · ${lp.data.locked.toFixed(2)} locked` : ''}</p>}
-      {mine.map((o) => {
-        const sw = saved.find((x) => x.offer === o.id) || { offer: o.id, kind: o.kind, inr: o.inr, usdc: usdcOf(o.usdc), expires: o.expires };
-        return <Choice key={o.id} sub={`Accepted · show your code ${until(o.expires)}`} onClick={() => setCode(sw)}>{o.kind === BRING ? `Bring ${inr(o.inr)} back` : `Take ${inr(o.inr)}`}</Choice>;
-      })}
-      {offers.isLoading && <p style={muted}>…</p>}
-      {offers.isError && <p style={{ color: C.coral }}>Could not read the offers. Try again.</p>}
-      {offers.isSuccess && !free.length && !mine.length && <p style={muted}>No cash offers from your union right now.</p>}
-      {free.map((o) => <OfferRow key={o.id} o={o} onOpen={() => setOpen(o)} />)}
-    </Sheet>
+    <section aria-label="Cash offer" style={card}>
+      <Title Icon={RupeeIcon}>{title}</Title>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {q && fee > 0 && <KV k={bring ? 'You hand over (less your 2% fee)' : 'Of which your 2% fee'} v={inr(bring ? o.inr - fee : fee)} />}
+        {q && q.close > 0 && <KV k={bring ? 'USDC back to you' : 'Your locked USDC back to the union'} v={q.close.toFixed(2)} />}
+        {q && q.open > 0 && <KV k={bring ? 'USDC to your wallet, locked' : 'Your USDC locked with the union'} v={q.open.toFixed(2)} />}
+        {ends(o.expires) && <KV k="By" v={by(o.expires)} />}
+      </div>
+      {short && <span style={{ ...small, color: C.coral }}>You have {lp.data.free.toFixed(2)} USDC free: not enough.</span>}
+      {error && <span style={{ ...small, color: C.coral }}>{error}</span>}
+      <button type="button" disabled={busy || !tx.ready || !info.data || !q || short} onClick={accept}
+        style={{ ...button, opacity: busy || !tx.ready || !q || short ? 0.5 : 1 }}>{busy ? '…' : 'Accept'}</button>
+    </section>
+  );
+}
+
+const titleOf = (o) => (o.kind === BRING ? `Bring ${inr(o.inr)} to the office` : `Take ${inr(o.inr)} at the office`);
+
+/** The LP's accepted offers (one at a time, the contract). */
+function useMine(on = true) {
+  const offers = useUnionOffers({ on }).data;
+  const me = useNilaSigner()?.stellarAddress;
+  return { offers, mine: (offers || []).filter((o) => o.state === 1 && o.lp === me && o.expires > Date.now() / 1000) };
+}
+
+/** A1's slider cards for an LP: the offers it can answer, while it has none accepted (one accepted at a time). The
+ *  accepted one is on Tasks and its own QR screen. */
+export function useLpSlides({ on = true } = {}) {
+  const { offers, mine } = useMine(on);
+  const qc = useQueryClient();
+  // The leader scanned (the LP's accepted offer is gone): the wallet's USDC and its locked part read again.
+  const ids = mine.map((o) => o.id).join(',');
+  const [seen, setSeen] = useState(ids);
+  useEffect(() => {
+    if (seen && seen !== ids) qc.invalidateQueries({ queryKey: ['stellar', 'lp'] });
+    setSeen(ids);
+  }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!on || mine.length) return [];
+  const now = Date.now() / 1000;
+  return (offers || []).filter((o) => o.state === 0 && o.expires > now + 60).map((o) => <OfferCard key={`lpme-${o.id}`} o={o} />);
+}
+
+/** Tasks: the LP's accepted offer, a row that opens its QR screen. */
+export function LpTaskRows({ go }) {
+  const { mine } = useMine();
+  if (!mine.length) return null;
+  return (
+    <ListSection title="Cash offers">
+      {mine.map((o, i) => <ListRow key={o.id} first={i === 0} icon={RupeeIcon} tone="new" title={titleOf(o)} sub="Show your code to your leader"
+        onClick={() => go(`lpcode/${o.id}`)} />)}
+    </ListSection>
+  );
+}
+
+/** The LP's code on the standard QR screen (as the help QR): close it any time, open it again from Tasks. After the
+ *  leader's scan it closes by itself and the wallet reads again. */
+export function LpCodeScreen({ id, onBack }) {
+  const offers = useUnionOffers().data;
+  const qc = useQueryClient();
+  const o = offers?.find((x) => x.id === Number(id));
+  const done = offers && !o;   // scanned (or cancelled / expired): no longer among the union's open offers
+  // Scanned: the screen simply closes to Assets (31 Oct), where the wallet reads again.
+  useEffect(() => { if (done) { qc.invalidateQueries({ queryKey: ['stellar', 'lp'] }); onBack(); } }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
+  const bring = o?.kind === BRING;
+  return (
+    <MapCard header={{ title: 'Your code', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}
+      style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {done ? null : (
+        <>
+          <OfferQr id={Number(id)} />
+          <p style={{ ...muted, textAlign: 'center', margin: 0 }}>
+            {o ? `${titleOf(o)}. ${bring ? 'Hand over the cash, then let your leader scan this.' : 'Let your leader scan this, then take the cash.'}${ends(o.expires) ? ` By ${by(o.expires)}.` : ''}` : '…'}
+          </p>
+        </>
+      )}
+    </MapCard>
   );
 }

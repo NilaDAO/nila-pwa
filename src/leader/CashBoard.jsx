@@ -1,20 +1,21 @@
 // The leader's Cash tab (P10): C1 (board LeaderCash) with the C2 reconcile chip (LeaderCashOff), the Funds card
-// and its Adjust panel (C3, LeaderCashAdjust), the Lending card, the Cash card with "Let an LP take it" (the LP pledge,
-// 30 Oct: the LP's own USDC is locked for the cash), the union's cash held by LPs (Ask for it back, then the claim) and
+// and its Adjust panel (C3, LeaderCashAdjust), the Lending card, the Cash card with "Let an LP take it" (LP positions,
+// 31 Oct) and
 // the LP cards (C4, LeaderCashSettle #settle). Values: useUnionCash (contracts) and useUnionBook (the node's loan
 // list + food_token, O15). Deposit = her own nIN into the treasury (C10); withdraw = to her wallet; both sponsored.
 // DESIGN GAPs: "Member contributions" and the fund total have no formula in the design (see useUnionBook); no
 // waiting cash-outs list (executive decision 20 Oct: the leader scans her code when she comes); LP names are
 // short addresses; "Take a tour" is not built; the cash tasks the board leaves to L1 are listed below the cards.
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { CALL_NOTICE, useLpsOwing, useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
+import { useBringRoom, useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
-import { COLLECT } from '../anchor/sep';
+import { BRING, COLLECT } from '../anchor/sep';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
 import { SkeletonRows } from '../shell/Skeleton';
 import MapCard from '../shell/MapCard';
@@ -27,6 +28,7 @@ import { SEARCH_WINDOWS, useUnionBook, useUnionCash } from './hooks';
 import CashAhead from './CashAhead';
 import { useUnionMembers } from './unionMembers';
 import { timeLeft } from '../shell/timeLeft';
+import { useDeskRoom } from '../loan/deskRoom';
 
 const U = 10_000_000n;
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
@@ -184,58 +186,33 @@ function useCountdown(ts) {
   return timeLeft(ts - now);
 }
 
-/** The union's cash held by LPs (the LP pledge, 30 Oct): each LP's cash and locked USDC; "Ask for it back" calls the
- *  position (fx_pool.call_position); after 7 days' notice the union's multisig may claim the locked USDC through the
- *  LP's own account (account.claim): the app shows it, the multisig signs it. */
-function LpHeld() {
-  const s = useNilaSigner();
-  const { data: cfg } = useStellarConfig();
-  const held = useLpsOwing();
-  const tx = useSorobanTx();
-  const [sure, setSure] = useState();
-  if (tx.status !== 'idle') return <Over><TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} /></Over>;
-  if (!held.data?.length) return null;
-  const now = Date.now() / 1000;
-  const day = (t) => new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+/** Ask LPs to bring cash (31 Oct): a union that sees it will be short posts a Bring itself, at most what the union's USDC
+ *  can serve (less the Bring already open), merged into an open Bring by the contract. */
+function AskBring() {
+  const offers = useUnionOffers().data || [];
+  const room = useBringRoom().data || 0;
+  const { tx, post } = usePost();
+  const asked = offers.filter((o) => o.kind === BRING && o.state <= 1).reduce((t, o) => t + o.inr, 0);
+  const max = Math.max(0, Math.floor(room) - asked);
+  const [amount, setAmount] = useState(0);
+  const a = Math.min(amount, max);
+  // Over the whole app (a fixed screen inside the map card stays inside it).
+  if (tx.status !== 'idle') return createPortal(<TxScreens tx={tx} onClose={() => { tx.reset(); setAmount(0); }} onRetry={() => tx.retry()} />, document.body);
   return (
-    <section style={card} aria-label="Cash with LPs">
-      <div style={head}>
-        <h2 style={title}>Cash with LPs</h2>
-        <span style={{ fontSize: 16, fontWeight: 700 }}>{inr(held.data.reduce((t, p) => t + p.owed, 0))}</span>
-      </div>
-      {held.data.map((p) => {
-        const due = p.calledAt != null ? p.calledAt + CALL_NOTICE : null;
-        return (
-          <div key={p.lp} style={rows}>
-            <Row k={`LP ${short(p.lp)}`} v={inr(p.owed)} />
-            <Row k="USDC locked" v={p.locked.toFixed(2)} />
-            <Row k="Since" v={day(p.opened)} />
-            {due == null ? (
-              <button type="button" disabled={!tx.ready} onClick={() => (sure === p.lp ? tx.run({
-                label: `Ask LP ${short(p.lp)} for ${inr(p.owed)} back`, rows: [['Cash', inr(p.owed)], ['Bring it by', '7 days from now']],
-                contractName: 'fx_pool', fn: 'call_position', args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.address(p.lp)],
-                invalidate: [['stellar', 'lpsOwing']],
-              }) : setSure(p.lp))} style={{ ...primary, opacity: tx.ready ? 1 : 0.5 }}>{sure === p.lp ? 'Tap again to ask for it back' : 'Ask for it back'}</button>
-            ) : due > now ? (
-              <Row k="Asked back · bring it by" v={day(due)} coral />
-            ) : (
-              <p style={{ margin: 0, color: C.coral }}>Not back by {day(due)}. The union's multisig may now claim the LP's locked USDC
-                (account {short(p.lp)}, claim): ask your union's signers.</p>
-            )}
-          </div>
-        );
-      })}
-    </section>
+    <>
+      <span style={{ fontWeight: 700 }}>Ask LPs to bring cash</span>
+      <Stepper value={a} set={setAmount} max={max} />
+      {asked > 0 && <span style={{ color: C.muted }}>{inr(asked)} is asked from LPs already.</span>}
+      <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={() => post(BRING, a)}>Ask LPs to bring {inr(a)}</button>
+    </>
   );
 }
 
-/** C4: the Cash card (time left, let an LP take it) and the LP cards. */
-function CashCard({ cash, onScanLp }) {
-  const s = useNilaSigner();
+/** C4: the Cash card (time left, let an LP take it). No LP offer cards (31 Oct): an accepted offer is a task to scan
+ *  (Tasks and A1's slider). */
+function CashCard({ cash }) {
   const offers = useUnionOffers().data || [];
   const { tx, post } = usePost();
-  const cancel = useSorobanTx();
-  const [sure, setSure] = useState();   // a second tap cancels (an accepted offer is the LP's swap too)
   const promised = offers.filter((o) => o.kind === COLLECT && o.state <= 1).reduce((t, o) => t + o.inr, 0);
   const max = Math.max(0, Math.floor(cash.atHand) - promised);
   const [amount, setAmount] = useState(0);
@@ -243,38 +220,10 @@ function CashCard({ cash, onScanLp }) {
   const first = cash.escrows.find((e) => e.remaining > 0);
   const left = useCountdown(first?.expires);
   const q = useOfferQuote(COLLECT, a);
-  const feeBp = q.data ? Number(q.data.fee_bp) : 100;
-  const t = tx.status !== 'idle' ? tx : cancel.status !== 'idle' ? cancel : null;
-  if (t) return <Over><TxScreens tx={t} onClose={() => t.reset()} onRetry={() => t.retry()} /></Over>;
-  const until = (ts) => { const sec = ts - Date.now() / 1000; return sec < 86400 ? `${Math.max(1, Math.ceil(sec / 3600))} h left` : `In ${Math.ceil(sec / 86400)} d`; };
+  if (tx.status !== 'idle') return createPortal(<TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />, document.body);
   const now = Date.now() / 1000;
-  const live = offers.filter((o) => o.state <= 1 && o.expires > now);
   return (
     <>
-      {/* The open LP offers first (25 Oct): above the Cash card, so they are seen. */}
-      {live.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollSnapType: 'x mandatory' }} aria-label="LP">
-          {live.map((o) => (
-            // One offer takes the full width; several swipe, the next one peeking in (25 Oct).
-            <section key={o.id} style={{ ...card, flex: live.length > 1 ? '0 0 85%' : '0 0 100%', scrollSnapAlign: 'center', marginBottom: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <b>{o.state === 1 ? `LP ${short(o.lp)}` : o.kind === 0 ? 'LP brings cash back' : 'LP takes cash'}</b>
-                <span style={{ color: o.state === 1 ? C.accent : C.muted, fontWeight: 700 }}>{o.state === 1 ? 'Here' : until(o.expires)}</span>
-              </div>
-              <Row k="Amount" v={inr(o.inr)} />
-              {o.kind === 0 && <Row k={`LP fee (${feeBp / 100}%)`} v={inr(Math.floor((o.inr * feeBp) / 10_000))} />}
-              {o.state === 1 ? <Row k={o.kind === 0 ? 'USDC unlocks' : 'USDC locked'} v={usdcOf(o.usdc)} /> : <Row k="Status" v="Waiting" />}
-              {o.state === 1 && <button type="button" style={primary} onClick={onScanLp}>Scan code</button>}
-              <button type="button" onClick={() => (sure === o.id ? cancel.run({
-                label: `Cancel the offer of ${inr(o.inr)}`, rows: [['Offer', `${o.kind === 0 ? 'LP brings cash back' : 'LP takes cash'} ${inr(o.inr)}`]],
-                contractName: 'fx_pool', fn: 'cancel_offer', args: [sv.address(s.stellarAddress), sv.u64(o.id)], invalidate: [['stellar', 'offers']],
-              }) : setSure(o.id))} style={{ background: 'none', border: 0, padding: 0, color: C.coral, fontWeight: 700, marginTop: 8 }}>
-                {sure === o.id ? (o.state === 1 ? 'Tap again: the LP accepted it' : 'Tap again to cancel') : 'Cancel'}
-              </button>
-            </section>
-          ))}
-        </div>
-      )}
       {/* C4 (22 Oct): the amount beside the title; the details and the primary action only while there is cash at hand. */}
       <section style={card} aria-label="Cash">
         <div style={head}>
@@ -290,7 +239,7 @@ function CashCard({ cash, onScanLp }) {
             <span style={{ fontWeight: 700 }}>Cash for an LP to take</span>
             <Stepper value={a} set={setAmount} max={max} />
             <div style={rows}>
-              <Row k="The LP's USDC locked for it" v={a && q.data ? `${usdcOf(q.data.usdc)} USDC` : '—'} />
+              <Row k="At today's rate" v={a && q.data ? `${usdcOf(q.data.usdc)} USDC` : '—'} />
             </div>
             {promised > 0 && <span style={{ color: C.muted }}>{inr(promised)} is offered to LPs already.</span>}
             <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={() => post(COLLECT, a)}>Let an LP take {inr(a)}</button>
@@ -304,6 +253,7 @@ function CashCard({ cash, onScanLp }) {
 export default function CashBoard({ settle, onScanLp, tasks }) {
   const api = usePlanClient();
   const cashQ = useUnionCash();
+  const room = useDeskRoom().data;
   const bookQ = useUnionBook(api);
   const [adjust, setAdjust] = useState(null);   // null (closed), 'deposit' or 'withdraw'
   const cash = cashQ.data;
@@ -368,16 +318,18 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
               </a>
             )}
             <Row k="Member contributions" v={book ? inr(book.contributions) : '…'} />
-            {/* Cash at the office may pass the treasury (24 Oct): the part above it is offered to an LP to take. */}
             <Row k="Cash at the office" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}% of the treasury)`} />
-            {cash.atHand > cash.treasury
-              ? <Row k="Above the treasury" v={`${inr(cash.atHand - cash.treasury)} · offered to LPs`} />
-              : <Row k="Available to cash in" v={inr(cash.free)} accent />}
+            {/* What the office may hold (fund_core.cash_room, on-chain since 31 Oct): the treasury plus the cash members
+                are due to take out again; a count above it is refused. */}
+            <Row k="The office may hold" v={room ? inr(room.limit) : '…'} />
+            {room && (room.withdrawals > 0 || room.shares > 0) && (
+              <span style={{ color: C.muted, fontSize: 14, marginTop: -6 }}>Treasury {inr(room.treasury)}{room.withdrawals > 0 ? ` + withdrawals waiting ${inr(room.withdrawals)}` : ''}{room.shares > 0 ? ` + crop shares within 9 weeks ${inr(room.shares)}` : ''}</span>
+            )}
+            <Row k="Room for more cash" v={room ? inr(room.room) : '…'} accent />
           </div>
         </section>
-        <CashAhead api={api} cash={cash} style={card} />
-        <CashCard cash={cash} onScanLp={onScanLp} />
-        <LpHeld />
+        <CashAhead api={api} cash={cash} style={card}><AskBring /></CashAhead>
+        <CashCard cash={cash} />
         {tasks}
       </div>
     </MapCard>

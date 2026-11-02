@@ -4,8 +4,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
-import { getMoveStatus, requestMoveNin } from '../move/api';
-import { useLegacyBalances } from '../move/hooks';
 import { useStellarConfig } from '../stellar/hooks';
 import A1, { resetA1Scroll } from './A1';
 import { keepLowOnTab } from './useSheetDrag';
@@ -21,6 +19,7 @@ import CashOut from '../loan/CashOut';
 import Machinery from '../machine/Machinery';
 import MyMachine from '../machine/MyMachine';
 import { ReadyShareRows, TakeUp, rowOf, useMyShares } from '../loan/MyShares';
+import { LpCodeScreen, LpTaskRows } from '../anchor/LpOffers';
 import MapStage from './MapStage';
 import { ShellLookCtx } from './stageCtx';
 import { firstTab, screenToOpen } from './start';
@@ -29,7 +28,6 @@ import MapCard from './MapCard';
 import { SlideBar } from '../plan/PlanResult';
 import CropShare from '../loan/CropShare';
 import IdCheck from '../anchor/IdCheck';
-import LpOffers from '../anchor/LpOffers';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
 import Settings from './Settings';
@@ -48,17 +46,10 @@ import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
 import { C, FONT, GRADIENT, TAB_BAR_HEIGHT, loadInter } from './tokens';
 import ListRow, { ListSection } from './ListRow';
-import { BanknoteIcon, CropIcon } from './icons';
+import { CropIcon } from './icons';
 import { assisted } from '../loan/MyShares';
 import { usePlanClient } from '../plan/hooks';
 import { useUnionMembers } from '../leader/unionMembers';
-
-const MOVE = {
-  waiting: 'Your nIN from the old network arrives after your union confirms your land title.',
-  pending: 'Your nIN from the old network is on its way.', burned: 'Your nIN from the old network is on its way.',
-  stuck: 'Your nIN from the old network is delayed.', partial: 'Part of your nIN from the old network arrived.',
-  failed: 'Your nIN from the old network did not arrive.',
-};
 
 const readTab = () => (window.location.hash.match(/^#\/(\w+)/) || [])[1];
 const readArg = () => (window.location.hash.match(/^#\/\w+\/(\w+)/) || [])[1];
@@ -90,7 +81,6 @@ function MemberPlan({ route }) {
 }
 
 function TasksView({ leader, go }) {
-  const lp = useLpStatus();
   const shares = useMyShares().data;
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
@@ -100,18 +90,13 @@ function TasksView({ leader, go }) {
   if (leader && member && member[2]) return <KeypadPoints key={member[1]} id={member[1]} go={go} />;
   if (leader && member) return <AddMember key={member[1] || 'new'} id={member[1]} go={go} />;
   if (leader) return <LeaderTasks go={go} />;
-  // A2 (board Tasks): "Cash offers" for an LP, then "To do". DESIGN GAP: the board's to-do rows (use machine hours,
+  // A2 (board Tasks): "To do" (an LP's cash offers are cards on A1 since 31 Oct). DESIGN GAP: the board's to-do rows (use machine hours,
   // plant, invest, register trees, repay) need her plan's task list, not built yet; her crop plan row stands in.
-  const isLp = lp.data?.lp && lp.data?.trustline;
   const ready = (shares || []).some((x) => x.ready);
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: 'Tasks', onBack: () => go('assets'), onSettings: () => go('settings') }}>
-      {isLp && (
-        <ListSection title="Cash offers">
-          <ListRow first icon={BanknoteIcon} tone="new" title="Cash offers" sub="Bring or collect cash for USDC" onClick={() => go('offers')} />
-        </ListSection>
-      )}
+      <LpTaskRows go={go} />
       <ListSection title="To do">
         <ReadyShareRows go={go} />
         <ListRow first={!ready} icon={CropIcon} title="Your crop plan" sub="Make, check or follow your plan" onClick={() => go('crop')} />
@@ -192,12 +177,6 @@ export default function Shell({ leader }) {
     return () => window.removeEventListener('hashchange', on);
   }, []);
   const go = (v) => { window.location.hash = `#/${v}`; };
-  const move = useQuery({ queryKey: ['stellar', 'move', s?.evmAddress], enabled: !!s?.evmAddress && !leader,
-    queryFn: () => getMoveStatus(s.evmAddress), refetchInterval: 30_000 });
-
-  // Her nIN move was refused before anything was burned: she can ask again (moved from StellarHome).
-  const { data: cfg } = useStellarConfig();
-  const legacy = useLegacyBalances(s?.evmAddress);
   // Her land title on Polygon or on Stellar (src/register/titles.js) decides registration.
   const titleCount = useTitleCount(s?.evmAddress, s?.stellarAddress);
   // No land title (28 Oct): the app opens on the Crop plan, where the title is minted; a link to another tab stays.
@@ -207,27 +186,6 @@ export default function Shell({ leader }) {
   // The start steps end without a reload (28 Oct): the shell reads onboarded() again.
   const [, setStarted] = useState(0);
   const qc = useQueryClient();
-  const [retry, setRetry] = useState();
-  const again = async () => {
-    setRetry('…');
-    try {
-      const wei = (await legacy.refetch()).data?.ninWei ?? 0n;
-      if (wei > 0n) await requestMoveNin({ network: cfg.network, stellar: s.stellarAddress,
-        evmAddress: s.evmAddress, amountWei: wei, signEvmMessage: s.signEvmMessage });
-      setRetry(undefined); move.refetch();
-    } catch (e) { setRetry(e.message); }
-  };
-  const state = move.data?.state;
-  const moveNote = MOVE[state] && (
-    <>
-      {MOVE[state]}
-      {(state === 'failed' || state === 'partial') && (
-        <> <button type="button" onClick={again} disabled={retry === '…'}
-          style={{ background: 'none', border: 0, padding: 0, color: C.accent, fontWeight: 700 }}>Try again</button></>
-      )}
-      {retry && retry !== '…' && <span style={{ color: C.coral }}> {retry}</span>}
-    </>
-  );
 
   // Registration (R5–R14, notes reg-recover): a member whose wallet holds no land title on Polygon registers her
   // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
@@ -248,19 +206,18 @@ export default function Shell({ leader }) {
   let body;
   if (view === 'assets') {
     body = <A1 leader={leader} onTasks={() => go('tasks')} onSettings={() => go('settings')}
-      onHistory={() => go('history')} onWalletQr={() => go('wallet')} onLand={() => go('land')} moveNote={moveNote}
+      onHistory={() => go('history')} onWalletQr={() => go('wallet')} onLand={() => go('land')}
       onNin={() => go('cashout')} onInvested={() => go('invested')} onShare={(t) => go(`cropshare/${t}`)}
-      onMachinery={() => go('machinery')} onMachine={(id) => go(id ? `machine/${id}` : 'machine')} onOffers={() => go('offers')} onUsdc={() => go('usdc')}
+      onMachinery={() => go('machinery')} onMachine={(id) => go(id ? `machine/${id}` : 'machine')} onOffers={() => go('assets')} onUsdc={() => go('usdc')}
       onTreasury={() => go('cash')} onSettle={() => go('cash/settle')} onScanLp={() => go('cash/lpscan')} onRegisterMachine={() => go('cash/machine')} />;
   } else if (view === 'settings') {
     body = leader
-      ? <LeaderSettings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onIdLeader={() => go('idleader')} onOffers={() => go('offers')} />
-      : <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('offers')} />;
+      ? <LeaderSettings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onIdLeader={() => go('idleader')} onOffers={() => go('assets')} />
+      : <Settings onBack={() => go('assets')} onIdCheck={() => go('idcheck')} onOffers={() => go('assets')} />;
   }
   else if (view === 'history') body = <History onBack={() => go('assets')} />;
-  else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('offers')} />;
+  else if (view === 'idcheck') body = <IdCheck onBack={() => go('settings')} onOffers={() => go('assets')} />;
   else if (view === 'idleader' && leader) body = <IdCheck kind="leader" onBack={() => go('settings')} onAccepted={() => go('assets')} />;
-  else if (view === 'offers') body = <LpOffers onBack={() => go('assets')} />;
   // The leader app is the member app, extended (notes leader-missing): her Crop plan tab is her own plan (CP13 with
   // the leader tab bar); the union's plans to approve (L12) open from L1's To do.
   else if (view === 'crop' && leader && readArg() === 'register') body = <LeaderOwnPoints go={go} />;
@@ -270,7 +227,8 @@ export default function Shell({ leader }) {
   else if (view === 'loan') body = <LeaderLoan key={readArg()} initial={readArg()} />;
   else if (view === 'cash' && leader) body = <CashDesk key={window.location.hash} initial={readArg()} />;
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} leader={leader} />;
-  else if (view === 'usdc' && leader) body = <UsdcAsset onBack={() => go('assets')} />;
+  else if (view === 'usdc') body = <UsdcAsset leader={leader} onBack={() => go('assets')} />;
+  else if (view === 'lpcode') body = <LpCodeScreen key={readArg()} id={readArg()} onBack={() => go('assets')} />;
   else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
   else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go(`cash/invest/${s?.stellarAddress}`)} />;
   // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.
@@ -283,7 +241,7 @@ export default function Shell({ leader }) {
   else if (view === 'cropshare') {
     body = <AssetStep view={view}>{(p) => <CropShare key={readArg()} token={readArg()} onBack={() => go('assets')} onTakeUp={(t) => go(`share/${t}`)} {...p} />}</AssetStep>;
   }
-  // A2 Tasks: for an LP the board's "Cash offers" section; the other task rows come in a later step.
+  // A2 Tasks: the other task rows come in a later step.
   else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
   else if (view === 'members' && leader) body = readArg() ? <MemberStatus key={readArg()} id={readArg()} go={go} /> : <Members go={go} />;
   else if (view === 'memberplan' && leader) body = <MemberPlan route={readArg()} />;
@@ -294,7 +252,7 @@ export default function Shell({ leader }) {
   // No tab is active on task, settings, history and wallet screens; a crop share (A4/A4a, and taking it up) belongs to
   // the Crop plan tab (21 Oct).
   // nIN and nIN invested (A7, A3) are Assets screens (boards MemberAssetNin, StNinWithdraw).
-  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' || view === 'usdc' ? 'assets' : view;
+  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' || view === 'usdc' || view === 'lpcode' ? 'assets' : view;
   const active = tabs.some(([id]) => id === tabOf) ? tabOf : undefined;
   return (
     // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.
