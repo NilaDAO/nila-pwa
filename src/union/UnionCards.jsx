@@ -12,7 +12,7 @@ import QRCode from 'qrcode';
 import { C } from '../shell/tokens';
 import CameraView from '../shell/CameraView';
 import MessageSlider, { big as slideBig, card as slideCard, head as slideHead } from '../shell/MessageSlider';
-import { ChevronIcon, LockIcon, PlusIcon } from '../shell/icons';
+import { ChevronIcon, LockIcon, MachineryTile, PlusIcon } from '../shell/icons';
 import { NoteBar } from '../loan/AssetParts';
 import { Card, CardButton, ConfirmCard, Row, Text, btn } from '../shell/SettingsParts';
 import { PARTS, useRates, typeName } from '../machine/hooks';
@@ -158,13 +158,10 @@ export function ContactBookCard() {
 const rupees = (p, k) => Math.round(Number(p?.[k] || 0) / NIN);    // a proposal's part (7 decimals) in whole rupees
 const sumOf = (parts) => PARTS.reduce((t, [k]) => t + Number(parts?.[k] || 0), 0) / NIN;
 
-/** One machine type's card in the slider: its price an acre; a tap shows the build-up (six parts). With an open
- *  proposal the card comes first and shows the new price, the parts that change, "n of 3 signed" and Sign. A signer
+/** One machine type's card in the slider: the machinery voucher icon, its price an acre and its build-up (six parts).
+ *  With an open proposal the card comes first and shows the new price, the parts that change (old grey, new white), "n of 3 signed" and Sign. A signer
  *  without an open proposal may propose a change: the six parts become fields (whole rupees an acre). */
 function MachineSlide({ r, p, signers, me, act }) {
-  // A card with a proposal shows its build-up until the leader closes it (the proposal may load after the card).
-  const [opened, setOpen] = useState(null);
-  const open = opened ?? !!p;
   const [draft, setDraft] = useState(null);
   const isSigner = !!signers?.signers.some((s) => s.key === me);
   const val = (k) => (draft ? Number(draft[k] ?? Math.round(r.parts[k] || 0)) : Math.round(r.parts[k] || 0));
@@ -173,44 +170,42 @@ function MachineSlide({ r, p, signers, me, act }) {
   const propose = () => {
     // A part not typed keeps its exact on-chain value (paise included); a typed part is whole rupees.
     const parts = Object.fromEntries(PARTS.map(([k]) => [k, draft[k] !== undefined ? String(Number(draft[k] || 0) * NIN) : String(Math.round((r.parts[k] || 0) * NIN))]));
-    act.propose.mutate({ contract: 'machinery', fn: 'set_rate', args: { machine_type: r.type, parts } }, { onSuccess: () => { setDraft(null); setOpen(true); } });
+    act.propose.mutate({ contract: 'machinery', fn: 'set_rate', args: { machine_type: r.type, parts } }, { onSuccess: () => setDraft(null) });
   };
   return (
     <section aria-label={r.name} style={{ ...slideCard, gap: 12 }}>
-      <button type="button" onClick={() => !draft && setOpen(!open)} aria-expanded={open} style={{ display: 'flex', flexDirection: 'column', gap: 6, border: 0,
-        background: 'none', padding: 0, color: C.text, fontFamily: 'inherit', textAlign: 'left', cursor: draft ? 'default' : 'pointer' }}>
-        <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <span style={slideHead}>{r.name}</span>
-          {p && <span style={{ fontSize: 12, fontWeight: 700, color: C.gold, background: 'rgba(212,166,52,0.15)', borderRadius: 9999, padding: '2px 8px', flexShrink: 0 }}>Proposed</span>}
-        </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}><MachineryTile /><span style={slideHead}>{r.name}</span></span>
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           {newTotal !== null && newTotal !== r.total
             ? <><span style={{ ...slideBig, color: C.muted, textDecoration: 'line-through', fontSize: 20 }}>{inr(r.total)}</span><span style={slideBig}>{inr(newTotal)}</span></>
             : <span style={slideBig}>{inr(r.total)}</span>}
           <span style={{ fontSize: 14, color: C.muted }}>an acre</span>
         </span>
-        {!open && !draft && <span style={{ fontSize: 14, color: C.muted }}>Tap to see how the price is built up.</span>}
-      </button>
-      {(open || draft) && (
-        <div style={{ display: draft ? 'grid' : 'flex', gridTemplateColumns: '1fr 1fr', flexDirection: 'column', gap: draft ? 8 : 0 }}>
-          {PARTS.map(([k, label]) => {
-            const was = Math.round(r.parts[k] || 0);
-            if (draft) {
-              const diff = val(k) !== was;
-              return (
-                <label key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: C.muted }}>
-                  <span>{label}{diff ? ` (was ${inr(was)})` : ''}</span>
-                  <input inputMode="numeric" aria-label={`${r.name}: ${label} an acre`} value={draft[k] ?? String(was)}
-                    onChange={(e) => setDraft({ ...draft, [k]: e.target.value.replace(/[^\d]/g, '') })}
-                    style={{ ...field, width: '100%', textAlign: 'right', boxShadow: diff ? `inset 0 0 0 1px ${C.accent}` : 'none' }} />
-                </label>
-              );
-            }
-            const to = p ? rupees(p.args.parts, k) : was;
-            return <Row key={k} k={label} v={to !== was ? <span style={{ fontWeight: 700, color: C.accent }}>{`${inr(was)} → ${inr(to)}`}</span> : inr(was)} />;
-          })}
-        </div>
-      )}
+      </div>
+      <div style={{ display: draft ? 'grid' : 'flex', gridTemplateColumns: '1fr 1fr', flexDirection: 'column', gap: draft ? 8 : 0 }}>
+        {PARTS.map(([k, label]) => {
+          const was = Math.round(r.parts[k] || 0);
+          if (draft) {
+            const diff = val(k) !== was;
+            return (
+              <label key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: C.muted }}>
+                <span>{label}{diff ? ` (was ${inr(was)})` : ''}</span>
+                <input inputMode="numeric" aria-label={`${r.name}: ${label} an acre`} value={draft[k] ?? String(was)}
+                  onChange={(e) => setDraft({ ...draft, [k]: e.target.value.replace(/[^\d]/g, '') })}
+                  style={{ ...field, width: '100%', textAlign: 'right', boxShadow: diff ? `inset 0 0 0 1px ${C.accent}` : 'none' }} />
+              </label>
+            );
+          }
+          const to = p ? rupees(p.args.parts, k) : was;
+          // A proposed part as the total: the old price grey and struck through, the new one white.
+          return <Row key={k} k={label} v={to !== was ? (
+            <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ color: C.muted, textDecoration: 'line-through' }}>{inr(was)}</span><span style={{ fontWeight: 700 }}>{inr(to)}</span>
+            </span>
+          ) : inr(was)} />;
+        })}
+      </div>
       {p && (
         <>
           <Text>{p.status === 'sending' ? 'Sending…' : `${p.signed.length} of ${signers?.threshold || 3} signed`}
@@ -232,7 +227,7 @@ function MachineSlide({ r, p, signers, me, act }) {
             style={{ ...btn, flex: 1, background: C.accent, color: C.ink, opacity: dirty ? 1 : 0.5 }}>{act.propose.isPending ? 'Proposing…' : 'Propose'}</button>
         </div>
       ) : (
-        <button type="button" onClick={() => { setDraft({}); setOpen(true); }} style={btn}>Propose a change</button>
+        <button type="button" onClick={() => setDraft({})} style={btn}>Propose a change</button>
       ))}
       <Err e={act.propose.error || act.sign.error || act.withdraw.error} />
     </section>
