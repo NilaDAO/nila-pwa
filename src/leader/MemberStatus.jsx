@@ -232,6 +232,7 @@ export default function MemberStatus({ id, go }) {
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
       </div>
+      <KeypadPhone address={m.address} go={go} />
       {m.recordHash && !m.shares.length && (
         // The member's crop plan (26 Oct): made with the member without a session; the member's QR accepts it at the end.
         <Section title="Crop plan" right={helpUntil ? `QR scanned · until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}>
@@ -327,19 +328,27 @@ export default function MemberStatus({ id, go }) {
           <Row k="Record" v={<span style={{ color: C.accent }}>{`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`}</span>} />
         </Section>
       )}
-      <KeypadPhone address={m.address} go={go} />
       <RemoveMember m={m} inv={inv} go={go} />
       </div>
     </MapCard>
   );
 }
 
-/** A keypad member's phone (2 Nov): a lost phone is recovered from the member's L14 page (send the link again, then
- *  Recover this phone). */
+/** A keypad member's phone (2 Nov): a lost phone is recovered on the member's L14 page (send the link again, the new
+ *  phone opens it, Recover this phone); the recovery state comes with the keypad list once the phone is a new one. */
 function KeypadPhone({ address, go }) {
   const k = (useKeypadMembers().data || []).find((x) => x.phone_type === 'keypad' && x.account && x.account === address);
   if (!k) return null;
-  return <CardButton onClick={() => go(`tasks/member/${k.id}`)} style={{ marginTop: 0 }}>Lost phone · recover it</CardButton>;
+  const r = k.recovery?.state;
+  const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return (
+    <Section title="Keypad phone" right={r === 'pending' ? 'Recovery waiting' : r === 'needed' ? 'New phone' : ''}>
+      {r === 'pending' && <Row k="New phone works from" v={when(k.recovery.at)} />}
+      <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`tasks/member/${k.id}`)}>
+        {r === 'needed' ? 'Recover this phone' : r === 'pending' ? 'Open the phone\'s page' : 'Lost phone · recover it'}
+      </button>
+    </Section>
+  );
 }
 
 /** G2 Remove member (executive decision 28 Oct; the look of Settings → Reset account): the node burns the member's land
