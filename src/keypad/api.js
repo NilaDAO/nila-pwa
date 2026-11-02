@@ -5,8 +5,9 @@ import { signedCall } from '../plan/api';
 export function keypadClient(signer) {
   const call = signedCall(signer);
   return {
-    add: ({ name, phone, phoneType, unionName, leaderName }) => call('POST', '/keypad/members',
-      { name, phone, phone_type: phoneType, union_name: unionName || '', leader_name: leaderName || '' }),
+    // account (2 Nov): a smartphone member's existing account moving to a keypad phone.
+    add: ({ name, phone, phoneType, unionName, leaderName, account }) => call('POST', '/keypad/members',
+      { name, phone, phone_type: phoneType, union_name: unionName || '', leader_name: leaderName || '', ...(account ? { account } : {}) }),
     sendAgain: (id) => call('POST', `/keypad/members/${id}/link`, {}),
     member: (id) => call('GET', `/keypad/members/${id}`),
     list: () => call('GET', '/keypad/members'),
