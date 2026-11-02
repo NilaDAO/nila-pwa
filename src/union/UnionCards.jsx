@@ -234,6 +234,30 @@ function MachineSlide({ r, p, signers, me, act }) {
   );
 }
 
+/** A drop-down that opens inside the card (not the browser's own pop-up): the choice and a chevron; a tap lists the
+ *  options under it, a pick closes it. */
+function TypePicker({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const row = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 44, border: 0, background: 'none',
+    padding: '0 14px', boxSizing: 'border-box', color: C.text, fontFamily: 'inherit', fontSize: 14, textAlign: 'left', cursor: 'pointer' };
+  return (
+    <div style={{ background: C.raised, borderRadius: 12, overflow: 'hidden' }}>
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Machine type" style={{ ...row, fontWeight: 700, color: value ? C.text : C.muted }}>
+        <span>{value ? typeName(Number(value)) : 'Choose a machine'}</span>
+        <span style={{ display: 'flex', transform: open ? 'rotate(-90deg)' : 'rotate(90deg)' }}><ChevronIcon color={C.muted} /></span>
+      </button>
+      {open && (
+        <div role="listbox" aria-label="Machine types" style={{ maxHeight: 264, overflowY: 'auto', borderTop: `1px solid ${C.ink}` }}>
+          {options.map((t) => (
+            <button key={t} type="button" role="option" aria-selected={String(t) === String(value)} onClick={() => { onChange(String(t)); setOpen(false); }}
+              style={{ ...row, fontWeight: String(t) === String(value) ? 700 : 400 }}>{typeName(t)}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The slider's last card (2 Nov): a signer adds a machine type from the standard range (TYPE_NAMES) with its six
  *  parts; its first price adds the type for the union (machinery.set_rate, 3 of 5). At most 16 types a union. */
 function AddMachineSlide({ priced, pending, signers, me, act }) {
@@ -248,16 +272,13 @@ function AddMachineSlide({ priced, pending, signers, me, act }) {
     act.propose.mutate({ contract: 'machinery', fn: 'set_rate', args }, { onSuccess: () => { setType(''); setParts({}); } });
   };
   return (
-    <section aria-label="Add a machine" style={{ ...slideCard, gap: 12 }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}><MachineryTile /><span style={slideHead}>Add a machine</span></span>
+    <section aria-label="Add a voucher" style={{ ...slideCard, gap: 12 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}><MachineryTile /><span style={slideHead}>Add a voucher</span></span>
       {full ? <Text>Your union has {MAX_UNION_TYPES} machine types, the most it can have.</Text>
-        : !isSigner ? <Text>Only a signer of the union can add a machine.</Text>
+        : !isSigner ? <Text>Only a signer of the union can add a voucher.</Text>
           : (
             <>
-              <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Machine type" style={{ ...field, width: '100%', appearance: 'auto' }}>
-                <option value="">Choose a machine</option>
-                {free.map((t) => <option key={t} value={t}>{typeName(t)}</option>)}
-              </select>
+              <TypePicker value={type} options={free} onChange={setType} />
               {type && (
                 <>
                   <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -333,7 +354,7 @@ export function VoucherPrices() {
         ...pendingNew.map((t) => <MachineSlide key={`new-${t}`} r={{ type: t, name: typeName(t), parts: {}, total: 0 }} p={openOf(t)} signers={signers.data} me={me} act={act} />),
         ...list.map((r) => <MachineSlide key={r.type} r={r} p={openOf(r.type)} signers={signers.data} me={me} act={act} />),
         ...(rates.isSuccess ? [<AddMachineSlide key="add" priced={(rates.data || []).map((r) => r.type)} pending={pendingNew} signers={signers.data} me={me} act={act} />] : []),
-      ]} />
+      ]} plusLast={rates.isSuccess} />
       <RecentlySet done={all.filter((p) => p.status === 'done')} />
     </>
   );

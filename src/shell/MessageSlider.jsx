@@ -123,7 +123,8 @@ export function memberSlides({ position, positionKnown, loans = [], now = Date.n
   return out;
 }
 
-export default function MessageSlider({ slides }) {
+/** plusLast (2 Nov, LS voucher prices): the last dot is a + (the "add" card), white when it is the card in view. */
+export default function MessageSlider({ slides, plusLast = false }) {
   const ref = useRef(null);
   const [at, setAt] = useState(0);
   if (!slides.length) return null;
@@ -131,17 +132,21 @@ export default function MessageSlider({ slides }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '0 -8px 16px' }}>
       {slides.length > 1 && (
-        <div role="tablist" aria-label="Messages" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 4, height: 20 }}>
+        <div role="tablist" aria-label="Messages" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: slides.length > 12 ? 2 : 4, height: 20 }}>
           {slides.map((sl, n) => (
             <button key={sl.key} type="button" aria-label={`Message ${n + 1} of ${slides.length}`} aria-current={n === at ? 'true' : 'false'} onClick={() => go(n)}
-              style={{ width: 24, height: 24, border: 0, padding: 0, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ width: 8, height: 8, borderRadius: R.round, background: n === at ? C.accent : '#475569' }} />
+              // Many cards (LS voucher prices, up to 17): narrower dots so the row fits a phone.
+              style={{ width: slides.length > 12 ? 16 : 24, height: 24, border: 0, padding: 0, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {plusLast && n === slides.length - 1
+                ? <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={n === at ? C.text : '#475569'} strokeWidth="3.5" strokeLinecap="round"><path d="M12 4v16M4 12h16" /></svg>
+                : <span style={{ width: 8, height: 8, borderRadius: R.round, background: n === at ? C.accent : '#475569' }} />}
             </button>
           ))}
         </div>
       )}
       <div ref={ref} aria-roledescription="carousel" className="nila-slider"
-        onScroll={(e) => { const el = e.currentTarget; setAt(Math.round(el.scrollLeft / Math.max(1, el.clientWidth - 8))); }}
+        // At the right end the last card is the one in view (its scroll offset is less than a whole card).
+        onScroll={(e) => { const el = e.currentTarget; setAt(el.scrollLeft >= el.scrollWidth - el.clientWidth - 2 ? slides.length - 1 : Math.round(el.scrollLeft / Math.max(1, el.clientWidth - 8))); }}
         style={{ display: 'flex', alignItems: 'flex-start', gap: 8, overflowX: 'auto', scrollSnapType: 'x mandatory', scrollPadding: '0 8px',
           padding: '0 8px 12px', boxSizing: 'border-box', scrollbarWidth: 'none' }}>
         <style>{'.nila-slider::-webkit-scrollbar{display:none}'}</style>
