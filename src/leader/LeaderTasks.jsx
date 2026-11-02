@@ -112,6 +112,11 @@ export default function LeaderTasks({ go }) {
   for (const m of keypads.filter((x) => x.phone_type === 'keypad' && !x.job)) {
     items.unshift({ key: `border-pts-${m.id}`, title: 'Take field points', who: m.name, to: `tasks/member/${m.id}/points`, ready: true });
   }
+  // A keypad member's new phone (2 Nov): the leader recovers it (the SMS link and one leader) on the member's page.
+  for (const m of keypads.filter((x) => x.recovery && ['needed', 'pending'].includes(x.recovery.state))) {
+    items.unshift({ key: `recover-${m.id}`, title: m.recovery.state === 'needed' ? 'Recover a phone' : 'Phone recovery waiting',
+      who: m.name, to: `tasks/member/${m.id}`, ready: m.recovery.state === 'needed' });
+  }
   const shown = items.filter((t) => !q || `${t.title} ${t.who}`.toLowerCase().includes(q.toLowerCase()));
   const row = (t, i) => {
     const [icon, tone] = KIND[t.key.split('-')[0]] || [];

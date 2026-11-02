@@ -339,7 +339,7 @@ export default function MemberStatus({ id, go }) {
 function KeypadPhone({ address, go }) {
   const k = (useKeypadMembers().data || []).find((x) => x.phone_type === 'keypad' && x.account && x.account === address);
   if (!k) return null;
-  return <CardButton onClick={() => go(`tasks/member/${k.id}`)} style={{ marginTop: 0 }}>Keypad phone · lost or new phone</CardButton>;
+  return <CardButton onClick={() => go(`tasks/member/${k.id}`)} style={{ marginTop: 0 }}>Lost phone · recover it</CardButton>;
 }
 
 /** G2 Remove member (executive decision 28 Oct; the look of Settings → Reset account): the node burns the member's land
