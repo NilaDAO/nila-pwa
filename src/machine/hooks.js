@@ -14,19 +14,28 @@ const NIN = 10_000_000;
 export const num = (v) => Number(BigInt(v ?? 0)) / NIN;
 const hexOf = (b) => Buffer.from(b).toString('hex');
 
-// Type numbers as the plan engine's finance table uses them (plan/reference/finance_v1.json); a type the
-// union sets a rate for without a name here shows as "Machine type N". DESIGN GAP: no type names on-chain.
+// Type numbers as the plan engine's finance table uses them (plan/reference/finance_v1.json, 1–13), then the standard
+// range a union may add (14–24); a number without a name here shows as "Machine type N". Names live in the app only
+// (executive decision 2 Nov): the contract keeps the number.
 // One type per tractor + implement (executive decision 22 Oct, lean): an owner registers her tractor once per implement.
 export const TYPE_NAMES = {
   1: 'Tractor + rotavator', 2: 'Seed drill / planter', 3: 'Power weeder', 4: 'Tractor + cultivator', 5: 'Tractor + plough',
   6: 'Tractor + disc harrow', 7: 'Tractor + ridger', 8: 'Tractor + puddler', 9: 'Tractor + trailer', 10: 'Tractor + cane trailer',
   11: 'Power tiller', 12: 'Paddy transplanter', 13: 'Sugarcane sett planter',
+  // The standard range a union may add a price for (LS Add a machine, 2 Nov); not in the plan engine's catalogue, so
+  // crop plans do not propose them: members pick them for a voucher, owners register them (L13).
+  14: 'Combine harvester', 15: 'Paddy reaper', 16: 'Thresher', 17: 'Tractor + boom sprayer', 18: 'Power sprayer',
+  19: 'Drone sprayer', 20: 'Laser land leveller', 21: 'Tractor + mulcher', 22: 'Groundnut digger', 23: 'Sugarcane harvester',
+  24: 'Baler',
 };
+/** The standard machine types, in order (the app's catalogue; the contract keeps only the number). */
+export const TYPES = Object.keys(TYPE_NAMES).map(Number);
 export const typeName = (t) => TYPE_NAMES[t] || `Machine type ${t}`;
 export const PARTS = [['diesel', 'Diesel'], ['driver', 'Driver'], ['maintenance', 'Maintenance'],
   ['insurance', 'Insurance'], ['depreciation', 'Depreciation'], ['margin', 'Margin']];
 export const HOLD_REASONS = { 1: 'In repair', 2: 'Driver not available', 3: 'Other' };
-const MAX_TYPES = 16;
+/** machinery's MAX_TYPES: the most machine types one union can price. */
+export const MAX_UNION_TYPES = 16;
 /** The machine type whose acre is the voucher's unit. */
 export const TRACTOR = 1;
 /** Units (centi tractor acres) as tractor acres with one decimal. */
@@ -66,7 +75,7 @@ export function useRates() {
     queryKey: ['stellar', 'rates', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 300_000,
     queryFn: async () => {
       const out = [];
-      const types = Array.from({ length: MAX_TYPES }, (_, i) => i + 1);
+      const types = TYPES;   // every standard type (the contract has no list view): a union prices at most 16 of them
       const rates = await Promise.all(types.map((t) => readContract(cfg, 'machinery', 'rate', [sv.address(cfg.union), sv.u32(t)]).catch(() => null)));
       rates.forEach((r, i) => {
         if (!r) return;

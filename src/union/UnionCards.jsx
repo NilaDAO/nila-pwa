@@ -12,10 +12,11 @@ import QRCode from 'qrcode';
 import { C } from '../shell/tokens';
 import CameraView from '../shell/CameraView';
 import MessageSlider, { big as slideBig, card as slideCard, head as slideHead } from '../shell/MessageSlider';
-import { ChevronIcon, LockIcon, MachineryTile, PlusIcon } from '../shell/icons';
+import { ChevronIcon, LockIcon, MachineryTile } from '../shell/icons';
+import Segmented from '../shell/Segmented';
 import { NoteBar } from '../loan/AssetParts';
 import { Card, CardButton, ConfirmCard, Row, Text, btn } from '../shell/SettingsParts';
-import { PARTS, useRates, typeName } from '../machine/hooks';
+import { MAX_UNION_TYPES, PARTS, TYPES, useRates, typeName } from '../machine/hooks';
 import { useStellarConfig } from '../stellar/hooks';
 import { keyQr, loadKey, parseKeyQr } from './book';
 import { useBookActions, useContactBook, useMyKey, useProposalActions, useProposals, useUnionSigners } from './hooks';
@@ -27,8 +28,12 @@ const field = { height: 44, borderRadius: 12, border: 0, background: C.raised, c
   padding: '0 14px', boxSizing: 'border-box', outline: 'none' };
 const Err = ({ e }) => (e ? <span style={{ color: C.coral, fontSize: 14 }}>{e.message || String(e)}</span> : null);
 
+const plus = <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>;
+/** + as the Cash tab's ↓/↑ control (C3, Segmented icon): selected while the fields are open; a second tap closes them. */
+const AddToggle = ({ on, onToggle, label }) => (
+  <Segmented icon width="hug" label={label} value={on ? 'add' : null} onChange={onToggle} options={[['add', plus, label]]} />
+);
 const NOTE = "Only your union's leaders can read the full name and phone. They are locked with the union key. The farm name is public.";
-const linkBtn = { border: 0, background: 'none', padding: 0, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', textAlign: 'right' };
 
 /** The name fields under a row: full name, optional phone and a secondary Save (the contact book entry for `address`). */
 function NameFields({ address, ed, setEd }) {
@@ -56,17 +61,12 @@ function SignerRow({ s, me, book, onLock, note }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 36, fontSize: 14 }}>
         <button type="button" onClick={onLock} aria-label="Who can read the names" aria-pressed={note} style={{ display: 'flex', alignItems: 'center', gap: 6,
           border: 0, background: 'none', padding: 0, color: cur.name ? C.text : C.muted, fontFamily: 'inherit', fontSize: 14, fontWeight: cur.name ? 700 : 400, cursor: 'pointer' }}>
-          <LockIcon size={14} color={note ? C.accent : C.muted} />{cur.name || short(s.key)}
+          <LockIcon size={14} color={note ? C.text : C.muted} />{cur.name || short(s.key)}
         </button>
         <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {s.key === me && <span style={{ fontWeight: 700 }}>You</span>}
-          {ok && (ed ? <button type="button" onClick={() => setEd(null)} style={{ ...linkBtn, color: C.text }}>Close</button>
-            : (
-              <button type="button" onClick={() => setEd({ name: cur.name, phone: cur.phone })} aria-label={cur.name ? 'Change the full name' : 'Add a full name'}
-                style={{ ...linkBtn, color: C.accent, display: 'flex', alignItems: 'center' }}>
-                {cur.name ? 'Edit' : <PlusIcon size={20} color={C.accent} />}
-              </button>
-            ))}
+          {ok && <AddToggle on={!!ed} label={cur.name ? 'Change the full name' : 'Add a full name'}
+            onToggle={() => setEd(ed ? null : { name: cur.name, phone: cur.phone })} />}
         </span>
       </div>
       {ed && <NameFields address={s.key} ed={ed} setEd={setEd} />}
@@ -177,9 +177,9 @@ function MachineSlide({ r, p, signers, me, act }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}><MachineryTile /><span style={slideHead}>{r.name}</span></span>
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          {newTotal !== null && newTotal !== r.total
+          {newTotal !== null && newTotal !== r.total && r.total > 0
             ? <><span style={{ ...slideBig, color: C.muted, textDecoration: 'line-through', fontSize: 20 }}>{inr(r.total)}</span><span style={slideBig}>{inr(newTotal)}</span></>
-            : <span style={slideBig}>{inr(r.total)}</span>}
+            : <span style={slideBig}>{inr(newTotal ?? r.total)}</span>}
           <span style={{ fontSize: 14, color: C.muted }}>an acre</span>
         </span>
       </div>
@@ -193,17 +193,17 @@ function MachineSlide({ r, p, signers, me, act }) {
                 <span>{label}{diff ? ` (was ${inr(was)})` : ''}</span>
                 <input inputMode="numeric" aria-label={`${r.name}: ${label} an acre`} value={draft[k] ?? String(was)}
                   onChange={(e) => setDraft({ ...draft, [k]: e.target.value.replace(/[^\d]/g, '') })}
-                  style={{ ...field, width: '100%', textAlign: 'right', boxShadow: diff ? `inset 0 0 0 1px ${C.accent}` : 'none' }} />
+                  style={{ ...field, width: '100%', textAlign: 'right', boxShadow: diff ? `inset 0 0 0 1px ${C.text}` : 'none' }} />
               </label>
             );
           }
           const to = p ? rupees(p.args.parts, k) : was;
           // A proposed part as the total: the old price grey and struck through, the new one white.
-          return <Row key={k} k={label} v={to !== was ? (
+          return <Row key={k} k={label} v={to !== was && r.total > 0 ? (
             <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
               <span style={{ color: C.muted, textDecoration: 'line-through' }}>{inr(was)}</span><span style={{ fontWeight: 700 }}>{inr(to)}</span>
             </span>
-          ) : inr(was)} />;
+          ) : inr(to)} />;
         })}
       </div>
       {p && (
@@ -230,6 +230,55 @@ function MachineSlide({ r, p, signers, me, act }) {
         <button type="button" onClick={() => setDraft({})} style={btn}>Propose a change</button>
       ))}
       <Err e={act.propose.error || act.sign.error || act.withdraw.error} />
+    </section>
+  );
+}
+
+/** The slider's last card (2 Nov): a signer adds a machine type from the standard range (TYPE_NAMES) with its six
+ *  parts; its first price adds the type for the union (machinery.set_rate, 3 of 5). At most 16 types a union. */
+function AddMachineSlide({ priced, pending, signers, me, act }) {
+  const free = TYPES.filter((t) => !priced.includes(t) && !pending.includes(t));
+  const [type, setType] = useState('');
+  const [parts, setParts] = useState({});
+  const isSigner = !!signers?.signers.some((s) => s.key === me);
+  const full = priced.length + pending.length >= MAX_UNION_TYPES;
+  const total = PARTS.reduce((t, [k]) => t + Number(parts[k] || 0), 0);
+  const propose = () => {
+    const args = { machine_type: Number(type), parts: Object.fromEntries(PARTS.map(([k]) => [k, String(Number(parts[k] || 0) * NIN)])) };
+    act.propose.mutate({ contract: 'machinery', fn: 'set_rate', args }, { onSuccess: () => { setType(''); setParts({}); } });
+  };
+  return (
+    <section aria-label="Add a machine" style={{ ...slideCard, gap: 12 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}><MachineryTile /><span style={slideHead}>Add a machine</span></span>
+      {full ? <Text>Your union has {MAX_UNION_TYPES} machine types, the most it can have.</Text>
+        : !isSigner ? <Text>Only a signer of the union can add a machine.</Text>
+          : (
+            <>
+              <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Machine type" style={{ ...field, width: '100%', appearance: 'auto' }}>
+                <option value="">Choose a machine</option>
+                {free.map((t) => <option key={t} value={t}>{typeName(t)}</option>)}
+              </select>
+              {type && (
+                <>
+                  <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={slideBig}>{inr(total)}</span><span style={{ fontSize: 14, color: C.muted }}>an acre</span>
+                  </span>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {PARTS.map(([k, label]) => (
+                      <label key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: C.muted }}>
+                        <span>{label}</span>
+                        <input inputMode="numeric" aria-label={`New machine: ${label} an acre`} value={parts[k] ?? ''} placeholder="0"
+                          onChange={(e) => setParts({ ...parts, [k]: e.target.value.replace(/[^\d]/g, '') })} style={{ ...field, width: '100%', textAlign: 'right' }} />
+                      </label>
+                    ))}
+                  </div>
+                  <button type="button" onClick={propose} disabled={total <= 0 || act.propose.isPending}
+                    style={{ ...btn, background: C.accent, color: C.ink, opacity: total > 0 ? 1 : 0.5 }}>{act.propose.isPending ? 'Proposing…' : 'Propose'}</button>
+                </>
+              )}
+              <Err e={act.propose.error} />
+            </>
+          )}
     </section>
   );
 }
@@ -263,6 +312,9 @@ export function VoucherPrices() {
   const me = useMyKey();
   const all = (proposals.data || []).filter((p) => p.fn === 'set_rate');
   const openOf = (t) => all.find((p) => (p.status === 'open' || p.status === 'sending') && Number(p.args.machine_type) === t);
+  // A proposal for a type the union has no price for yet: a new machine (its card leads, like any proposal).
+  const pendingNew = [...new Set(all.filter((p) => (p.status === 'open' || p.status === 'sending')
+    && !(rates.data || []).some((r) => r.type === Number(p.args.machine_type))).map((p) => Number(p.args.machine_type)))];
   const list = [...(rates.data || [])].sort((x, y) => {
     const px = openOf(x.type); const py = openOf(y.type);
     if (!!px !== !!py) return px ? -1 : 1;
@@ -274,10 +326,14 @@ export function VoucherPrices() {
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Voucher prices</h2>
         <Text>The price of an acre per machine, built from its parts. A change needs {signers.data?.threshold || 3} signers of the union.</Text>
         {rates.isLoading && <Text>…</Text>}
-        {rates.isSuccess && !rates.data.length && <Text>No machine prices set for the union yet.</Text>}
-        <Err e={proposals.error} />
+                <Err e={proposals.error} />
       </div>
-      <MessageSlider slides={list.map((r) => <MachineSlide key={r.type} r={r} p={openOf(r.type)} signers={signers.data} me={me} act={act} />)} />
+      <MessageSlider slides={[
+        // A new machine waiting for signatures has no price yet: its card shows the proposal as a price of 0.
+        ...pendingNew.map((t) => <MachineSlide key={`new-${t}`} r={{ type: t, name: typeName(t), parts: {}, total: 0 }} p={openOf(t)} signers={signers.data} me={me} act={act} />),
+        ...list.map((r) => <MachineSlide key={r.type} r={r} p={openOf(r.type)} signers={signers.data} me={me} act={act} />),
+        ...(rates.isSuccess ? [<AddMachineSlide key="add" priced={(rates.data || []).map((r) => r.type)} pending={pendingNew} signers={signers.data} me={me} act={act} />] : []),
+      ]} />
       <RecentlySet done={all.filter((p) => p.status === 'done')} />
     </>
   );
@@ -298,7 +354,7 @@ export function PersonalName({ address, phone: knownPhone }) {
   const label = (
     <button type="button" onClick={() => setNote(!note)} aria-label="Who can read the full name" aria-pressed={note}
       style={{ display: 'flex', alignItems: 'center', gap: 6, border: 0, background: 'none', padding: 0, color: C.muted, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>
-      <LockIcon size={14} color={note ? C.accent : C.muted} />Full name
+      <LockIcon size={14} color={note ? C.text : C.muted} />Full name
     </button>
   );
   return (
@@ -307,12 +363,12 @@ export function PersonalName({ address, phone: knownPhone }) {
         {label}
         {locked ? (
           <span style={{ color: C.muted, textAlign: 'right' }}>{book.data.state === 'mismatch' ? 'Union key does not match' : 'No union key on this phone'}</span>
-        ) : ed ? (
-          <button type="button" onClick={() => setEd(null)} style={{ ...linkBtn, color: C.text }}>Close</button>
         ) : (
-          <button type="button" onClick={() => setEd({ name: cur.name, phone: cur.phone || knownPhone || '' })} aria-label={cur.name ? 'Change the full name' : 'Add a full name'} style={{ ...linkBtn, color: cur.name ? C.text : C.accent, display: 'flex', alignItems: 'center' }}>
-            {cur.name ? `${cur.name}${cur.phone ? ` · ${cur.phone}` : ''}` : <PlusIcon size={20} color={C.accent} />}
-          </button>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {cur.name && <span style={{ fontWeight: 700, textAlign: 'right' }}>{`${cur.name}${cur.phone ? ` · ${cur.phone}` : ''}`}</span>}
+            <AddToggle on={!!ed} label={cur.name ? 'Change the full name' : 'Add a full name'}
+              onToggle={() => setEd(ed ? null : { name: cur.name, phone: cur.phone || knownPhone || '' })} />
+          </span>
         )}
       </div>
       {ed && <NameFields address={address} ed={ed} setEd={setEd} />}
