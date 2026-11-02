@@ -122,7 +122,16 @@ export function useProposalActions() {
     mutationFn: async ({ contract, fn, args }) => signOne(await call('POST', '/stellar/union/proposals', { contract, fn, args })),
     onSuccess: done,
   });
-  const sign = useMutation({ mutationFn: signOne, onSuccess: done });
+  // A change of signers (2 Nov): replace one signer's key by the new signer's (a key or a leader's account, as its QR).
+  const proposeSigners = useMutation({
+    // A leader adding a new union's first signers is no signer yet: the proposal waits for the union's own key.
+    mutationFn: async ({ remove, add, sign = true }) => {
+      const p = await call('POST', '/stellar/union/proposals/signers', { remove: remove || '', add });
+      return sign ? signOne(p) : p;
+    },
+    onSuccess: () => { done(); qc.invalidateQueries({ queryKey: ['union', 'signers'] }); },
+  });
+  const sign = useMutation({ mutationFn: signOne, onSuccess: () => { done(); qc.invalidateQueries({ queryKey: ['union', 'signers'] }); } });
   const withdraw = useMutation({ mutationFn: (p) => call('POST', `/stellar/union/proposals/${p.id}/withdraw`), onSuccess: done });
-  return { propose, sign, withdraw };
+  return { propose, proposeSigners, sign, withdraw };
 }

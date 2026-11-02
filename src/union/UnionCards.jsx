@@ -1,6 +1,6 @@
 // LS cards for the union account and the leaders' contact book (executive decision 1 Nov; node: union_book.py).
-//  - Union signers: the union account's signers and threshold, read from the chain through the node; names from the
-//    contact book. "Change signers" stays an operator step (scripts/multisig in nila-integrations).
+//  - Union signers: the union account's signers, read from the chain through the node; names from the contact book.
+//    Change signers (2 Nov): pick who leaves, scan the new signer's account QR, propose; the others sign (high threshold).
 //  - Contact book: make the union key, show it as a QR (face to face only) or scan it; a different key is shown.
 //  - Voucher prices: a slider, one card per machine type (A1's MessageSlider); a tap shows the price's build-up (driver,
 //    diesel, maintenance, insurance, depreciation, margin: machinery's RateParts, on-chain). A signer proposes a change
@@ -19,6 +19,7 @@ import { Card, CardButton, ConfirmCard, Row, Text, btn } from '../shell/Settings
 import { MAX_UNION_TYPES, PARTS, TYPES, VOUCHER_CATEGORIES, useRates, typeName } from '../machine/hooks';
 import { useStellarConfig } from '../stellar/hooks';
 import { keyQr, loadKey, parseKeyQr } from './book';
+import { addressFromQr } from '../leader/unionMembers';
 import { useBookActions, useContactBook, useMyKey, useProposalActions, useProposals, useUnionSigners } from './hooks';
 
 const NIN = 10_000_000;
@@ -75,20 +76,104 @@ function SignerRow({ s, me, book, onLock, note }) {
   );
 }
 
+/** A key with its name from the contact book, else short. */
+const nameOf = (book, key) => book?.names.get(key)?.name || short(key);
+
+/** The waiting change of signers: who leaves, who comes in, n of 3 signed, Sign / Withdraw. */
+function SignersChange({ p, signers, book, me, act }) {
+  const isSigner = !!signers?.signers.some((s) => s.key === me);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0', padding: '12px 0', borderTop: `1px solid ${C.raised}`, borderBottom: `1px solid ${C.raised}` }}>
+      <span style={{ fontSize: 14, fontWeight: 700 }}>{p.args.remove ? 'Change of signers' : 'New signer'}</span>
+      {p.args.remove && <Row k="Leaves" v={<span style={{ color: C.muted, textDecoration: 'line-through' }}>{nameOf(book, p.args.remove)}</span>} />}
+      <Row k="Comes in" v={nameOf(book, p.args.add)} />
+      {p.args.activates && <Text>With this fifth signer the union account needs 3 of 5 from now on.</Text>}
+      <Text>{p.status === 'sending' ? 'Sending…' : `${p.signed.length} of ${signers?.high || 3} signed`}{signers?.members < 3 ? ' · the union account signs it (your operator)' : ''}
+        {p.error && p.status === 'open' ? ` · last try failed: ${p.error.slice(0, 80)}` : ''}</Text>
+      {p.status === 'open' && isSigner && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          {!p.signed.includes(me) && <button type="button" onClick={() => act.sign.mutate(p)} disabled={act.sign.isPending}
+            style={{ ...btn, flex: 1, background: C.accent, color: C.ink }}>{act.sign.isPending ? 'Signing…' : 'Sign'}</button>}
+          {p.proposer === me && <button type="button" onClick={() => act.withdraw.mutate(p)} disabled={act.withdraw.isPending} style={{ ...btn, flex: 1 }}>Withdraw</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Change signers: pick the signer who leaves, scan the new signer's account QR (a leader's app shows it), propose.
+ *  The proposer signs at once; the other signers sign in their own apps. */
+function ChangeSigners({ signers, book, act, onDone, addOnly = false, isSigner = true }) {
+  const [leave, setLeave] = useState(addOnly ? '' : null);
+  const [add, setAdd] = useState('');
+  const [scan, setScan] = useState(false);
+  const [msg, setMsg] = useState('');
+  const onQr = (text) => {
+    setScan(false);
+    const a = addressFromQr(text);
+    if (!a) { setMsg('This QR has no account.'); return; }
+    setMsg('');
+    setAdd(a);
+  };
+  const ready = (addOnly || leave) && add;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}>
+      {!addOnly && (
+        <>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>Who leaves?</span>
+          <Segmented label="The signer who leaves" value={leave} onChange={setLeave}
+            options={(signers?.list || []).map((s) => [s.key, nameOf(book, s.key)])} />
+        </>
+      )}
+      <span style={{ fontSize: 14, fontWeight: 700, marginTop: addOnly ? 0 : 8 }}>{addOnly ? 'New signer' : 'Who comes in?'}</span>
+      {add ? (
+        <Row k="New signer" v={<span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>{nameOf(book, add)}<AddToggle on label="Scan again" onToggle={() => setAdd('')} /></span>} />
+      ) : (
+        <button type="button" onClick={() => setScan(!scan)} style={btn}>{scan ? 'Stop scanning' : "Scan the new signer's QR"}</button>
+      )}
+      {scan && <CameraView mode="qr" onText={onQr} hint="The new signer shows the account QR in the Nila app." />}
+      {msg && <Text style={{ color: C.coral }}>{msg}</Text>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button type="button" onClick={onDone} style={{ ...btn, flex: 1 }}>Cancel</button>
+        <button type="button" disabled={!ready || act.proposeSigners.isPending} onClick={() => act.proposeSigners.mutate({ remove: leave, add, sign: isSigner }, { onSuccess: onDone })}
+          style={{ ...btn, flex: 1, background: C.accent, color: C.ink, opacity: ready ? 1 : 0.5 }}>{act.proposeSigners.isPending ? 'Proposing…' : 'Propose'}</button>
+      </div>
+      <Err e={act.proposeSigners.error} />
+    </div>
+  );
+}
+
 export function SignersCard() {
   const signers = useUnionSigners();
   const book = useContactBook();
+  const proposals = useProposals();
+  const act = useProposalActions();
   const me = useMyKey();
   const [note, setNote] = useState(false);
-  const d = signers.data;
+  const [changing, setChanging] = useState(null);     // 'replace' | 'add'
+  // The union account's own key (master) is not a signer of the union: shown nowhere, counted apart.
+  const list = (signers.data?.signers || []).filter((s) => s.key !== signers.data?.union);
+  const d = signers.data && { ...signers.data, list, members: list.length };
+  const isSigner = list.some((s) => s.key === me);
+  const waiting = (proposals.data || []).find((p) => p.fn === 'set_signers' && (p.status === 'open' || p.status === 'sending'));
+  const canAdd = list.length < 5 && (isSigner || list.length === 0);   // a new union: any leader adds the first
   return (
     <Card title="Union signers">
       {signers.isLoading && <Text>…</Text>}
       <div style={{ display: 'flex', flexDirection: 'column', margin: '8px 0' }}>
-        {(d?.signers || []).map((s) => <SignerRow key={s.key} s={s} me={me} book={book.data} note={note} onLock={() => setNote(!note)} />)}
+        {list.map((s) => <SignerRow key={s.key} s={s} me={me} book={book.data} note={note} onLock={() => setNote(!note)} />)}
+        {/* Until there are five (2 Nov): one Add a signer row; the fifth makes the union account 3 of 5. */}
+        {d && list.length < 5 && !waiting && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44, fontSize: 14 }}>
+            <span style={{ color: C.muted }}>Add a signer ({list.length} of 5)</span>
+            {canAdd && <AddToggle on={changing === 'add'} label="Add a signer" onToggle={() => setChanging(changing === 'add' ? null : 'add')} />}
+          </div>
+        )}
       </div>
-      <Err e={signers.error} />
-      <CardButton>Change signers</CardButton>
+      {waiting && <SignersChange p={waiting} signers={d} book={book.data} me={me} act={act} />}
+      {changing && !waiting && <ChangeSigners signers={d} book={book.data} act={act} addOnly={changing === 'add'} isSigner={isSigner} onDone={() => setChanging(null)} />}
+      <Err e={signers.error || act.sign.error || act.withdraw.error} />
+      {!changing && !waiting && list.length === 5 && <CardButton onClick={isSigner ? () => setChanging('replace') : undefined}>Change signers</CardButton>}
       {note && <NoteBar>{NOTE}</NoteBar>}
     </Card>
   );
