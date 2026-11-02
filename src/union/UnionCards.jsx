@@ -12,7 +12,8 @@ import QRCode from 'qrcode';
 import { C } from '../shell/tokens';
 import CameraView from '../shell/CameraView';
 import MessageSlider, { big as slideBig, card as slideCard, head as slideHead } from '../shell/MessageSlider';
-import { ChevronIcon, LockIcon } from '../shell/icons';
+import { ChevronIcon, LockIcon, PlusIcon } from '../shell/icons';
+import { NoteBar } from '../loan/AssetParts';
 import { Card, CardButton, ConfirmCard, Row, Text, btn } from '../shell/SettingsParts';
 import { PARTS, useRates, typeName } from '../machine/hooks';
 import { useStellarConfig } from '../stellar/hooks';
@@ -239,7 +240,7 @@ export function VoucherPrices() {
 }
 
 /** G2: the member's full name (and phone) from the leaders' contact book, behind a lock: only the union's leaders
- *  can read it (not the farm name). Add opens the two fields and a secondary Save; Add turns into Close. The phone
+ *  can read it (not the farm name). + opens the two fields and a secondary Save, and turns into Close; a tap on the lock shows the note bar. The phone
  *  starts from the number the union already has for the member (L14 or a keypad link), if any; a member who registered
  *  alone logged in with an SMS code, but that number stays with the login (Cognito) and is not known to the union. */
 export function PersonalName({ address, phone: knownPhone }) {
@@ -247,12 +248,15 @@ export function PersonalName({ address, phone: knownPhone }) {
   const { setName } = useBookActions();
   const cur = book.data?.names.get(address) || { name: '', phone: '' };
   const [ed, setEd] = useState(null);
+  const [note, setNote] = useState(false);
   if (!address || !book.data) return null;
   const locked = book.data.state !== 'ok';
+  // The lock explains itself in the note bar (A1's NoteBar) on a tap; a second tap hides it.
   const label = (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.muted }}>
-      <LockIcon size={14} color={C.muted} />Full name
-    </span>
+    <button type="button" onClick={() => setNote(!note)} aria-label="Who can read the full name" aria-pressed={note}
+      style={{ display: 'flex', alignItems: 'center', gap: 6, border: 0, background: 'none', padding: 0, color: C.muted, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>
+      <LockIcon size={14} color={note ? C.accent : C.muted} />Full name
+    </button>
   );
   const link = { border: 0, background: 'none', padding: 0, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', textAlign: 'right' };
   return (
@@ -264,8 +268,8 @@ export function PersonalName({ address, phone: knownPhone }) {
         ) : ed ? (
           <button type="button" onClick={() => setEd(null)} style={{ ...link, color: C.text }}>Close</button>
         ) : (
-          <button type="button" onClick={() => setEd({ name: cur.name, phone: cur.phone || knownPhone || '' })} style={{ ...link, color: cur.name ? C.text : C.accent }}>
-            {cur.name ? `${cur.name}${cur.phone ? ` · ${cur.phone}` : ''}` : 'Add'}
+          <button type="button" onClick={() => setEd({ name: cur.name, phone: cur.phone || knownPhone || '' })} aria-label={cur.name ? 'Change the full name' : 'Add a full name'} style={{ ...link, color: cur.name ? C.text : C.accent, display: 'flex', alignItems: 'center' }}>
+            {cur.name ? `${cur.name}${cur.phone ? ` · ${cur.phone}` : ''}` : <PlusIcon size={20} color={C.accent} />}
           </button>
         )}
       </div>
@@ -279,6 +283,7 @@ export function PersonalName({ address, phone: knownPhone }) {
           <Err e={setName.error} />
         </div>
       )}
+      {note && <NoteBar>Only your union's leaders can read the full name and phone. They are locked with the union key. The farm name is public.</NoteBar>}
     </div>
   );
 }
