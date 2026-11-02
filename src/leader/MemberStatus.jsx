@@ -30,7 +30,7 @@ import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
 import { PersonalName } from '../union/UnionCards';
 import { useSessionUntil } from '../stellar/session';
-import { useInviteLink, useKeypadMembers, useRecoverPhone } from '../keypad/hooks';
+import { markRecover, useInviteLink, useKeypadMembers, useRecoverPhone } from '../keypad/hooks';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -335,8 +335,8 @@ export default function MemberStatus({ id, go }) {
 }
 
 /** A lost keypad phone (2 Nov), all on G2: the button asks to send a new SMS link to the member's number; the new phone
- *  opens it and makes its key; the button then recovers it (the node's SMS key co-signs) and the new phone works after
- *  the union's wait. */
+ *  opens it and makes its key, and this leader's app then recovers the account by itself (no second confirm; the
+ *  node's SMS key co-signs); the button does it too if another phone sent the link. The new phone works after the wait. */
 function KeypadPhone({ address }) {
   const qc = useQueryClient();
   const k = (useKeypadMembers().data || []).find((x) => x.phone_type === 'keypad' && x.account && x.account === address);
@@ -354,17 +354,13 @@ function KeypadPhone({ address }) {
   const err = send.error || rec.error;
   return (
     <>
-      <CardButton onClick={r === 'pending' ? undefined : () => setAsk(true)} style={{ marginTop: 0 }}>{label}</CardButton>
+      <CardButton onClick={r === 'pending' ? undefined : r === 'needed' ? () => rec.mutate(undefined, { onSuccess: done }) : () => setAsk(true)} style={{ marginTop: 0 }}>{rec.isPending ? 'Recovering…' : label}</CardButton>
       {err && <Text style={{ color: C.coral }}>{err.message}</Text>}
-      {ask && (r === 'needed' ? (
-        <ConfirmCard title="Recover the member's account" ok={rec.isPending ? 'Recovering…' : 'Recover'} okDisabled={rec.isPending}
-          onCancel={() => setAsk(false)} onOk={() => rec.mutate(undefined, { onSuccess: done })}
-          warn="The new phone takes over the member's account after the union's wait. Until then the account signs nothing." />
-      ) : (
+      {ask && (
         <ConfirmCard title="Lost phone" ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending}
-          onCancel={() => setAsk(false)} onOk={() => send.mutate({ again: k.id }, { onSuccess: done })}
-          warn={`Send a new link by SMS to ${k.phone}? The member opens it on the new phone; then recover the member's account here.`} />
-      ))}
+          onCancel={() => setAsk(false)} onOk={() => send.mutate({ again: k.id }, { onSuccess: () => { markRecover(k.id); done(); } })}
+          warn={`Send a new link by SMS to ${k.phone}? Once the member opens it on the new phone, the member's account is recovered to it.`} />
+      )}
     </>
   );
 }
