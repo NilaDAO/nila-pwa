@@ -106,10 +106,6 @@ function Sent({ id, go }) {
             <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for the member' : 'The link no longer works: send it again')} />
             <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
             {m.account && <Step done={accountMade} title="Account made" sub={accountMade ? `${m.account.slice(0, 4)}…${m.account.slice(-4)}` : 'Making it…'} />}
-            {m.first_signer && m.signer && m.first_signer !== m.signer && (
-              // NOT BUILT (26 Oct): the recovery that puts the new phone's key on the account (SMS key + one leader).
-              <Notice kind="warn">This is a new phone. It reads the member's account, but cannot show a working QR until the account's key is recovered (not built yet).</Notice>
-            )}
             <Step done={!!m.job} title="Field points taken" sub={m.job ? `${(m.fields || []).length} field${(m.fields || []).length === 1 ? '' : 's'}` : 'On your phone, at the farm'} />
             <Notice kind="info">Pin Nila to the apps menu: on the member's phone, in the browser, Options → Pin to Apps Menu.</Notice>
           </>

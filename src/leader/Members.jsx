@@ -3,6 +3,7 @@
 // row per grower: her name and a summary (coral when a loan is overdue); a row, or her property on the map, opens G2
 // (#/members/<id>). No crop shares here (22 Oct): they belong under batches (the Harvests tab, later).
 // Data: src/leader/unionMembers.js.
+import { useContactBook } from '../union/hooks';
 import { useMemo, useState } from 'react';
 import { usePlanClient } from '../plan/hooks';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
@@ -41,11 +42,14 @@ export default function Members({ go }) {
   const { map } = useLeaderMap('members');
   // No S1 here (22 Oct): the card shows at once; grey rows until the first list, the phone's copy meanwhile.
   const waiting = !members.data;
+  // The leaders' contact book (1 Nov): the full name a leader gave the account, with the public farm name.
+  const book = useContactBook();
+  const personal = (m) => { const n = m.address && book.data?.names.get(m.address)?.name; return n ? `${n} · ${m.label}` : m.label; };
   // A pasted help QR or address finds the member by account (26 Oct).
   const needle = (addressFromQr(q.trim()) || q.trim()).toLowerCase();
   // A member holds a land title (24 Oct); people still onboarding (keypad link, fields sent, title on its way) are
   // listed under "Joining"; anyone else (no title and no onboarding, e.g. a test borrower) is not listed.
-  const match = (m) => !needle || [m.label, m.name, m.phone, m.address, ...m.lands.map(String)].some((v) => String(v || '').toLowerCase().includes(needle));
+  const match = (m) => !needle || [m.label, book.data?.names.get(m.address)?.name, m.name, m.phone, m.address, ...m.lands.map(String)].some((v) => String(v || '').toLowerCase().includes(needle));
   const joiningOf = (m) => !m.lands.length && (!!m.note || !!m.job || String(m.key).startsWith('keypad:'));
   const membersAll = all.filter((m) => m.lands.length);
   const list = membersAll.filter(match);
@@ -104,7 +108,7 @@ export default function Members({ go }) {
         {msg && <span style={{ color: C.coral, fontWeight: 700 }}>{msg}</span>}
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
           {list.slice(0, n).map((m, i) => (
-            <ListRow key={m.key} first={i === 0} title={m.label} sub={<span style={{ color: m.loans.some((x) => x.overdue) ? C.coral : C.muted }}>{summary(m)}</span>}
+            <ListRow key={m.key} first={i === 0} title={personal(m)} sub={<span style={{ color: m.loans.some((x) => x.overdue) ? C.coral : C.muted }}>{summary(m)}</span>}
               onClick={() => pick(m.key)} />
           ))}
           {waiting && <li><SkeletonRows rows={5} /></li>}

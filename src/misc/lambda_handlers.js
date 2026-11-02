@@ -23,7 +23,6 @@ const subsidize = async (chain,address) => {
   else {
       if(chain === '137' ){
         const provider = new ethers.JsonRpcProvider(process.env.RPC);
-        console.log('provider', provider)
         const network = await provider.getNetwork();
         // Optional: Test the connection
         const blockNumber = await provider.getBlockNumber();
@@ -58,6 +57,7 @@ const subsidize = async (chain,address) => {
   }; 
 }
 
+// 2 Nov: no key, salt, encrypted key or event (it carries the user attributes) is ever logged.
 const encryptPrivateKey = async (chain,salt) => {
   if (chain === '416002'){
     // generate algo account
@@ -82,10 +82,7 @@ const encryptPrivateKey = async (chain,salt) => {
     // generate eth account
     const account = ethers.Wallet.createRandom()
     const secretKey = account.privateKey
-    console.log('original private key', secretKey)
-    console.log('original salt', secretKey)
     const encryptedPrivateKey = AES.encrypt(secretKey, salt).toString()
-    console.log('ENCRYPTED ORIGINAL', encryptedPrivateKey)
     const address = account.address
     return {
       encryptedPrivateKey: encryptedPrivateKey,
@@ -96,19 +93,15 @@ const encryptPrivateKey = async (chain,salt) => {
 
 const re_encryptPrivateKey = async (ePK,salt,prevsalt) => {
   // decrypt the private key with the old salt
-  console.log('ENCRYPTED ORIGINAL', ePK, 'prevsalt', prevsalt)
   const decryptedBytes = AES.decrypt(ePK, prevsalt);
   const decryptedKey = decryptedBytes.toString(Utf8);
-  console.log('decryptedKey', decryptedKey)
   // encryp the pk with the new salt
   return AES.encrypt(decryptedKey, salt).toString()
 }
 
 const updateUserAttributes = async (encryptedPrivateKey,address,salt,userPoolId, userName) => {
   // Set custom attributes pk and enc_pk    
-  console.log('encryptedPrivateKey',encryptedPrivateKey);
   console.log('address',address);
-  console.log('salt',salt);
   console.log('userPoolId, userName', userPoolId, userName)
 
   try {
@@ -142,8 +135,6 @@ const updateUserAttributes = async (encryptedPrivateKey,address,salt,userPoolId,
 }
 
 exports.handler = async (event) => {
-  console.log('event', event);
-  console.log('Verify Auth Challenge Response event:', JSON.stringify(event));
   // confirms the OTP code
   // if SALTS are unequal, replace decryption code
 
@@ -164,8 +155,6 @@ exports.handler = async (event) => {
 
   const { userPoolId, userName } = event;
 
-  console.log('SaLTS',salt,'old:',prev_salt);
-  console.log('ePK at start',ePK);
 
   if (userAnswer === expectedAnswer) {
       event.response.answerCorrect = true;
@@ -188,7 +177,6 @@ exports.handler = async (event) => {
   } else if (salt !== prev_salt){
       console.log('ACCOUNT RECOVERY')
       const encryptedPrivateKey = await re_encryptPrivateKey(ePK,salt,prev_salt)
-      console.log('re-encrypted key', encryptedPrivateKey)
       // update new keys and account in user attributes
       await updateUserAttributes(encryptedPrivateKey,address,salt,userPoolId, userName)
   }

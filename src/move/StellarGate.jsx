@@ -12,6 +12,7 @@ import { useLeader, writeLeaderFlag } from '../shell/leader';
 import { UNIONS_ONE, saveUnionRecord } from '../register/Registration';
 import { useDataContext } from '../utils/NavigationContext';
 import { useNilaSigner } from '../wallet/signer';
+import { useStellarConfig } from '../stellar/hooks';
 import MoveFlow, { LeaderStart } from './MoveFlow';
 import Shell from '../shell/Shell';
 import RegFrame from '../register/RegFrame';
@@ -39,11 +40,16 @@ export default function StellarGate({ children }) {
   useEffect(() => { setMode(readMode(addr)); }, [addr]);
   const choose = (m) => { try { sessionStorage.setItem(modeKey(addr), m); } catch { /* private mode */ } setMode(m); };
 
-  // The leader flag: shell/leader.js (the RolesRegistry; the Init record only while it has not answered). A yes the
+  // The leader flag: shell/leader.js (the roles contract; the Init record only while it has not answered). A yes the
   // record lacks is written back with the union (as R9), a no corrects a record that says leader.
   const record = db?.union;
   const saveRecord = (l) => (record ? writeLeaderFlag(record)(l) : l ? saveUnionRecord(async () => true, UNIONS_ONE(), addr) : Promise.resolve());
-  const { leader } = useLeader(record?.address || UNIONS_ONE().polygon, addr, record?.leader, saveRecord);
+  // The Stellar app (chain 'stellar'): the Stellar roles contract for the member's account (2 Nov); a Polygon wallet
+  // keeps the Polygon RolesRegistry (the start choice and the old app's cash desk).
+  const { data: cfg } = useStellarConfig();
+  const stellar = db?.chain === 'stellar' ? { cfg, account: signer?.stellarAddress } : null;
+  // The Init record's flag came from Polygon at R9 or recovery, so the Stellar app waits for the chain instead (one read).
+  const { leader } = useLeader(record?.address || UNIONS_ONE().polygon, addr, stellar ? undefined : record?.leader, saveRecord, stellar);
 
   // Which app: shell/start.js.
   const open = appToOpen({ chain: db?.chain, signer: !!signer, leader, mode });

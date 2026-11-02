@@ -5,12 +5,16 @@ import { signedCall } from '../plan/api';
 export function keypadClient(signer) {
   const call = signedCall(signer);
   return {
-    add: ({ name, phone, phoneType, unionName, leaderName }) => call('POST', '/keypad/members',
-      { name, phone, phone_type: phoneType, union_name: unionName || '', leader_name: leaderName || '' }),
+    // account (2 Nov): a smartphone member's existing account moving to a keypad phone.
+    add: ({ name, phone, phoneType, unionName, leaderName, account }) => call('POST', '/keypad/members',
+      { name, phone, phone_type: phoneType, union_name: unionName || '', leader_name: leaderName || '', ...(account ? { account } : {}) }),
     sendAgain: (id) => call('POST', `/keypad/members/${id}/link`, {}),
     member: (id) => call('GET', `/keypad/members/${id}`),
     list: () => call('GET', '/keypad/members'),
     // 26 Oct: the leader's phone takes the keypad member's field points; they start the member's border job.
+    // 2 Nov: a lost phone. The node returns the leader's payload hash for recover_by_sms; the leader signs it.
+    recoverAsk: (id) => call('POST', `/keypad/members/${id}/recover`, {}),
+    recoverSign: (id, signature) => call('POST', `/keypad/members/${id}/recover/sign`, { signature }),
     points: (id, points) => call('POST', `/keypad/members/${id}/points`, { points }),
   };
 }
