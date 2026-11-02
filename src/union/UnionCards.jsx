@@ -2,7 +2,8 @@
 //  - Union signers: the union account's signers and threshold, read from the chain through the node; names from the
 //    contact book. "Change signers" stays an operator step (scripts/multisig in nila-integrations).
 //  - Contact book: make the union key, show it as a QR (face to face only) or scan it; a different key is shown.
-//  - Voucher prices: a signer proposes a new price an acre per machine type (all parts scaled alike); every open
+//  - Voucher prices: a signer proposes a new price an acre per machine type, part by part (driver, diesel, maintenance,
+//    insurance, depreciation, margin: machinery's RateParts, on-chain); every open
 //    proposal shows "n of 3 signed" and a Sign button for a signer who has not signed. The third signature sends it.
 // PersonalName: G2's personal name and phone for a member's address (the leaders' reference, not the farm name).
 import { useEffect, useState } from 'react';
@@ -10,7 +11,7 @@ import QRCode from 'qrcode';
 import { C, R } from '../shell/tokens';
 import CameraView from '../shell/CameraView';
 import { Card, CardButton, ConfirmCard, Row, Text, btn } from '../shell/SettingsParts';
-import { useRates, typeName } from '../machine/hooks';
+import { PARTS, useRates, typeName } from '../machine/hooks';
 import { useStellarConfig } from '../stellar/hooks';
 import { keyQr, loadKey, parseKeyQr } from './book';
 import { useBookActions, useContactBook, useMyKey, useProposalActions, useProposals, useUnionSigners } from './hooks';
@@ -100,26 +101,73 @@ export function ContactBookCard() {
   );
 }
 
-/** One proposal's line: "Tractor + rotavator ₹1,100 → ₹1,200 /acre", its signatures and the Sign button. */
+/** What a set_rate proposal changes, part by part: "Diesel ₹300 → ₹340". */
+function partChanges(now, parts) {
+  if (!parts) return [];
+  return PARTS.map(([k, label]) => {
+    const was = now ? Math.round(now.parts[k] || 0) : null;
+    const to = Math.round(Number(parts[k] || 0) / NIN);
+    return was === to ? null : `${label} ${was === null ? '' : `${inr(was)} → `}${inr(to)}`;
+  }).filter(Boolean);
+}
+
+/** One proposal: the machine, its new price an acre, the parts that change, its signatures and the Sign button. */
 function Proposal({ p, rates, signers, me, act }) {
   const a = p.args || {};
   const now = (rates || []).find((r) => r.type === Number(a.machine_type));
   const total = a.parts ? Object.values(a.parts).reduce((x, y) => x + Number(y), 0) / NIN : 0;
-  const what = p.fn === 'set_rate' ? `${typeName(Number(a.machine_type))}: ${now ? `${inr(now.total)} → ` : ''}${inr(total)} /acre`
+  // A set price shows what it was set to; an open one what it changes from today's price.
+  const from = now && p.status !== 'done' ? `${inr(now.total)} → ` : '';
+  const what = p.fn === 'set_rate' ? `${typeName(Number(a.machine_type))}: ${from}${inr(total)} /acre`
     : p.fn === 'set_crop_rate' ? `${typeName(Number(a.machine_type))}, crop ${a.crop_family}: ${a.parts ? `${inr(total)} /acre` : 'type price'}`
       : `Prepay share ${(Number(a.driver_bp) / 100).toFixed(0)}% of the driver`;
+  const changes = p.fn === 'set_rate' && p.status !== 'done' ? partChanges(now, a.parts) : [];
   const mine = signers?.signers.some((s) => s.key === me);
   const signed = p.signed.includes(me);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 0', borderTop: `1px solid ${C.raised}` }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 0', borderTop: `1px solid ${C.raised}` }}>
       <span style={{ fontWeight: 700, fontSize: 14 }}>{what}</span>
+      {changes.length > 0 && <Text>{changes.join(' · ')}</Text>}
       <Text>{p.status === 'open' || p.status === 'sending' ? `${p.signed.length} of ${signers?.threshold || 3} signed` : p.status === 'done' ? 'Signed and set' : p.status}
         {p.error && p.status === 'open' ? ` · last try failed: ${p.error.slice(0, 80)}` : ''}</Text>
       {p.status === 'open' && mine && (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           {!signed && <button type="button" onClick={() => act.sign.mutate(p)} disabled={act.sign.isPending}
             style={{ ...btn, flex: 1, background: C.accent, color: C.ink }}>{act.sign.isPending ? 'Signing…' : 'Sign'}</button>}
           {p.proposer === me && <button type="button" onClick={() => act.withdraw.mutate(p)} disabled={act.withdraw.isPending} style={{ ...btn, flex: 1 }}>Withdraw</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One machine type in the editor: its price an acre and, opened, its six parts as fields (whole rupees an acre). */
+function TypeEditor({ r, draft, open, onToggle, onPart }) {
+  const vals = Object.fromEntries(PARTS.map(([k]) => [k, draft?.[k] ?? String(Math.round(r.parts[k] || 0))]));
+  const total = PARTS.reduce((t, [k]) => t + Number(vals[k] || 0), 0);
+  const changed = !!draft && PARTS.some(([k]) => Number(vals[k] || 0) !== Math.round(r.parts[k] || 0));
+  return (
+    <div style={{ borderTop: `1px solid ${C.raised}` }}>
+      <button type="button" onClick={onToggle} aria-expanded={open} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        width: '100%', minHeight: 44, border: 0, background: 'none', padding: 0, color: C.text, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', textAlign: 'left' }}>
+        <span style={{ color: C.muted }}>{r.name}</span>
+        <span style={{ fontWeight: 700, color: changed ? C.accent : C.text }}>
+          {changed ? `${inr(r.total)} → ${inr(total)}` : inr(r.total)} /acre
+        </span>
+      </button>
+      {open && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: '0 0 12px' }}>
+          {PARTS.map(([k, label]) => {
+            const diff = Number(vals[k] || 0) !== Math.round(r.parts[k] || 0);
+            return (
+              <label key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: C.muted }}>
+                <span>{label}{diff ? ` (was ${inr(r.parts[k] || 0)})` : ''}</span>
+                <input inputMode="numeric" aria-label={`${r.name}: ${label} an acre`} value={vals[k]}
+                  onChange={(e) => onPart(k, e.target.value.replace(/[^\d]/g, ''))}
+                  style={{ ...field, width: '100%', textAlign: 'right', boxShadow: diff ? `inset 0 0 0 1px ${C.accent}` : 'none' }} />
+              </label>
+            );
+          })}
         </div>
       )}
     </div>
@@ -132,41 +180,44 @@ export function VoucherPricesCard() {
   const proposals = useProposals();
   const act = useProposalActions();
   const me = useMyKey();
-  const [edit, setEdit] = useState(null);       // type -> new price an acre (text)
+  const [edit, setEdit] = useState(null);       // type -> { part: whole rupees as text }
+  const [openType, setOpenType] = useState(null);
   const isSigner = !!signers.data?.signers.some((s) => s.key === me);
   const open = (proposals.data || []).filter((p) => p.status === 'open' || p.status === 'sending');
   const recent = (proposals.data || []).filter((p) => p.status === 'done').slice(0, 3);
-  const changed = edit ? (rates.data || []).filter((r) => edit[r.type] !== undefined && Number(edit[r.type]) > 0 && Math.round(Number(edit[r.type])) !== Math.round(r.total)) : [];
+  const partsOf = (r) => Object.fromEntries(PARTS.map(([k]) => [k, Number(edit?.[r.type]?.[k] ?? Math.round(r.parts[k] || 0))]));
+  const changed = edit ? (rates.data || []).filter((r) => edit[r.type] && PARTS.some(([k]) => partsOf(r)[k] !== Math.round(r.parts[k] || 0))) : [];
+  const valid = changed.every((r) => Object.values(partsOf(r)).reduce((a, b) => a + b, 0) > 0);
+  const setPart = (type, k, v) => setEdit({ ...edit, [type]: { ...(edit[type] || {}), [k]: v } });
   const send = async () => {
     for (const r of changed) {
-      const f = Number(edit[r.type]) / r.total;
-      const parts = Object.fromEntries(Object.entries(r.parts).map(([k, v]) => [k, String(Math.round(v * f * NIN))]));
-      for (const k of ['depreciation', 'insurance', 'margin']) if (!parts[k]) parts[k] = '0';
+      // A part not typed keeps its exact on-chain value (paise included); a typed part is whole rupees.
+      const parts = Object.fromEntries(PARTS.map(([k]) => [k, edit[r.type]?.[k] !== undefined
+        ? String(Number(edit[r.type][k] || 0) * NIN) : String(Math.round((r.parts[k] || 0) * NIN))]));
       // eslint-disable-next-line no-await-in-loop
       await act.propose.mutateAsync({ contract: 'machinery', fn: 'set_rate', args: { machine_type: r.type, parts } });
     }
     setEdit(null);
+    setOpenType(null);
   };
   return (
     <Card title="Voucher prices">
-      <Text>The price of an acre per machine. A new price needs {signers.data?.threshold || 3} signers of the union.</Text>
+      <Text>The price of an acre per machine, built from its parts. A new price needs {signers.data?.threshold || 3} signers of the union.</Text>
       <div style={{ height: 1, background: C.raised, margin: '4px 0' }} />
       <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>Machine prices</span>
       {rates.isLoading && <Text>…</Text>}
+      {edit && <Text>Tap a machine to change its parts.</Text>}
       {(rates.data || []).map((r) => (edit ? (
-        <div key={r.type} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44 }}>
-          <span style={{ color: C.muted, fontSize: 14 }}>{r.name}</span>
-          <input inputMode="numeric" aria-label={`${r.name} price an acre`} value={edit[r.type] ?? String(Math.round(r.total))}
-            onChange={(e) => setEdit({ ...edit, [r.type]: e.target.value.replace(/[^\d]/g, '') })} style={{ ...field, width: 110, textAlign: 'right' }} />
-        </div>
+        <TypeEditor key={r.type} r={r} draft={edit[r.type]} open={openType === r.type}
+          onToggle={() => setOpenType(openType === r.type ? null : r.type)} onPart={(k, v) => setPart(r.type, k, v)} />
       ) : <Row key={r.type} k={r.name} v={`${inr(r.total)} /acre`} />))}
       {rates.isSuccess && !rates.data.length && <Text>No machine prices set for the union yet.</Text>}
       {edit ? (
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <button type="button" onClick={() => setEdit(null)} style={{ ...btn, flex: 1 }}>Cancel</button>
-          <button type="button" onClick={send} disabled={!changed.length || act.propose.isPending}
-            style={{ ...btn, flex: 1, background: C.accent, color: C.ink, opacity: changed.length ? 1 : 0.5 }}>
-            {act.propose.isPending ? 'Proposing…' : `Propose ${changed.length || ''}`.trim()}
+          <button type="button" onClick={() => { setEdit(null); setOpenType(null); }} style={{ ...btn, flex: 1 }}>Cancel</button>
+          <button type="button" onClick={send} disabled={!changed.length || !valid || act.propose.isPending}
+            style={{ ...btn, flex: 1, background: C.accent, color: C.ink, opacity: changed.length && valid ? 1 : 0.5 }}>
+            {act.propose.isPending ? 'Proposing…' : changed.length > 1 ? `Propose ${changed.length} prices` : 'Propose'}
           </button>
         </div>
       ) : (
