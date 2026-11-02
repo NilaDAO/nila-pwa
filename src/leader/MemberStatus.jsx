@@ -350,20 +350,20 @@ function KeypadPhone({ address }) {
   const waiting = r !== 'needed' && r !== 'pending' && l.live && !l.used;
   const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const label = r === 'pending' ? `Phone recovery waiting · works from ${when(k.recovery.at)}`
-    : r === 'needed' ? 'Recover this phone' : waiting ? 'SMS sent · waiting for the new phone' : 'Lost phone · recover it';
+    : r === 'needed' ? 'Recover the member\'s account' : waiting ? 'SMS sent · waiting for the new phone' : 'Lost phone · recover it';
   const err = send.error || rec.error;
   return (
     <>
       <CardButton onClick={r === 'pending' ? undefined : () => setAsk(true)} style={{ marginTop: 0 }}>{label}</CardButton>
       {err && <Text style={{ color: C.coral }}>{err.message}</Text>}
       {ask && (r === 'needed' ? (
-        <ConfirmCard title="Recover this phone" ok={rec.isPending ? 'Recovering…' : 'Recover'} okDisabled={rec.isPending}
+        <ConfirmCard title="Recover the member's account" ok={rec.isPending ? 'Recovering…' : 'Recover'} okDisabled={rec.isPending}
           onCancel={() => setAsk(false)} onOk={() => rec.mutate(undefined, { onSuccess: done })}
           warn="The new phone takes over the member's account after the union's wait. Until then the account signs nothing." />
       ) : (
         <ConfirmCard title="Lost phone" ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending}
           onCancel={() => setAsk(false)} onOk={() => send.mutate({ again: k.id }, { onSuccess: done })}
-          warn={`Send a new link by SMS to ${k.phone}? The member opens it on the new phone; then recover the phone here.`} />
+          warn={`Send a new link by SMS to ${k.phone}? The member opens it on the new phone; then recover the member's account here.`} />
       ))}
     </>
   );
