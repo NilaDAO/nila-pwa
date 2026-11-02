@@ -30,7 +30,7 @@ import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
 import { PersonalName } from '../union/UnionCards';
 import { useSessionUntil } from '../stellar/session';
-import { useKeypadMembers } from '../keypad/hooks';
+import { useInviteLink, useKeypadMembers, useRecoverPhone } from '../keypad/hooks';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -327,23 +327,45 @@ export default function MemberStatus({ id, go }) {
           <Row k="Record" v={<span style={{ color: C.accent }}>{`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`}</span>} />
         </Section>
       )}
-      <KeypadPhone address={m.address} go={go} />
+      <KeypadPhone address={m.address} />
       <RemoveMember m={m} inv={inv} go={go} />
       </div>
     </MapCard>
   );
 }
 
-/** A keypad member's phone (2 Nov): a lost phone is recovered on the member's L14 page (send the link again, the new
- *  phone opens it, Recover this phone); the recovery state comes with the keypad list once the phone is a new one. */
-function KeypadPhone({ address, go }) {
+/** A lost keypad phone (2 Nov), all on G2: the button asks to send a new SMS link to the member's number; the new phone
+ *  opens it and makes its key; the button then recovers it (the node's SMS key co-signs) and the new phone works after
+ *  the union's wait. */
+function KeypadPhone({ address }) {
+  const qc = useQueryClient();
   const k = (useKeypadMembers().data || []).find((x) => x.phone_type === 'keypad' && x.account && x.account === address);
+  const send = useInviteLink();
+  const rec = useRecoverPhone(k?.id);
+  const [ask, setAsk] = useState(false);
   if (!k) return null;
+  const done = () => { setAsk(false); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); };
   const r = k.recovery?.state;
+  const l = k.link || {};
+  const waiting = r !== 'needed' && r !== 'pending' && l.live && !l.used;
+  const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const label = r === 'pending' ? `Phone recovery waiting · works from ${when(k.recovery.at)}`
+    : r === 'needed' ? 'Recover this phone' : waiting ? 'SMS sent · waiting for the new phone' : 'Lost phone · recover it';
+  const err = send.error || rec.error;
   return (
-    <CardButton onClick={() => go(`tasks/member/${k.id}/recover`)} style={{ marginTop: 0 }}>
-      {r === 'needed' ? 'Recover this phone' : r === 'pending' ? 'Phone recovery waiting' : 'Lost phone · recover it'}
-    </CardButton>
+    <>
+      <CardButton onClick={r === 'pending' ? undefined : () => setAsk(true)} style={{ marginTop: 0 }}>{label}</CardButton>
+      {err && <Text style={{ color: C.coral }}>{err.message}</Text>}
+      {ask && (r === 'needed' ? (
+        <ConfirmCard title="Recover this phone" ok={rec.isPending ? 'Recovering…' : 'Recover'} okDisabled={rec.isPending}
+          onCancel={() => setAsk(false)} onOk={() => rec.mutate(undefined, { onSuccess: done })}
+          warn="The new phone takes over the member's account after the union's wait. Until then the account signs nothing." />
+      ) : (
+        <ConfirmCard title="Lost phone" ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending}
+          onCancel={() => setAsk(false)} onOk={() => send.mutate({ again: k.id }, { onSuccess: done })}
+          warn={`Send a new link by SMS to ${k.phone}? The member opens it on the new phone; then recover the phone here.`} />
+      ))}
+    </>
   );
 }
 

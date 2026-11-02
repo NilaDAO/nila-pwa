@@ -19,7 +19,7 @@ import MapCard from '../shell/MapCard';
 import { Card, CardButton, Row, Text } from '../shell/SettingsParts';
 import { useUnionInfo } from '../shell/SettingsParts';
 import { Notice, Primary } from '../plan/ui';
-import { useInviteLink, useKeypadClient, useKeypadMember, useRecoverPhone } from '../keypad/hooks';
+import { useInviteLink, useKeypadClient, useKeypadMember } from '../keypad/hooks';
 import { useBorderClient, useSendFieldPoints } from '../border/hooks';
 import CameraView from '../shell/CameraView';
 import { accountOfQr, memberOfQr } from '../stellar/session';
@@ -83,54 +83,6 @@ function useKeypadAccount(m) {
       .then(() => deployed.refetch()).catch((e) => { console.error('[L14] account not created', e); tried.current = undefined; });
   }, [m, deployed.data, s, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
   return !!deployed.data;
-}
-
-const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-
-/** tasks/member/<id>/recover (2 Nov), from G2: a lost keypad phone in two steps. 1. A new SMS link to the member's
- *  number; the new phone opens it and makes its key. 2. The leader recovers it (the node's SMS key co-signs); the new
- *  phone works after the union's wait (the account is frozen until then). */
-export function RecoverPhone({ id, go }) {
-  const q = useKeypadMember(id);
-  const send = useInviteLink();
-  const rec = useRecoverPhone(id);
-  const m = q.data;
-  const back = () => window.history.back();
-  const body = () => {
-    if (!m) return <Text>{q.error ? q.error.message : '…'}</Text>;
-    const r = m.recovery?.state;
-    const l = m.link || {};
-    const newPhone = r === 'needed' || r === 'pending';
-    const linkSub = newPhone ? `Opened ${time(m.device)}`
-      : l.live && !l.used ? `Sent ${time(l.sent)} · open it on the new phone within 30 minutes` : 'Send it to the member\'s number';
-    return (
-      <Card label="Recover a phone">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 16, lineHeight: 1.3, marginBottom: 6 }}>
-          <span style={{ fontWeight: 700 }}>{m.name}</span><span style={{ color: C.muted }}>{phoneText(m.phone)}</span>
-        </div>
-        <Step done={newPhone} title="1. New link opened on the new phone" sub={linkSub} />
-        {!newPhone && (
-          <CardButton onClick={send.isPending ? undefined : () => send.mutate({ again: m.id })}>
-            {send.isPending ? 'Sending…' : l.live && !l.used ? 'Send the link again' : 'Send the link'}
-          </CardButton>
-        )}
-        {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
-        <Step done={r === 'pending'} title="2. Recover the phone"
-          sub={r === 'pending' ? `The new phone works from ${when(m.recovery.at)}` : newPhone ? '' : 'After step 1'} />
-        {r === 'needed' && (
-          <CardButton onClick={rec.isPending ? undefined : () => rec.mutate()}>{rec.isPending ? 'Recovering…' : 'Recover this phone'}</CardButton>
-        )}
-        {r === 'other' && <Notice kind="warn">Another recovery is waiting for this account. The union's signers cancel it first.</Notice>}
-        {rec.error && <Text style={{ color: C.coral }}>{rec.error.message}</Text>}
-      </Card>
-    );
-  };
-  return (
-    <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
-      header={{ title: 'Recover a phone', onBack: back, onSettings: () => go('settings') }}>
-      {body()}
-    </MapCard>
-  );
 }
 
 /** #sent: her progress, polled while the leader is with her. */

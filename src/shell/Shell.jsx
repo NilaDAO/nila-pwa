@@ -34,7 +34,7 @@ import Settings from './Settings';
 import LeaderTasks, { PlanFor } from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
-import AddMember, { KeypadPoints, LeaderOwnPoints, RecoverPhone, SmartphonePoints } from '../leader/AddMember';
+import AddMember, { KeypadPoints, LeaderOwnPoints, SmartphonePoints } from '../leader/AddMember';
 import { KeypadAccounts } from '../keypad/hooks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { onboarded } from '../register/Registration';
@@ -68,7 +68,7 @@ function Later({ title, step }) {
 // tasks/border/<job id>[/<field>]: L2a–L4 for a leader.
 const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+|add))?/) || [];
 // tasks/member[/<id>]: L14 Add a member and its #sent progress (P8).
-const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?(\/points|\/recover)?$/);
+const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?(\/points)?$/);
 
 /** A member's crop plan, made by the leader with the member (assist mode, 26 Oct): #/memberplan/<route>. */
 function MemberPlan({ route }) {
@@ -87,7 +87,6 @@ function TasksView({ leader, go }) {
   if (leader && window.location.hash.startsWith('#/tasks/planfor')) return <PlanFor go={go} />;
   const member = readMember();
   if (leader && member && member[1] === 'qr' && member[2]) return <SmartphonePoints go={go} />;
-  if (leader && member && member[2] === '/recover') return <RecoverPhone key={member[1]} id={member[1]} go={go} />;
   if (leader && member && member[2]) return <KeypadPoints key={member[1]} id={member[1]} go={go} />;
   if (leader && member) return <AddMember key={member[1] || 'new'} id={member[1]} go={go} />;
   if (leader) return <LeaderTasks go={go} />;
