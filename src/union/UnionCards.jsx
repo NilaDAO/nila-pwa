@@ -16,7 +16,7 @@ import { ChevronIcon, LockIcon, MachineryTile } from '../shell/icons';
 import Segmented from '../shell/Segmented';
 import { NoteBar } from '../loan/AssetParts';
 import { Card, CardButton, ConfirmCard, Row, Text, btn } from '../shell/SettingsParts';
-import { MAX_UNION_TYPES, PARTS, TYPES, useRates, typeName } from '../machine/hooks';
+import { MAX_UNION_TYPES, PARTS, TYPES, VOUCHER_CATEGORIES, useRates, typeName } from '../machine/hooks';
 import { useStellarConfig } from '../stellar/hooks';
 import { keyQr, loadKey, parseKeyQr } from './book';
 import { useBookActions, useContactBook, useMyKey, useProposalActions, useProposals, useUnionSigners } from './hooks';
@@ -83,7 +83,6 @@ export function SignersCard() {
   const d = signers.data;
   return (
     <Card title="Union signers">
-      <Text>{d ? `${d.threshold} of ${d.signers.length}` : '3 of 5'} must sign: a new leader, the voucher price list and a change of signers.</Text>
       {signers.isLoading && <Text>…</Text>}
       <div style={{ display: 'flex', flexDirection: 'column', margin: '8px 0' }}>
         {(d?.signers || []).map((s) => <SignerRow key={s.key} s={s} me={me} book={book.data} note={note} onLock={() => setNote(!note)} />)}
@@ -236,22 +235,34 @@ function MachineSlide({ r, p, signers, me, act }) {
 }
 
 /** A drop-down that opens inside the card (not the browser's own pop-up): the choice and a chevron; a tap lists the
- *  options under it, a pick closes it. */
+ *  voucher categories under it (VOUCHER_CATEGORIES: Mechanisation's free machine types to pick; the other categories as
+ *  samples, greyed, not on-chain yet), a pick closes it. */
 function TypePicker({ value, options, onChange }) {
   const [open, setOpen] = useState(false);
   const row = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 44, border: 0, background: 'none',
     padding: '0 14px', boxSizing: 'border-box', color: C.text, fontFamily: 'inherit', fontSize: 14, textAlign: 'left', cursor: 'pointer' };
   return (
     <div style={{ background: C.raised, borderRadius: 12, overflow: 'hidden' }}>
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Machine type" style={{ ...row, fontWeight: 700, color: value ? C.text : C.muted }}>
-        <span>{value ? typeName(Number(value)) : 'Choose a machine'}</span>
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Voucher type" style={{ ...row, fontWeight: 700, color: value ? C.text : C.muted }}>
+        <span>{value ? typeName(Number(value)) : 'Choose a voucher'}</span>
         <span style={{ display: 'flex', transform: open ? 'rotate(-90deg)' : 'rotate(90deg)' }}><ChevronIcon color={C.muted} /></span>
       </button>
       {open && (
-        <div role="listbox" aria-label="Machine types" style={{ maxHeight: 264, overflowY: 'auto', borderTop: `1px solid ${C.ink}` }}>
-          {options.map((t) => (
-            <button key={t} type="button" role="option" aria-selected={String(t) === String(value)} onClick={() => { onChange(String(t)); setOpen(false); }}
-              style={{ ...row, fontWeight: String(t) === String(value) ? 700 : 400 }}>{typeName(t)}</button>
+        <div role="listbox" aria-label="Voucher types" style={{ maxHeight: 320, overflowY: 'auto', borderTop: `1px solid ${C.ink}` }}>
+          {VOUCHER_CATEGORIES.map((cat) => (
+            <div key={cat.name} role="group" aria-label={cat.name}>
+              <div style={{ ...row, cursor: 'default', minHeight: 32, fontSize: 12, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                <span>{cat.name}</span>{!cat.onChain && <span style={{ textTransform: 'none', fontWeight: 400 }}>not on-chain yet</span>}
+              </div>
+              {cat.onChain
+                ? options.map((t) => (
+                  <button key={t} type="button" role="option" aria-selected={String(t) === String(value)} onClick={() => { onChange(String(t)); setOpen(false); }}
+                    style={{ ...row, fontWeight: String(t) === String(value) ? 700 : 400 }}>{typeName(t)}</button>
+                ))
+                : cat.items.map((x) => (
+                  <div key={x} role="option" aria-disabled="true" aria-selected="false" style={{ ...row, cursor: 'default', color: '#475569' }}>{x}</div>
+                ))}
+            </div>
           ))}
         </div>
       )}

@@ -28,6 +28,16 @@ export const TYPE_NAMES = {
   19: 'Drone sprayer', 20: 'Laser land leveller', 21: 'Tractor + mulcher', 22: 'Groundnut digger', 23: 'Sugarcane harvester',
   24: 'Baler',
 };
+/** The voucher categories of LS Add a voucher (2 Nov). Only Mechanisation exists on-chain (machinery prices an acre
+ *  of machine work); the other categories are samples of what the union could offer, not on-chain yet: they need their
+ *  own voucher contract (input prices, R57), so the app lists them and does not let a signer propose them. */
+export const VOUCHER_CATEGORIES = [
+  { name: 'Mechanisation', onChain: true },
+  { name: 'Seeds', items: ['Paddy seed (certified)', 'Maize hybrid seed', 'Groundnut seed', 'Black gram seed', 'Cotton seed'] },
+  { name: 'Storage', items: ['Hermetic grain bags', 'Warehouse space', 'Cold storage'] },
+  { name: 'Fertilisers', items: ['Urea', 'DAP', 'Potash (MOP)', 'Vermicompost', 'Micronutrient mix'] },
+  { name: 'Pesticides', items: ['Neem oil', 'Trichoderma (bio-fungicide)', 'Herbicide', 'Insecticide spray'] },
+];
 /** The standard machine types, in order (the app's catalogue; the contract keeps only the number). */
 export const TYPES = Object.keys(TYPE_NAMES).map(Number);
 export const typeName = (t) => TYPE_NAMES[t] || `Machine type ${t}`;
