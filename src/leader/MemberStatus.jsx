@@ -232,7 +232,6 @@ export default function MemberStatus({ id, go }) {
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
       </div>
-      <KeypadPhone address={m.address} go={go} />
       {m.recordHash && !m.shares.length && (
         // The member's crop plan (26 Oct): made with the member without a session; the member's QR accepts it at the end.
         <Section title="Crop plan" right={helpUntil ? `QR scanned · until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}>
@@ -328,6 +327,7 @@ export default function MemberStatus({ id, go }) {
           <Row k="Record" v={<span style={{ color: C.accent }}>{`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`}</span>} />
         </Section>
       )}
+      <KeypadPhone address={m.address} go={go} />
       <RemoveMember m={m} inv={inv} go={go} />
       </div>
     </MapCard>
@@ -340,14 +340,10 @@ function KeypadPhone({ address, go }) {
   const k = (useKeypadMembers().data || []).find((x) => x.phone_type === 'keypad' && x.account && x.account === address);
   if (!k) return null;
   const r = k.recovery?.state;
-  const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   return (
-    <Section title="Keypad phone" right={r === 'pending' ? 'Recovery waiting' : r === 'needed' ? 'New phone' : ''}>
-      {r === 'pending' && <Row k="New phone works from" v={when(k.recovery.at)} />}
-      <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`tasks/member/${k.id}`)}>
-        {r === 'needed' ? 'Recover this phone' : r === 'pending' ? 'Open the phone\'s page' : 'Lost phone · recover it'}
-      </button>
-    </Section>
+    <CardButton onClick={() => go(`tasks/member/${k.id}`)} style={{ marginTop: 0 }}>
+      {r === 'needed' ? 'Recover this phone' : r === 'pending' ? 'Phone recovery waiting' : 'Lost phone · recover it'}
+    </CardButton>
   );
 }
 
