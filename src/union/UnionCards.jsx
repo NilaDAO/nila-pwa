@@ -289,7 +289,6 @@ function MachineSlide({ r, p, signers, me, act }) {
           {newTotal !== null && newTotal !== r.total && r.total > 0
             ? <><span style={{ ...slideBig, color: C.muted, textDecoration: 'line-through', fontSize: 20 }}>{inr(r.total)}</span><span style={slideBig}>{inr(newTotal)}</span></>
             : <span style={slideBig}>{inr(newTotal ?? r.total)}</span>}
-          <span style={{ fontSize: 14, color: C.muted }}>an acre</span>
         </span>
       </div>
       <div style={{ display: draft ? 'grid' : 'flex', gridTemplateColumns: '1fr 1fr', flexDirection: 'column', gap: draft ? 8 : 0 }}>
@@ -315,6 +314,7 @@ function MachineSlide({ r, p, signers, me, act }) {
           ) : inr(to)} />;
         })}
       </div>
+      <span style={{ fontSize: 12, color: C.muted, textAlign: 'right' }}>All prices per acre</span>
       {p && (
         <>
           <Text>{p.status === 'sending' ? 'Sending…' : `${p.signed.length} of ${signers?.threshold || 3} signed`}
@@ -403,7 +403,7 @@ function AddMachineSlide({ priced, pending, signers, me, act }) {
               {type && (
                 <>
                   <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 8 }}>
-                    <span style={slideBig}>{inr(total)}</span><span style={{ fontSize: 14, color: C.muted }}>an acre</span>
+                    <span style={slideBig}>{inr(total)}</span>
                   </span>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     {PARTS.map(([k, label]) => (
@@ -414,6 +414,7 @@ function AddMachineSlide({ priced, pending, signers, me, act }) {
                       </label>
                     ))}
                   </div>
+                  <span style={{ fontSize: 12, color: C.muted, textAlign: 'right' }}>All prices per acre</span>
                   <button type="button" onClick={propose} disabled={total <= 0 || act.propose.isPending}
                     style={{ ...btn, background: C.accent, color: C.ink, opacity: total > 0 ? 1 : 0.5 }}>{act.propose.isPending ? 'Proposing…' : 'Propose'}</button>
                 </>
