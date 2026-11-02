@@ -8,7 +8,7 @@
 import MapCard from '../shell/MapCard';
 import { useStellarConfig } from '../stellar/hooks';
 import { useLpStatus } from '../anchor/hooks';
-import { ContactBookCard, SignersCard, VoucherPricesCard } from '../union/UnionCards';
+import { ContactBookCard, SignersCard, VoucherPrices } from '../union/UnionCards';
 import { C, FONT, R } from '../shell/tokens';
 import { ChevronIcon } from '../shell/icons';
 import { AccountCard, Card, CardButton, NotificationsCard, ResetCard, SwitchRow, UnionCard } from '../shell/SettingsParts';
@@ -39,7 +39,7 @@ export default function LeaderSettings({ onBack, onIdCheck, onIdLeader, onOffers
 
       <SignersCard />
       <ContactBookCard />
-      <VoucherPricesCard />
+      <VoucherPrices />
 
       {cfg?.anchor_url && lp.data?.member && (
         <Card title="Liquidity provider">
