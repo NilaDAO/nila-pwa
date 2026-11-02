@@ -87,20 +87,49 @@ function useKeypadAccount(m) {
 
 const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-/** A lost keypad phone (executive decision 2 Nov): the new phone opened the newest SMS link and has its own key; one
- *  leader recovers it with the node's SMS key. It works after the union's wait (the account is frozen until then). */
-function Recovery({ m }) {
-  const rec = useRecoverPhone(m.id);
-  const r = m.recovery;
-  if (!r || r.state === 'ok') return null;
-  if (r.state === 'pending') return <Step title="Recovery waiting" sub={`This phone works from ${when(r.at)}`} />;
-  if (r.state === 'other') return <Notice kind="warn">Another recovery is waiting for this account. The union's signers cancel it first.</Notice>;
+/** tasks/member/<id>/recover (2 Nov), from G2: a lost keypad phone in two steps. 1. A new SMS link to the member's
+ *  number; the new phone opens it and makes its key. 2. The leader recovers it (the node's SMS key co-signs); the new
+ *  phone works after the union's wait (the account is frozen until then). */
+export function RecoverPhone({ id, go }) {
+  const q = useKeypadMember(id);
+  const send = useInviteLink();
+  const rec = useRecoverPhone(id);
+  const m = q.data;
+  const back = () => window.history.back();
+  const body = () => {
+    if (!m) return <Text>{q.error ? q.error.message : '…'}</Text>;
+    const r = m.recovery?.state;
+    const l = m.link || {};
+    const newPhone = r === 'needed' || r === 'pending';
+    const linkSub = newPhone ? `Opened ${time(m.device)}`
+      : l.live && !l.used ? `Sent ${time(l.sent)} · open it on the new phone within 30 minutes` : 'Send it to the member\'s number';
+    return (
+      <Card label="Recover a phone">
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 16, lineHeight: 1.3, marginBottom: 6 }}>
+          <span style={{ fontWeight: 700 }}>{m.name}</span><span style={{ color: C.muted }}>{phoneText(m.phone)}</span>
+        </div>
+        <Step done={newPhone} title="1. New link opened on the new phone" sub={linkSub} />
+        {!newPhone && (
+          <CardButton onClick={send.isPending ? undefined : () => send.mutate({ again: m.id })}>
+            {send.isPending ? 'Sending…' : l.live && !l.used ? 'Send the link again' : 'Send the link'}
+          </CardButton>
+        )}
+        {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
+        <Step done={r === 'pending'} title="2. Recover the phone"
+          sub={r === 'pending' ? `The new phone works from ${when(m.recovery.at)}` : newPhone ? '' : 'After step 1'} />
+        {r === 'needed' && (
+          <CardButton onClick={rec.isPending ? undefined : () => rec.mutate()}>{rec.isPending ? 'Recovering…' : 'Recover this phone'}</CardButton>
+        )}
+        {r === 'other' && <Notice kind="warn">Another recovery is waiting for this account. The union's signers cancel it first.</Notice>}
+        {rec.error && <Text style={{ color: C.coral }}>{rec.error.message}</Text>}
+      </Card>
+    );
+  };
   return (
-    <>
-      <Notice kind="warn">This is a new phone. It cannot sign for the member until you recover it.</Notice>
-      {rec.error && <Text style={{ color: C.coral }}>{rec.error.message}</Text>}
-      <CardButton onClick={rec.isPending || !m.device ? undefined : () => rec.mutate()}>{rec.isPending ? 'Recovering…' : 'Recover this phone'}</CardButton>
-    </>
+    <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
+      header={{ title: 'Recover a phone', onBack: back, onSettings: () => go('settings') }}>
+      {body()}
+    </MapCard>
   );
 }
 
@@ -125,7 +154,6 @@ function Sent({ id, go }) {
             <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for the member' : 'The link no longer works: send it again')} />
             <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
             {m.account && <Step done={accountMade} title="Account made" sub={accountMade ? `${m.account.slice(0, 4)}…${m.account.slice(-4)}` : 'Making it…'} />}
-            <Recovery m={m} />
             <Step done={!!m.job} title="Field points taken" sub={m.job ? `${(m.fields || []).length} field${(m.fields || []).length === 1 ? '' : 's'}` : 'On your phone, at the farm'} />
             <Notice kind="info">Pin Nila to the apps menu: on the member's phone, in the browser, Options → Pin to Apps Menu.</Notice>
           </>

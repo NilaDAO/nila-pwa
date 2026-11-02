@@ -341,7 +341,7 @@ function KeypadPhone({ address, go }) {
   if (!k) return null;
   const r = k.recovery?.state;
   return (
-    <CardButton onClick={() => go(`tasks/member/${k.id}`)} style={{ marginTop: 0 }}>
+    <CardButton onClick={() => go(`tasks/member/${k.id}/recover`)} style={{ marginTop: 0 }}>
       {r === 'needed' ? 'Recover this phone' : r === 'pending' ? 'Phone recovery waiting' : 'Lost phone · recover it'}
     </CardButton>
   );
