@@ -485,13 +485,15 @@ export function PersonalName({ address, phone: knownPhone }) {
   const book = useContactBook();
   const cur = book.data?.names.get(address) || { name: '', phone: '' };
   const [ed, setEd] = useState(null);
+  const [showEdit, setShowEdit] = useState(false);
   const [note, setNote] = useState(false);
   if (!address || !book.data) return null;
   const locked = book.data.state !== 'ok';
   // The lock explains itself in the note bar (A1's NoteBar) on a tap; a second tap hides it.
   const label = (
     <button type="button" onClick={() => setNote(!note)} aria-label="Who can read the full name" aria-pressed={note}
-      style={{ display: 'flex', alignItems: 'center', gap: 6, border: 0, background: 'none', padding: 0, color: C.muted, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>
+      style={{ display: 'flex', alignItems: 'center', gap: 6, border: 0, background: 'none', padding: 0, color: C.muted, fontFamily: 'inherit', fontSize: 14,
+        cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
       <LockIcon size={14} color={note ? C.text : C.muted} />Full name
     </button>
   );
@@ -502,14 +504,24 @@ export function PersonalName({ address, phone: knownPhone }) {
         {locked ? (
           <span style={{ color: C.muted, textAlign: 'right' }}>{book.data.state === 'mismatch' ? 'Union key does not match' : 'No union key on this phone'}</span>
         ) : (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {cur.name && <span style={{ fontWeight: 700, textAlign: 'right' }}>{`${cur.name}${cur.phone ? ` · ${cur.phone}` : ''}`}</span>}
-            <AddToggle on={!!ed} label={cur.name ? 'Change the full name' : 'Add a full name'}
-              onToggle={() => setEd(ed ? null : { name: cur.name, phone: cur.phone || knownPhone || '' })} />
+          // One line, the name only (the phone is in the fields); a name shows no +: a tap on it brings the edit icon (as
+          // the signer rows).
+          <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            {cur.name && (
+              <button type="button" onClick={() => !ed && setShowEdit(!showEdit)} style={{ border: 0, background: 'none', padding: 0, color: C.text,
+                fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                {cur.name}
+              </button>
+            )}
+            {(!cur.name || showEdit || ed) && (
+              <Segmented icon width="hug" label={ed ? 'Close' : cur.name ? 'Change the full name' : 'Add a full name'} value={ed ? 'x' : null}
+                onChange={() => { setEd(ed ? null : { name: cur.name, phone: cur.phone || knownPhone || '' }); if (ed) setShowEdit(false); }}
+                options={[['x', ed ? cross : cur.name ? pencil : plus, ed ? 'Close' : 'Add a full name']]} />
+            )}
           </span>
         )}
       </div>
-      {ed && <NameFields address={address} ed={ed} setEd={setEd} />}
+      {ed && <NameFields address={address} ed={ed} setEd={(v) => { setEd(v); if (!v) setShowEdit(false); }} />}
       {note && <NoteBar>{NOTE}</NoteBar>}
     </div>
   );
