@@ -29,9 +29,10 @@ const field = { height: 44, borderRadius: 12, border: 0, background: C.raised, c
 const Err = ({ e }) => (e ? <span style={{ color: C.coral, fontSize: 14 }}>{e.message || String(e)}</span> : null);
 
 const plus = <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>;
-/** + as the Cash tab's ↓/↑ control (C3, Segmented icon): selected while the fields are open; a second tap closes them. */
+/** + as the Cash tab's ↓/↑ control (C3, Segmented icon); while the fields are open it is selected and shows ×, a tap closes them. */
+const cross = <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>;
 const AddToggle = ({ on, onToggle, label }) => (
-  <Segmented icon width="hug" label={label} value={on ? 'add' : null} onChange={onToggle} options={[['add', plus, label]]} />
+  <Segmented icon width="hug" label={on ? 'Close' : label} value={on ? 'add' : null} onChange={onToggle} options={[['add', on ? cross : plus, on ? 'Close' : label]]} />
 );
 const NOTE = "Only your union's leaders can read the full name and phone. They are locked with the union key. The farm name is public.";
 
@@ -62,9 +63,9 @@ function SignerRow({ s, me, book, onLock, note }) {
         <button type="button" onClick={onLock} aria-label="Who can read the names" aria-pressed={note} style={{ display: 'flex', alignItems: 'center', gap: 6,
           border: 0, background: 'none', padding: 0, color: cur.name ? C.text : C.muted, fontFamily: 'inherit', fontSize: 14, fontWeight: cur.name ? 700 : 400, cursor: 'pointer' }}>
           <LockIcon size={14} color={note ? C.text : C.muted} />{cur.name || short(s.key)}
+          {s.key === me && <span style={{ color: C.muted, fontWeight: 400 }}>(you)</span>}
         </button>
         <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {s.key === me && <span style={{ fontWeight: 700 }}>You</span>}
           {ok && <AddToggle on={!!ed} label={cur.name ? 'Change the full name' : 'Add a full name'}
             onToggle={() => setEd(ed ? null : { name: cur.name, phone: cur.phone })} />}
         </span>
