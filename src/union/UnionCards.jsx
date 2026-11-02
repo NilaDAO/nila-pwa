@@ -6,13 +6,13 @@
 //    diesel, maintenance, insurance, depreciation, margin: machinery's RateParts, on-chain). A signer proposes a change
 //    part by part; a card with an open proposal comes first, with Sign. Recently set: a list that opens on a tap. Every open
 //    proposal shows "n of 3 signed" and a Sign button for a signer who has not signed. The third signature sends it.
-// PersonalName: G2's personal name and phone for a member's address (the leaders' reference, not the farm name).
+// PersonalName: G2's full name and phone for a member's address (the leaders' reference, not the farm name).
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { C } from '../shell/tokens';
 import CameraView from '../shell/CameraView';
 import MessageSlider, { big as slideBig, card as slideCard, head as slideHead } from '../shell/MessageSlider';
-import { ChevronIcon } from '../shell/icons';
+import { ChevronIcon, LockIcon } from '../shell/icons';
 import { Card, CardButton, ConfirmCard, Row, Text, btn } from '../shell/SettingsParts';
 import { PARTS, useRates, typeName } from '../machine/hooks';
 import { useStellarConfig } from '../stellar/hooks';
@@ -71,7 +71,7 @@ export function ContactBookCard() {
     ok: `Set · ${book.data?.names.size || 0} name${book.data?.names.size === 1 ? '' : 's'}` }[st] || '…';
   return (
     <Card title="Contact book">
-      <Text>Personal names and phone numbers your leaders give members' accounts. They are locked with the union key: share it only face to face.</Text>
+      <Text>Members' full names and phone numbers, given by your leaders. They are locked with the union key: share it only face to face.</Text>
       <Row k="Union key" v={<span style={{ fontWeight: 700, color: st === 'mismatch' ? C.coral : C.text }}>{label}</span>} />
       {st === 'mismatch' && <Text style={{ color: C.coral }}>Your key is not the union's: you cannot read or add names. Scan the key from another leader.</Text>}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
@@ -238,39 +238,47 @@ export function VoucherPrices() {
   );
 }
 
-/** G2: the personal name (and phone) the leaders gave this member's account, from the contact book; editable. */
-export function PersonalName({ address }) {
+/** G2: the member's full name (and phone) from the leaders' contact book, behind a lock: only the union's leaders
+ *  can read it (not the farm name). Add opens the two fields and a secondary Save; Add turns into Close. The phone
+ *  starts from the number the union already has for the member (L14 or a keypad link), if any; a member who registered
+ *  alone logged in with an SMS code, but that number stays with the login (Cognito) and is not known to the union. */
+export function PersonalName({ address, phone: knownPhone }) {
   const book = useContactBook();
   const { setName } = useBookActions();
   const cur = book.data?.names.get(address) || { name: '', phone: '' };
   const [ed, setEd] = useState(null);
   if (!address || !book.data) return null;
-  if (book.data.state !== 'ok') {
-    return <Text>Personal name: {book.data.state === 'mismatch' ? 'your union key does not match (Settings → Contact book)' : 'no union key on this phone (Settings → Contact book)'}</Text>;
-  }
-  if (!ed) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 36, fontSize: 14 }}>
-        <span style={{ color: C.muted }}>Personal name</span>
-        <button type="button" onClick={() => setEd({ name: cur.name, phone: cur.phone })} style={{ border: 0, background: 'none', padding: 0,
-          color: cur.name ? C.text : C.accent, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', textAlign: 'right' }}>
-          {cur.name ? `${cur.name}${cur.phone ? ` · ${cur.phone}` : ''}` : 'Add'}
-        </button>
-      </div>
-    );
-  }
+  const locked = book.data.state !== 'ok';
+  const label = (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.muted }}>
+      <LockIcon size={14} color={C.muted} />Full name
+    </span>
+  );
+  const link = { border: 0, background: 'none', padding: 0, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer', textAlign: 'right' };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <Text>Only the union's leaders can read this. Not the farm name.</Text>
-      <input value={ed.name} onChange={(e) => setEd({ ...ed, name: e.target.value })} placeholder="Personal name" aria-label="Personal name" style={field} />
-      <input value={ed.phone} onChange={(e) => setEd({ ...ed, phone: e.target.value })} placeholder="Phone (optional)" aria-label="Phone (optional)"
-        inputMode="tel" style={field} />
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" onClick={() => setEd(null)} style={{ ...btn, flex: 1 }}>Cancel</button>
-        <button type="button" disabled={setName.isPending} onClick={() => setName.mutate({ address, ...ed }, { onSuccess: () => setEd(null) })}
-          style={{ ...btn, flex: 1, background: C.accent, color: C.ink }}>{setName.isPending ? 'Saving…' : 'Save'}</button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 36, fontSize: 14 }}>
+        {label}
+        {locked ? (
+          <span style={{ color: C.muted, textAlign: 'right' }}>{book.data.state === 'mismatch' ? 'Union key does not match' : 'No union key on this phone'}</span>
+        ) : ed ? (
+          <button type="button" onClick={() => setEd(null)} style={{ ...link, color: C.text }}>Close</button>
+        ) : (
+          <button type="button" onClick={() => setEd({ name: cur.name, phone: cur.phone || knownPhone || '' })} style={{ ...link, color: cur.name ? C.text : C.accent }}>
+            {cur.name ? `${cur.name}${cur.phone ? ` · ${cur.phone}` : ''}` : 'Add'}
+          </button>
+        )}
       </div>
-      <Err e={setName.error} />
+      {ed && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '4px 0 8px' }}>
+          <input value={ed.name} onChange={(e) => setEd({ ...ed, name: e.target.value })} placeholder="Full name" aria-label="Full name" style={field} />
+          <input value={ed.phone} onChange={(e) => setEd({ ...ed, phone: e.target.value })} placeholder="Phone (optional)" aria-label="Phone (optional)"
+            inputMode="tel" style={field} />
+          <button type="button" disabled={setName.isPending} onClick={() => setName.mutate({ address, ...ed }, { onSuccess: () => setEd(null) })}
+            style={{ ...btn, marginTop: 4 }}>{setName.isPending ? 'Saving…' : 'Save'}</button>
+          <Err e={setName.error} />
+        </div>
+      )}
     </div>
   );
 }

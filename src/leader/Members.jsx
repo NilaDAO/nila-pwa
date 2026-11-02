@@ -42,7 +42,7 @@ export default function Members({ go }) {
   const { map } = useLeaderMap('members');
   // No S1 here (22 Oct): the card shows at once; grey rows until the first list, the phone's copy meanwhile.
   const waiting = !members.data;
-  // The leaders' contact book (1 Nov): the personal name a leader gave the account, with the public farm name.
+  // The leaders' contact book (1 Nov): the full name a leader gave the account, with the public farm name.
   const book = useContactBook();
   const personal = (m) => { const n = m.address && book.data?.names.get(m.address)?.name; return n ? `${n} · ${m.label}` : m.label; };
   // A pasted help QR or address finds the member by account (26 Oct).

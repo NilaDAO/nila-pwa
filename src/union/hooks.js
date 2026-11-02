@@ -58,7 +58,7 @@ export function useContactBook() {
   });
 }
 
-/** The personal name a leader gave this address, or ''. */
+/** The full name a leader gave this address, or ''. */
 export function usePersonalName(address) {
   const book = useContactBook();
   return (address && book.data?.names.get(address)?.name) || '';
@@ -83,7 +83,7 @@ export function useBookActions() {
     },
     onSuccess: done,
   });
-  // Tag an address with a personal name (and phone); an empty name removes the tag.
+  // Tag an address with a full name (and phone); an empty name removes the tag.
   const setName = useMutation({
     mutationFn: async ({ address, name, phone }) => {
       const key = loadKey(union);

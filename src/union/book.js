@@ -1,4 +1,4 @@
-// The leaders' contact book (executive decision 1 Nov): the personal name (and an optional phone) a leader gives an
+// The leaders' contact book (executive decision 1 Nov): the full name (and an optional phone) a leader gives an
 // address, shared between the union's leaders. The farm name stays public on-chain; this is the leaders' own reference.
 // Everything is locked with the union key, which the leaders pass to each other face to face as a QR:
 //   key   32 random bytes, kept on this phone only (localStorage, per union)
