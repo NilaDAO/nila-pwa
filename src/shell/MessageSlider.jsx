@@ -124,7 +124,8 @@ export function memberSlides({ position, positionKnown, loans = [], now = Date.n
 }
 
 /** plusLast (2 Nov, LS voucher prices): the last dot is a + (the "add" card), white when it is the card in view. */
-export default function MessageSlider({ slides, plusLast = false }) {
+/** dot: the colour of the dot in view (A1: the accent; LS voucher prices: the voucher type's colour, coral for machines). */
+export default function MessageSlider({ slides, plusLast = false, dot = C.accent }) {
   const ref = useRef(null);
   const [at, setAt] = useState(0);
   if (!slides.length) return null;
@@ -139,7 +140,7 @@ export default function MessageSlider({ slides, plusLast = false }) {
               style={{ width: slides.length > 12 ? 16 : 24, height: 24, border: 0, padding: 0, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {plusLast && n === slides.length - 1
                 ? <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={n === at ? C.text : '#475569'} strokeWidth="3.5" strokeLinecap="round"><path d="M12 4v16M4 12h16" /></svg>
-                : <span style={{ width: 8, height: 8, borderRadius: R.round, background: n === at ? C.accent : '#475569' }} />}
+                : <span style={{ width: 8, height: 8, borderRadius: R.round, background: n === at ? dot : '#475569' }} />}
             </button>
           ))}
         </div>

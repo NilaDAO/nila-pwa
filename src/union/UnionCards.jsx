@@ -285,7 +285,7 @@ function MachineSlide({ r, p, signers, me, act }) {
     <section aria-label={r.name} style={{ ...slideCard, gap: 12 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}><MachineryTile /><span style={slideHead}>{r.name}</span></span>
-        <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
           {newTotal !== null && newTotal !== r.total && r.total > 0
             ? <><span style={{ ...slideBig, color: C.muted, textDecoration: 'line-through', fontSize: 20 }}>{inr(r.total)}</span><span style={slideBig}>{inr(newTotal)}</span></>
             : <span style={slideBig}>{inr(newTotal ?? r.total)}</span>}
@@ -309,7 +309,7 @@ function MachineSlide({ r, p, signers, me, act }) {
           const to = p ? rupees(p.args.parts, k) : was;
           // A proposed part as the total: the old price grey and struck through, the new one white.
           return <Row key={k} k={label} v={to !== was && r.total > 0 ? (
-            <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 8 }}>
               <span style={{ color: C.muted, textDecoration: 'line-through' }}>{inr(was)}</span><span style={{ fontWeight: 700 }}>{inr(to)}</span>
             </span>
           ) : inr(to)} />;
@@ -402,7 +402,7 @@ function AddMachineSlide({ priced, pending, signers, me, act }) {
               <TypePicker value={type} options={free} onChange={setType} />
               {type && (
                 <>
-                  <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 8 }}>
                     <span style={slideBig}>{inr(total)}</span><span style={{ fontSize: 14, color: C.muted }}>an acre</span>
                   </span>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -475,7 +475,7 @@ export function VoucherPrices() {
         ...pendingNew.map((t) => <MachineSlide key={`new-${t}`} r={{ type: t, name: typeName(t), parts: {}, total: 0 }} p={openOf(t)} signers={signers.data} me={me} act={act} />),
         ...list.map((r) => <MachineSlide key={r.type} r={r} p={openOf(r.type)} signers={signers.data} me={me} act={act} />),
         ...(rates.isSuccess ? [<AddMachineSlide key="add" priced={(rates.data || []).map((r) => r.type)} pending={pendingNew} signers={signers.data} me={me} act={act} />] : []),
-      ]} plusLast={rates.isSuccess} />
+      ]} plusLast={rates.isSuccess} dot={C.coral} />
       <RecentlySet done={all.filter((p) => p.status === 'done')} />
     </>
   );
