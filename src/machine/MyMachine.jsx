@@ -17,12 +17,13 @@ import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, server, sv } from '../stellar/soroban';
 import { matchToken, matchTokenP256, readVoucherCode, voucherEntry } from './voucherCode';
+import { claimMaxCenti } from './claim';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { Card, CardTitle, KV } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
-import { HOLD_REASONS, PARTS, TRACTOR, UNION_PART_BITS, acresFor, acresText, centi, rateForCrop, saveJob, shareOfToken, splitOf, ta, typeName, unitsOf, useMyMachine, useOwnerDues, useRates, useUnionSplit } from './hooks';
+import { HOLD_REASONS, PARTS, TRACTOR, UNION_PART_BITS, acresText, centi, rateForCrop, readRate, saveJob, shareOfToken, splitOf, ta, typeName, unitsOf, useMyMachine, useOwnerDues, useRates, useUnionSplit } from './hooks';
 import { sessionQrPhone } from '../stellar/session';
 import MapCard from '../shell/MapCard';
 
@@ -223,19 +224,26 @@ function Claim({ machine, rate, tractor, onBack }) {
       if (v.member === s.stellarAddress) throw new Error('You cannot claim your own voucher.');
       // Her code and her voucher are in units (tractor acres); an acre of this machine on her crop uses its price ÷ the
       // tractor's. Never more than her share's area (the contract checks it too) or this machine's week.
-      const units = Math.min(c.signed, Number(v.units) - Number(v.used));
       const { family, centiAcres } = shareOfToken(c.token);
-      const price = (await rateForCrop(cfg, machine.machine_type, family)) || rate;
+      // Both prices are read at the scan, not taken from the cached table: a table missing the tractor's price (not
+      // loaded yet, or a failed read) made every code read "Up to 0 ac".
+      const [price, tractorNow] = await Promise.all([
+        rateForCrop(cfg, machine.machine_type, family).then((p) => p || rate),
+        readRate(cfg, TRACTOR).then((p) => p?.total || tractor).catch(() => tractor),
+      ]);
+      const maxCenti = claimMaxCenti({ signed: c.signed, units: v.units, used: v.used, price: price?.total, tractor: tractorNow,
+        centiAcres, acresPerWeek: machine.acres_per_week, usedCenti: Math.round(machine.usedThisWeek * 100) });
+      if (maxCenti == null) throw new Error('Could not read the union\'s machine prices. Check the internet and scan again.');
+      const max = maxCenti / 100;
       const area = centiAcres > 0 ? centiAcres / 100 : Infinity;
-      const max = Math.floor(Math.min(price && tractor ? acresFor(units, price.total, tractor) : 0, area, machine.acres_per_week - machine.usedThisWeek) * 100) / 100;
-      setScan({ ...c, max, area, price });
+      setScan({ ...c, max, area, price, tractor: tractorNow });
       setAcres(max);   // the share's area, as a rule; the owner can lower it for a part done (27 Oct)
     } catch (e) { setError(e.message); setTries((t) => t + 1); }
   };
   const claim = async () => {
     const out = await tx.run({
       label: `Claim ${acresText(acres)}`, rows: [['Acres worked', acresText(acres)], ['Machine', typeName(machine.machine_type)],
-        ...(scan.price && tractor ? [['Uses', `${ta(unitsOf(acres, scan.price.total, tractor))} tractor acres`]] : [])],
+        ...(scan.price && scan.tractor ? [['Uses', `${ta(unitsOf(acres, scan.price.total, scan.tractor))} tractor acres`]] : [])],
       contractName: 'machinery', fn: 'claim',
       args: [sv.address(s.stellarAddress), sv.u64(machine.id), sv.address(cfg.union), sv.bytes32(scan.token), sv.u32(scan.signed), sv.u32(centi(acres))],
       auth: [scan.entry], invalidate: [['stellar', 'machine'], ['stellar', 'dues'], ['stellar', 'account']],

@@ -69,12 +69,18 @@ export function shareOfToken(token) {
   return { family: Math.floor(bits(204, 20) / 1000), centiAcres: Math.ceil((m2 * 1_000_000) / 40_468_564) };
 }
 
-/** The price an acre of `type` on a crop family: the union's crop price if set, else the type's (machinery.rate_for_crop). */
-export async function rateForCrop(cfg, type, family) {
-  const r = await readContract(cfg, 'machinery', 'rate_for_crop', [sv.address(cfg.union), sv.u32(type), sv.u32(family)]).catch(() => null);
+const priceOf = (r) => {
   if (!r) return null;
   const parts = Object.fromEntries(PARTS.map(([k]) => [k, num(r[k])]));
   return { parts, total: Object.values(parts).reduce((x, y) => x + y, 0) };
+};
+/** The price an acre of `type` on a crop family: the union's crop price if set, else the type's (machinery.rate_for_crop). */
+export async function rateForCrop(cfg, type, family) {
+  return priceOf(await readContract(cfg, 'machinery', 'rate_for_crop', [sv.address(cfg.union), sv.u32(type), sv.u32(family)]).catch(() => null));
+}
+/** The price an acre of `type` (machinery.rate), read now: null when the union set none; a failed read throws. */
+export async function readRate(cfg, type) {
+  return priceOf(await readContract(cfg, 'machinery', 'rate', [sv.address(cfg.union), sv.u32(type)]));
 }
 const MAX_MACHINES = 500;
 
@@ -84,15 +90,12 @@ export function useRates() {
   return useQuery({
     queryKey: ['stellar', 'rates', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 300_000,
     queryFn: async () => {
-      const out = [];
       const types = TYPES;   // every standard type (the contract has no list view): a union prices at most 16 of them
-      const rates = await Promise.all(types.map((t) => readContract(cfg, 'machinery', 'rate', [sv.address(cfg.union), sv.u32(t)]).catch(() => null)));
-      rates.forEach((r, i) => {
-        if (!r) return;
-        const parts = Object.fromEntries(PARTS.map(([k]) => [k, num(r[k])]));
-        out.push({ type: types[i], name: typeName(types[i]), parts, total: Object.values(parts).reduce((a, b) => a + b, 0) });
-      });
-      return out;
+      // A type without a price reads as None (null). A failed read throws, so the query retries and keeps the last good
+      // table: a swallowed error used to drop the tractor's price (type 1) from the cached table for 5 minutes, and
+      // every acre figure built on it read 0 (A13 "Up to 0 ac on this code", A8 "Nothing left on this voucher").
+      const rates = await Promise.all(types.map((t) => readRate(cfg, t)));
+      return rates.flatMap((p, i) => (p ? [{ type: types[i], name: typeName(types[i]), ...p }] : []));
     },
   });
 }

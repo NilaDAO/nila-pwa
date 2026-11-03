@@ -296,7 +296,7 @@
           cfg.contracts.machinery ? C.read(cfg.rpc_url, cfg.sponsor, cfg.contracts.machinery, 'voucher', [C.addr(cfg.union), C.bytes(id)]).catch(function () { return null; }) : null,
         ]).then(function (x) {
           if (x[0] && x[0].loan) loans[hexKey(id)] = x[0].loan;
-          if (x[1] && !x[1].void) vouchers[hexKey(id)] = Math.max(0, x[1].hours - x[1].used);
+          if (x[1] && !x[1].void) vouchers[hexKey(id)] = Math.max(0, (x[1].units || 0) - (x[1].used || 0));   // units: centi tractor acres (27 Oct; the field was `hours`)
         });
       })).then(function () {
         data = { at: Date.now(), me: me, cfg: cfg, invested: r[0] ? r[0].invested / U : 0, loans: loans, vouchers: vouchers };
