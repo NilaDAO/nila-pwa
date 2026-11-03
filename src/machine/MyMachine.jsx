@@ -12,7 +12,7 @@
 // no indexer yet); photos are shown as the 8 positions, not the images; the hold switch sits here, not in
 // Settings (A11 #machine); the claim screen has no board.
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, server, sv } from '../stellar/soroban';
@@ -184,6 +184,7 @@ function Costs({ parts, acres, split }) {
 function Claim({ machine, rate, tractor, onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
+  const qc = useQueryClient();
   const tx = useSorobanTx();
   const split = useUnionSplit().data;
   const [scan, setScan] = useState();
@@ -230,6 +231,8 @@ function Claim({ machine, rate, tractor, onBack }) {
     // claim returns (prepay, pending) in nIN; a retry that found the sent call carries no result: 0 then.
     const [prepay, pending] = Array.isArray(out?.result) ? out.result.map((x) => Number(BigInt(x)) / 1e7) : [0, 0];
     if (out) saveJob({ owner: s.stellarAddress, token: scan.token, acres, prepay, pending, ts: Math.floor(Date.now() / 1000) });
+    // tx.run refreshed 'dues' before this job was on the phone: read them again with it.
+    if (out) qc.invalidateQueries({ queryKey: ['stellar', 'dues'] });
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
