@@ -157,24 +157,68 @@ export function useMyMachine(owner, { pick, poll } = {}) {
   return { ...machines, data: machines.data && (mine ? { ...mine, usedThisWeek: Number(week.data ?? 0) / 100, all } : null) };
 }
 
-// The owner's jobs, kept on her phone from her claim results (no indexer yet, 17 Oct). Since 26 Oct an owner is paid in
-// full at the claim, so nothing is pending or left to collect (fund_core's owner balance was dropped 30 Oct).
+// The owner's jobs, kept on the owner's phone from the claim results (no indexer yet, 17 Oct): the prepay paid at the job
+// and the rest held until the member repays (owner split, 1 Nov).
 const JOBS = 'nila.machine.jobs';
 export const loadJobs = () => { try { return JSON.parse(localStorage.getItem(JOBS)) || []; } catch { return []; } };
 export const saveJob = (j) => { try { localStorage.setItem(JOBS, JSON.stringify([...loadJobs(), j])); } catch { /* private */ } };
 
-/** A13 "Paid to you": paid at each claim. */
+/** A13 "Paid to you" (owner split, 1 Nov): the prepay paid at each job (from the jobs on this phone), what is ready to
+ *  collect (fund_core.owner_balance: the held parts the members' repayments settled) and what each voucher still owes
+ *  the owner until its member repays (fund_core.owner_dues per crop share of the owner's jobs). */
 export function useOwnerDues(owner) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
-    queryKey: ['stellar', 'dues', cfg?.union, owner], enabled: !!cfg && !!owner, staleTime: 30_000,
+    queryKey: ['stellar', 'dues', cfg?.union, owner], enabled: !!cfg?.contracts?.fund_core && !!owner, staleTime: 30_000,
     queryFn: async () => {
+      const u = sv.address(cfg.union);
       const jobs = loadJobs().filter((j) => j.owner === owner);
+      const tokens = [...new Set(jobs.map((j) => j.token))];
+      const [balance, owed] = await Promise.all([
+        readContract(cfg, 'fund_core', 'owner_balance', [u, sv.address(owner)]).catch(() => 0n),
+        Promise.all(tokens.map((t) => readContract(cfg, 'fund_core', 'owner_dues', [u, sv.bytes32(t)])
+          .then((d) => num((d?.owners || []).filter((o) => o.owner === owner).reduce((a, o) => a + BigInt(o.amount), 0n)))
+          .catch(() => 0))),
+      ]);
+      const owedBy = Object.fromEntries(tokens.map((t, i) => [t, owed[i]]));
+      // A crop share's owed amount is shown on its latest job (the contract keeps one figure per share and owner).
+      const last = Object.fromEntries(jobs.map((j, i) => [j.token, i]));
       return {
         received: jobs.reduce((a, j) => a + j.prepay, 0),
-        pending: 0,
-        jobs: jobs.map((j) => ({ ...j, pendingNow: 0 })),
+        ready: num(balance),
+        pending: owed.reduce((a, x) => a + x, 0),
+        jobs: jobs.map((j, i) => ({ ...j, pendingNow: last[j.token] === i ? owedBy[j.token] : 0 })).reverse(),
       };
     },
   });
+}
+
+/** The union's split of a machine's price (owner split and the union's parts, executive decisions 1–2 Nov): which
+ *  parts go to the union treasury (machinery.union_parts, PART_* bits; default depreciation and margin) and the share of
+ *  the driver part paid at the job (machinery.prepay_share, basis points). */
+export const UNION_PART_BITS = { maintenance: 4, insurance: 8, depreciation: 16, margin: 32 };
+export function useUnionSplit() {
+  const { data: cfg } = useStellarConfig();
+  return useQuery({
+    queryKey: ['stellar', 'unionSplit', cfg?.union], enabled: !!cfg?.contracts?.machinery, staleTime: 300_000,
+    queryFn: async () => {
+      const u = [sv.address(cfg.union)];
+      const [mask, bp] = await Promise.all([
+        readContract(cfg, 'machinery', 'union_parts', u).catch(() => 48),
+        readContract(cfg, 'machinery', 'prepay_share', u).catch(() => 0),
+      ]);
+      return { mask: Number(mask ?? 48), driverBp: Number(bp ?? 0) };
+    },
+  });
+}
+
+/** One job's money as machinery.claim splits it: `toUnion` (the union's parts), `now` (diesel plus the union's share of
+ *  the driver part, paid at the job), `later` (the rest of the owner's part, when the member repays). ₹ for `acres`. */
+export function splitOf(parts, acres, split) {
+  const mask = split?.mask ?? 48;
+  const total = PARTS.reduce((a, [k]) => a + (parts[k] || 0), 0) * acres;
+  const toUnion = Object.entries(UNION_PART_BITS).reduce((a, [k, b]) => a + ((mask & b) ? parts[k] || 0 : 0), 0) * acres;
+  const own = total - toUnion;
+  const now = Math.min(own, ((parts.diesel || 0) + (parts.driver || 0) * (split?.driverBp ?? 0) / 10_000) * acres);
+  return { total, toUnion, now, later: own - now };
 }

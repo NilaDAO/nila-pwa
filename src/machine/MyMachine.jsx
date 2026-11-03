@@ -2,11 +2,13 @@
 // - after the leader registered it (L13), she confirms it (machinery.confirm_machine);
 // - she scans a member's voucher code (A8a: the member's signed authorization of machinery.claim for up to N units,
 //   centi tractor acres, 27 Oct), confirms the acres worked (the crop share's area, from its token id; lower for a part
-//   done) and claims (machinery.claim, with that authorization): the whole amount (the price an acre on the share's crop
-//   × the acres) reaches her wallet in nIN at once, from the voucher's senior reserve (26 Oct: the
-//   member's debt is separate, nothing waits for a repayment);
+//   done) and claims (machinery.claim, with that authorization). Owner split (1 Nov): the prepay (diesel plus the
+//   union's share of the driver part) reaches the owner's wallet in nIN at once; the rest of the owner's part is held
+//   until the member repays and then collected (fund_core.collect); the union's parts of the price (2 Nov; default
+//   depreciation and margin) go to its treasury;
 // - on hold / available (machinery.set_hold) with a reason.
-// DESIGN GAPs: no per-job names (no member names on the node; jobs are kept on her phone from her claims,
+// DESIGN GAPs: the Collect button and the per-share owed amounts are not on the board (it shows paid and pending);
+// no per-job names (no member names on the node; jobs are kept on her phone from her claims,
 // no indexer yet); photos are shown as the 8 positions, not the images; the hold switch sits here, not in
 // Settings (A11 #machine); the claim screen has no board.
 import { useState } from 'react';
@@ -20,7 +22,7 @@ import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { Card, CardTitle, KV } from '../loan/AssetParts';
 import CameraView from '../shell/CameraView';
-import { HOLD_REASONS, PARTS, TRACTOR, acresFor, acresText, centi, rateForCrop, saveJob, shareOfToken, ta, typeName, unitsOf, useMyMachine, useOwnerDues, useRates } from './hooks';
+import { HOLD_REASONS, PARTS, TRACTOR, UNION_PART_BITS, acresFor, acresText, centi, rateForCrop, saveJob, shareOfToken, splitOf, ta, typeName, unitsOf, useMyMachine, useOwnerDues, useRates, useUnionSplit } from './hooks';
 import { sessionQrPhone } from '../stellar/session';
 import MapCard from '../shell/MapCard';
 
@@ -147,10 +149,20 @@ export default function MyMachine({ onBack, pick: first }) {
         {dues.isLoading && <span style={muted}>…</span>}
         {d && (
           <>
-            <Paid k="Received" sub="In nIN, in full at each job" v={inr(d.received)} color={C.accent} />
+            <Paid k="Paid at the job" sub="In nIN, when you claim" v={inr(d.received)} />
+            <Paid k="Owed when the members repay" sub="Held for you until each member repays" v={inr(d.pending)} />
+            <Paid k="Ready to collect" sub="The members repaid this part" v={inr(d.ready)} />
+            {/* Owner split (1 Nov): the settled part waits in fund_core until the owner collects it to the wallet. */}
+            {d.ready > 0 && (
+              <Primary disabled={!tx.ready} onClick={() => tx.run({ label: `Collect ${inr(d.ready)}`, rows: [['To your wallet', inr(d.ready)]],
+                contractName: 'fund_core', fn: 'collect', args: [sv.address(cfg.union), sv.address(me)],
+                invalidate: [['stellar', 'dues'], ['stellar', 'account']] })}>Collect {inr(d.ready)}</Primary>
+            )}
             {d.jobs.map((j) => (
               <div key={`${j.token}-${j.ts}`} style={{ borderTop: `1px solid ${C.raised}`, paddingTop: 12 }}>
-                <Paid k={j.acres != null ? acresText(j.acres) : `${j.hours} h`} sub={new Date(j.ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} v={`${inr(j.prepay)} paid`} />
+                <Paid k={j.acres != null ? acresText(j.acres) : `${j.hours} h`}
+                  sub={`${new Date(j.ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}${j.pendingNow > 0 ? ` · ${inr(j.pendingNow)} still owed` : ''}`}
+                  v={`${inr(j.prepay)} paid`} />
               </div>
             ))}
           </>
@@ -166,20 +178,23 @@ export default function MyMachine({ onBack, pick: first }) {
   );
 }
 
-/** The cost list for the acres worked (27 Oct): each part of the price an acre × acres, all paid now at the job. */
-function Costs({ parts, acres }) {
-  const rows = PARTS.filter(([k]) => parts[k] > 0).map(([k, name]) => [name, parts[k] * acres]);
-  const total = rows.reduce((a, r) => a + r[1], 0);
+/** The cost list for the acres worked (27 Oct): each part of the price an acre × acres; the union's parts marked as
+ *  the union's (2 Nov), then what the owner is paid now and what when the member repays (owner split, 1 Nov). */
+function Costs({ parts, acres, split }) {
+  const mask = split?.mask ?? 48;
+  const rows = PARTS.filter(([k]) => parts[k] > 0).map(([k, name]) => [name, parts[k] * acres, !!(mask & (UNION_PART_BITS[k] || 0))]);
+  const x = splitOf(parts, acres, split);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14, lineHeight: 1.5 }}>
-      {rows.map(([name, all]) => (
+      {rows.map(([name, all, union]) => (
         <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ flexGrow: 1, color: C.muted }}>{name}</span>
+          <span style={{ flexGrow: 1, color: C.muted }}>{name}{union ? ' · to the union' : ''}</span>
           <b>{inr(all)}</b>
         </div>
       ))}
       <div style={{ height: 1, background: C.raised }} />
-      <KV k="Paid to you now" v={inr(total)} />
+      <KV k="Paid to you now" v={inr(x.now)} />
+      {x.later > 0 && <KV k="Paid when the member repays" v={inr(x.later)} />}
     </div>
   );
 }
@@ -190,6 +205,7 @@ function Claim({ machine, rate, tractor, onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
+  const split = useUnionSplit().data;
   const [scan, setScan] = useState();
   const [error, setError] = useState();
   const [acres, setAcres] = useState(1);
@@ -241,7 +257,7 @@ function Claim({ machine, rate, tractor, onBack }) {
           <button type="button" aria-label="More" style={b} onClick={() => setAcres(Math.min(scan.max, Math.round((acres + 0.1) * 100) / 100))}>+</button>
         </div>
         <p style={{ ...muted, textAlign: 'center', margin: 0 }}>Up to {acresText(scan.max)} on this code</p>
-        {scan.price && <Costs parts={scan.price.parts} acres={acres} />}
+        {scan.price && <Costs parts={scan.price.parts} acres={acres} split={split} />}
         <Primary disabled={!tx.ready || scan.max <= 0 || acres <= 0} onClick={claim}>Claim {acresText(acres)}</Primary>
       </Page>
     );

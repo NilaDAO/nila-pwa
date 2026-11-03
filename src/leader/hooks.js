@@ -20,9 +20,11 @@ export function useUnionCash({ poll = 30_000, on = true } = {}) {
       const fx = (fn, args = u) => readContract(cfg, 'fx_pool', fn, args);
       const fc = (fn, args = u) => readContract(cfg, 'fund_core', fn, args);
       // fund_core's union book in one read (30 Oct): treasury, rainy-day fund and the loans on hold.
+      // Senior USDC per residency (2 Nov): held by the senior contract, not fx_pool.
+      const sen = (tag) => (cfg.contracts.senior ? readContract(cfg, 'senior', 'union_usdc', [...u, sv.u32(tag)]).catch(() => 0n) : 0n);
       const [book, atHand, rows, lpUsdc, dom, off] = await Promise.all([
         fc('union_book'), fx('cash_at_hand'), fx('open_escrows'),
-        fx('lp_usdc').catch(() => 0n), fx('senior_usdc', [...u, sv.u32(1)]).catch(() => 0n), fx('senior_usdc', [...u, sv.u32(0)]).catch(() => 0n),
+        fx('lp_usdc').catch(() => 0n), sen(1), sen(0),
       ]);
       const { treasury, rainy, on_hold: hold } = book || {};
       // The union's open escrows in one read (fx_pool keeps them in one list since 24 Oct).
