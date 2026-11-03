@@ -33,6 +33,29 @@ function ModeCard() {
   );
 }
 
+/** The identity check (K1) on its own card (3 Nov): it is the switch to self mode, nIN and USDC, a machine and LP, so a
+ *  member sees whether it passed, not only inside "Become an LP". Asked of title holders only (the anchor's sign-in). */
+function IdCard({ onIdCheck }) {
+  const lp = useLpStatus();
+  const { data: cfg } = useStellarConfig();
+  if (!cfg?.anchor_url || !lp.data) return null;
+  if (lp.data.idChecked) {
+    return (
+      <Card title="Your identity is checked">
+        <Text>You can hold nIN and USDC, register a machine and become an LP.</Text>
+      </Card>
+    );
+  }
+  return (
+    <Card title="Identity check">
+      {lp.data.member
+        ? <><Text>Needed to hold nIN or USDC, register a machine or become an LP. After it you use Nila yourself.</Text>
+          <CardButton onClick={onIdCheck}>Check my identity</CardButton></>
+        : <Text>You can check your identity once you hold a land title.</Text>}
+    </Card>
+  );
+}
+
 export function LpCard({ onIdCheck, onOffers }) {
   const lp = useLpStatus();
   const { data: cfg } = useStellarConfig();
@@ -115,6 +138,7 @@ export default function Settings({ onBack, onIdCheck, onOffers }) {
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }} header={{ title: 'Settings', onBack, settings: false }}>
       <UnionCard />
       <NotificationsCard />
+      <IdCard onIdCheck={onIdCheck} />
       <ModeCard />
       <LpCard onIdCheck={onIdCheck} onOffers={onOffers} />
       <MachineCard />
