@@ -233,7 +233,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           lp?.idChecked
             ? <Row label="Open USDC" icon={<UsdcTile />} title="USDC" sub="Digital US dollar" value={(lp.usdc || 0).toFixed(2)} valueSub={rate ? `≈ ${inr(usdcInr)}` : ""} onClick={onUsdc} />
             : <Row label="USDC, identity check needed" icon={<UsdcTile />} title="USDC" warn="Identity check (KYC) needed" />
-        ) : lp?.trustline && (
+        ) : lp?.idChecked && lp?.trustline && (
+          // Only after the identity check (24 Oct rule; 3 Nov fix): a smart account always "has a trustline", so the row
+          // showed for every member, assist mode included.
           // LP positions (31 Oct), the only change on her wallet: a Bring position's USDC is locked in her wallet; a
           // Collect position's USDC is hers, locked with the union.
           <Row label="Open USDC" icon={<UsdcTile />} title="USDC"
