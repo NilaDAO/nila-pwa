@@ -379,8 +379,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   if (titles.data && !titles.data.length && !stellarTitle) {
     const refresh = () => { titles.refetch(); stellarTitles.refetch(); };
     const busy = titles.isFetching || stellarTitles.isFetching;
-    // Assist mode (28 Oct): the member mints nothing; the leader takes the field points and mints the land title.
-    const helped = !self && assisted();
+    // The leader maps every title (executive decision 3 Nov): a member, in assist or self mode, mints nothing; the leader
+    // takes the field points, does the borders and the mint. Only a leader's own title starts here (`self`).
+    const helped = !self;
     return (
       <Sheet map={noLandMap} landName="No land title yet" actions={(
         <RoundButton label="Refresh" onClick={busy ? undefined : refresh}>
