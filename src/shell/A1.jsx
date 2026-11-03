@@ -136,6 +136,10 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   });
   // One slider for member and leader (22 Oct): the leader's cash and LP cards first, then her own.
   const leaderSlides = useLeaderSlides({ on: !!leader, onSettle, onScanLp, onMachine: onRegisterMachine });
+  const stage = useStage();
+  // In the card the sections lose their own card look (they sit on the card). Declared before the
+  // confirm slide, which uses it (3 Nov: it was read before its declaration and crashed A1 for a machine owner).
+  const card = stage ? { background: 'transparent', boxShadow: 'none', padding: 0, borderRadius: 0 } : {};
   // Her machine waits for her confirmation (23 Oct): first in the slider, straight to Your machine.
   const confirmSlide = machine && !machine.confirmed ? [(
     <section key="confirm-machine" aria-label="Confirm your machine" style={card}>
@@ -154,7 +158,6 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell A1 is a card over the map of her
   // land (drag line, rounded top), opening high with a strip of map; History, All tasks and Settings are the card's
   // sticky header under the drag line.
-  const stage = useStage();
   const top = homeTop();
   useEffect(() => {
     if (!stage) return undefined;
@@ -184,8 +187,6 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
       <SettingsButton onClick={onSettings} />
     </div>
   );
-  // In the card the sections lose their own card look (they sit on the card).
-  const card = stage ? { background: 'transparent', boxShadow: 'none', padding: 0, borderRadius: 0 } : {};
   const content = (
     <>
       <section aria-label="Total balance" style={{ textAlign: 'center', margin: '12px 0 16px', padding: '18px 22px', background: C.ink, borderRadius: R.card, boxShadow: SHADOW, ...card, ...(stage ? { margin: '0 0 16px' } : {}) }}>
