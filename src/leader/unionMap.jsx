@@ -59,7 +59,7 @@ export function useLeaderMap(filter = 'members', fitBottom = 170, on = true) {
       const mine = shares.data?.[m.address]?.shares || [];
       if (filter === 'members') label[m.key] = { text: m.label };
       else if (filter === 'assets') {
-        const owned = (machines.data || []).filter((x) => x.confirmed && x.owner === m.address);
+        const owned = (machines.data || []).filter((x) => x.owner === m.address);
         const ready = mine.filter((x) => x.ready).length || Number(m.shareCounts?.ready || 0);
         label[m.key] = ready ? { text: m.label, sub: `${owned.length ? `${owned.length} machine${owned.length === 1 ? '' : 's'} · ` : ''}${ready} Ready`, colour: C.accent }
           : owned.length ? { text: m.label, sub: owned.map((x) => typeName(x.machine_type)).join(', '), colour: C.text }

@@ -80,7 +80,7 @@ function MachineCard() {
     invalidate: [['stellar', 'machines'], ['stellar', 'machine']],
   });
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
-  const on = m.confirmed && !m.on_hold;
+  const on = !m.on_hold;
   return (
     <Card title="Your machine">
       <Row k="Machine" v={typeName(m.machine_type)} />
@@ -91,9 +91,9 @@ function MachineCard() {
       <Text style={{ padding: '4px 0 8px 0' }}>
         {driverShare ? `Diesel and ${driverShare} are paid at the job` : 'Diesel is paid at the job'}; the rest after the farmer repays. You drive it yourself, keep it working and pay the repairs.
       </Text>
-      <SwitchRow title="Available for jobs" on={on} disabled={!m.confirmed || !tx.ready}
-        sub={!m.confirmed ? 'Confirm it first on Your machine.' : m.on_hold ? `On hold · ${HOLD_REASONS[m.hold_reason] || 'Other'}` : 'Members can use it.'}
-        subColor={m.confirmed && m.on_hold ? C.coral : undefined}
+      <SwitchRow title="Available for jobs" on={on} disabled={!tx.ready}
+        sub={m.on_hold ? `On hold · ${HOLD_REASONS[m.hold_reason] || 'Other'}` : 'Members can use it.'}
+        subColor={m.on_hold ? C.coral : undefined}
         onClick={() => (m.on_hold ? hold(false) : setAsk(true))} />
       {ask && (
         <ConfirmCard title="Why is it on hold?" ok="Put on hold" onCancel={() => setAsk(false)} onOk={() => { setAsk(false); hold(true, why); }}>

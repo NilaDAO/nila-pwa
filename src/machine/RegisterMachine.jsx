@@ -1,10 +1,11 @@
 // L13 register a machine (board LeaderMachineRegister), executive decision 17 Oct: the leader, at the
 // owner's farm, picks the owner (her wallet), the machine type (the union's rate table, machinery.rate),
 // takes 8 photos at 45° and the hours a week; the node stores the photos and returns their hash (O13,
-// POST /machines/photos); the leader signs machinery.register_machine (fee paid by the node); the owner then
-// confirms it on her phone (A13). The owner must hold a land title in the union (the contract checks it).
-// DESIGN GAPs: the owner is her wallet QR, scanned as the last step (no member names on the node; 22 Oct);
-// "Show QR to <owner>" becomes "Ask her to confirm in Your machine" (her app finds the machine itself);
+// POST /machines/photos); the leader signs machinery.register_machine (fee paid by the node). The machine is
+// available from its registration: no owner confirmation (executive decision 3 Nov, N9 removed). The owner must
+// hold a land title in the union (the contract checks it).
+// DESIGN GAPs: the owner is her wallet QR or her help QR (NILA:S:, only its account is read; no session
+// starts), scanned as the last step (no member names on the node; 22 Oct); no "Show QR to <owner>" step;
 // the price rows show the union's rate parts as set on-chain (read-only).
 import { useEffect, useMemo, useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
@@ -19,6 +20,7 @@ import CameraView from '../shell/CameraView';
 import { PARTS, useRates } from './hooks';
 import MapCard from '../shell/MapCard';
 import { addressFromQr } from '../leader/unionMembers';
+import { accountOfQr } from '../stellar/session';
 
 // Walk order (machines/photos.py LABELS): Front first, then round. Grid: 3×3 with the machine in the middle.
 const WALK = ['Front', 'Front right', 'Right', 'Back right', 'Back', 'Back left', 'Left', 'Front left'];
@@ -88,7 +90,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
       });
     } catch (e) { setBusy(false); setError(e.message); }
   };
-  // Registered: straight back to Assets (executive decision 23 Oct), no success page; registered to herself → Your machine to confirm it.
+  // Registered: straight back to Assets (executive decision 23 Oct), no success page; registered to herself → Your machine.
   useEffect(() => { if (tx.status === 'success') { tx.reset(); window.location.hash = to === s?.stellarAddress ? '#/machine' : '#/assets'; } }, [tx.status]); // eslint-disable-line react-hooks/exhaustive-deps
   // A map card on the leader's own property (map-centred lane, 23 Oct; was a full page, 22 Oct): header, then the
   // board's cards.
@@ -101,7 +103,8 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
   if (scanning) {
     return page('Register a machine', () => setScanning(false), (
       <Card label="Scan the owner's wallet QR">
-        <CameraView mode="qr" title="Scan the owner's QR" onText={(t) => { setScanning(false); register(addressFromQr(t)); }} />
+        {/* Her wallet QR or her help QR (NILA:S:, 3 Nov): the scan only names the owner, so no session starts. */}
+        <CameraView mode="qr" title="Scan the owner's QR" onText={(t) => { setScanning(false); register(accountOfQr(t) || addressFromQr(t)); }} />
       </Card>
     ));
   }
@@ -184,7 +187,7 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
           <span key={t} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, lineHeight: 1.5 }}><CheckMark color={C.gold} />{t}</span>
         ))}
         {error && <span style={{ ...sub, color: C.coral }}>{error}</span>}
-        {/* The owner (executive decision 22 Oct): a union machine is registered to the leader herself (her app confirms
+        {/* The owner (executive decision 22 Oct): a union machine is registered to the leader herself (her app holds
             and collects; she deposits the dues into the treasury); a member's machine to her scanned wallet. */}
         {initialOwner || taken < 8 || busy ? (
           <Primary disabled={!rate || taken < 8 || busy || !tx.ready || !api} onClick={() => register(initialOwner)}>{taken < 8 ? 'Take all 8 photos' : busy ? 'Sending the photos…' : 'Register the machine'}</Primary>

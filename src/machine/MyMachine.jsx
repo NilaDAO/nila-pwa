@@ -1,5 +1,5 @@
 // A13 my machine (board MemberMachine), the owner's side of a voucher (executive decision, 17 Oct):
-// - after the leader registered it (L13), she confirms it (machinery.confirm_machine);
+// - available from the leader's registration (L13); no owner confirmation (executive decision 3 Nov, N9 removed);
 // - she scans a member's voucher code (A8a: the member's signed authorization of machinery.claim for up to N units,
 //   centi tractor acres, 27 Oct), confirms the acres worked (the crop share's area, from its token id; lower for a part
 //   done) and claims (machinery.claim, with that authorization). Owner split (1 Nov): the prepay (diesel plus the
@@ -81,27 +81,6 @@ export default function MyMachine({ onBack, pick: first }) {
   if (!m) return <Page title="Your machine" onBack={onBack}><p style={muted}>No machine registered for you. Your union leader registers it at your farm.</p></Page>;
   if (claiming) return <Claim machine={m} rate={rate} tractor={rates.data?.find((r) => r.type === TRACTOR)?.total || 0} onBack={() => setClaiming(false)} />;
 
-  if (!m.confirmed) {
-    // A full page as L13 (23 Oct): what was registered for her, her duties, one button.
-    const check = <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>;
-    return (
-      <MapCard header={{ title: 'Confirm your machine', onBack }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <Card label="Your machine" style={{ gap: 12 }}>
-          <CardTitle>{typeName(m.machine_type)}</CardTitle>
-          <span style={muted}>Your union leader registered it for you. Members can hire it with their machine vouchers once you confirm.</span>
-          <KV k="Acres a week" v={`${m.acres_per_week} ac`} />
-          {rate && <KV k="You get an acre" v={inr(rate.total)} />}
-        </Card>
-        <Card label="Your duties" style={{ gap: 12 }}>
-          <CardTitle>Your duties</CardTitle>
-          {['Drive the machine.', 'Keep it working and pay the repairs.', 'Put it on hold when it cannot work.'].map((t) => (
-            <span key={t} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, lineHeight: 1.5 }}>{check}{t}</span>
-          ))}
-          <Primary disabled={!tx.ready} onClick={() => call('Confirm your machine', 'confirm_machine', [sv.address(me), sv.u64(m.id)], [['Machine', typeName(m.machine_type)]])}>Confirm my machine</Primary>
-        </Card>
-      </MapCard>
-    );
-  }
   if (holding) {
     return (
       <Page title="On hold" onBack={() => setHolding(false)}>
@@ -172,7 +151,7 @@ export default function MyMachine({ onBack, pick: first }) {
       {m.all.length > 1 && (
         <Card label="Your other machines" style={{ gap: 12 }}>
           <CardTitle>Your other machines</CardTitle>
-          {m.all.filter((x) => x.id !== m.id).map((x) => <Choice key={x.id} sub={!x.confirmed ? 'Confirm it' : x.on_hold ? 'On hold' : 'Available'} onClick={() => setPick(x.id)}>{typeName(x.machine_type)}</Choice>)}
+          {m.all.filter((x) => x.id !== m.id).map((x) => <Choice key={x.id} sub={x.on_hold ? 'On hold' : 'Available'} onClick={() => setPick(x.id)}>{typeName(x.machine_type)}</Choice>)}
         </Card>
       )}
     </Page>

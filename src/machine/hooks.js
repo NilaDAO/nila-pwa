@@ -139,20 +139,22 @@ export function useMachines({ poll = false, on = true } = {}) {
       for (let id = 1; id <= MAX_MACHINES; id++) {
         const m = await readContract(cfg, 'machinery', 'machine', [sv.u64(id)]);
         if (!m) break;
-        if (m.union === cfg.union) out.push({ id, ...m, machine_type: Number(m.machine_type), acres_per_week: Number(m.acres_per_week), hold_reason: Number(m.hold_reason) });
+        // No owner confirmation (executive decision 3 Nov): every machine is available from its registration,
+        // also one stored unconfirmed before the machinery upgrade.
+        if (m.union === cfg.union) out.push({ id, ...m, confirmed: true, machine_type: Number(m.machine_type), acres_per_week: Number(m.acres_per_week), hold_reason: Number(m.hold_reason) });
       }
       return out;
     },
   });
 }
 
-/** Her machines as owner (A13): `pick` (machine id) or the first not confirmed yet, else the newest; with this
+/** Her machines as owner (A13): `pick` (machine id), else the newest; with this
  *  week's acres and `all` her machines. */
 export function useMyMachine(owner, { pick, poll } = {}) {
   const machines = useMachines({ poll });
   const { data: cfg } = useStellarConfig();
   const all = machines.data?.filter((m) => m.owner === owner) || [];
-  const mine = all.find((m) => m.id === pick) || all.find((m) => !m.confirmed) || all[all.length - 1];
+  const mine = all.find((m) => m.id === pick) || all[all.length - 1];
   const week = useQuery({
     queryKey: ['stellar', 'machine', mine?.id, 'week'], enabled: !!mine && !!cfg, staleTime: 30_000,
     queryFn: () => readContract(cfg, 'machinery', 'acres_this_week', [sv.u64(mine.id)]),

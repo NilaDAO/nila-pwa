@@ -137,22 +137,13 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   // One slider for member and leader (22 Oct): the leader's cash and LP cards first, then her own.
   const leaderSlides = useLeaderSlides({ on: !!leader, onSettle, onScanLp, onMachine: onRegisterMachine });
   const stage = useStage();
-  // In the card the sections lose their own card look (they sit on the card). Declared before the
-  // confirm slide, which uses it (3 Nov: it was read before its declaration and crashed A1 for a machine owner).
+  // In the card the sections lose their own card look (they sit on the card).
   const card = stage ? { background: 'transparent', boxShadow: 'none', padding: 0, borderRadius: 0 } : {};
-  // Her machine waits for her confirmation (23 Oct): first in the slider, straight to Your machine.
-  const confirmSlide = machine && !machine.confirmed ? [(
-    <section key="confirm-machine" aria-label="Confirm your machine" style={card}>
-      <Title Icon={MyMachineTile}>Confirm your machine</Title>
-      <span style={{ ...small, color: C.muted }}>{typeName(machine.machine_type)}, registered by your union leader. Members can hire it once you confirm.</span>
-      <button type="button" onClick={() => onMachine(machine.id)} style={{ height: 44, borderRadius: 12, border: 0, background: C.accent, color: C.ink, fontWeight: 700, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer' }}>Confirm your machine</button>
-    </section>
-  )] : [];
   // The LP offers come first in the slider (25 Oct): an LP may be on the way; then her machine, the union's cards, hers.
   // An LP's own cards (31 Oct): accept an offer on its card, then the same card shows the QR; first in the slider.
   const mySlides = useLpSlides({ on: !leader && !!lp?.lp });
   const lpSlides = [...mySlides, ...leaderSlides.filter((el) => String(el.key).startsWith('lp-'))];
-  const slides = [...lpSlides, ...confirmSlide, ...leaderSlides.filter((el) => !lpSlides.includes(el)), ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans, onRepayQr: (t) => onShare(`${t}/qr`),
+  const slides = [...lpSlides, ...leaderSlides.filter((el) => !lpSlides.includes(el)), ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans, onRepayQr: (t) => onShare(`${t}/qr`),
     index: juniorIndex.data, onWithdrawal: onInvested, leader: !!leader })];
 
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell A1 is a card over the map of her
@@ -225,7 +216,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         {/* One row per machine she owns (23 Oct), named by its type. */}
         {machine?.all.map((x) => (
           <Row key={x.id} label={`Open ${typeName(x.machine_type)}`} icon={<MyMachineTile />} title={typeName(x.machine_type)}
-            sub={!x.confirmed ? 'Confirm it' : x.on_hold ? 'On hold' : 'Available'} onClick={() => onMachine(x.id)} />
+            sub={x.on_hold ? 'On hold' : 'Available'} onClick={() => onMachine(x.id)} />
         ))}
         {/* A9 (22 Oct): every leader sees the USDC row; it opens only once the anchor marked her identity checked
             (fx_pool.id_checked, K1 #leader from LS) and is locked with a warning until then. A member LP keeps her row
