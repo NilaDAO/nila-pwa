@@ -199,6 +199,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const Sheet = useMemo(() => (forLand ? function MemberSheet(p) { return <BaseSheet {...p} noSettings />; } : BaseSheet), [!!forLand]);
   const s = useNilaSigner();
   const qc = useQueryClient();
+  const [titleQr, setTitleQr] = useState(false);
   const titles = useLandTitles(forLand ? undefined : s?.evmAddress);
   // A title on Stellar only (the demo writes new titles there, 21 Oct): used when she has none on Polygon.
   const stellarTitles = useStellarTitles(forLand ? null : s);
@@ -382,6 +383,11 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // The leader maps every title (executive decision 3 Nov): a member, in assist or self mode, mints nothing; the leader
     // takes the field points, does the borders and the mint. Only a leader's own title starts here (`self`).
     const helped = !self;
+    // Her help QR with her Polygon address (3 Nov, both modes): the leader scans it on Add a member (L14).
+    if (helped && titleQr) {
+      return <HelpQr withPolygon onBack={() => setTitleQr(false)}
+        note="Show this to your union leader at the office. Your leader takes your field points, maps your land and mints your land title." />;
+    }
     return (
       <Sheet map={noLandMap} landName="No land title yet" actions={(
         <RoundButton label="Refresh" onClick={busy ? undefined : refresh}>
@@ -397,7 +403,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
           {openJob
             ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>{openJob.status === 'ready' ? 'Check borders and mint' : 'See my fields'}</Primary>
-            : !helped && <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
+            : helped ? <Primary onClick={() => setTitleQr(true)}>Show your QR</Primary>
+              : <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
         </div>
       </Sheet>
     );

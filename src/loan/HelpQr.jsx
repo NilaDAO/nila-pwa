@@ -15,7 +15,8 @@ import { AddressCopy, qrCard } from '../shell/WalletQr';
 const assisted = () => { try { return localStorage.getItem('nila.mode') !== 'self'; } catch { return true; } };
 
 /** `note`: what the leader will do (repay, invest, collect…); `onBack` when opened from a page (not the Scan tab). */
-export default function HelpQr({ note, onBack } = {}) {
+/** `withPolygon`: carry her Polygon address in any mode (the no-title card, 3 Nov), so a leader can add her (L14). */
+export default function HelpQr({ note, onBack, withPolygon = false } = {}) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const [qr, setQr] = useState();
@@ -25,7 +26,7 @@ export default function HelpQr({ note, onBack } = {}) {
   const make = async () => {
     setError(undefined);
     // An assist-mode smartphone adds its Polygon address (29 Oct): a leader can add the member from this QR (L14).
-    try { setQr(await makeSessionQr(cfg, s.stellarAddress, s.signHash, 'Ed25519', assisted() ? s.evmAddress : undefined)); } catch (e) { setError(e.message); }
+    try { setQr(await makeSessionQr(cfg, s.stellarAddress, s.signHash, 'Ed25519', withPolygon || assisted() ? s.evmAddress : undefined)); } catch (e) { setError(e.message); }
   };
   useEffect(() => { if (cfg && s?.ready && !qr) make(); }, [cfg, s?.ready]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (qr) QRCode.toDataURL(qr.qr, { width: 400, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [qr]);
