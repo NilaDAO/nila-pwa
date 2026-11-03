@@ -9,6 +9,8 @@
 // DESIGN GAP: neither page has a board of its own.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ethers } from 'ethers';
+import { useProvider } from '../hooks/useWallet.ts';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig, useStellarTitles } from '../stellar/hooks';
 import { readFoodTokens, sv, tokenHex } from '../stellar/soroban';
@@ -41,22 +43,51 @@ export function useMyLand() {
   return { landId: onPolygon ? titles.data[0] : stellarTitle?.title_id, onPolygon, stellarTitle, evm: s?.evmAddress };
 }
 
-/** Her shares: the mint lists of her approved plans (the plan and its extensions, 25 Oct) + each token's state on
- *  Stellar. */
+// FoodToken status (FoodTokenUpgradeable): 0 none, 1 active, 2 verified, 3 harvest confirmed, 4 burned (lapsed or
+// cancelled). A share exists while its token does.
+const FT_ABI = ['function getLandTitleTokens(uint32) view returns (uint256[])', 'function tokenStatus(uint256) view returns (uint8)'];
+const FT_LIVE = new Set([1, 2, 3]);
+
+/** The land's FoodTokens on Polygon (3 Nov): the chain says which crop shares exist, not the node. Token ids as
+ *  decimal strings; burned ones left out. */
+export async function polygonShareIds(provider, landId) {
+  const c = new ethers.Contract(process.env.REACT_APP_FOODTOKEN_ADDRESS, FT_ABI, provider);
+  const ids = (await c.getLandTitleTokens(landId)).map((x) => x.toString());
+  const st = await Promise.all(ids.map((id) => c.tokenStatus(id).then(Number)));
+  return ids.filter((_, i) => FT_LIVE.has(st[i]));
+}
+
+/** Her shares (3 Nov): the FoodTokens her land title holds on Polygon, each with its state on Stellar. The approved
+ *  plans' mint lists (the plan and its extensions, 25 Oct) only name them (crop, areas, season, the plan's amounts).
+ *  Was: the node's mint lists decided what was listed, so a share the chain did not hold (a mint that failed, a
+ *  burned one) still showed. A FoodToken of her land that no approved plan names is an old Polygon one: not moved to
+ *  Stellar (LOAN_RULES "Existing food tokens"), so not listed. */
 export function useMyShares() {
   const api = usePlanClient();
+  const { provider } = useProvider();
   const { data: cfg } = useStellarConfig();
   const { landId } = useMyLand();
   const chain = useCropChain(landId);
   const plans = chain.data?.plans || [];
   return useQuery({
-    queryKey: ['oracle', 'myShares', plans.map((x) => x.id).join(',')], enabled: !!api && !!cfg && plans.length > 0,
+    queryKey: ['oracle', 'myShares', landId, plans.map((x) => x.id).join(',')],
+    enabled: !!api && !!cfg && !!provider && !!landId && plans.length > 0,
     staleTime: 30_000,
     queryFn: async () => {
-      const lists = await Promise.all(plans.map((p) => api.mintList(p.id).then((r) => r.mints.map((m) => ({ ...m, p })))));
-      const mints = lists.flat();
+      const [onChain, lists] = await Promise.all([
+        polygonShareIds(provider, landId),
+        Promise.all(plans.map((p) => api.mintList(p.id).then((r) => r.mints.map((m) => ({ ...m, p }))))),
+      ]);
+      const held = new Set(onChain.map((id) => BigInt(id).toString()));
+      const seen = new Set();
+      const withId = lists.flat().filter((m) => {
+        if (!m.token_id) return false;
+        const id = BigInt(m.token_id).toString();
+        if (!held.has(id) || seen.has(id)) return false;     // not on Polygon (not minted, or burned), or named twice
+        seen.add(id);
+        return true;
+      });
       // Every share's state in one batched read (22 Oct), instead of a simulation each.
-      const withId = mints.filter((m) => m.token_id);
       const fts = withId.length ? await readFoodTokens(cfg, cfg.union, withId.map((m) => tokenHex(m.token_id))).catch(() => ({})) : {};
       return Promise.all(withId.map(async (m) => {
         const ft = fts[tokenHex(m.token_id)] || null;
