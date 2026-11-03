@@ -220,8 +220,33 @@
         // Her smart account (26 Oct), from her device key; the leader's app creates it at L14.
         if (out.account) localStorage.setItem('nila.lite.account', out.account);
       } catch (e) { /* no storage */ }
+      sendUnion(out.account);
       go('#/home');
     }, fail);
+  }
+
+  /** Member-owned accounts (3 Nov): her account names its union itself. The device key signs `set_union(union)` once;
+   *  the node keeps it with her row and the leader's app submits it right after making her account (L14). Not waited
+   *  for and sent again at the next start until the node has it. Valid ~30 days (5 s ledgers). */
+  var UNION_LEDGERS = 30 * 17280;
+  function sendUnion(account) {
+    if (!account || stored('nila.lite.union.' + account) === '1') return Promise.resolve();
+    var cfg;
+    return call('GET', '/stellar/config').then(function (c) {
+      cfg = c;
+      if (!c.union || !c.rpc_url) throw new Error('no union');
+      return fetch(c.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (r) { return r.json(); });
+    }).then(function (l) {
+      return loadKey().then(function (pair) {
+        if (!pair) throw new Error('no key');
+        return window.NilaSession.joinUnion({ passphrase: cfg.passphrase, account: account, union: cfg.union,
+          ledger: l.result.sequence, ledgers: UNION_LEDGERS },
+          function (payload) { return window.crypto.subtle.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, pair.privateKey, payload); });
+      });
+    }).then(function (u) {
+      return signed('set_union', u).then(function (q) { return call('POST', '/keypad/set-union', q); });
+    }).then(function () { store('nila.lite.union.' + account, '1'); }, function () { /* sent again at the next start */ });
   }
 
   function fail(e) {
@@ -255,6 +280,8 @@
       return call('GET', '/stellar/config');
     }).then(function (c) {
       cfg = c;
+      // Her signed set_union (3 Nov), until the node has it (me.union_signed) or this phone sent it.
+      if (me.account && !me.union_signed) sendUnion(me.account);
       if (!me.account || !c.rpc_url) return [null, []];
       var f = c.contracts.fund_core, u = C.addr(c.union), a = C.addr(me.account);
       return Promise.all([

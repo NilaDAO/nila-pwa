@@ -1,9 +1,7 @@
 // Keypad member hooks (P8, L14). DESIGN GAP: the design proposes useInviteLink (Q53, names not confirmed yet); built
 // under that name, with useKeypadMember for L14 #sent. Query keys qk.oracle.keypad.
 import { useEffect, useMemo, useRef } from 'react';
-import { useStellarConfig } from '../stellar/hooks';
-import { invokeContract, isDeployed } from '../stellar/soroban';
-import { signerVal } from '../stellar/account';
+import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { keypadClient } from './api';
@@ -59,7 +57,8 @@ export function useKeypadMembers() {
 export { useKeypadClient };
 
 /** Keypad accounts (26 Oct): a keypad member's smart account is created by the leader's app as soon as the member's
- *  phone is set up (its key is made when the SMS link is opened, so it cannot be made at Add a member). Runs while a
+ *  phone is set up (its key is made when the SMS link is opened, so it cannot be made at Add a member), then named into
+ *  the union with the phone's own signed set_union (3 Nov). Runs while a
  *  leader's app is open, from the keypad members list it already polls; each account is checked once on this phone. */
 /** A lost phone (2 Nov): the leader who sends the new SMS link from G2 has decided the recovery; this phone remembers it
  *  and recovers the account as soon as the new phone has opened the link (KeypadAccounts below), with no second tap. */
@@ -95,20 +94,18 @@ export function KeypadAccounts() {
   }, [keypads, api, s]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!cfg || !s?.ready || busy.current || !keypads) return;
-    const done = (a) => { try { return localStorage.getItem(`nila.keypad.made.${a}`) === '1'; } catch { return false; } };
+    // Done once the account exists and names its union (member-owned accounts, 3 Nov: the phone's signed set_union,
+    // sent at F9, arrives with the member's row as `set_union`).
+    const done = (a) => { try { return localStorage.getItem(`nila.keypad.joined.${a}`) === '1'; } catch { return false; } };
     const todo = keypads.filter((m) => m.phone_type === 'keypad' && m.device && m.account && (m.first_signer || m.signer) && !done(m.account));
     if (!todo.length) return;
     busy.current = true;
     (async () => {
       for (const m of todo) {
         try {
-          if (!(await isDeployed(cfg, m.account))) {
-            const hex = m.first_signer || m.signer;
-            await invokeContract({ cfg, source: s.senderAddress, signHash: s.signHash, contractName: 'account_factory', fn: 'create',
-              args: [signerVal(Uint8Array.from(hex.match(/../g).map((x) => parseInt(x, 16))))] });
-          }
-          try { localStorage.setItem(`nila.keypad.made.${m.account}`, '1'); } catch { /* checked again next time */ }
-        } catch (e) { console.error('[keypad] account not created', m.account, e); }
+          const { union } = await ensureKeypadAccount(cfg, s, m);
+          if (union) try { localStorage.setItem(`nila.keypad.joined.${m.account}`, '1'); } catch { /* checked again next time */ }
+        } catch (e) { console.error('[keypad] account not made or union not set', m.account, e); }
       }
       busy.current = false;
     })();

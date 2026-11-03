@@ -2,7 +2,7 @@
 // Names and keys follow the design (data/DataHooksRead.md, DataHooksWrite.md): useAccount, useSetupAccount.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Address, Asset, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
-import { signerVal } from './account';
+import { deployerOf, signerVal, unionEntry } from './account';
 import { ethers } from 'ethers';
 import { buildAccount, buildNinTrustline, getAccount, getStellarConfig, linkMessage, submitAccount, submitNinTrustline } from './api';
 import { qk } from './keys';
@@ -32,10 +32,12 @@ export function useAccount(address, smart) {
       // trustline); `deployed` tells whether the account exists yet.
       if (smart && smart !== address) {
         const deployed = await isDeployed(cfg, smart);
-        const [bal, auth] = deployed ? await Promise.all([
+        const [bal, auth, union] = deployed ? await Promise.all([
           readContract(cfg, 'nin', 'balance', [sv.address(smart)]).catch(() => 0),
-          readContract(cfg, 'nin', 'authorized', [sv.address(smart)]).catch(() => false)]) : [0, false];
-        return { exists: true, deployed, sponsor: a.sponsor || null,
+          readContract(cfg, 'nin', 'authorized', [sv.address(smart)]).catch(() => false),
+          // The union her account named (member-owned accounts, 3 Nov); null until she names one. undefined: not read.
+          readAccountUnion(cfg, smart).catch(() => undefined)]) : [0, false, null];
+        return { exists: true, deployed, union, sponsor: a.sponsor || null,
           nin: { balance: Number(BigInt(bal ?? 0)) / 10 ** NIN_DECIMALS, authorized: !!auth }, decimals: NIN_DECIMALS };
       }
       const [code, issuer] = cfg.nin_asset.split(':');
@@ -99,12 +101,52 @@ async function addNinTrustline(cfg, me, signHash) {
  * wallet pair, the node's sponsor co-signs and submits. Safe to repeat: an existing account is a no-op, unless it lacks
  * this network's nIN trustline, which is then added (sponsored).
  */
-/** Her smart account (26 Oct): made once, by her own Privy key's plain account, through the union's factory (anyone
- *  may create an account; its address follows from her key). */
+/** Her smart account (26 Oct): made once, by her own Privy key's plain account, through the account deployer (one for
+ *  all unions since 3 Nov; anyone may create an account; its address follows from her key). */
 async function createSmartAccount(cfg, sender, account, signHash) {
   if (!account || account === sender || await isDeployed(cfg, account)) return;
-  await invokeContract({ cfg, source: sender, signHash, contractName: 'account_factory', fn: 'create',
+  if (!deployerOf(cfg)) throw new Error('no account deployer in the node config');
+  await invokeContract({ cfg, source: sender, signHash, contractName: 'account_deployer', fn: 'create',
     args: [signerVal(StrKey.decodeEd25519PublicKey(sender))] });
+}
+
+/** The union an account named (`account.union()`), or null while it has none (member-owned accounts, 3 Nov). */
+export async function readAccountUnion(cfg, account) {
+  return (await readContract(cfg, account, 'union', [])) || null;
+}
+
+/** Names her union on her own account (`account.set_union(union)`, signed by the account itself: her Privy key on a
+ *  smartphone). Done once the union is known: at registration (R9), at a recovery that restores the union, or at the
+ *  next start of a moved or prepared member. A no-op when the account already names this union. The account refuses
+ *  it while frozen (recovery pending), in a leader session, or with a USDC lien. */
+export async function setAccountUnion(cfg, sender, account, signHash, union) {
+  if (!account || account === sender || !union) return false;
+  if ((await readAccountUnion(cfg, account).catch(() => null)) === union) return false;
+  await invokeContract({ cfg, source: sender, account, signHash, contractName: account, fn: 'set_union', args: [sv.address(union)] });
+  return true;
+}
+
+/** A keypad member's account (L14): the leader's app creates it from the phone's first key (anyone may; the node pays
+ *  the fee), then submits the member's own signed `set_union` that the phone sent at F9 (`m.set_union`: { union?,
+ *  nonce, exp, sig }, hex). Without that signature the account stays without a union (no session, no recovery) until
+ *  the phone sends one. Returns { deployed, union }. */
+export async function ensureKeypadAccount(cfg, s, m) {
+  if (!(await isDeployed(cfg, m.account))) {
+    if (!deployerOf(cfg)) throw new Error('no account deployer in the node config');
+    const hex = m.first_signer || m.signer;
+    await invokeContract({ cfg, source: s.senderAddress, signHash: s.signHash, contractName: 'account_deployer', fn: 'create',
+      // The account's address follows from the member's first phone key (26 Oct): it is created with that key.
+      args: [signerVal(Uint8Array.from(hex.match(/../g).map((x) => parseInt(x, 16))))] });
+  }
+  let union = await readAccountUnion(cfg, m.account).catch(() => null);
+  const su = m.set_union;
+  const want = su?.union || cfg.union;
+  if (!union && su?.sig && want) {
+    await invokeContract({ cfg, source: s.senderAddress, signHash: s.signHash, contractName: m.account, fn: 'set_union',
+      args: [sv.address(want)], auth: [unionEntry(m.account, want, su, 'P256')] });
+    union = want;
+  }
+  return { deployed: true, union };
 }
 
 export function useSetupAccount({ stellarAddress, account, evmWallet, signHash }) {

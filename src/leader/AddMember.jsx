@@ -11,9 +11,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
-import { useStellarConfig } from '../stellar/hooks';
-import { invokeContract, isDeployed } from '../stellar/soroban';
-import { signerVal } from '../stellar/account';
+import { ensureKeypadAccount, readAccountUnion, useStellarConfig } from '../stellar/hooks';
+import { isDeployed } from '../stellar/soroban';
 import { C, FONT, R } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
 import { Card, CardButton, Row, Text } from '../shell/SettingsParts';
@@ -65,24 +64,32 @@ function Step({ done, title, sub }) {
 }
 
 /** The keypad member's smart account (26 Oct): once the phone has its device key, the leader's app creates the account
- *  through the union's factory (anyone may; the node only pays the fee). True once it exists. */
+ *  through the account deployer (anyone may; the node only pays the fee) and submits the member's own signed
+ *  `set_union` that the phone sent at F9 (member-owned accounts, 3 Nov). { made, union }: made once it exists, union
+ *  once it names its union (needed for the help QR session and recovery). */
 function useKeypadAccount(m) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const tried = useRef();
-  const deployed = useQuery({
-    queryKey: ['stellar', 'deployed', m?.account], enabled: !!cfg && !!m?.account, refetchInterval: (q) => (q.state.data ? false : 5_000),
-    queryFn: () => isDeployed(cfg, m.account),
+  const state = useQuery({
+    queryKey: ['stellar', 'keypad-account', m?.account], enabled: !!cfg && !!m?.account,
+    refetchInterval: (q) => (q.state.data?.union ? false : 5_000),
+    queryFn: async () => {
+      const made = await isDeployed(cfg, m.account);
+      return { made, union: made ? await readAccountUnion(cfg, m.account).catch(() => null) : null };
+    },
   });
+  const d = state.data;
+  // Again when the phone's set_union signature arrives after the account was made.
+  const key = `${m?.account}|${d?.made}|${!!m?.set_union?.sig}`;
   useEffect(() => {
-    if (!m?.device || !m?.signer || deployed.data !== false || tried.current === m.account || !s?.ready) return;
-    tried.current = m.account;
-    invokeContract({ cfg, source: s.senderAddress, signHash: s.signHash, contractName: 'account_factory', fn: 'create',
-      // The account's address follows from the member's first phone key (26 Oct): it is created with that key.
-      args: [signerVal(Uint8Array.from((m.first_signer || m.signer).match(/../g).map((x) => parseInt(x, 16))))] })
-      .then(() => deployed.refetch()).catch((e) => { console.error('[L14] account not created', e); tried.current = undefined; });
-  }, [m, deployed.data, s, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
-  return !!deployed.data;
+    if (!m?.device || !m?.signer || !d || d.union || tried.current === key || !s?.ready) return;
+    if (d.made && !m.set_union?.sig) return;          // nothing to send yet: waits for the phone's signature
+    tried.current = key;
+    ensureKeypadAccount(cfg, s, m).then(() => state.refetch())
+      .catch((e) => { console.error('[L14] account not made or union not set', e); tried.current = undefined; });
+  }, [m, d, s, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { made: !!d?.made, union: d?.union || null };
 }
 
 /** #sent: her progress, polled while the leader is with her. */
@@ -90,7 +97,8 @@ function Sent({ id, go }) {
   const q = useKeypadMember(id);
   const send = useInviteLink();
   const m = q.data;
-  const accountMade = useKeypadAccount(m);
+  const acct = useKeypadAccount(m);
+  const accountMade = acct.made;
   if (!m) return <Text>{q.error ? q.error.message : '…'}</Text>;
   const l = m.link || {};
   const keypad = m.phone_type === 'keypad';
@@ -106,6 +114,7 @@ function Sent({ id, go }) {
             <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for the member' : 'The link no longer works: send it again')} />
             <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
             {m.account && <Step done={accountMade} title="Account made" sub={accountMade ? `${m.account.slice(0, 4)}…${m.account.slice(-4)}` : 'Making it…'} />}
+            {m.account && accountMade && <Step done={!!acct.union} title="Account joined the union" sub={acct.union ? '' : (m.set_union?.sig ? 'Joining…' : 'Waiting for the member\'s phone')} />}
             <Step done={!!m.job} title="Field points taken" sub={m.job ? `${(m.fields || []).length} field${(m.fields || []).length === 1 ? '' : 's'}` : 'On your phone, at the farm'} />
             <Notice kind="info">Pin Nila to the apps menu: on the member's phone, in the browser, Options → Pin to Apps Menu.</Notice>
           </>

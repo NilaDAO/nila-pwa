@@ -1,4 +1,4 @@
-/* Nila lite: the help QR (A2, executive decision 26 Oct) and the machine-hours voucher QR (27 Oct). Plain ES5 (KaiOS 2.5 / Gecko 48: no BigInt, no async).
+/* Nila lite: the help QR (A2, executive decision 26 Oct), the machine-hours voucher QR (27 Oct) and her signed set_union (3 Nov). Plain ES5 (KaiOS 2.5 / Gecko 48: no BigInt, no async).
  * The member's device key (ECDSA P-256) signs the authorization of `start_session(not_after)` on the member's own
  * smart account; the leader's app sends it, then acts for the member for 5 minutes. Same QR as the app's
  * src/stellar/session.js:
@@ -115,5 +115,33 @@
     });
   }
 
-  window.NilaSession = { make: make, preimage: preimage, lowS: lowS, voucher: voucher, claimPreimage: claimPreimage };
+  /** The XDR preimage of `account.set_union(union)` (member-owned accounts, 3 Nov): the account names its union, signed
+   *  by the account itself. */
+  function unionPreimage(networkId, account, union, nonce, exp) {
+    var fn = ascii('set_union');
+    return concat([
+      u32(9), networkId, nonce, u32(exp),
+      u32(0),                                   // SOROBAN_AUTHORIZED_FUNCTION_TYPE_CONTRACT_FN
+      u32(1), contractBytes(account),           // SC_ADDRESS_TYPE_CONTRACT
+      u32(fn.length), fn, new Uint8Array((4 - (fn.length % 4)) % 4),
+      u32(1), u32(18), scAddress(union),        // args: [SCV_ADDRESS]
+      u32(0),                                   // no sub-invocations
+    ]);
+  }
+  function hex(b) { var s = ''; for (var i = 0; i < b.length; i++) s += (b[i] < 16 ? '0' : '') + b[i].toString(16); return s; }
+
+  /** Her signed set_union, sent to the node at F9; the leader's app submits it once it has made her account. cfg:
+   *  { passphrase, account, union, ledger (latest), ledgers (validity) }. → { union, nonce, exp, sig } (hex). */
+  function joinUnion(cfg, sign) {
+    var exp = cfg.ledger + cfg.ledgers;
+    var nonce = window.crypto.getRandomValues(new Uint8Array(8));
+    return sha256(ascii(cfg.passphrase)).then(function (networkId) {
+      return sha256(unionPreimage(networkId, cfg.account, cfg.union, nonce, exp));
+    }).then(function (payload) { return sign(payload); }).then(function (sig) {
+      return { union: cfg.union, nonce: hex(nonce), exp: exp, sig: hex(lowS(new Uint8Array(sig))) };
+    });
+  }
+
+  window.NilaSession = { make: make, preimage: preimage, lowS: lowS, voucher: voucher, claimPreimage: claimPreimage,
+    unionPreimage: unionPreimage, joinUnion: joinUnion };
 })();

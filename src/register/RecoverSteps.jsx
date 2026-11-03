@@ -57,7 +57,11 @@ export default function RecoverSteps({ evm, onDone }) {
   useEffect(() => {
     if (step !== 'restore') return;
     let live = true;
-    saveUnionRecord(checkLeader, restoreUnion, evm).finally(() => { if (live) { setRep(restoreUnion?.rep); after('union'); } });
+    saveUnionRecord(checkLeader, restoreUnion, evm).finally(() => {
+      // Member-owned accounts (3 Nov): her account names the restored union if it has none yet (not waited for).
+      s?.stellarSetup?.joinUnion?.().catch((e) => console.error('[recover] union not set on the account', e));
+      if (live) { setRep(restoreUnion?.rep); after('union'); }
+    });
     return () => { live = false; };
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 

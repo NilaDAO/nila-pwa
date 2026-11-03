@@ -144,12 +144,16 @@ function Choice({ checked, onClick, title, sub, icon }) {
 export function UnionStep({ union, evm, onDone }) {
   const [pick, setPick] = useState(0);
   const [busy, setBusy] = useState(false);
+  const s = useNilaSigner();
   // As today's union step (components/Forms/memberUnion.js): the union goes into Init with the leader check on
   // the Polygon RolesRegistry, so a leader opens the leader app.
   const saveUnion = async () => {
     setBusy(true);
     const u = UNIONS[pick];
     const leader = await saveUnionRecord(checkLeader, u, evm);   // shell/leader.js retries until the chain answers
+    // Member-owned accounts (3 Nov): her account names the union she chose (set_union, her own signature). Not
+    // waited for: if her account is not made yet, the signer names it once it is (wallet/PrivyRoot).
+    s?.stellarSetup?.joinUnion?.().catch((e) => console.error('[R9] union not set on the account', e));
     setBusy(false);
     onDone({ ...u, address: union, leader: !!leader });
   };
