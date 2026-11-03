@@ -299,13 +299,15 @@ function SignerBridge({ children }) {
 
   // Member-owned accounts (3 Nov): her account names its union itself (`set_union`, signed with her Privy key). Done
   // once the account exists without a union and her union is known on this phone (R9 wrote it, a recovery restored
-  // it, or the leader start saved it); R9 also calls joinUnion right after the choice. The union is the node's
-  // (cfg.union, one union a node today). Without it no leader session and no recovery work for her account.
+  // it, or the leader start saved it); R9 also calls joinUnion right after the choice. The union is the one she picked
+  // on R9 from the anchor's directory (decision 008; Init union.stellar), else the node's (cfg.union). Without it no
+  // leader session and no recovery work for her account.
   const { refetch: refetchAccount } = account;
   const deployed = !!account.data?.deployed;    // not yet (or a recovering phone's new key): named once it is
-  const joinUnion = useCallback(async () => {
-    if (!signersReady || !cfg?.union || !stellar || !smart || smart === stellar.address || !deployed) return false;
-    const done = await setAccountUnion(cfg, stellar.address, smart, signHash, cfg.union);
+  const joinUnion = useCallback(async (picked) => {
+    const union = picked || cfg?.union;
+    if (!signersReady || !union || !stellar || !smart || smart === stellar.address || !deployed) return false;
+    const done = await setAccountUnion(cfg, stellar.address, smart, signHash, union);
     if (done) await refetchAccount();
     return done;
   }, [signersReady, cfg, stellar, smart, signHash, refetchAccount, deployed]);
@@ -315,7 +317,7 @@ function SignerBridge({ children }) {
     joining.current = smart;
     readAllItems('Init').catch(() => ({})).then((db) => {
       if (!db?.union) { joining.current = undefined; return; }      // R9 not done yet: it calls joinUnion itself
-      return joinUnion();
+      return joinUnion(db.union.stellar);
     }).catch((e) => { joining.current = undefined; console.error('[privy] union not set on the account', e); });
   }, [signersReady, account.data, smart, joinUnion]);
 

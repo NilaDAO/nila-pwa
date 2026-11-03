@@ -5,10 +5,9 @@
 // phone (R7) and go out from R14 once she is online. R14 ends when her land title is on Polygon (notes
 // r14-title-check) → the crop plan (CP1).
 // DESIGN GAPS (Docs/P11-Field-Borders.md): R8 has no detection behind it on the Stellar path (her choice is kept on
-// the phone); R9 lists today's one union from /stellar/config, its name and leader from the app (no union names on
-// the node yet), and 'Filter on my region' changes nothing with one union. Recover (only the missing R9 / R13 / R10)
-// is src/register/RecoverSteps.jsx.
-import { useEffect, useState } from 'react';
+// the phone). R9 (decision 008, 3 Nov) lists the anchor's union directory (src/union/directory.js), nearest first; the
+// node's own union alone when there is none. Recover (only the missing R9 / R13 / R10) is src/register/RecoverSteps.jsx.
+import { useEffect, useMemo, useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
 import { checkLeader } from '../shell/leader';
 import { setDBitem } from '../utils/db';
@@ -18,6 +17,7 @@ import { useMyBorderJob, useSendFieldPoints } from '../border/hooks';
 import { Page, PointsStep, Waiting, clearPoints, readPoints, useOnline } from '../border/SendLocation';
 import { Loading } from './Boot';
 import { clearDemoNew } from './AfterCode';
+import { unionChoices, useRoughLocation, useUnions } from '../union/directory';
 
 export const pointsSentKey = (evm) => `nila.reg.sent.${(evm || '').toLowerCase()}`;
 const markPointsSent = (evm) => { try { localStorage.setItem(pointsSentKey(evm), '1'); } catch { /* not kept */ } };
@@ -45,9 +45,14 @@ const writeUnion = (evm, u) => { try { localStorage.setItem(unionKey(evm), JSON.
 /** The union record in Init, with the leader check on the Polygon RolesRegistry (as memberUnion.js). */
 export async function saveUnionRecord(isLeader, u, evm) {
   let leader;
-  try { const r = await isLeader(u.polygon, evm); leader = r === undefined ? undefined : Boolean(r); } catch { leader = undefined; }
-  await setDBitem('union', { leader, transfer: true, address: u.polygon, rep: u.rep, name: u.name, chain: 137, location: u.location }, 'Init');
-  writeUnion(evm, { name: u.name, polygon: u.polygon });
+  if (u.polygon) {
+    try { const r = await isLeader(u.polygon, evm); leader = r === undefined ? undefined : Boolean(r); } catch { leader = undefined; }
+  }
+  // A union from the anchor's directory without a Polygon address (decision 008): `address` holds its Stellar address,
+  // which the Polygon reads skip (they need 0x…); `stellar` is the union her account names (set_union).
+  await setDBitem('union', { leader, transfer: true, address: u.polygon || u.stellar, stellar: u.stellar, rep: u.rep, name: u.name,
+    chain: 137, location: u.location }, 'Init');
+  writeUnion(evm, { name: u.name, polygon: u.polygon, stellar: u.stellar });
   return leader;
 }
 /** The union a title holder belongs to while there is one union (24 Oct, R9 skipped on recovery). */
@@ -140,32 +145,59 @@ function Choice({ checked, onClick, title, sub, icon }) {
   );
 }
 
-/** R9: select a union. */
+/** R9: select a union (decision 008, 3 Nov): the anchor's union directory, nearest first; without one, the node's own
+ *  union alone. A union whose details changed since the trust admitted it is shown with a note and can be picked. */
 export function UnionStep({ union, evm, onDone }) {
-  const [pick, setPick] = useState(0);
+  const { data: cfg } = useStellarConfig();
+  const position = useRoughLocation();
+  const dir = useUnions(cfg?.anchor_url, position);
+  const choices = useMemo(() => unionChoices({ dir: dir.data, cfgUnion: union, known: UNIONS[0], position }), [dir.data, union, position]);
+  const [picked, setPicked] = useState(null);
+  const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const s = useNilaSigner();
-  // As today's union step (components/Forms/memberUnion.js): the union goes into Init with the leader check on
-  // the Polygon RolesRegistry, so a leader opens the leader app.
+  const pick = choices.find((u) => u.stellar === picked) || (choices.length === 1 ? choices[0] : null);
+  const q = query.trim().toLowerCase();
+  const shown = q ? choices.filter((u) => u.name.toLowerCase().includes(q)) : choices;
+  // As today's union step (components/Forms/memberUnion.js): the union goes into Init (the leader check on the Polygon
+  // RolesRegistry only for a union that has a Polygon address), so a leader opens the leader app.
   const saveUnion = async () => {
+    if (!pick) return;
     setBusy(true);
-    const u = UNIONS[pick];
-    const leader = await saveUnionRecord(checkLeader, u, evm);   // shell/leader.js retries until the chain answers
+    const leader = await saveUnionRecord(checkLeader, pick, evm);   // shell/leader.js retries until the chain answers
     // Member-owned accounts (3 Nov): her account names the union she chose (set_union, her own signature). Not
-    // waited for: if her account is not made yet, the signer names it once it is (wallet/PrivyRoot).
-    s?.stellarSetup?.joinUnion?.().catch((e) => console.error('[R9] union not set on the account', e));
+    // waited for: if her account is not made yet, the signer names it once it is (wallet/PrivyRoot, from the record).
+    s?.stellarSetup?.joinUnion?.(pick.stellar).catch((e) => console.error('[R9] union not set on the account', e));
     setBusy(false);
-    onDone({ ...u, address: union, leader: !!leader });
+    onDone({ ...pick, address: pick.stellar, leader: !!leader });
   };
+  const waiting = !choices.length && (dir.isLoading || !cfg);
   return (
     <Page title="Select a union" info="Select a reputable union in your area that offers financial services tailored to your needs as a farmer. Go to settings to switch unions.">
-      <div role="radiogroup" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {UNIONS.map((u, i) => <Choice key={u.name} icon={<UnionIcon />} checked={pick === i} onClick={() => setPick(i)} title={u.name} sub={u.rep} />)}
+      {choices.length > SEARCH_FROM && (
+        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name" aria-label="Search unions by name"
+          style={{ height: 44, borderRadius: 12, border: 0, background: '#1F2733', color: '#F1F5F9', fontFamily: 'inherit', fontSize: 14,
+            padding: '0 16px', boxSizing: 'border-box', width: '100%' }} />
+      )}
+      <div role="radiogroup" aria-label="Unions" style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '45vh', overflowY: 'auto' }}>
+        {shown.map((u) => <Choice key={u.stellar} icon={<UnionIcon />} checked={pick?.stellar === u.stellar} onClick={() => setPicked(u.stellar)}
+          title={u.name} sub={unionLine(u)} />)}
+        {waiting && <p role="status" style={{ margin: 0, color: '#94A3B8', fontSize: 14, textAlign: 'center' }}>Looking for unions…</p>}
+        {!waiting && q && !shown.length && <p style={{ margin: 0, color: '#94A3B8', fontSize: 14, textAlign: 'center' }}>No union with that name.</p>}
       </div>
-      <button type="button" style={!union || busy ? btnDisabled : btnPrimary} disabled={!union || busy} onClick={saveUnion}>Save</button>
-      <button type="button" style={btnSecondary}>Filter on my region</button>
+      <button type="button" style={!pick || busy ? btnDisabled : btnPrimary} disabled={!pick || busy} onClick={saveUnion}>Save</button>
     </Page>
   );
+}
+
+const SEARCH_FROM = 6;
+const km = (d) => (d < 10 ? `${d.toFixed(1)} km away` : `${Math.round(d)} km away`);
+/** The line under a union's name: its distance, and a note when its details changed since the trust admitted it. */
+function unionLine(u) {
+  const parts = [];
+  if (Number.isFinite(u.distance_km)) parts.push(km(u.distance_km));
+  if (!u.matches) parts.push('Details changed since the trust confirmed them');
+  return parts.join(' · ') || null;
 }
 
 /** R13: who uses the app (stored as nila.mode, self | assist). */
