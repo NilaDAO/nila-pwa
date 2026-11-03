@@ -10,6 +10,7 @@
 // "Waiting for the network" states have no board. #leader (22 Oct): the same form and store (SEP-12 type leader);
 // accepted = fx_pool.id_checked on-chain, which opens her USDC (A9); no result screen, straight back to her assets.
 import { Loading } from '../register/Boot';
+import { NoticeScreen } from '../stellar/TxStatus';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Primary, muted } from '../plan/ui';
@@ -104,13 +105,8 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
       </>
     );
   } else if (status === 'PROCESSING') {
-    body = (
-      <>
-        <h2 style={{ fontSize: 16 }}>We are checking</h2>
-        <p style={muted}>This takes up to 2 days.</p>
-        <Primary onClick={onBack}>Done</Primary>
-      </>
-    );
+    // An N-board (3 Nov): nothing to do on this screen while the trust checks, so a notice with a secondary Back.
+    return <NoticeScreen title="We are checking" text="The Nila trust checks your identity. This takes up to 2 days. You can use the app meanwhile." back="Back" onClose={onBack} />;
   } else if (status === 'ACCEPTED' && leader) {
     return <Loading />;   // until set_id_checked lands, then back to the assets (above)
   } else if (status === 'ACCEPTED') {
