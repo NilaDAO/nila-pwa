@@ -127,7 +127,7 @@ export default function MyMachine({ onBack, pick: first }) {
             <span style={muted}>Your machine · you drive it</span>
           </span>
           <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, color: m.on_hold ? C.coral : C.accent }}>{m.on_hold ? 'On hold' : 'Available'}</span>
+            <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, color: m.on_hold ? C.coral : C.text }}>{m.on_hold ? 'On hold' : 'Available'}</span>
             <span style={muted}>{m.on_hold ? HOLD_REASONS[m.hold_reason] : `${m.acres_per_week} acres a week`}</span>
           </span>
         </div>
