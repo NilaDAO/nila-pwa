@@ -38,7 +38,7 @@ function ModeCard() {
  *  USDC, a machine and LP, so every member sees whether it passed. */
 function MemberIdentity({ onIdCheck }) {
   const lp = useLpStatus();
-  return <IdentityRow checked={!!lp.data?.idChecked} onClick={onIdCheck} sub="Needed for nIN, USDC, a machine or an LP" />;
+  return <IdentityRow checked={!!lp.data?.idChecked} onClick={onIdCheck} sub="Needed to operate the app on your own" />;
 }
 
 export function LpCard({ onIdCheck, onOffers }) {
