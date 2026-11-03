@@ -97,7 +97,11 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
     queryKey: ['stellar', 'loans', 'open', typed, union.dataUpdatedAt], enabled: purpose === 'repay' && !!api && !!cfg && !!union.data,
     queryFn: async () => {
       const crops = {};
-      for (const m of union.data) for (const x of m.shareList || []) crops[x.token] = { crop: x.name, land: m.lands[0] };
+      // The share's own land: its key starts with the title id ("62:black_gram:…"); a member with two titles (a moved
+      // or reused setup) would otherwise see every loan under her first land.
+      for (const m of union.data) for (const x of m.shareList || []) {
+        crops[x.token] = { crop: x.name, land: Number(String(x.share || '').split(':')[0]) || m.lands[0] };
+      }
       const members = typed ? [typed] : union.data.filter((m) => m.address && m.loans.length).map((m) => m.address);
       const per = await Promise.all(members.map(async (who) => {
         const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(who)]).catch(() => []);
