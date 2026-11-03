@@ -3,6 +3,8 @@
  * smart account; the leader's app sends it, then acts for the member for 5 minutes. Same QR as the app's
  * src/stellar/session.js:
  *   NILA:S:<base32: kind 1 (1 Ed25519, 2 P-256) | account 32 | not_after 8 | nonce 8 | expiry ledger 4 | signature 64>
+ * Kind 4 (3 Nov): while her account names no union yet, kind 2 followed by her join (device key 65 | union 32 | nonce 8 |
+ * expiry ledger 4 | signed set_union 64), so the leader's scan makes the account and joins it with no node.
  * The Soroban payload is built by hand: sha256 of the XDR HashIdPreimage ENVELOPE_TYPE_SOROBAN_AUTHORIZATION
  * { networkId, nonce, signatureExpirationLedger, invocation: account.start_session(u64) }. WebCrypto's ECDSA signs
  * SHA-256 of that payload, which is what the account checks (secp256r1 over sha256(payload)); s is made low. */
@@ -68,14 +70,17 @@
     ]);
   }
 
-  /** The help QR text. cfg: { passphrase, account, ledger (latest), now (unix s) }; sign(payload) → Promise<64 bytes>. */
+  /** The help QR text. cfg: { passphrase, account, ledger (latest), now (unix s), join? }; sign(payload) → Promise<64
+   *  bytes>. join (kind 4): { key (65 bytes), union (G…), nonce, exp, sig } as joinUnion makes it. */
   function make(cfg, sign) {
     var notAfter = cfg.now + 300, exp = cfg.ledger + 120;
     var nonce = window.crypto.getRandomValues(new Uint8Array(8));
     return sha256(ascii(cfg.passphrase)).then(function (networkId) {
       return sha256(preimage(networkId, cfg.account, notAfter, nonce, exp));
     }).then(function (payload) { return sign(payload); }).then(function (sig) {
-      var b = concat([new Uint8Array([2]), contractBytes(cfg.account), u64(notAfter), nonce, u32(exp), lowS(new Uint8Array(sig))]);
+      var j = cfg.join;
+      var b = concat([new Uint8Array([j ? 4 : 2]), contractBytes(cfg.account), u64(notAfter), nonce, u32(exp), lowS(new Uint8Array(sig))]
+        .concat(j ? [j.key, fromB32(j.union).subarray(1, 33), hexBytes(j.nonce), u32(j.exp), hexBytes(j.sig)] : []));
       return { qr: 'NILA:S:' + toB32(b), until: notAfter };
     });
   }

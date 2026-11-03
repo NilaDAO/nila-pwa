@@ -6,6 +6,9 @@
 // Kind 3 (29 Oct, an assist-mode smartphone): kind 1 followed by the member's Polygon address (20 bytes), so a leader
 // can take the field points and mint the land title of someone not yet a member (L14) from the QR alone. The keypad's
 // QR stays without it (a keypad member is added through its SMS link).
+// Kind 4 (3 Nov, a keypad whose account names no union yet): kind 2 followed by her join, so the leader's scan makes
+// her account and names its union with no node in between: device key 65 (P-256, uncompressed) | union 32 (the G
+// account's key) | nonce 8 | expiry ledger 4 | her signed set_union 64.
 // `not_after` (unix seconds, the phone's clock, about 5 minutes ahead) ends the QR; the nonce makes it one use. The
 // leader's app sends start_session with it, then does the member's task: every entry of the member's account is
 // signed `Leader(<the leader's account>)`, and the leader's account approves it inside the member's check.
@@ -17,9 +20,17 @@ import { signatureVal } from './account';
 
 const PREFIX = 'NILA:S:';
 const LEN = 1 + 32 + 8 + 8 + 4 + 64;
-const KINDS = { 1: 'Ed25519', 2: 'P256', 3: 'Ed25519' };
+const KINDS = { 1: 'Ed25519', 2: 'P256', 3: 'Ed25519', 4: 'P256' };
 const POLY = 20;
-const sizeOk = (b) => !!b && !!KINDS[b[0]] && b.length === (b[0] === 3 ? LEN + POLY : LEN);
+const JOIN = 65 + 32 + 8 + 4 + 64;
+const sizeOk = (b) => !!b && !!KINDS[b[0]] && b.length === LEN + ({ 3: POLY, 4: JOIN }[b[0]] || 0);
+const plainHex = (u8) => [...u8].map((x) => x.toString(16).padStart(2, '0')).join('');
+/** Kind 4's join: { signer, union, nonce, exp, sig } (hex), as the node kept it (ensureKeypadAccount, unionEntry). */
+function joinOf(b) {
+  const j = b.slice(LEN); const d = new DataView(j.buffer, j.byteOffset);
+  return { signer: plainHex(j.slice(0, 65)), union: StrKey.encodeEd25519PublicKey(Buffer.from(j.slice(65, 97))),
+    nonce: plainHex(j.slice(97, 105)), exp: d.getUint32(105), sig: plainHex(j.slice(109, 173)) };
+}
 const hex = (u8) => '0x' + [...u8].map((x) => x.toString(16).padStart(2, '0')).join('');
 export const QR_LIFE = 300;          // seconds a session QR can be used
 const LEDGERS = 120;                 // its signature's expiry, ~10 minutes
@@ -69,7 +80,7 @@ export function readSessionQr(text) {
   const notAfter = Number(d.getBigUint64(33));
   if (Date.now() / 1000 > notAfter) throw new Error('This QR has expired. The member shows a new one.');
   const entry = entryOf(member, notAfter, d.getBigInt64(41), d.getUint32(49), signatureVal(KINDS[b[0]], b.slice(53, LEN)));
-  return { member, notAfter, polygon: b[0] === 3 ? hex(b.slice(LEN)) : '',
+  return { member, notAfter, polygon: b[0] === 3 ? hex(b.slice(LEN)) : '', join: b[0] === 4 ? joinOf(b) : null,
     args: [nativeToScVal(BigInt(notAfter), { type: 'u64' })], entry: entry.toXDR('base64') };
 }
 
@@ -78,7 +89,7 @@ export function sessionQrPhone(text) {
   try {
     if (!isSessionQr(text)) return '';
     const b = fromB32((text || '').trim().toUpperCase().slice(PREFIX.length));
-    return sizeOk(b) ? ({ 1: 'phone', 2: 'keypad', 3: 'phone' }[b[0]] || '') : '';
+    return sizeOk(b) ? ({ 1: 'phone', 2: 'keypad', 3: 'phone', 4: 'keypad' }[b[0]] || '') : '';
   } catch { return ''; }
 }
 
