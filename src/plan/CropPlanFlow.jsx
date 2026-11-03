@@ -411,6 +411,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   }
   // Assist mode (26 Oct): the member's phone makes no crop plan; the leader makes it with the member at the office, in a
   // session from the member's help QR. Until the plan is approved the phone says so and shows the help QR.
+  // No QR before the field record (3 Nov): a plan made without it is a plan made on nothing, so the member waits on CP1.
+  const recordReady = !!record && areasOf(record).length > 0;
+  if (!forLand && !self && assisted() && !approved && !plan && !recordReady && !field.isLoading) return <Pending map={map} error={field.error} />;
   if (!forLand && !self && assisted() && !approved) return <AssistPlan map={map} name={name} waiting={plan?.status === 'accepted'} />;
   const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');
   const back = (to) => () => setStep(to);
@@ -439,14 +442,14 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     if (field.isLoading) return <Loading />;
     // The leader with a member (forLand): the member's help QR is already scanned and a 5-minute session would run
     // out long before the record (up to an hour), so an N-board says to try again later and closes itself (28 Oct).
-    if (!record && forLand) {
+    if (!recordReady && forLand) {
       return (
         <NoticeScreen title="The field record is not ready yet" onClose={forLand.onClose}
           text="Nila is still building this member's field record from the satellite images. This can take up to an hour. Make the crop plan later; the member shows their QR again then."
           rows={[['Member', forLand.label || name], ['Land title', String(forLand.landId)]]} />
       );
     }
-    if (!record) return <Pending map={map} error={field.error} />;
+    if (!recordReady) return <Pending map={map} error={field.error} />;
     const sum = summarize(record);
     return (
       <Sheet map={map} landName={name} title={forLand ? 'Field record' : 'Your field record'}>
