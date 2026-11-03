@@ -325,8 +325,11 @@
         return Promise.all([
           C.read(cfg.rpc_url, cfg.sponsor, cfg.contracts.fund_core, 'food_token', [C.addr(cfg.union), C.bytes(id)]).catch(function () { return null; }),
           cfg.contracts.machinery ? C.read(cfg.rpc_url, cfg.sponsor, cfg.contracts.machinery, 'voucher', [C.addr(cfg.union), C.bytes(id)]).catch(function () { return null; }) : null,
+          // Her voucher part is debt too (26 Oct): its value, interest and fee are kept in fund_core.voucher_book.
+          C.read(cfg.rpc_url, cfg.sponsor, cfg.contracts.fund_core, 'voucher_book', [C.addr(cfg.union), C.bytes(id)]).catch(function () { return null; }),
         ]).then(function (x) {
           if (x[0] && x[0].loan) loans[hexKey(id)] = x[0].loan;
+          if (x[0] && x[0].loan && x[2]) loans[hexKey(id)].vb = x[2];
           if (x[1] && !x[1].void) vouchers[hexKey(id)] = Math.max(0, (x[1].units || 0) - (x[1].used || 0));   // units: centi tractor acres (27 Oct; the field was `hours`)
         });
       })).then(function () {
@@ -336,13 +339,21 @@
     });
   }
 
-  /** A loan's numbers in rupees: lent, repaid, left now, to repay by `due` (simple interest, as the app shows it). */
+  /** A loan's numbers in rupees: lent, repaid, left now, to repay by `due` (simple interest, as the app shows it;
+   *  src/loan/owed.js). The voucher part (l.vb, fund_core.voucher_book) is debt like the cash (26 Oct): its value,
+   *  its interest at the loan's rate and the treasury's fee on handed-back hours. */
   function money(l, due) {
-    var now = Date.now() / 1000, out = Math.max(0, (l.principal - l.principal_paid) / U);
-    var rate = l.rate_bp / 10000;
-    return { lent: l.principal / U, repaid: (l.principal_paid + l.interest_paid) / U,
-      left: Math.max(0, out + out * rate * Math.max(0, now - l.drawdown_ts) / YEAR - l.interest_paid / U),
-      atDue: Math.max(0, out + out * rate * Math.max(0, due - l.drawdown_ts) / YEAR - l.interest_paid / U) };
+    var now = Date.now() / 1000, rate = l.rate_bp / 10000, vb = l.vb;
+    var out = Math.max(0, (l.principal - l.principal_paid) / U);
+    var vOut = vb ? Math.max(0, (vb.value - vb.repaid) / U) : 0;
+    function owed(t) {
+      var c = out + out * rate * Math.max(0, t - l.last_accrual_ts) / YEAR + (l.interest_accrued - l.interest_paid) / U;
+      if (vb) c += vOut + vOut * rate * Math.max(0, t - vb.last_accrual_ts) / YEAR + (vb.interest_accrued - vb.interest_paid + vb.fee_due) / U;
+      return Math.max(0, c);
+    }
+    return { lent: (l.principal + (vb ? vb.value : 0)) / U,
+      repaid: (l.principal_paid + l.interest_paid + (vb ? vb.repaid + vb.interest_paid : 0)) / U,
+      left: owed(now), atDue: owed(Math.max(now, due)) };
   }
   function shareInfo(d, x) {
     var l = d.loans[hexKey(x.token)], due = (tsOf(x.harvest) || 0) + 21 * DAY;
