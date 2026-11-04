@@ -1,37 +1,24 @@
-// Registration for a new member (P11; nila-design notes reg-recover): after R1–R4 (src/register/Start.jsx) a member
-// with no land title goes
-//   R5–R7 field points → R8 plastic sheet → R9 union → R13 who uses the app → R10 updates → R14 wait for the title.
-// Her points are sent at the end, with the union she chose (O16 POST /border/points); offline they stay on the
-// phone (R7) and go out from R14 once she is online. R14 ends when her land title is on Polygon (notes
-// r14-title-check) → the crop plan (CP1).
-// DESIGN GAPS (Docs/P11-Field-Borders.md): R8 has no detection behind it on the Stellar path (her choice is kept on
-// the phone); R9 lists today's one union from /stellar/config, its name and leader from the app (no union names on
+// The start for a new member (P11; nila-design notes reg-recover): after R1–R4 (src/register/Start.jsx) R9 union
+// and R10 updates, then the Crop plan. A member never maps her fields (4 Nov, G15): the leader maps every title.
+// DESIGN GAPS: R9 lists today's one union from /stellar/config, its name and leader from the app (no union names on
 // the node yet), and 'Filter on my region' changes nothing with one union. Recover (only the missing R9 / R13 / R10)
 // is src/register/RecoverSteps.jsx.
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
 import { checkLeader } from '../shell/leader';
 import { setDBitem } from '../utils/db';
 import { useNilaSigner } from '../wallet/signer';
 import { subscribeUser } from '../features/apis/pushManager';
-import { useMyBorderJob, useSendFieldPoints } from '../border/hooks';
-import { Page, PointsStep, Waiting, clearPoints, readPoints, useOnline } from '../border/SendLocation';
-import { Loading } from './Boot';
+import { Page } from '../border/SendLocation';
 import { clearDemoNew } from './AfterCode';
-
-export const pointsSentKey = (evm) => `nila.reg.sent.${(evm || '').toLowerCase()}`;
-const markPointsSent = (evm) => { try { localStorage.setItem(pointsSentKey(evm), '1'); } catch { /* not kept */ } };
-export const pointsSent = (evm) => { try { return localStorage.getItem(pointsSentKey(evm)) === '1'; } catch { return false; } };
-import { MapFrame, MapStage, anim, btnDisabled, btnPrimary, btnSecondary, cardTitle, sheetText } from './RegFrame';
+import { anim, btnDisabled, btnPrimary, btnSecondary } from './RegFrame';
 
 // Today's one union (the Polygon registry's entry, src/components/Forms/memberUnion.js). DESIGN GAP: from the node.
 const UNIONS = [{ name: 'Mother Theresa Union', rep: 'Mrs. Rosalie Susairaj', polygon: '0xF18E4966731bD6D3a56c1eb23Da7C708c9C48070',
   location: [11.878671, 78.964561] }];
 // No R13 any more (26 Oct): every member starts in assist mode; the identity check or Settings switches to self.
-// After the code (28 Oct, executive decision): R9 union and R10 updates, then straight to the Crop plan; the field
-// points (R5–R8 → R14) start from its "Mint a new land title" (#/crop/register), never before the app.
+// After the code (28 Oct, executive decision): R9 union and R10 updates, then straight to the Crop plan.
 const START_STEPS = ['union', 'notify'];
-const FIELD_STEPS = ['points', 'sheet', 'done'];
 const onboardedKey = (evm) => `nila.reg.onboarded.${(evm || '').toLowerCase()}`;
 export const onboarded = (evm) => { try { return localStorage.getItem(onboardedKey(evm)) === '1'; } catch { return false; } };
 const markOnboarded = (evm) => { try { localStorage.setItem(onboardedKey(evm), '1'); } catch { /* not kept */ } };
@@ -80,39 +67,6 @@ function Confirm({ text, onCancel, onAccept }) {
         </div>
       </div>
     </>
-  );
-}
-
-const SizeIcon = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1" /><path d="M4 9h16" /><path d="M9 4v16" /></svg>;
-const DaysIcon = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18" /><path d="M8 3v4" /><path d="M16 3v4" /></svg>;
-
-function Fact({ icon, k, v, line }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 52, padding: '8px 0', boxSizing: 'border-box', fontSize: 14,
-      lineHeight: 1.5, borderTop: line ? '1px solid #1F2733' : 'none' }}>
-      <span aria-hidden="true" style={{ width: 32, height: 32, flexShrink: 0, borderRadius: 9999, background: '#1F2733', display: 'flex',
-        alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
-      <span style={{ flexGrow: 1, color: '#94A3B8' }}>{k}</span><span style={{ fontWeight: 700 }}>{v}</span>
-    </div>
-  );
-}
-
-/** R8 (board SheetVerify-88ia): a plastic sheet in one field, seen on the next satellite overpass. */
-function SheetStep({ evm, onDone }) {
-  const [later, setLater] = useState(false);
-  return (
-    <MapFrame map={readPoints(evm).points}>
-      <div style={cardTitle}>Place a plastic sheet in one of your fields</div>
-      <div style={sheetText}>Lay a plastic sheet flat on the ground inside one of your fields. Make sure it is plastic. Weigh the corners down with stones so it stays in place. On the next satellite overpass we will detect it.</div>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <Fact icon={<SizeIcon />} k="Size" v="at least 4 m × 4 m" />
-        <Fact icon={<DaysIcon />} k="Leave it in place" v="11 days" line />
-      </div>
-      <button type="button" style={btnPrimary} onClick={() => onDone('placed')}>I placed the sheet</button>
-      <button type="button" style={btnSecondary} onClick={() => setLater(true)}>I can do this later</button>
-      {later && <Confirm text="Until the plastic sheet is detected on your field, some services are unavailable."
-        onCancel={() => setLater(false)} onAccept={() => onDone('later')} />}
-    </MapFrame>
   );
 }
 
@@ -187,57 +141,18 @@ export function NotifyStep({ evm, onDone }) {
   );
 }
 
-/** R14: sends the points saved on the phone (now, or once online), then waits for the title. */
-function DoneStep({ evm, reg, onTitle, onRestart, cfgUnion }) {
-  const online = useOnline();
-  const mine = useMyBorderJob();
-  const send = useSendFieldPoints();
-  const q = readPoints(evm);
-  const pending = q.finish && q.points.length > 0;
-  useEffect(() => {
-    if (online && pending && !send.isPending && !send.isSuccess && !send.isError && !mine.isLoading
-      && !(mine.data && mine.data.status !== 'failed')) {
-      send.mutate({ points: q.points, farm: (q.farm || '').trim(), union: reg.union?.address || cfgUnion }, { onSuccess: () => clearPoints(evm) });
-    }
-  }, [online, pending, send, mine.isLoading, mine.data, q, reg, evm, cfgUnion]);
-  // Once her points are with the node, back to the Crop plan (28 Oct): its card says the union mints the title (a
-  // leader checks and mints there), so nobody waits on R14.
-  useEffect(() => {
-    if (!pending && mine.data && mine.data.status !== 'failed') { markPointsSent(evm); clearDemoNew(evm); onTitle(); }
-  }, [pending, mine.data, evm, onTitle]);
-  const failed = mine.data?.status === 'failed' && !pending;
-  return <Waiting job={failed ? mine.data : null} sending={pending && !online} error={send.error?.message}
-    onRetry={failed ? onRestart : () => send.reset()} />;
-}
-
-export default function Registration({ onTitle, onStarted, fields = false }) {
+export default function Registration({ onStarted }) {
   const s = useNilaSigner();
   const evm = s?.evmAddress;
   const { data: cfg } = useStellarConfig();
-  const mine = useMyBorderJob();
   const [reg, setReg] = useState(() => readReg(evm));
   const save = (v) => { const next = { ...reg, ...v }; setReg(next); writeReg(evm, next); };
-  const steps = fields ? FIELD_STEPS : START_STEPS;
-  // Fields: a job already with the union (open or minted) means its points are in.
-  const open = fields && mine.data && mine.data.status !== 'failed';
-  const step = open ? 'done' : (steps.includes(reg.step) ? reg.step : steps[0]);
-  const next = (extra = {}) => save({ ...extra, step: steps[steps.indexOf(step) + 1] });
+  const step = START_STEPS.includes(reg.step) ? reg.step : START_STEPS[0];
+  const next = (extra = {}) => save({ ...extra, step: START_STEPS[START_STEPS.indexOf(step) + 1] });
   // The start ends after R10 (28 Oct: no reload): the shell opens the Crop plan; the leader app comes from the
   // chain's roles (StellarGate), so the union record R9 wrote need not be read again.
-  const started = () => { markOnboarded(evm); clearDemoNew(evm); save({ step: FIELD_STEPS[0] }); onStarted?.(); };
+  const started = () => { markOnboarded(evm); clearDemoNew(evm); onStarted?.(); };
 
-  if (mine.isLoading) return <Loading />;
-  if (!fields) {
-    if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={(union) => next({ union })} />;
-    return <NotifyStep evm={evm} onDone={started} />;
-  }
-  // R5–R8: one map screen; the stage stays mounted, only the card changes (no remount of the map).
-  if (step === 'points' || step === 'sheet') {
-    return (
-      <MapStage>
-        {step === 'points' ? <PointsStep evm={evm} onDone={() => next()} /> : <SheetStep evm={evm} onDone={(sheet) => next({ sheet })} />}
-      </MapStage>
-    );
-  }
-  return <DoneStep evm={evm} reg={reg} cfgUnion={cfg?.union} onTitle={onTitle} onRestart={() => { clearPoints(evm); save({ step: 'points' }); }} />;
+  if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={(union) => next({ union })} />;
+  return <NotifyStep evm={evm} onDone={started} />;
 }
