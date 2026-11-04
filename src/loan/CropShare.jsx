@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, sv, tokenHex } from '../stellar/soroban';
-import HelpQr from './HelpQr';
+import WalletQr from '../shell/WalletQr';
 import { owedOf } from './owed';
 import { Primary, Sheet, inr, muted } from '../plan/ui';
 import { useNilaSigner } from '../wallet/signer';
@@ -180,7 +180,8 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   // More machine hours (27 Oct, self mode): until its last draw date, while the loan is open and not overdue.
   const canAdd = open && !(Number(l.flags ?? 0) & FLAG_OVERDUE) && !assisted() && (!x.final || Date.now() / 1000 <= x.final);
   if (adding && canAdd) return <AddHours token={x.token_id} name={`${name} · Area ${x.area}`} map={map} onBack={() => setAdding(false)} />;
-  if (repayQr) return <HelpQr onBack={() => setRepayQr(false)} note="Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment." />;
+  // G9 (4 Nov): repaying needs no signature from her: her account QR in self mode, the help QR in assist mode.
+  if (repayQr) return <WalletQr onBack={() => setRepayQr(false)} note="Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment." />;
   // What is left: the cash part and the voucher's value, with interest (26 Oct: the voucher is debt from the draw).
   const left = Number(owedOf(l, vb.data)) / 1e7;
   const harvest = r.harvest ? new Date(r.harvest) : null;

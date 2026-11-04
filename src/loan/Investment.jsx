@@ -23,6 +23,9 @@ import { assisted } from './MyShares';
 import Segmented from '../shell/Segmented';
 import { AssetScreen, Card, KV, Line, MarkCircle, QrCircle, Secondary, Stepper } from './AssetParts';
 import HelpQr from './HelpQr';
+import WalletQr from '../shell/WalletQr';
+import { DeskQr } from './CashOut';
+import { signDeskCode } from './deskCode';
 
 const RAY = 10n ** 27n;
 const n = (v) => Number(BigInt(v ?? 0)) / 1e7;
@@ -106,13 +109,20 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
   const toCollect = n(((BigInt(p?.claimable_shares ?? 0) + (claimAt && claimAt <= now ? BigInt(p?.pending_shares ?? 0) : 0n)) * index) / RAY);
   // A withdrawal on its way or ready opens on Withdraw; otherwise Invest.
   const mode = pick ?? (pending || canClaim ? 'withdraw' : 'invest');
+  // Collecting is value out: in assist mode the help QR (the leader acts in the session); in self mode her own signed
+  // QR (G9, executive decision 4 Nov: NILA:W, fund_core.claim_junior_cash), read by the leader's Scan a member QR.
   const collect = async () => {
     setError(undefined);
-    setDesk(true);
+    if (helped) { setDesk(true); return; }
+    try {
+      setDesk(await signDeskCode({ cfg, account: s.stellarAddress, signer: s.senderAddress, signHash: s.signHash, kind: 'W' }));
+    } catch (e) { setError(e.message); }
   };
-  // One QR at the office (executive decision 26 Oct): the help QR, to invest and to collect a withdrawal.
-  if (desk) return <HelpQr onBack={() => setDesk(undefined)} note={`Go to the union office to collect ${canClaim ? `${inr(Math.floor(toCollect))} in cash` : 'your withdrawal'}. Your leader scans this, hands you the cash and records it.`} />;
-  if (showQr) return <HelpQr onBack={() => setShowQr(false)} note={`Bring ${inr(bring)} in cash to the union office. Your leader scans this, counts the cash and records your investment.`} />;
+  const collectNote = `Go to the union office to collect ${canClaim ? `${inr(Math.floor(toCollect))} in cash` : 'your withdrawal'}. Your leader scans this, hands you the cash and records it.`;
+  if (desk === true) return <HelpQr onBack={() => setDesk(undefined)} note={collectNote} />;
+  if (desk) return <DeskQr title={`${inr(Math.floor(toCollect))} in cash`} rows={[['You get', `${inr(Math.floor(toCollect))} in cash`], ['From', 'Your union investment']]} qr={desk.qr} until={desk.until} onBack={() => setDesk(undefined)} />;
+  // Investing needs no signature from her (G9): her account QR; the leader counts the cash and signs alone.
+  if (showQr) return <WalletQr onBack={() => setShowQr(false)} note={`Bring ${inr(bring)} in cash to the union office. Your leader scans this, counts the cash and records your investment.`} />;
   return (
     <AssetScreen title="Union investment" onBack={onBack} note={NOTE}>
       <Card label="nIN invested">

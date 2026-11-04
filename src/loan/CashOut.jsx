@@ -22,13 +22,14 @@ import { useBringRoom, useLpStatus } from '../anchor/hooks';
 import { usePost } from '../anchor/LeaderLp';
 import { BRING } from '../anchor/sep';
 import { AssetScreen, Card, CardTitle, KV, MarkCircle, QrCircle, Secondary, Stepper, useOnline, when } from './AssetParts';
-import { readDeskCode, signDeskCode } from './deskCode';
+import { deskClaim, readDeskCode, signDeskCode } from './deskCode';
+import { ta } from '../machine/hooks';
 
 const NIN = 10_000_000n;
 const fmt = (n) => Math.floor(n).toLocaleString('en-IN');
 
 /** His signed nIN cash-out QR for the leader (NILA:N, 4 Nov). */
-function DeskQr({ title, rows, qr, until, onBack }) {
+export function DeskQr({ title, rows, qr, until, onBack }) {
   const [img, setImg] = useState();
   useEffect(() => { if (qr) QRCode.toDataURL(qr, { width: 400, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [qr]);
   return (
@@ -124,7 +125,9 @@ export default function CashOut({ onBack, kycOnly }) {
   );
 }
 
-/** Leader: Tasks → Scan a member QR (executive decision 4 Nov): his signed nIN cash-out QR (NILA:N, deskCode.js),
+/** Leader: Tasks → Scan a member QR (executive decision 4 Nov): his signed nIN cash-out QR (NILA:N, deskCode.js) or,
+ *  from a self-mode member (G9, 4 Nov), her signed withdrawal (NILA:W, fund_core.claim_junior_cash) or crop share
+ *  (NILA:L, fund_core.draw_loan with her amounts),
  *  read by StartHelp, opens "Hand over ₹X to <name>"; one confirm submits fx_pool.cash_out_signed with this leader as
  *  the source (own XLM) and his signed entry for the account in the QR. A payout is booked against the office's cash
  *  at hand (25 Oct), so a short office cannot pay: the gap goes to the union's LPs as a Bring, once per QR (fx_pool
@@ -133,7 +136,7 @@ export function HandOver({ text, nameOf, onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
-  const [got, setGot] = useState();        // { member, inr, amount, exp, entry }
+  const [got, setGot] = useState();        // { kind, member, inr, amount | token, cash, hours, exp, entry }
   const [error, setError] = useState();
   const desk = useQuery({ queryKey: ['stellar', 'deskRoom', 'payout', cfg?.union, got?.member, got?.exp], enabled: !!cfg && !!got,
     staleTime: 10_000, refetchInterval: 15_000,
@@ -160,15 +163,27 @@ export function HandOver({ text, nameOf, onBack }) {
       try {
         const c = readDeskCode(cfg, text);
         if ((await server(cfg).getLatestLedger()).sequence >= c.exp) throw new Error('This QR has expired. The member makes a new one.');
-        setGot({ ...c, inr: Number(c.amount / NIN) });
+        if (c.kind === 'W') {
+          const claim = await deskClaim(cfg, c.member);
+          if (claim.shares <= 0n) {
+            throw new Error(claim.pendingFrom ? `The withdrawal is ready from about ${new Date(claim.pendingFrom * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}. Do not pay it yet.`
+              : 'No withdrawal to collect. The member asks for one on their phone (Union investment → Withdraw).');
+          }
+          setGot({ ...c, inr: Math.floor(claim.inr) });
+        } else setGot({ ...c, inr: Number((c.kind === 'L' ? c.cash : c.amount) / NIN) });
       } catch (e) { setError(e.message); }
     })();
   }, [cfg, text]);
   const who = got ? nameOf?.(got.member) || `${got.member.slice(0, 4)}…${got.member.slice(-4)}` : '';
-  const pay = () => tx.run({ label: `Hand over ${inr(got.inr)} to ${who}`, rows: [['Hand over', `${inr(got.inr)} in cash`], ['To', who]],
-    contractName: 'fx_pool', fn: 'cash_out_signed',
-    args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.address(got.member), sv.i128(got.amount)], auth: [got.entry],
-    invalidate: [['stellar', 'account'], ['stellar', 'unionCash']] });
+  const rows = got ? [['Hand over', `${inr(got.inr)} in cash`], ...(got.kind === 'L' && got.hours ? [['Machine vouchers', `${ta(got.hours)} tractor acres`]] : []), ['To', who]] : [];
+  const pay = () => tx.run({ label: `Hand over ${inr(got.inr)} to ${who}`, rows, auth: [got.entry],
+    ...(got.kind === 'N' ? { contractName: 'fx_pool', fn: 'cash_out_signed',
+      args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.address(got.member), sv.i128(got.amount)] }
+      : got.kind === 'W' ? { contractName: 'fund_core', fn: 'claim_junior_cash',
+        args: [sv.address(cfg.union), sv.address(got.member), sv.address(s.stellarAddress), sv.i128(0n)] }
+        : { contractName: 'fund_core', fn: 'draw_loan',
+          args: [sv.address(cfg.union), sv.address(got.member), sv.bytes32(got.token), sv.i128(got.cash), sv.u32(got.hours)] }),
+    invalidate: [['stellar', 'account'], ['stellar', 'unionCash'], ['stellar', 'investment'], ['oracle', 'shares'], ['stellar', 'unionChecks']] });
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   if (bring.tx.status === 'pending' || bring.tx.status === 'failed') return <TxScreens tx={bring.tx} onClose={() => bring.tx.reset()} onRetry={() => bring.tx.retry()} />;
   if (!cfg || (!got && !error)) return <Loading />;
@@ -177,7 +192,8 @@ export function HandOver({ text, nameOf, onBack }) {
       {got ? (
         <>
           <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>{`Hand over ${inr(got.inr)} to ${who}`}</p>
-          <p style={{ ...muted, textAlign: 'center' }}>Their nIN, burned when you confirm</p>
+          <p style={{ ...muted, textAlign: 'center' }}>{got.kind === 'N' ? 'Their nIN, burned when you confirm' : got.kind === 'W' ? 'Their union investment withdrawal'
+            : `Their crop share${got.hours ? `, with ${ta(got.hours)} tractor acres of machine vouchers` : ''}`}</p>
           {gap > 0 ? (
             <p style={{ color: C.coral, textAlign: 'center' }}>
               {`Not enough cash at the office: ${inr(gap)} short. ${cfg.anchor_url ? `Your LPs are asked to bring ${inr(gap)}; pay out once it is here.` : 'Pay out once it is here.'}`}

@@ -17,11 +17,12 @@ const assisted = () => { try { return localStorage.getItem('nila.mode') !== 'sel
 
 /** A member in assist mode shows the help QR (executive decision 26 Oct); a member in self mode and a leader show the
  *  plain account number (revised 31 Oct, executive decision). */
-export default function WalletQr({ onBack, leader }) {
-  return leader || !assisted() ? <AccountQr onBack={onBack} /> : <HelpQr onBack={onBack} />;
+/** `note` (G9, 4 Nov): what the leader does with it at the office (invest, repay). */
+export default function WalletQr({ onBack, leader, note }) {
+  return leader || !assisted() ? <AccountQr onBack={onBack} note={note} /> : <HelpQr onBack={onBack} note={note} />;
 }
 
-function AccountQr({ onBack }) {
+function AccountQr({ onBack, note }) {
   const s = useNilaSigner();
   const addr = s?.stellarAddress;
   const [img, setImg] = useState();
@@ -36,7 +37,7 @@ function AccountQr({ onBack }) {
         </div>
         <AddressCopy addr={addr} />
       </section>
-      <NoteBar>Your wallet address. The union uses it to give you nIN and vouchers.</NoteBar>
+      <NoteBar>{note || 'Your wallet address. The union uses it to give you nIN and vouchers.'}</NoteBar>
     </MapCard>
   );
 }
