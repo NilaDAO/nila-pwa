@@ -45,7 +45,7 @@ export function signedCall({ stellarAddress, senderAddress, signHash }) {
 
 /** G4 Burn my land title (executive decision 4 Nov), the node's two calls: `burnGas` tops up just enough POL on her
  *  Polygon wallet for the transfer to 0x…dEaD (if short); `burn` removes the title on Stellar, with the Polygon
- *  transfer's hash (`polygon_tx`) when her title was on Polygon. ids: { title_id } and/or { token_id }. */
+ *  transfer's hash (`polygon_tx`) when her title was on Polygon. ids: { title_id } (nila-sensing b66daaa). */
 export function titleBurnClient(signer) {
   const call = signedCall(signer);
   return {

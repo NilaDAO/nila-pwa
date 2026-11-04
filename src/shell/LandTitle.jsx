@@ -60,7 +60,10 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
       const { titleBurnClient } = await import('../plan/api');
       const api = titleBurnClient(s);
       if (!onPolygon) { setStep('Removing it on Stellar…'); return api.burn({ title_id: Number(landId) }); }
-      const ids = { token_id: Number(landId), ...(stellarTitles.data?.[0] ? { title_id: Number(stellarTitles.data[0].title_id) } : {}) };
+      // The node's routes take the Stellar title only ({ title_id }, nila-sensing b66daaa); it finds the Polygon token itself.
+      const st = stellarTitles.data?.[0];
+      if (!st) throw new Error('Your land title is not on Stellar yet. Ask your union leader.');
+      const ids = { title_id: Number(st.title_id) };
       setStep('Sending your land title to the burn address…');
       const g = await api.burnGas(ids);
       const gh = hex0x(g?.tx_hash);
