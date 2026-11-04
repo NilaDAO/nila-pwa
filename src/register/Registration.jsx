@@ -57,7 +57,6 @@ export const unionByPolygon = (polygon) => UNIONS.find((u) => u.polygon.toLowerC
 const regKey = (evm) => `nila.reg.${(evm || 'none').toLowerCase()}`;
 const readReg = (evm) => { try { return JSON.parse(localStorage.getItem(regKey(evm))) || {}; } catch { return {}; } };
 const writeReg = (evm, v) => { try { localStorage.setItem(regKey(evm), JSON.stringify(v)); } catch { /* kept in memory only */ } };
-const setMode = (m) => { try { localStorage.setItem('nila.mode', m); } catch { /* kept for this session only */ } };
 
 
 /** The confirm card over a 60% dark layer (boards SheetVerify-88ia #later, RegNotify-52am #skip): a warning line,
@@ -118,7 +117,6 @@ function SheetStep({ evm, onDone }) {
 }
 
 const UnionIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
-const SelfIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A634" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 12 0v1" /><path d="m17 11 2 2 4-4" /></svg>;
 
 /** A radio row (boards RegUnion-nj7b, RegAssist): icon, name and line, the radio mark on the right. */
 function Choice({ checked, onClick, title, sub, icon }) {
@@ -144,12 +142,16 @@ function Choice({ checked, onClick, title, sub, icon }) {
 export function UnionStep({ union, evm, onDone }) {
   const [pick, setPick] = useState(0);
   const [busy, setBusy] = useState(false);
+  const s = useNilaSigner();
   // As today's union step (components/Forms/memberUnion.js): the union goes into Init with the leader check on
   // the Polygon RolesRegistry, so a leader opens the leader app.
   const saveUnion = async () => {
     setBusy(true);
     const u = UNIONS[pick];
     const leader = await saveUnionRecord(checkLeader, u, evm);   // shell/leader.js retries until the chain answers
+    // Member-owned accounts (3 Nov): her account names the union she chose (set_union, her own signature). Not
+    // waited for: if her account is not made yet, the signer names it once it is (wallet/PrivyRoot).
+    s?.stellarSetup?.joinUnion?.().catch((e) => console.error('[R9] union not set on the account', e));
     setBusy(false);
     onDone({ ...u, address: union, leader: !!leader });
   };
@@ -160,21 +162,6 @@ export function UnionStep({ union, evm, onDone }) {
       </div>
       <button type="button" style={!union || busy ? btnDisabled : btnPrimary} disabled={!union || busy} onClick={saveUnion}>Save</button>
       <button type="button" style={btnSecondary}>Filter on my region</button>
-    </Page>
-  );
-}
-
-/** R13: who uses the app (stored as nila.mode, self | assist). */
-export function ModeStep({ rep, onDone }) {
-  const [mode, setM] = useState('self');
-  const name = (rep || '').replace(/^(Mrs?|Ms)\.\s*/, '');
-  return (
-    <Page title="Who uses the app?" info="You can change this later in Settings.">
-      <div role="radiogroup" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <Choice icon={<SelfIcon />} checked={mode === 'self'} onClick={() => setM('self')} title="I do it myself" sub="You send, spend and register yourself." />
-        <Choice icon={<UnionIcon />} checked={mode === 'assist'} onClick={() => setM('assist')} title="My union leader helps me" sub={`${name || 'Your union leader'} does the steps. You look and press Confirm.`} />
-      </div>
-      <button type="button" style={btnPrimary} onClick={() => { setMode(mode); onDone(); }}>Save</button>
     </Page>
   );
 }

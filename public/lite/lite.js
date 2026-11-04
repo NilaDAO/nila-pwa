@@ -220,8 +220,64 @@
         // Her smart account (26 Oct), from her device key; the leader's app creates it at L14.
         if (out.account) localStorage.setItem('nila.lite.account', out.account);
       } catch (e) { /* no storage */ }
+      sendUnion(out.account);
       go('#/home');
     }, fail);
+  }
+
+  /** Member-owned accounts (3 Nov): her account names its union itself. The device key signs `set_union(union)` once;
+   *  the node keeps it with her row and the leader's app submits it right after making her account (L14). Not waited
+   *  for and sent again at the next start until the node has it. Valid ~30 days (5 s ledgers). */
+  var UNION_LEDGERS = 30 * 17280;
+  function sendUnion(account) {
+    if (!account || stored('nila.lite.union.' + account) === '1') return Promise.resolve();
+    var cfg;
+    return call('GET', '/stellar/config').then(function (c) {
+      cfg = c;
+      if (!c.union || !c.rpc_url) throw new Error('no union');
+      return fetch(c.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (r) { return r.json(); });
+    }).then(function (l) {
+      return loadKey().then(function (pair) {
+        if (!pair) throw new Error('no key');
+        return window.NilaSession.joinUnion({ passphrase: cfg.passphrase, account: account, union: cfg.union,
+          ledger: l.result.sequence, ledgers: UNION_LEDGERS },
+          function (payload) { return window.crypto.subtle.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, pair.privateKey, payload); });
+      });
+    }).then(function (u) {
+      return signed('set_union', u).then(function (q) { return call('POST', '/keypad/set-union', q); });
+    }).then(function () { store('nila.lite.union.' + account, '1'); }, function () { /* sent again at the next start */ });
+  }
+
+  /** The node's /stellar/config, kept on this phone (3 Nov: the help QR needs no node once she has opened the app
+   *  with the node up). */
+  function chainConfig() {
+    return call('GET', '/stellar/config').then(function (c) {
+      try { localStorage.setItem('nila.lite.config', JSON.stringify(c)); } catch (e) { /* asked again next time */ }
+      return c;
+    }, function (e) {
+      var c = null;
+      try { c = JSON.parse(localStorage.getItem('nila.lite.config') || 'null'); } catch (x) { /* none kept */ }
+      if (!c) throw e;
+      return c;
+    });
+  }
+
+  /** Her join for a kind 4 help QR (3 Nov): only while her account names no union on-chain (or is not made yet), so the
+   *  leader's scan makes it and joins it with no node in between. null once it has its union. */
+  function joinPart(cfg, account, ledger, pair, sign) {
+    if (!cfg.union || !cfg.sponsor || stored('nila.lite.joined.' + account) === '1') return Promise.resolve(null);
+    return window.NilaChain.read(cfg.rpc_url, cfg.sponsor, account, 'union', []).catch(function () { return null; }).then(function (u) {
+      if (u) { store('nila.lite.joined.' + account, '1'); return null; }
+      return Promise.all([
+        window.crypto.subtle.exportKey('spki', pair.publicKey),
+        window.NilaSession.joinUnion({ passphrase: cfg.passphrase, account: account, union: cfg.union, ledger: ledger, ledgers: UNION_LEDGERS }, sign),
+      ]).then(function (r) {
+        var spki = new Uint8Array(r[0]);
+        var j = r[1]; j.key = spki.subarray(spki.length - 65);
+        return j;
+      });
+    });
   }
 
   function fail(e) {
@@ -255,6 +311,8 @@
       return call('GET', '/stellar/config');
     }).then(function (c) {
       cfg = c;
+      // Her signed set_union (3 Nov), until the node has it (me.union_signed) or this phone sent it.
+      if (me.account && !me.union_signed) sendUnion(me.account);
       if (!me.account || !c.rpc_url) return [null, []];
       var f = c.contracts.fund_core, u = C.addr(c.union), a = C.addr(me.account);
       return Promise.all([
@@ -269,7 +327,7 @@
           cfg.contracts.machinery ? C.read(cfg.rpc_url, cfg.sponsor, cfg.contracts.machinery, 'voucher', [C.addr(cfg.union), C.bytes(id)]).catch(function () { return null; }) : null,
         ]).then(function (x) {
           if (x[0] && x[0].loan) loans[hexKey(id)] = x[0].loan;
-          if (x[1] && !x[1].void) vouchers[hexKey(id)] = Math.max(0, x[1].hours - x[1].used);
+          if (x[1] && !x[1].void) vouchers[hexKey(id)] = Math.max(0, (x[1].units || 0) - (x[1].used || 0));   // units: centi tractor acres (27 Oct; the field was `hours`)
         });
       })).then(function () {
         data = { at: Date.now(), me: me, cfg: cfg, invested: r[0] ? r[0].invested / U : 0, loans: loans, vouchers: vouchers };
@@ -712,18 +770,22 @@
     var fail = function (msg) { var el = document.getElementById('left'); if (el) { el.className = 'err small'; el.textContent = msg; } };
     if (!box) return;
     if (!account) { fail('Your account is not set up on this phone. Ask your union leader to send a new link.'); return; }
-    var cfg;
-    call('GET', '/stellar/config').then(function (c) {
+    var cfg, ledger, pair;
+    var sign = function (payload) { return window.crypto.subtle.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, pair.privateKey, payload); };
+    chainConfig().then(function (c) {
       cfg = c;
       // The latest ledger, for the signature's expiry (the phone's own clock ends the QR after 5 minutes).
       return fetch(c.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (res) { return res.json(); });
     }).then(function (l) {
-      return loadKey().then(function (pair) {
-        if (!pair) throw new Error('This phone has no key. Ask your union leader for a new link.');
-        return window.NilaSession.make({ passphrase: cfg.passphrase, account: account, ledger: l.result.sequence, now: Math.floor(Date.now() / 1000) },
-          function (payload) { return window.crypto.subtle.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, pair.privateKey, payload); });
-      });
+      ledger = l.result.sequence;
+      return loadKey();
+    }).then(function (p) {
+      pair = p;
+      if (!pair) throw new Error('This phone has no key. Ask your union leader for a new link.');
+      return joinPart(cfg, account, ledger, pair, sign);
+    }).then(function (join) {
+      return window.NilaSession.make({ passphrase: cfg.passphrase, account: account, ledger: ledger, now: Math.floor(Date.now() / 1000), join: join }, sign);
     }).then(function (q) {
       return window.NilaQR.svg(q.qr, { margin: 1, errorCorrectionLevel: 'L' }).then(function (svg) {
         helpCache = { svg: svg, until: q.until };

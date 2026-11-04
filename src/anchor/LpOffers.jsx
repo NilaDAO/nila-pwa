@@ -7,7 +7,7 @@
 // union. Bring first ends a Collect position (the LP hands over its rupees less the fee and gets that USDC back), the
 // rest brings the union's USDC to the LP's wallet, locked. Open ended; past a 5% rate move anyone settles.
 // Accept = SEP-38 firm quote → SEP-24 at the trust's anchor, which records it and signs the accept without a page of
-// its own → fx_pool.accept, fee-bumped by the node. Never says sell, buy or swap.
+// its own → fx_pool.accept, sent by the LP's own account (its own XLM pays the fee, 4 Nov). Never says sell, buy or swap.
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';

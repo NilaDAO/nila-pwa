@@ -21,7 +21,7 @@ export default function AddHours({ token, name, map, onBack }) {
   const [mach, setMach] = useState({});
   const rateOf = (t) => rates.data?.find((r) => r.type === Number(t))?.total || 0;
   const tractorRate = rateOf(TRACTOR);
-  const types = [...new Set((machines.data || []).filter((m) => m.confirmed).map((m) => m.machine_type))].filter((t) => t > 0).sort((a, b) => a - b);
+  const types = [...new Set((machines.data || []).map((m) => m.machine_type))].filter((t) => t > 0).sort((a, b) => a - b);
   const value = Object.entries(mach).reduce((a, [t, h]) => a + h * rateOf(t), 0);
   const units = tractorRate > 0 ? unitsOf(1, value, tractorRate) : 0;
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, flexShrink: 0, cursor: 'pointer' };

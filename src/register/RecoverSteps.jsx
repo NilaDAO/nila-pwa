@@ -1,7 +1,7 @@
 // Existing Privy user (LOAN_RULES §5, 20 Oct: Privy decides after the code, not R1's button; src/register/AfterCode.jsx):
 // the wallet and its data load, then
 //   R9  only without a land title (24 Oct: the union minted her title, so its union is known; was 'always', 20 Oct),
-//   R13 when no mode is stored ('nila.mode'),
+//   no R13 (G3, 4 Nov): assist mode on a new phone unless her ID is checked; the shell then switches her to self,
 //   R10 when notifications are not allowed yet.
 // R5–R8 and R14 are always skipped. When her union is on the phone, R9 is not shown but its record is written again
 // (Init 'union', the leader checked on the Polygon RolesRegistry), so a leader opens the leader start. Then the app:
@@ -9,13 +9,12 @@
 import { useEffect, useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
 import { checkLeader } from '../shell/leader';
-import { ModeStep, NotifyStep, UNIONS_ONE, UnionStep, readUnion, saveUnionRecord, unionByPolygon } from './Registration';
+import { NotifyStep, UNIONS_ONE, UnionStep, readUnion, saveUnionRecord, unionByPolygon } from './Registration';
 import { useNilaSigner } from '../wallet/signer';
 import { useLandTitles } from '../plan/hooks';
 import { useStellarTitles } from '../stellar/hooks';
 import { Loading } from './Boot';
 
-const hasMode = () => { try { return !!localStorage.getItem('nila.mode'); } catch { return false; } };
 const notifyAllowed = () => {
   try { if (localStorage.getItem('notificationPermissionOverride') === 'denied') return false; } catch { /* no storage */ }
   return typeof Notification !== 'undefined' && Notification.permission === 'granted';
@@ -25,7 +24,6 @@ export default function RecoverSteps({ evm, onDone }) {
   const { data: cfg } = useStellarConfig();
   // The leader flag from shell/leader.js (it retries until the chain answers).
   const [stored] = useState(() => unionByPolygon(readUnion(evm)?.polygon));
-  const [rep, setRep] = useState(stored?.rep);
   // Her union is known from her land title (24 Oct): the union minted it, so a title holder skips R9 and her union is
   // written again with no screen ('restore'). Without a title (a leader without land, a title on its way) she picks it
   // on R9. One union today (UNIONS), so a title means that union; with more unions the title's union picks it.
@@ -45,9 +43,8 @@ export default function RecoverSteps({ evm, onDone }) {
   useEffect(() => { const t = setTimeout(() => setStep((v) => v || 'union'), 8000); return () => clearTimeout(t); }, []);
 
   const after = (from) => {
-    const order = ['union', 'notify'];   // no R13 (26 Oct): assist mode until K1 or the Settings toggle
+    const order = ['union', 'notify'];   // no R13 (26 Oct; removed 4 Nov, G3): assist mode until K1 or the Settings toggle
     for (const s of order.slice(order.indexOf(from) + 1)) {
-      if (s === 'mode' && !hasMode()) return setStep('mode');
       if (s === 'notify' && !notifyAllowed()) return setStep('notify');
     }
     return onDone();
@@ -57,12 +54,15 @@ export default function RecoverSteps({ evm, onDone }) {
   useEffect(() => {
     if (step !== 'restore') return;
     let live = true;
-    saveUnionRecord(checkLeader, restoreUnion, evm).finally(() => { if (live) { setRep(restoreUnion?.rep); after('union'); } });
+    saveUnionRecord(checkLeader, restoreUnion, evm).finally(() => {
+      // Member-owned accounts (3 Nov): her account names the restored union if it has none yet (not waited for).
+      s?.stellarSetup?.joinUnion?.().catch((e) => console.error('[recover] union not set on the account', e));
+      if (live) after('union');
+    });
     return () => { live = false; };
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!step || step === 'restore') return <Loading />;
-  if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={(u) => { setRep(u.rep); after('union'); }} />;
-  if (step === 'mode') return <ModeStep rep={rep} onDone={() => after('mode')} />;
+  if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={() => after('union')} />;
   return <NotifyStep evm={evm} onDone={() => after('notify')} />;
 }

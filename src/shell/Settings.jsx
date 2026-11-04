@@ -17,6 +17,7 @@ import { inr } from '../plan/ui';
 import { AccountCard, Card, CardButton, ConfirmCard, NotificationsCard, ResetCard, Row, SwitchRow, Text, UnionCard, useUnionInfo } from './SettingsParts';
 import { C, FONT } from './tokens';
 import { assisted } from '../loan/MyShares';
+import { IdentityRow } from '../leader/LeaderSettings';
 
 
 /** "How you use Nila": the tab bar follows nila.mode, so the app opens again with the new mode. */
@@ -31,6 +32,13 @@ function ModeCard() {
         sub={on ? `${name} does the steps. You look and press Confirm.` : 'Off: you send, spend and register yourself.'} />
     </Card>
   );
+}
+
+/** The leader's identity-check row (LS) in the member's union card too (3 Nov): K1 is the switch to self mode, nIN and
+ *  USDC, a machine and LP, so every member sees whether it passed. */
+function MemberIdentity({ onIdCheck }) {
+  const lp = useLpStatus();
+  return <IdentityRow checked={!!lp.data?.idChecked} onClick={onIdCheck} sub="Needed to operate the app on your own" />;
 }
 
 export function LpCard({ onIdCheck, onOffers }) {
@@ -72,7 +80,7 @@ function MachineCard() {
     invalidate: [['stellar', 'machines'], ['stellar', 'machine']],
   });
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
-  const on = m.confirmed && !m.on_hold;
+  const on = !m.on_hold;
   return (
     <Card title="Your machine">
       <Row k="Machine" v={typeName(m.machine_type)} />
@@ -83,9 +91,9 @@ function MachineCard() {
       <Text style={{ padding: '4px 0 8px 0' }}>
         {driverShare ? `Diesel and ${driverShare} are paid at the job` : 'Diesel is paid at the job'}; the rest after the farmer repays. You drive it yourself, keep it working and pay the repairs.
       </Text>
-      <SwitchRow title="Available for jobs" on={on} disabled={!m.confirmed || !tx.ready}
-        sub={!m.confirmed ? 'Confirm it first on Your machine.' : m.on_hold ? `On hold · ${HOLD_REASONS[m.hold_reason] || 'Other'}` : 'Members can use it.'}
-        subColor={m.confirmed && m.on_hold ? C.coral : undefined}
+      <SwitchRow title="Available for jobs" on={on} disabled={!tx.ready}
+        sub={m.on_hold ? `On hold · ${HOLD_REASONS[m.hold_reason] || 'Other'}` : 'Members can use it.'}
+        subColor={m.on_hold ? C.coral : undefined}
         onClick={() => (m.on_hold ? hold(false) : setAsk(true))} />
       {ask && (
         <ConfirmCard title="Why is it on hold?" ok="Put on hold" onCancel={() => setAsk(false)} onOk={() => { setAsk(false); hold(true, why); }}>
@@ -113,7 +121,7 @@ function MachineCard() {
 export default function Settings({ onBack, onIdCheck, onOffers }) {
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }} header={{ title: 'Settings', onBack, settings: false }}>
-      <UnionCard />
+      <UnionCard extra={<MemberIdentity onIdCheck={onIdCheck} />} />
       <NotificationsCard />
       <ModeCard />
       <LpCard onIdCheck={onIdCheck} onOffers={onOffers} />

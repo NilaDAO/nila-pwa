@@ -5,6 +5,8 @@
 //    once her identity is checked). DESIGN GAP: the board's contact list (union, providers) has no source yet.
 //  - Swap: USDC → nIN in her wallet at fx_pool's rate (fx_pool.swap_usdc_to_nin); no fee. The way back is on A7.
 // No Receive button (22 Oct). Layout shared with A7 (AssetSwapLayout).
+// G2 (executive decision 4 Nov): a member in self mode whose identity is checked and who holds a title in the union
+// swaps too; fx_pool takes her smart account as `leader` and the union her account names. An LP without a title: Send only.
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import AssetSwapLayout, { AssetForm, SwapTarget, assetCard, money } from './AssetSwapLayout';
@@ -43,6 +45,8 @@ export default function UsdcAsset({ onBack, leader = true }) {
   const trust = useUsdcTrustline();
   const rate = useFxRate().data;
   const tx = useSorobanTx();
+  const canSwap = leader || (!!lp?.idChecked && !!lp?.member);
+  const union = s?.stellarAccount?.union || cfg?.union;
   const [tab, setTab] = useState(leader ? 'swap' : 'send');
   const [amount, setAmount] = useState(0);
   const [to, setTo] = useState('');
@@ -58,7 +62,7 @@ export default function UsdcAsset({ onBack, leader = true }) {
   const swap = () => tx.run({
     label: `Swap ${a} USDC to nIN`, rows: [['You give', `${a} USDC`], ['You get about', `${money(a * rate, 0)} nIN`]],
     contractName: 'fx_pool', fn: 'swap_usdc_to_nin',
-    args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * UNIT)],
+    args: [sv.address(s.stellarAddress), sv.address(union), sv.i128(BigInt(a) * UNIT)],
     invalidate: [['stellar', 'account'], ['stellar', 'lp']],
   });
   const send = () => tx.run({
@@ -113,8 +117,8 @@ export default function UsdcAsset({ onBack, leader = true }) {
             : 'Comes back when you bring cash again; stays with the union if the rate moves more than 5%.'}</span>
         </section>
       )}
-      switchLabel={leader ? 'Send or swap' : 'Send'} options={leader ? [['send', 'Send'], ['swap', 'Swap']] : null} tab={tab} onTab={setTab}
-      note={leader ? 'Worth US dollars, so its rupee value moves with the exchange rate. Swapping to nIN is free.' : 'Worth US dollars, so its rupee value moves with the exchange rate.'}>
+      switchLabel={canSwap ? 'Send or swap' : 'Send'} options={canSwap ? [['send', 'Send'], ['swap', 'Swap']] : null} tab={canSwap ? tab : 'send'} onTab={setTab}
+      note={canSwap ? 'Worth US dollars, so its rupee value moves with the exchange rate. Swapping to nIN is free.' : 'Worth US dollars, so its rupee value moves with the exchange rate.'}>
       {lp?.trustline ? form : null}
     </AssetSwapLayout>
   );

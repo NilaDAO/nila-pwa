@@ -92,7 +92,7 @@ export function LeaderLoan({ initial }) {
   const machines = useMachines();
   const rateOf = (t) => rates.data?.find((r) => r.type === Number(t))?.total || 0;
   const tractorRate = rateOf(TRACTOR);
-  const unionTypes = [...new Set((machines.data || []).filter((m) => m.confirmed).map((m) => m.machine_type))];
+  const unionTypes = [...new Set((machines.data || []).map((m) => m.machine_type))];
   const types = [...new Set([...Object.keys(mach).map(Number), ...unionTypes])].filter((t) => t > 0).sort((a, b) => a - b);
   const value = Object.entries(mach).reduce((a, [t, h]) => a + h * rateOf(t), 0);
   const hours = tractorRate > 0 ? unitsOf(1, value, tractorRate) : 0;   // units

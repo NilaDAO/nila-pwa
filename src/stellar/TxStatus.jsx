@@ -157,7 +157,7 @@ export function TxScreens({ tx, onClose, onRetry, network = 'Stellar' }) {
 /** An N-board notice for something the person cannot finish now (28 Oct: a member's field record still being built
  *  when the leader opens the crop plan): a clock mark, the reason, the details card, and a countdown that closes it
  *  (as N2), since waiting on the screen does not help. */
-export function NoticeScreen({ title: heading, text, rows = [], seconds = 10, onClose }) {
+export function NoticeScreen({ title: heading, text, rows = [], seconds = 10, onClose, back }) {
   const [left, setLeft] = useState(seconds);
   const close = useRef(onClose);
   close.current = onClose;
@@ -165,14 +165,15 @@ export function NoticeScreen({ title: heading, text, rows = [], seconds = 10, on
     const t = setInterval(() => setLeft((n) => Math.max(0, n - 1)), 1000);
     return () => clearInterval(t);
   }, []);
-  useEffect(() => { if (left === 0) close.current?.(); }, [left]);
+  // `back` (3 Nov, the identity check waiting): no countdown, a secondary button that goes back.
+  useEffect(() => { if (left === 0 && !back) close.current?.(); }, [left, back]);
   return (
     <Screen>
       <Mark bg={C.ink} stroke={C.gold}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Mark>
       <h1 style={title}>{heading}</h1>
       {text && <p style={sub}>{text}</p>}
       {rows.length > 0 && <Card>{rows.map(([k, v]) => <Row key={k} k={k} v={v} />)}</Card>}
-      <Button primary onClick={onClose}>Closing in {left} sec…</Button>
+      {back ? <Button onClick={onClose}>{back}</Button> : <Button primary onClick={onClose}>Closing in {left} sec…</Button>}
     </Screen>
   );
 }

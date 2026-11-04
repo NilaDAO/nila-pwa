@@ -158,15 +158,20 @@ export default function Shell({ leader }) {
     els.forEach((e) => { e.style.background = '#121212'; });
     return () => els.forEach((e, i) => { e.style.background = was[i]; });
   }, []);
-  // Self mode from the identity check (executive decision 26 Oct): a member who passed K1 and never chose a mode
-  // switches from assist to self once; the Settings toggle still decides after that.
+  // Self mode from the identity check (G3, executive decision 4 Nov; was 26 Oct, only with no mode stored): once
+  // fx_pool.id_checked is true for her account she is switched to self, once per account ('nila.mode.k1.<address>'),
+  // so the Settings toggle back to assist still holds afterwards.
   const idCheck = useLpStatus();
+  const me = s?.stellarAddress;
   useEffect(() => {
-    if (leader || !idCheck.data?.idChecked) return;
+    if (leader || !me || !idCheck.data?.idChecked) return;
     try {
-      if (localStorage.getItem('nila.mode') === null) { localStorage.setItem('nila.mode', 'self'); window.location.reload(); }
+      const k = `nila.mode.k1.${me}`;
+      if (localStorage.getItem(k)) return;
+      localStorage.setItem(k, '1');
+      if (localStorage.getItem('nila.mode') !== 'self') { localStorage.setItem('nila.mode', 'self'); window.location.reload(); }
     } catch { /* private mode: stays in assist mode */ }
-  }, [leader, idCheck.data?.idChecked]);
+  }, [leader, me, idCheck.data?.idChecked]);
   const tabs = leader ? LEADER_TABS : assisted() ? ASSISTED_TABS : MEMBER_TABS;
   const [view, setView] = useState(() => readTab() || 'assets');
   const [, setHash] = useState(window.location.hash);

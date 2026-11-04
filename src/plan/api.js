@@ -33,11 +33,24 @@ export function signedCall({ stellarAddress, senderAddress, signHash }) {
     const out = await r.json().catch(() => ({}));
     if (r.headers.get('ETag')) Object.defineProperty(out, 'etag', { value: r.headers.get('ETag'), enumerable: false });
     if (!r.ok) {
-      const e = new Error(out.detail || `${path}: ${r.status}`);
+      // The node's detail in plain text (a 409's reason); an object detail gives its message.
+      const d = typeof out.detail === 'string' ? out.detail : out.detail?.message || out.detail?.msg;
+      const e = new Error(d || `${path}: ${r.status}`);
       e.status = r.status;
       throw e;
     }
     return out;
+  };
+}
+
+/** G4 Burn my land title (executive decision 4 Nov), the node's two calls: `burnGas` tops up just enough POL on her
+ *  Polygon wallet for the transfer to 0x…dEaD (if short); `burn` removes the title on Stellar, with the Polygon
+ *  transfer's hash (`polygon_tx`) when her title was on Polygon. ids: { title_id } (nila-sensing b66daaa). */
+export function titleBurnClient(signer) {
+  const call = signedCall(signer);
+  return {
+    burnGas: (ids) => call('POST', '/stellar/titles/burn/gas', ids),
+    burn: (ids, polygonTx) => call('POST', '/stellar/titles/burn', polygonTx ? { ...ids, polygon_tx: polygonTx } : ids),
   };
 }
 

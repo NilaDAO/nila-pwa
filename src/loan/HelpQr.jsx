@@ -4,7 +4,8 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { useNilaSigner } from '../wallet/signer';
-import { useStellarConfig } from '../stellar/hooks';
+import { readAccountUnion, useStellarConfig } from '../stellar/hooks';
+import { isDeployed } from '../stellar/soroban';
 import { makeSessionQr } from '../stellar/session';
 import MapCard from '../shell/MapCard';
 import { C, FONT } from '../shell/tokens';
@@ -15,7 +16,8 @@ import { AddressCopy, qrCard } from '../shell/WalletQr';
 const assisted = () => { try { return localStorage.getItem('nila.mode') !== 'self'; } catch { return true; } };
 
 /** `note`: what the leader will do (repay, invest, collect…); `onBack` when opened from a page (not the Scan tab). */
-export default function HelpQr({ note, onBack } = {}) {
+/** `withPolygon`: carry her Polygon address in any mode (the no-title card, 3 Nov), so a leader can add her (L14). */
+export default function HelpQr({ note, onBack, withPolygon = false } = {}) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const [qr, setQr] = useState();
@@ -25,7 +27,15 @@ export default function HelpQr({ note, onBack } = {}) {
   const make = async () => {
     setError(undefined);
     // An assist-mode smartphone adds its Polygon address (29 Oct): a leader can add the member from this QR (L14).
-    try { setQr(await makeSessionQr(cfg, s.stellarAddress, s.signHash, 'Ed25519', assisted() ? s.evmAddress : undefined)); } catch (e) { setError(e.message); }
+    // While her account is not made or names no union (4 Nov: she holds no XLM for the fee), the QR also carries her
+    // signed set_union and always her Polygon address (kind 5): the leader's scan (L14, L4) makes and joins the account.
+    try {
+      const smart = s.stellarAddress && s.stellarAddress !== s.senderAddress;
+      const joined = !smart || !cfg.union || ((await isDeployed(cfg, s.stellarAddress))
+        && !!(await readAccountUnion(cfg, s.stellarAddress).catch(() => null)));
+      const join = joined ? undefined : { key: s.senderAddress, union: cfg.union };
+      setQr(await makeSessionQr(cfg, s.stellarAddress, s.signHash, 'Ed25519', join || withPolygon || assisted() ? s.evmAddress : undefined, join));
+    } catch (e) { setError(e.message); }
   };
   useEffect(() => { if (cfg && s?.ready && !qr) make(); }, [cfg, s?.ready]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (qr) QRCode.toDataURL(qr.qr, { width: 400, margin: 2, errorCorrectionLevel: 'L' }).then(setImg); }, [qr]);

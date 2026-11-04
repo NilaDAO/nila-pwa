@@ -1,6 +1,6 @@
 // A12 history (board History): her own history, member and leader (the union's sync list is not used). One list,
 // newest first, de-duplicated by transaction hash. Three sources (22 Oct):
-//  1. Horizon: her account's operations (her own calls, fee-bumped or not), the nIN / USDC each moved.
+//  1. Horizon: her account's operations (her own calls, sent by her own account or, before 4 Nov, fee-bumped by the node), the nIN / USDC each moved.
 //  2. Soroban RPC getEvents on the Nila contracts: what others did for her (node-sponsored calls, her title on Stellar,
 //     crop shares attested, vouchers, cash counted, cash-outs paid), matched on her address, her crop-share token ids
 //     and her title ids. RPC keeps about 7 days of events, so older rows come from Horizon only (an indexer would

@@ -1,12 +1,18 @@
 // Smart accounts (26 Oct, nila-account): every account (member, leader, machine owner, LP) is a contract deployed by
-// its union's account factory, at an address that follows from its signer key, so the app knows it offline:
-// sha256 of the key is the salt, the factory the deployer (Soroban contract id from address). The key is the Privy
+// the account deployer, at an address that follows from its signer key, so the app knows it offline: sha256 of the
+// key is the salt, the deployer the deploying address (Soroban contract id from address). The key is the Privy
 // Stellar wallet on a smartphone (Ed25519, 32 bytes), the device key on a keypad phone (P-256, 65 bytes).
+// Member-owned accounts (3 Nov): one deployer for all unions (`account_deployer` in the node config; the per-union
+// factory is gone), so the address no longer depends on the union. The account names its union itself afterwards
+// (`set_union`, signed by the account); recovery and leader sessions use that union's settings (roles).
 import { Address, StrKey, authorizeEntry, hash, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 
-/** The account address of a signer key (raw bytes), in the union's factory. */
+/** The account deployer's contract id (one for all unions), or undefined on a node without smart accounts. */
+export const deployerOf = (cfg) => cfg?.contracts?.account_deployer;
+
+/** The account address of a signer key (raw bytes), deployed by the account deployer. */
 export function accountOfKey(cfg, keyBytes) {
-  const factory = cfg?.contracts?.account_factory;
+  const factory = deployerOf(cfg);
   if (!factory) return undefined;
   const preimage = xdr.HashIdPreimage.envelopeTypeContractId(new xdr.HashIdPreimageContractId({
     networkId: hash(Buffer.from(cfg.passphrase)),
@@ -19,7 +25,7 @@ export function accountOfKey(cfg, keyBytes) {
 /** The account of a Privy Stellar wallet (G…). */
 export const accountOf = (cfg, g) => accountOfKey(cfg, StrKey.decodeEd25519PublicKey(g));
 
-/** The account's signer as the factory takes it (`Signer::Ed25519` / `Signer::P256`). */
+/** The account's signer as the deployer takes it (`Signer::Ed25519` / `Signer::P256`). */
 export const signerVal = (keyBytes) => xdr.ScVal.scvVec([
   xdr.ScVal.scvSymbol(keyBytes.length === 32 ? 'Ed25519' : 'P256'), nativeToScVal(Buffer.from(keyBytes), { type: 'bytes' })]);
 
@@ -40,11 +46,11 @@ export async function signAccountEntries(cfg, entries, account, sign, kind, vali
 }
 
 /** The account a signed QR's key (32-byte Ed25519, as G…) stands for: its smart account, or the key's own address
- *  while the union has no factory. */
+ *  while the node has no account deployer. */
 export const memberOf = (cfg, g) => accountOf(cfg, g) || g;
 
 /** A member's signed authorization entry rebuilt from a QR (legacy address credentials, nonce = expiry ledger): for
- *  her smart account with `Signature::Ed25519`, or, without a factory, for the key's own address. Base64 XDR. */
+ *  her smart account with `Signature::Ed25519`, or, without a deployer, for the key's own address. Base64 XDR. */
 export function memberEntry(cfg, g, sig, exp, invocation) {
   const account = accountOf(cfg, g);
   const signature = account ? signatureVal('Ed25519', sig)
@@ -56,5 +62,24 @@ export function memberEntry(cfg, g, sig, exp, invocation) {
       signatureExpirationLedger: exp, signature,
     })),
     rootInvocation: invocation,
+  }).toXDR('base64');
+}
+
+/** The member's own signed authorization of `account.set_union(union)` (member-owned accounts, 3 Nov), rebuilt from
+ *  its parts: a keypad phone signs it with its device key and sends { nonce, exp, sig } (hex) through the node, and the
+ *  leader's app submits it after creating the account. Base64 XDR. */
+export function unionEntry(account, union, { nonce, exp, sig }, kind = 'P256') {
+  const hex = (h) => Buffer.from(String(h).replace(/^0x/, ''), 'hex');
+  const n = hex(nonce);
+  return new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(new xdr.SorobanAddressCredentials({
+      address: new Address(account).toScAddress(), nonce: xdr.Int64.fromString(BigInt.asIntN(64, BigInt(`0x${n.toString('hex') || '0'}`)).toString()),
+      signatureExpirationLedger: Number(exp), signature: signatureVal(kind, hex(sig)),
+    })),
+    rootInvocation: new xdr.SorobanAuthorizedInvocation({
+      function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(new xdr.InvokeContractArgs({
+        contractAddress: new Address(account).toScAddress(), functionName: 'set_union', args: [new Address(union).toScVal()] })),
+      subInvocations: [],
+    }),
   }).toXDR('base64');
 }

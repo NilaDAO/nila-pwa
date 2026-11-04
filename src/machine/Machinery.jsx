@@ -66,7 +66,7 @@ export default function Machinery({ onBack }) {
   const open = code && !used && code.until > Date.now() / 1000 ? code : null;
   // Only the machine types the union has registered and confirmed (23 Oct), at that type's price an acre.
   const machines = useMachines();
-  const kinds = new Set((machines.data || []).filter((m) => m.confirmed).map((m) => m.machine_type));
+  const kinds = new Set((machines.data || []).map((m) => m.machine_type));
   const avail = (rates.data || []).filter((r) => kinds.has(r.type));
   const rate = avail.find((r) => r.type === type) || avail[0];
   // The job (27 Oct): her crop share (a voucher with units left) and its area; the price for its crop if the union

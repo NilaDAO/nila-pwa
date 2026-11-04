@@ -199,6 +199,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const Sheet = useMemo(() => (forLand ? function MemberSheet(p) { return <BaseSheet {...p} noSettings />; } : BaseSheet), [!!forLand]);
   const s = useNilaSigner();
   const qc = useQueryClient();
+  const [titleQr, setTitleQr] = useState(false);
   const titles = useLandTitles(forLand ? undefined : s?.evmAddress);
   // A title on Stellar only (the demo writes new titles there, 21 Oct): used when she has none on Polygon.
   const stellarTitles = useStellarTitles(forLand ? null : s);
@@ -379,8 +380,14 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   if (titles.data && !titles.data.length && !stellarTitle) {
     const refresh = () => { titles.refetch(); stellarTitles.refetch(); };
     const busy = titles.isFetching || stellarTitles.isFetching;
-    // Assist mode (28 Oct): the member mints nothing; the leader takes the field points and mints the land title.
-    const helped = !self && assisted();
+    // The leader maps every title (executive decision 3 Nov): a member, in assist or self mode, mints nothing; the leader
+    // takes the field points, does the borders and the mint. Only a leader's own title starts here (`self`).
+    const helped = !self;
+    // Her help QR with her Polygon address (3 Nov, both modes): the leader scans it on Add a member (L14).
+    if (helped && titleQr) {
+      return <HelpQr withPolygon onBack={() => setTitleQr(false)}
+        note="Show this to your union leader at the office. Your leader takes your field points, maps your land and mints your land title." />;
+    }
     return (
       <Sheet map={noLandMap} landName="No land title yet" actions={(
         <RoundButton label="Refresh" onClick={busy ? undefined : refresh}>
@@ -396,13 +403,17 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
           {openJob
             ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>{openJob.status === 'ready' ? 'Check borders and mint' : 'See my fields'}</Primary>
-            : !helped && <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
+            : helped ? <Primary onClick={() => setTitleQr(true)}>Show your QR</Primary>
+              : <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
         </div>
       </Sheet>
     );
   }
   // Assist mode (26 Oct): the member's phone makes no crop plan; the leader makes it with the member at the office, in a
   // session from the member's help QR. Until the plan is approved the phone says so and shows the help QR.
+  // No QR before the field record (3 Nov): a plan made without it is a plan made on nothing, so the member waits on CP1.
+  const recordReady = !!record && areasOf(record).length > 0;
+  if (!forLand && !self && assisted() && !approved && !plan && !recordReady && !field.isLoading) return <Pending map={map} error={field.error} />;
   if (!forLand && !self && assisted() && !approved) return <AssistPlan map={map} name={name} waiting={plan?.status === 'accepted'} />;
   const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');
   const back = (to) => () => setStep(to);
@@ -431,14 +442,14 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     if (field.isLoading) return <Loading />;
     // The leader with a member (forLand): the member's help QR is already scanned and a 5-minute session would run
     // out long before the record (up to an hour), so an N-board says to try again later and closes itself (28 Oct).
-    if (!record && forLand) {
+    if (!recordReady && forLand) {
       return (
         <NoticeScreen title="The field record is not ready yet" onClose={forLand.onClose}
           text="Nila is still building this member's field record from the satellite images. This can take up to an hour. Make the crop plan later; the member shows their QR again then."
           rows={[['Member', forLand.label || name], ['Land title', String(forLand.landId)]]} />
       );
     }
-    if (!record) return <Pending map={map} error={field.error} />;
+    if (!recordReady) return <Pending map={map} error={field.error} />;
     const sum = summarize(record);
     return (
       <Sheet map={map} landName={name} title={forLand ? 'Field record' : 'Your field record'}>

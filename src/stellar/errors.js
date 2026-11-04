@@ -56,7 +56,7 @@ const MESSAGES = {
     5: 'Only a leader of the union can set its crop prices.',
   },
   machinery: {
-    5: 'This account is not a member of the union.',
+    5: 'The owner holds no land title in this union. A machine owner needs one: mint the land title first (Crop plan).',
     6: 'This machine is not the owner’s.',
     7: 'The union has no rate for this machine type.',
     10: 'The machine is not confirmed by its owner, or it is on hold.',

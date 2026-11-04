@@ -26,8 +26,8 @@ import { reportPrivyWallet } from './keyApi';
 import { KeyMigration, PasskeyLogin } from './KeyScreens';
 import { useLegacyBalances, useOpenPolygonLoans } from '../move/hooks';
 import { readAllItems } from '../utils/db';
-import { useAccount, useSetupAccount, useStellarConfig } from '../stellar/hooks';
-import { accountOf } from '../stellar/account';
+import { setAccountUnion, useAccount, useSetupAccount, useStellarConfig } from '../stellar/hooks';
+import { accountOf, deployerOf } from '../stellar/account';
 
 const APP_ID = process.env.REACT_APP_PRIVY_APP_ID;
 // The one-time key migration (K1): off until the node (K2) and the Lambda (K3) ship with it.
@@ -278,10 +278,12 @@ function SignerBridge({ children }) {
   // Her Stellar account (P2): the node sponsors it; it needs no land title (titles stay on Polygon).
   // Made by itself at login for a new wallet (R4). A Polygon wallet ('137') waits for the move:
   // M1 step 1 calls the same setup (design R4: "Polygon wallet found → M1").
-  // Smart accounts (26 Oct): her account is a contract of the union's factory at an address that follows from her
-  // Privy key; the key's own plain account (sponsored, 0 XLM) sends her calls, the node fee-bumps them.
+  // Smart accounts (26 Oct): her account is a contract of the account deployer (one for all unions, 3 Nov) at an
+  // address that follows from her Privy key; the key's own plain account (sponsored) sends her calls and pays their fee
+  // from its own XLM (4 Nov, no node fee-bump). Only leaders and ID-checked accounts hold XLM (a node beat tops them
+  // up); an assist or keypad member's calls are sent by a leader's app (help QR session).
   const { data: cfg } = useStellarConfig();
-  const smart = stellar && cfg?.contracts?.account_factory ? accountOf(cfg, stellar.address) : stellar?.address;
+  const smart = stellar && deployerOf(cfg) ? accountOf(cfg, stellar.address) : stellar?.address;
   const account = useAccount(signersReady ? stellar.address : undefined, signersReady ? smart : undefined);
   const { status: setupStatus, error: setupError, mutate: runSetup, mutateAsync: runSetupAsync } =
     useSetupAccount({ stellarAddress: stellar?.address, account: smart, evmWallet: evm, signHash });
@@ -295,6 +297,31 @@ function SignerBridge({ children }) {
     tried.current = stellar.address;
     runSetup(undefined, { onError: (e) => console.error('[privy] Stellar account setup failed', e) });
   }, [signersReady, autoSetup, account.data, stellar, runSetup]);
+
+  // Member-owned accounts (3 Nov): her account names its union itself (`set_union`, signed with her Privy key). Done
+  // once the account exists without a union and her union is known on this phone (R9 wrote it, a recovery restored
+  // it, or the leader start saved it); R9 also calls joinUnion right after the choice. The union is the node's
+  // (cfg.union, one union a node today). Without it no leader session and no recovery work for her account.
+  // 4 Nov: her phone sends it (and makes her account, useSetupAccount) only when her plain account holds XLM for the fee
+  // (leaders, ID-checked accounts). A member holds none: her help QR carries her signed set_union and a leader's app
+  // makes and joins the account (L14, L4; stellar/hooks ensureMemberAccount).
+  const { refetch: refetchAccount } = account;
+  const deployed = !!account.data?.deployed;    // not yet (or a recovering phone's new key): named once it is
+  const joinUnion = useCallback(async () => {
+    if (!signersReady || !cfg?.union || !stellar || !smart || smart === stellar.address || !deployed) return false;
+    const done = await setAccountUnion(cfg, stellar.address, smart, signHash, cfg.union);
+    if (done) await refetchAccount();
+    return done;
+  }, [signersReady, cfg, stellar, smart, signHash, refetchAccount, deployed]);
+  const joining = useRef();
+  useEffect(() => {
+    if (!signersReady || !account.data?.deployed || account.data.union !== null || joining.current === smart) return;
+    joining.current = smart;
+    readAllItems('Init').catch(() => ({})).then((db) => {
+      if (!db?.union) { joining.current = undefined; return; }      // R9 not done yet: it calls joinUnion itself
+      return joinUnion();
+    }).catch((e) => { joining.current = undefined; console.error('[privy] union not set on the account', e); });
+  }, [signersReady, account.data, smart, joinUnion]);
 
   const value = useMemo(() => ({
     ready: signersReady,
@@ -320,6 +347,8 @@ function SignerBridge({ children }) {
       status: setupStatus, error: setupError?.message,
       run: () => setupStatus !== 'pending' && runSetup(),
       runAsync: () => runSetupAsync(),
+      // Names her union on her account (member-owned accounts, 3 Nov); false when there is nothing to do yet.
+      joinUnion,
     },
     // Her Polygon key signs a text message (EIP-191), e.g. the move request.
     signEvmMessage: (msg) => {
@@ -327,7 +356,7 @@ function SignerBridge({ children }) {
       return evm.signMessage(msg);
     },
   }), [signersReady, authenticated, error, user, privyNew, evm, recovering, embedded, storedAddress, stellar, smart,
-    signHash, signEvmTx, account.data, setupStatus, setupError, runSetup, runSetupAsync]);
+    signHash, signEvmTx, account.data, setupStatus, setupError, runSetup, runSetupAsync, joinUnion]);
 
   let screen = children;
   if (passkeyMode) {

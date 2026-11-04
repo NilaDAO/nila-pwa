@@ -1,11 +1,12 @@
 // Soroban calls from the app (P5; design useSorobanTx). Her own transaction (she is the source), simulated
 // and assembled here against the public RPC from /stellar/config, signed with her Privy Stellar wallet
-// (a 32-byte hash), then fee-bumped by the node (POST /stellar/feebump; she holds no XLM) and followed on
-// the RPC until it lands. Reads are simulations with no signature.
+// (a 32-byte hash), sent straight to the RPC and followed there until it lands. Reads are simulations with no
+// signature. No node fee-bump (executive decision 4 Nov): the sending account pays the fee from its own XLM; a node
+// beat keeps leaders and ID-checked accounts (self mode, machine owners, LPs) topped up. Assist and keypad members
+// hold no XLM: a leader's app sends their calls (help QR session).
 import { signAccountEntries, signatureVal } from './account';
 import { Account, Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
 
-const API = process.env.REACT_APP_API_BASE_URL;
 // The static demo build (src/demo/shim.js): her own calls return a canned success after a moment (N1 → N2), nothing is sent.
 const DEMO_STATIC = process.env.REACT_APP_DEMO_STATIC === '1';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -85,13 +86,30 @@ export async function readFoodTokens(cfg, union, hexes) {
   return out;
 }
 
-async function feeBump(xdr) {
-  const r = await fetch(`${API}/stellar/feebump`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ xdr }),
-  });
-  const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(body.detail || `fee-bump ${r.status}`);
-  return body.hash;
+export const NO_XLM = 'This account has no XLM for the fee yet. Nila tops it up within the hour; try again later.';
+
+/** The result code of a refused transaction (sendTransaction status ERROR), e.g. 'txInsufficientBalance'. */
+const resultCode = (r) => {
+  try {
+    const res = at(r.errorResult, 'result');
+    return typeof res.switch === 'function' ? res.switch().name : String(res.type || '');
+  } catch { return ''; }
+};
+
+/** Sends a signed transaction to the RPC (4 Nov, no node fee-bump): PENDING or DUPLICATE → its hash; TRY_AGAIN_LATER
+ *  (the RPC's queue is full) is sent again a few times; ERROR throws a plain reason. */
+async function send(s, tx) {
+  for (let i = 0; ; i++) {
+    const r = await s.sendTransaction(tx);
+    if (r.status === 'PENDING' || r.status === 'DUPLICATE') return r.hash;
+    if (r.status === 'TRY_AGAIN_LATER' && i < 4) { await sleep(3000 * (i + 1)); continue; }
+    if (r.status === 'ERROR') {
+      const code = resultCode(r);
+      if (/InsufficientFee|InsufficientBalance|NoAccount/.test(code)) throw Object.assign(new Error(NO_XLM), { code });
+      throw Object.assign(new Error(`The Stellar network refused this transaction${code ? ` (${code})` : ''}.`), { hash: r.hash, code });
+    }
+    throw new Error('The Stellar network is busy. Try again in a minute.');
+  }
 }
 
 /** The address an authorization entry signs for (legacy and CAP-71 address credentials). */
@@ -111,8 +129,8 @@ const randomNonce = () => xdr.Int64.fromString(String(BigInt.asIntN(64,
 const credType = (a) => (typeof a.credentials === 'function' ? a.credentials().switch().name : a.credentials?.type);
 
 /** An address entry in the first (ADDRESS) form (26 Oct): a protocol 29 network records ADDRESS_V2 entries, which the
- *  node's Stellar library (Python stellar-sdk 13) cannot read, so it refuses to sponsor the call. ADDRESS is still valid
- *  there; the entry is turned back before it is signed, so its signature covers the ADDRESS form. */
+ *  node's Stellar library (Python stellar-sdk 13) could not read, so it refused to fee-bump the call (no node fee-bump
+ *  since 4 Nov; kept). ADDRESS is still valid there; the entry is turned back before it is signed, so its signature covers the ADDRESS form. */
 const legacy = (e) => (credType(e) !== 'sorobanCredentialsAddressV2' ? e : new xdr.SorobanAuthorizationEntry({
   credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(e.credentials.addressV2),
   rootInvocation: e.rootInvocation,
@@ -134,7 +152,6 @@ export async function txStatus(cfg, hash) {
   return r?.status ?? null;
 }
 
-/** Her call: build → simulate → sign (her Privy wallet) → node fee-bump → wait. Returns { hash, result }. */
 /** A Nila contract by name, or 'usdc': the USDC Stellar asset contract (a leader's USDC send, 22 Oct). */
 export function contractId(cfg, name) {
   if (name === 'usdc' || name === 'nin') {
@@ -146,6 +163,8 @@ export function contractId(cfg, name) {
   return cfg.contracts[name];
 }
 
+/** Her call: build → simulate → sign (her Privy wallet) → send to the RPC (her own XLM pays the fee) → wait.
+ *  Returns { hash, result }. */
 export async function invokeContract({ cfg, source, account, signHash, contractName, fn, args, auth, session, onSent }) {
   if (DEMO_STATIC) { const hash = '0'.repeat(64); onSent?.(hash); await sleep(1500); return { hash, result: null }; }
   const s = server(cfg);
@@ -200,7 +219,7 @@ export async function invokeContract({ cfg, source, account, signHash, contractN
   const tx = await s.prepareTransaction(raw);           // simulate + footprint + resource fee + auth
   checkPrepared(raw, tx, source, [...given, ...signed]);
   tx.addSignature(source, b64(await signHash(tx.hash())));
-  const hash = await feeBump(tx.toXDR());
+  const hash = await send(s, tx);
   onSent?.(hash);
   for (let i = 0; i < 60; i++) {
     const r = await s.getTransaction(hash).catch(() => null);

@@ -14,12 +14,12 @@ import { ChevronIcon } from '../shell/icons';
 import { AccountCard, Card, CardButton, NotificationsCard, ResetCard, SwitchRow, UnionCard } from '../shell/SettingsParts';
 
 /** The board's identity-check row inside the union card: K1 #leader; "Checked" once fx_pool.id_checked. */
-function IdentityRow({ checked, onClick }) {
+export function IdentityRow({ checked, onClick, sub = 'Needed for union leaders' }) {
   return (
     <button type="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: C.raised, borderRadius: 12,
       padding: '12px 16px', marginTop: 4, border: 0, color: C.text, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
       <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', fontSize: 14, lineHeight: 1.5 }}>
-        <span style={{ fontWeight: 700 }}>Identity check</span><span style={{ color: C.muted }}>Needed for union leaders</span>
+        <span style={{ fontWeight: 700 }}>Identity check</span><span style={{ color: C.muted }}>{sub}</span>
       </span>
       {checked
         ? <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Checked</span>

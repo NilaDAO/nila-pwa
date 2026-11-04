@@ -31,7 +31,7 @@ async function waitFor(server, hash) {
 
 // 1. Soroban auth entry. A separate sponsor key is the tx source and pays the fee; her
 // account only authorises the call through an address-credential auth entry (the
-// sponsored / fee-bump model). The call: native XLM SAC transfer of 1 stroop from her.
+// sponsored / fee-bump model; the app no longer uses it since 4 Nov: each account pays its own fee). The call: native XLM SAC transfer of 1 stroop from her.
 export async function sorobanAuth({ address, signHash, log = () => {} }) {
   const server = new rpc.Server(RPC_URL);
   const sponsor = Keypair.random();

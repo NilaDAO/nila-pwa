@@ -8,9 +8,14 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { C } from '../shell/tokens';
 import DeskCard from '../shell/DeskCard';
 import { muted } from '../plan/ui';
+import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
+import { useNilaSigner } from '../wallet/signer';
 
 export default function StartHelp({ member, label, onBack, onStarted }) {
   const tx = useSorobanTx();
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const [joining, setJoining] = useState(false);
   const [error, setError] = useState();
   const [tries, setTries] = useState(0);
   const read = async (t) => {
@@ -27,10 +32,20 @@ export default function StartHelp({ member, label, onBack, onStarted }) {
     try { q = readSessionQr(t); } catch (e) { setError(e.message); setTries((x) => x + 1); return; }
     if (member && q.member !== member) { setError("This is another member's QR."); setTries((x) => x + 1); return; }
     setError(undefined);
+    if (q.join) {
+      // A keypad whose account names no union yet (kind 4, 3 Nov), or a smartphone's (kind 5, 4 Nov): this app makes her
+      // account and submits her signed set_union from the QR itself (this leader's own XLM pays the fee), so it needs no
+      // node.
+      setJoining(true);
+      try { await ensureKeypadAccount(cfg, s, { account: q.member, first_signer: q.join.signer, set_union: q.join }); }
+      catch (e) { console.error('[help] account not made or union not set', e); setError('Could not join her account to the union. Try again.'); setTries((x) => x + 1); return; }
+      finally { setJoining(false); }
+    }
     const out = await tx.run({ label: `Act for ${label || 'the member'}`, rows: [['For', '5 minutes']], contractName: q.member, fn: 'start_session',
       args: q.args, auth: [q.entry], invalidate: [] });
     if (out) { setSession(q.member, Number(out.result || 0) || Math.floor(Date.now() / 1000) + 300); tx.reset(); onStarted(q.member); }
   };
+  if (joining) return <DeskCard title="Joining her account to the union…" onBack={onBack}><p style={muted}>One moment.</p></DeskCard>;
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   return (
     <DeskCard title={label ? `Scan the QR · ${label}` : "Scan the member's QR"} onBack={onBack}>
