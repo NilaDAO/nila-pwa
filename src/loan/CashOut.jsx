@@ -3,11 +3,8 @@
 // (fx_pool.cash_out_signed, deskCode.js); at the union office the leader hands over the cash, scans it (Tasks → Scan
 // a member QR, 4 Nov: the only way a machine owner takes nIN income as cash) and submits; her nIN is burned and the rupees leave cash at hand. Nothing moves until the leader scans;
 // an unused QR simply expires (~48 h). No Send, no escrow, no code.
-// Codes from before 24 Oct (fx_pool.request_cash_out, a one-time code kept on her phone) stay listed until paid or,
-// after expiry, taken back with reclaim_cash_out, so no nIN is stuck.
-// DESIGN GAPs: "Union office · <leader>" and "Paid by" without a name (no leader name on Stellar); no board for "Get
-// your nIN back" or for the list of her open codes (shown on A7 under the cash-out card); #paid's time is when her
-// app saw it paid, not the pay_out ledger time.
+// The code cash-out from before 24 Oct (request_cash_out / reclaim_cash_out, `nila:cash:` codes) was removed
+// (executive decision 4 Nov).
 import DeskCard from '../shell/DeskCard';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -16,7 +13,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, server, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
-import { Choice, Primary, inr, muted } from '../plan/ui';
+import { Primary, inr, muted } from '../plan/ui';
 import { C } from '../shell/tokens';
 import { Loading } from '../register/Boot';
 import { useFxRate } from '../shell/UsdcAsset';
@@ -28,80 +25,7 @@ import { AssetScreen, Card, CardTitle, KV, MarkCircle, QrCircle, Secondary, Step
 import { readDeskCode, signDeskCode } from './deskCode';
 
 const NIN = 10_000_000n;
-const SETTLE_S = 600;                // a code never seen on chain after 10 min was never sent
-const KEY = 'nila.cashouts';
-const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
-const store = (list) => { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch { /* private */ } };
-const patch = (hash, f) => store(load().map((e) => (e.hash === hash ? { ...e, ...f } : e)));
-const day = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const fmt = (n) => Math.floor(n).toLocaleString('en-IN');
-
-export const grouped = (c) => c.replace(/(.{4})(?=.)/g, '$1 ');
-
-/** Her saved codes with their state on chain: open | expired | waiting (sent, not seen yet) | paid (until Done). */
-function useMyCashOuts(cfg, me) {
-  return useQuery({
-    queryKey: ['stellar', 'cashouts', me], enabled: !!cfg && !!me, refetchInterval: 30_000,
-    queryFn: async () => {
-      const now = Date.now() / 1000;
-      const keep = [];
-      const out = [];
-      for (const e of load()) {
-        if (e.member && e.member !== me) { keep.push(e); continue; }
-        const co = await readContract(cfg, 'fx_pool', 'cash_out', [sv.bytes32(e.hash)]).catch(() => undefined);
-        if (co === undefined) { keep.push(e); out.push({ ...e, state: 'waiting' }); continue; }   // RPC down: keep
-        if (co) {
-          const seen = { ...e, seen: true };
-          keep.push(seen); out.push({ ...seen, expires: Number(co.expires), state: now >= Number(co.expires) ? 'expired' : 'open' });
-          continue;
-        }
-        if (e.seen && !e.reclaimed && !e.done) { const paid = { ...e, paidAt: e.paidAt || Math.floor(now) }; keep.push(paid); out.push({ ...paid, state: 'paid' }); continue; }
-        if (!e.seen && now - e.created < SETTLE_S) { keep.push(e); out.push({ ...e, state: 'waiting' }); }
-      }
-      store(keep);
-      return out.sort((a, b) => b.created - a.created);
-    },
-  });
-}
-
-function Code({ e, img, onDone, onBack, reclaim, ready }) {
-  if (e.state === 'paid') {
-    return (
-      <AssetScreen title="Cash out · paid" onBack={onBack} note="This code is closed.">
-        <Card label="Cash out paid" style={{ gap: 8 }}>
-          <KV k="Paid out" v={`${inr(e.amount)} in cash`} />
-          <KV k="When" v={when(e.paidAt)} />
-          <KV k="nIN" v="burned by the union" />
-          <div style={{ marginTop: 8 }}><Secondary onClick={onDone}>Done</Secondary></div>
-        </Card>
-      </AssetScreen>
-    );
-  }
-  if (e.state === 'expired') {
-    return (
-      <AssetScreen title={`${inr(e.amount)} in cash`} onBack={onBack} note={`This cash-out was not collected before ${day(e.expires)}.`}>
-        <Card label="Cash out not collected" style={{ gap: 8 }}>
-          <KV k="Where" v="Union office" />
-          <KV k="Sent" v={when(e.created)} />
-          <div style={{ marginTop: -8 }}><Primary disabled={!ready} onClick={() => reclaim(e)}>Get your nIN back</Primary></div>
-        </Card>
-      </AssetScreen>
-    );
-  }
-  return (
-    <AssetScreen title={`${inr(e.amount)} in cash`} onBack={onBack} note={e.state === 'waiting' ? 'Waiting for the network…' : "Go to the union's office and ask for cash"}>
-      <Card label="Your cash-out code">
-        <QrCircle img={img} alt="Your cash-out code" />
-        <p style={{ ...muted, textAlign: 'center', fontFamily: 'monospace', letterSpacing: 1, margin: 0 }}>{grouped(e.code)}</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <KV k="Where" v="Union office" />
-          <KV k="Sent" v={when(e.created)} />
-        </div>
-        <Secondary onClick={onDone}>Done</Secondary>
-      </Card>
-    </AssetScreen>
-  );
-}
 
 /** His signed nIN cash-out QR for the leader (NILA:N, 4 Nov). */
 function DeskQr({ title, rows, qr, until, onBack }) {
@@ -130,7 +54,6 @@ export default function CashOut({ onBack, kycOnly }) {
   const tx = useSorobanTx();
   const online = useOnline();
   const me = s?.stellarAddress;
-  const mine = useMyCashOuts(cfg, me);
   const maxScan = useQuery({ queryKey: ['stellar', 'maxScan'], enabled: !!cfg,
     queryFn: () => readContract(cfg, 'fx_pool', 'max_scan', []) });
   const nin = Math.floor(s?.stellarAccount?.nin?.balance ?? 0);
@@ -145,15 +68,8 @@ export default function CashOut({ onBack, kycOnly }) {
   const [swapAmt, setSwapAmt] = useState(0);
   const rate = useFxRate().data;
   const pick = canSwap ? mode : 'cash';
-  const [show, setShow] = useState();      // hash of the code on screen
   const [desk, setDesk] = useState();      // her signed QR on screen: { qr, until, amount }
   const [error, setError] = useState();
-  const [img, setImg] = useState();
-  const [closed, setClosed] = useState([]);   // paid codes she tapped Done on (before the list is read again)
-  const list = (mine.data || []).filter((e) => !closed.includes(e.hash));
-  // A code just paid opens on its own (A7b #paid); else the one she picked or just sent.
-  const shown = list.find((e) => e.hash === show) || list.find((e) => e.state === 'paid');
-  useEffect(() => { if (shown?.code) QRCode.toDataURL(`nila:cash:${shown.code}`, { width: 400, margin: 0 }).then(setImg); }, [shown?.code]);
 
   const collect = async (amt) => {
     setError(undefined);
@@ -162,17 +78,8 @@ export default function CashOut({ onBack, kycOnly }) {
     // key: after a recovery it no longer follows from it).
     try { setDesk({ ...(await signDeskCode({ cfg, account: me, signer: s.senderAddress, signHash: s.signHash, amount: BigInt(amt) * NIN })), amount: amt }); } catch (e) { setError(e.message); }
   };
-  const reclaim = (e) => {
-    patch(e.hash, { reclaimed: true });    // taken back, not paid: never shown as #paid once it is gone
-    return tx.run({
-      label: `Get your ${e.amount} nIN back`, rows: [['Amount', `${e.amount} nIN`]],
-      contractName: 'fx_pool', fn: 'reclaim_cash_out', args: [sv.bytes32(e.hash)],
-      invalidate: [['stellar', 'account'], ['stellar', 'cashouts']],
-    });
-  };
-  const done = (e) => { if (e.state === 'paid') { patch(e.hash, { done: true }); setClosed((c) => [...c, e.hash]); } setShow(undefined); };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
-  if (!s?.stellarAccount || !cfg || mine.isLoading) return <Loading />;
+  if (!s?.stellarAccount || !cfg) return <Loading />;
   // A member without the anchor's identity check does not handle nIN (24 Oct): nothing to show here.
   if (kycOnly && lp && !lp.idChecked) {
     return (
@@ -182,10 +89,8 @@ export default function CashOut({ onBack, kycOnly }) {
     );
   }
   if (desk) return <DeskQr title={`${inr(desk.amount)} in cash`} rows={[['You get', `₹${fmt(desk.amount)} in cash`], ['nIN', `${fmt(desk.amount)} burned when paid`]]} qr={desk.qr} until={desk.until} onBack={() => setDesk(undefined)} />;
-  if (shown) return <Code e={shown} img={img} ready={tx.ready} reclaim={reclaim} onDone={() => done(shown)} onBack={() => done(shown)} />;
 
   const a = max < 1 ? 0 : Math.max(1, Math.min(amount, max));   // nothing to cash out: 0, and the button is off
-  const open = list.filter((e) => e.state !== 'paid');
   const sa = Math.max(0, Math.min(swapAmt, nin));
   const swap = () => tx.run({
     label: `Swap ${sa} nIN to USDC`, rows: [['You give', `${sa} nIN`], ['You get about', `${money(rate ? sa / rate : 0)} USDC`]],
@@ -194,7 +99,7 @@ export default function CashOut({ onBack, kycOnly }) {
     invalidate: [['stellar', 'account'], ['stellar', 'lp']],
   });
   // The same layout as A9 (22 Oct): asset card, then one card with Cash out | Swap (the swap for a leader, or a member
-  // since 4 Nov, whose identity is checked and who has a USDC account), then her open codes and the note.
+  // since 4 Nov, whose identity is checked and who has a USDC account), then the note.
   const form = pick === 'swap' ? (
     <AssetForm to={<SwapTarget title="Nila swap · your USDC" rate={rate ? `1 USDC = ${money(rate)} nIN` : 'Rate not available now'} />}
       amount={<Stepper value={sa} set={setSwapAmt} step={100} min={0} max={nin} unit="nIN" label="nIN to swap" />}
@@ -211,15 +116,6 @@ export default function CashOut({ onBack, kycOnly }) {
   return (
     <AssetSwapLayout onBack={onBack} icon={<MarkCircle />} name="nIN" sub="Worth ₹1 each" amount={`${fmt(nin)} nIN`} value={`₹${fmt(nin)}`}
       switchLabel="Cash out or swap" options={canSwap ? SWITCH : null} tab={pick} onTab={setPick}
-      after={open.length > 0 && (
-        <Card label="Your cash-outs" style={{ gap: 8 }}>
-          <CardTitle>Your cash-outs</CardTitle>
-          {open.map((e) => (
-            <Choice key={e.hash} sub={e.state === 'expired' ? 'Not collected · get it back' : e.state === 'waiting' ? 'Waiting for the network' : `Valid until ${day(e.expires)}`}
-              onClick={() => setShow(e.hash)}>{inr(e.amount)} in cash</Choice>
-          ))}
-        </Card>
-      )}
       note={online ? (error || 'Collect it in cash at the union office. Your leader scans your QR, and the same nIN is burned.')
         : `You are offline. Balance from today, ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`}>
       {!canSwap && <CardTitle>Cash out</CardTitle>}

@@ -23,9 +23,7 @@ const CALLS = {
   draw_loan: ['Crop share taken', 'From your union'],
   repay_loan: ['Loan repaid', 'Cash at union office'],
   cash_scan_mint: ['Cash at union office', 'Recorded by your leader'],
-  request_cash_out: ['Cash out', 'At the union office'],
   pay_out: ['Cashed out at the union office', ''],
-  reclaim_cash_out: ['Cash-out taken back', 'Your nIN back'],
   // Before 30 Oct; since then request_unbond, and fund_core's claim (below, by contract).
   request_unbond_junior: ['Withdrawal started', 'Union investment'],
   request_unbond: ['Withdrawal started', 'Union investment'],
