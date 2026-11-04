@@ -56,7 +56,13 @@ export default function UsdcAsset({ onBack, leader = true }) {
   const usdc = lp ? lp.free ?? total : 0;
   // Her identity is checked (K1), so the node sponsors her USDC trustline; until it exists she holds no USDC.
   const noLine = lp && lp.idChecked && !lp.trustline;
-  const a = Math.max(0, Math.min(amount, Math.floor(usdc)));
+  // N4 (executive decision 4 Nov): fx_pool caps a swap at max_scan (nIN, per swap), so USDC → nIN is capped at
+  // max_scan / today's rate, in whole USDC; Send is not.
+  const maxScan = useQuery({ queryKey: ['stellar', 'maxScan'], enabled: !!cfg && canSwap,
+    queryFn: () => readContract(cfg, 'fx_pool', 'max_scan', []) });
+  const swapLimit = maxScan.data != null && rate ? Math.floor(Number(BigInt(maxScan.data) / UNIT) / rate) : null;
+  const max = tab === 'swap' ? Math.min(Math.floor(usdc), swapLimit ?? 0) : Math.floor(usdc);
+  const a = Math.max(0, Math.min(amount, max));
   const left = usdc - a;
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); setAmount(0); }} onRetry={() => tx.retry()} />;
   const swap = () => tx.run({
@@ -86,8 +92,8 @@ export default function UsdcAsset({ onBack, leader = true }) {
                 background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><ScanIcon color={C.text} /></button>
             </div>
           )}
-      amount={<Stepper value={a} set={setAmount} step={1} min={0} max={Math.floor(usdc)} unit="USDC" label="USDC amount" />}
-      rows={[tab === 'swap' && ['You get about', rate && a ? `${money(a * rate, 0)} nIN` : '—'], ['Fee', 'None'], ['Left after', `${money(left)} USDC`]]}
+      amount={<Stepper value={a} set={setAmount} step={1} min={0} max={max} unit="USDC" label="USDC amount" />}
+      rows={[tab === 'swap' && ['Limit', swapLimit == null ? '…' : `Up to $${money(swapLimit, 0)}`], tab === 'swap' && ['You get about', rate && a ? `${money(a * rate, 0)} nIN` : '—'], ['Fee', 'None'], ['Left after', `${money(left)} USDC`]]}
       button={tab === 'swap'
         ? <Primary disabled={!tx.ready || !rate || a < 1} onClick={swap}>{a < 1 ? 'Enter an amount' : 'Swap to nIN'}</Primary>
         : <Primary disabled={!tx.ready || a < 1 || !isG(to) || to === s?.stellarAddress} onClick={send}>
