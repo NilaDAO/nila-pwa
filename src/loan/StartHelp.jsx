@@ -11,7 +11,7 @@ import { muted } from '../plan/ui';
 import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
 import { useNilaSigner } from '../wallet/signer';
 
-export default function StartHelp({ member, label, onBack, onStarted }) {
+export default function StartHelp({ member, label, onBack, onStarted, onDesk }) {
   const tx = useSorobanTx();
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -19,6 +19,8 @@ export default function StartHelp({ member, label, onBack, onStarted }) {
   const [error, setError] = useState();
   const [tries, setTries] = useState(0);
   const read = async (t) => {
+    // Her signed nIN cash-out QR (NILA:N, 4 Nov): no session, the Pay out screen reads it.
+    if (onDesk && /^NILA:N:/i.test((t || '').trim())) { onDesk(t); return; }
     // A self-mode member shows the plain account address (31 Oct): it opens the member (invest, repay: the leader signs
     // alone); a task that needs the member's consent is done on the member's own phone.
     const plain = (t || '').trim().replace(/^.*?([GC][A-Z2-7]{55}).*$/s, '$1');

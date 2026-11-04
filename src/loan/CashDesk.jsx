@@ -198,7 +198,9 @@ const dayOf = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'nu
 function ScanAny({ onBack }) {
   const api = usePlanClient();
   const union = useUnionMembers(api);
-  return <StartHelp onBack={onBack} onStarted={(who) => {
+  const [desk, setDesk] = useState();
+  if (desk) return <PayOut onBack={onBack} initial={desk} />;
+  return <StartHelp onBack={onBack} onDesk={setDesk} onStarted={(who) => {
     const m = (union.data || []).find((x) => x.address === who);
     window.location.replace(m ? `#/members/${m.route}` : '#/members');
   }} />;
