@@ -78,6 +78,12 @@ export default function RegisterMachine({ onBack, initialOwner = '' }) {
       // A machine owner is paid in nIN (prepay and dues), so the owner needs the anchor's identity check first (K1,
       // executive decision 24 Oct), a union machine's leader included.
       if (!(await readContract(cfg, 'fx_pool', 'id_checked', [sv.address(own)]).catch(() => false))) {
+        // A keypad member cannot do the identity check (Nila lite has none), so she cannot own a machine (executive
+        // decision 4 Nov, G10): her account's signer is a P-256 device key.
+        const signer = await readContract(cfg, own, 'signer', []).catch(() => null);
+        if (Array.isArray(signer) && String(signer[0]).toUpperCase() === 'P256') {
+          throw new Error('A keypad phone cannot own a machine: an owner needs the identity check, which Nila lite does not have. Register it to a smartphone member who passed the identity check, or to yourself as a union machine.');
+        }
         throw new Error('The owner\'s identity is not checked yet. A machine owner does the identity check (KYC) first; then register the machine.');
       }
       const { photos_hash: ph } = await api.machinePhotos(WALK.map((l) => ({ content_type: photos[l].content_type, data_b64: photos[l].data_b64 })));
