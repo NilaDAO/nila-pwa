@@ -3,8 +3,8 @@
 // cash on C6 and records it with fx_pool.cash_scan_mint); a leader invests her own cash with Photo count (Cash → Invest,
 // L5 → C6). Withdraw = fund_core.request_unbond (junior: an amount of her free part, as shares), claimable 14 days later
 // (the contract; 14 days confirmed 24 Oct). A member collects it in cash at the office (24 Oct, LOAN_RULES "Two
-// withdrawals"): Collect shows her signed QR for fund_core.claim_junior_cash (deskCode.js); the leader hands over the
-// cash, scans it (Tasks → Pay out cash), checks the 14 days and submits. Starting the withdrawal is hers: on her own
+// withdrawals"): Collect shows her help QR (26 Oct; the signed NILA:W is gone, 4 Nov); the leader scans it, hands over
+// the cash and pays it out from her G2 (fund_core.claim_junior_cash in the session). Starting the withdrawal is hers: on her own
 // phone, the leader driving it in assisted mode. A leader claims her own to her wallet with fund_core.claim (junior). An Invest | Withdraw segmented control (component book) at the top of
 // the card shows one of the two at a time (22 Oct).
 // DESIGN GAPs: no union name, no rate arrow and so no "In a year" line (Q5); no "Your loan · Fully backed" row (the tree
@@ -23,7 +23,6 @@ import { assisted } from './MyShares';
 import Segmented from '../shell/Segmented';
 import { AssetScreen, Card, KV, Line, MarkCircle, QrCircle, Secondary, Stepper } from './AssetParts';
 import HelpQr from './HelpQr';
-import { signDeskCode } from './deskCode';
 
 const RAY = 10n ** 27n;
 const n = (v) => Number(BigInt(v ?? 0)) / 1e7;

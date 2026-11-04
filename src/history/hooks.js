@@ -23,9 +23,6 @@ const CALLS = {
   draw_loan: ['Crop share taken', 'From your union'],
   repay_loan: ['Loan repaid', 'Cash at union office'],
   cash_scan_mint: ['Cash at union office', 'Recorded by your leader'],
-  request_cash_out: ['Cash out', 'At the union office'],
-  pay_out: ['Cashed out at the union office', ''],
-  reclaim_cash_out: ['Cash-out taken back', 'Your nIN back'],
   // Before 30 Oct; since then request_unbond, and fund_core's claim (below, by contract).
   request_unbond_junior: ['Withdrawal started', 'Union investment'],
   request_unbond: ['Withdrawal started', 'Union investment'],
@@ -43,7 +40,6 @@ const CALLS = {
   confirm: ['LP swap done', 'At the union office'],
   post_offer: ['LP offer posted', 'Cash offers'],
   cancel_offer: ['LP offer cancelled', 'Cash offers'],
-  mint_moved: ['From the old app', 'Your nIN moved to Stellar'],
   withdraw_union_treasury: ['Treasury withdrawal', 'Union treasury'],
   leader_deposit_treasury: ['Treasury deposit', 'Union treasury'],
   deposit_usdc_treasury: ['Treasury deposit', 'USDC into the union treasury'],
@@ -217,9 +213,7 @@ function eventRows(events, me, shareLabel) {
       } break;
       case 'cash_scanned': if (has(e.topics[2])) row(PURPOSE[Number(e.v.purpose)] || 'Cash counted', 'Cash at union office', `₹${nin(e.v.amount)}`); break;
       case 'cash_out_requested': if (has(e.topics[2])) row('Cash out', 'At the union office', `−${nin(e.v.amount)} nIN`); break;
-      case 'cash_out_paid': if (has(e.topics[2])) row('Cashed out at the union office', '', `₹${nin(e.v.amount)}`); break;
       case 'cash_out_reclaimed': if (has(e.topics[2])) row('Cash-out taken back', 'Your nIN back', `+${nin(e.v.amount)} nIN`); break;
-      case 'nin_moved': if (has(e.topics[2])) row('From the old app', 'Your nIN moved to Stellar', `+${nin(e.v.amount)} nIN`); break;
       default: break;
     }
   }

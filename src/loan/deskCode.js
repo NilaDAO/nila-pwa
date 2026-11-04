@@ -1,16 +1,21 @@
-// Her signed desk QR (executive decision 24 Oct, LOAN_RULES "Two withdrawals"): both withdrawals are paid in cash at
-// the union office, and the leader scans a QR on her phone that holds her signed authorization:
-//   NILA:W: her investment, fund_core.claim_junior_cash(union, max_shares = 0: all she can claim); no nIN reaches her.
-//   NILA:N: her nIN (a machine owner's income), fx_pool.cash_out_signed(union, amount); her nIN is burned.
-// She signs the arguments without a leader (require_auth_for_args), so any leader of her union may scan and submit
-// it. Compact as the voucher code (voucherCode.js): her address | [amount, 8 bytes] | expiry ledger | signature, in
-// base32; nonce = the expiry ledger, so a QR is used once. ~48 h.
+// His signed nIN cash-out QR (NILA:N; executive decisions 24 Oct and 4 Nov, LOAN_RULES "Two withdrawals"): a machine
+// owner takes his nIN income as cash only this way. A7 Collect shows a QR with his signed authorization of
+// fx_pool.cash_out_signed(leader, union, member, amount), args (union, amount); after handing over the cash the leader
+// scans it (Tasks → Scan a member QR) and submits; his nIN is burned and leaves the union's cash at hand.
+// He signs the arguments without a leader (require_auth_for_args), so any leader of his union may scan and submit it.
+// Compact as the voucher code (voucherCode.js), in base32: account 32 | key 32 | amount 8 | expiry ledger 4 |
+// signature 64; nonce = the expiry ledger, so a QR is used once. ~48 h.
+// The account is in the QR (4 Nov): after a recovery it no longer follows from the key. Account bytes equal to the
+// key's: no smart account (a node without an account deployer), the key's own address.
+// NILA:W (her investment, fund_core.claim_junior_cash) is gone (4 Nov): nothing scanned it; the leader pays a
+// withdrawal out from her G2.
 import { Address, Keypair, StrKey, hash, xdr } from '@stellar/stellar-sdk';
 import { contractId, server, sv } from '../stellar/soroban';
-import { memberEntry, memberOf } from '../stellar/account';
+import { memberEntry } from '../stellar/account';
 
 export const DESK_TERM = 34_560;     // ledgers (~5 s each): about 48 hours
-const KIND = { W: { prefix: 'NILA:W:', len: 100 }, N: { prefix: 'NILA:N:', len: 108 } };
+const PREFIX = 'NILA:N:';
+const LEN = 32 + 32 + 8 + 4 + 64;
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 export const toB32 = (bytes) => {
   let bits = 0; let val = 0; let out = '';
@@ -28,50 +33,43 @@ export const fromB32 = (str) => {
   return Uint8Array.from(out);
 };
 
-function invocation(cfg, kind, amount) {
-  const [contract, fn, args] = kind === 'W'
-    ? ['fund_core', 'claim_junior_cash', [sv.address(cfg.union), sv.i128(0n)]]
-    : ['fx_pool', 'cash_out_signed', [sv.address(cfg.union), sv.i128(amount)]];
-  return new xdr.SorobanAuthorizedInvocation({
-    function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(new xdr.InvokeContractArgs({
-      contractAddress: new Address(contractId(cfg, contract)).toScAddress(), functionName: fn, args })),
-    subInvocations: [],
-  });
-}
+const invocation = (cfg, amount) => new xdr.SorobanAuthorizedInvocation({
+  function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(new xdr.InvokeContractArgs({
+    contractAddress: new Address(contractId(cfg, 'fx_pool')).toScAddress(), functionName: 'cash_out_signed',
+    args: [sv.address(cfg.union), sv.i128(amount)] })),
+  subInvocations: [],
+});
 const payload = (cfg, inv, exp) => hash(xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(new xdr.HashIdPreimageSorobanAuthorization({
   networkId: hash(Buffer.from(cfg.passphrase)), nonce: xdr.Int64.fromString(String(exp)), signatureExpirationLedger: exp, invocation: inv,
 })).toXDR());
+const bytesOf = (a) => (a.startsWith('C') ? StrKey.decodeContract(a) : StrKey.decodeEd25519PublicKey(a));
 
-/** Her phone: kind 'W' (her investment, all she can claim) or 'N' (`amount` nIN in stroops). Returns { qr, until }. */
-export async function signDeskCode({ cfg, signer, signHash, kind, amount = 0n, ledgers = DESK_TERM }) {
+/** His phone: `amount` nIN (stroops) from `account` (C…, or his G key without smart accounts), signed by his key
+ *  `signer` (G…). Returns { qr, until }. */
+export async function signDeskCode({ cfg, account, signer, signHash, amount, ledgers = DESK_TERM }) {
   const exp = (await server(cfg).getLatestLedger()).sequence + ledgers;
-  const sig = Uint8Array.from(await signHash(payload(cfg, invocation(cfg, kind, amount), exp)));
-  const { prefix, len } = KIND[kind];
-  const b = new Uint8Array(len); const d = new DataView(b.buffer);
-  b.set(StrKey.decodeEd25519PublicKey(signer), 0);
-  let i = 32;
-  if (kind === 'N') { d.setBigUint64(i, BigInt(amount)); i += 8; }
-  d.setUint32(i, exp); b.set(sig, i + 4);
-  return { qr: prefix + toB32(b), until: Math.floor(Date.now() / 1000) + ledgers * 5 };
+  const sig = Uint8Array.from(await signHash(payload(cfg, invocation(cfg, amount), exp)));
+  const b = new Uint8Array(LEN); const d = new DataView(b.buffer);
+  b.set(bytesOf(account), 0); b.set(StrKey.decodeEd25519PublicKey(signer), 32);
+  d.setBigUint64(64, BigInt(amount)); d.setUint32(72, exp); b.set(sig, 76);
+  return { qr: PREFIX + toB32(b), until: Math.floor(Date.now() / 1000) + ledgers * 5 };
 }
 
-/** The leader's app: { kind, member, amount, exp, entry } from a scanned QR whose signature checks for this union.
+export const isDeskCode = (text) => (text || '').trim().toUpperCase().startsWith(PREFIX);
+
+/** The leader's app: { member (the account in the QR), key, amount, exp, entry } from a scanned QR whose signature
+ *  checks for this union. The entry is for that account: its own check takes the key when the leader submits.
  *  Throws a plain reason. */
 export function readDeskCode(cfg, text) {
-  const t = (text || '').trim().toUpperCase();
-  const kind = Object.keys(KIND).find((k) => t.startsWith(KIND[k].prefix));
   let b;
-  try { if (!kind) throw new Error(); b = fromB32(t.slice(KIND[kind].prefix.length)); } catch { throw new Error('This is not a Nila cash QR.'); }
-  if (b.length !== KIND[kind].len) throw new Error('This is not a Nila cash QR.');
+  try { b = fromB32((text || '').trim().toUpperCase().slice(PREFIX.length)); } catch { b = null; }
+  if (!isDeskCode(text) || !b || b.length !== LEN) throw new Error('This is not a Nila cash QR.');
   const d = new DataView(b.buffer);
-  const member = StrKey.encodeEd25519PublicKey(Buffer.from(b.slice(0, 32)));
-  let i = 32;
-  const amount = kind === 'N' ? d.getBigUint64(i) : 0n;
-  if (kind === 'N') i += 8;
-  const exp = d.getUint32(i); const sig = b.slice(i + 4);
-  const inv = invocation(cfg, kind, amount);
-  if (!Keypair.fromPublicKey(member).verify(payload(cfg, inv, exp), Buffer.from(sig))) throw new Error('This QR is not signed for your union.');
-  // Smart accounts (26 Oct): the QR holds her Privy key; the entry is for her account (memberEntry).
-  const entry = memberEntry(cfg, member, sig, exp, inv);
-  return { kind, member: memberOf(cfg, member), key: member, amount, exp, entry };
+  const key = StrKey.encodeEd25519PublicKey(Buffer.from(b.slice(32, 64)));
+  const own = b.slice(0, 32).every((x, i) => x === b[32 + i]);
+  const member = own ? key : StrKey.encodeContract(Buffer.from(b.slice(0, 32)));
+  const amount = d.getBigUint64(64); const exp = d.getUint32(72); const sig = b.slice(76);
+  const inv = invocation(cfg, amount);
+  if (!Keypair.fromPublicKey(key).verify(payload(cfg, inv, exp), Buffer.from(sig))) throw new Error('This QR is not signed for your union.');
+  return { member, key, amount, exp, entry: memberEntry(cfg, key, sig, exp, inv, own ? null : member) };
 }

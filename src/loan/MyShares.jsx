@@ -161,7 +161,12 @@ export function TakeUp({ token, leader, onBack }) {
   return <ShareScan x={x} onBack={onBack} />;
 }
 
+// A green manure (4 Nov) is a crop share with no season row: its soil cover stands in for one (name, finance, sowing).
+const coverRows = (p) => (p?.soil_cover || []).filter((c) => c.finance).map((c) => ({ zone: c.zone, zones: [c.zone], crop: c.cover,
+  name: c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/^./, (a) => a.toUpperCase()), colour: c.colour, sow: c.sow,
+  kg: 0, value: 0, finance: c.finance, green_manure: true }));
 export const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
+  .concat(coverRows(x.plan?.plan))
   .filter((r) => (r.zones || [r.zone]).includes(x.zone) && (r.crop === x.crop || r.name === x.crop))
   // The same crop can stand on one area in two seasons: the share's sowing date picks the season.
   .sort((a, b) => (b.sow === x.share.from_date) - (a.sow === x.share.from_date))[0];

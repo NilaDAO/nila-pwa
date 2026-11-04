@@ -220,7 +220,7 @@ export function AreaCard({ plan, zone, name, record, area, accepted, total, done
       {soil.filter((c) => c.kind !== 'bare').map((c) => (
         <Notice key={`sn-${c.from}`} kind="info" title={c.name}>
           {c.kind === 'mulch' ? 'The last crop\'s residue stays on the soil through the dry months, so it does not erode.'
-            : `Sown so it stands through the driest weeks and is ploughed in before the next crop, to rebuild the soil.${c.financed_with ? ` Its seed (${inr(c.seed_cost)}) is in this area's loan.` : c.unfinanced_reason ? ` Its seed is not in the loan: ${c.unfinanced_reason}.` : ''}`}
+            : `Sown so it stands through the driest weeks and is ploughed in before the next crop, to rebuild the soil.${c.finance ? ` It is its own crop share (${inr(c.finance.cash + c.finance.voucher_value)}: seed and machine work), repaid with the next crop.` : c.unfinanced_reason ? ` Not in the loan: ${c.unfinanced_reason}.` : ''}`}
           {c.risks?.includes('water source not confirmed') ? ' Needs some water: your water source is not confirmed.' : ''}
         </Notice>
       ))}

@@ -50,9 +50,10 @@ export async function signAccountEntries(cfg, entries, account, sign, kind, vali
 export const memberOf = (cfg, g) => accountOf(cfg, g) || g;
 
 /** A member's signed authorization entry rebuilt from a QR (legacy address credentials, nonce = expiry ledger): for
- *  her smart account with `Signature::Ed25519`, or, without a deployer, for the key's own address. Base64 XDR. */
-export function memberEntry(cfg, g, sig, exp, invocation) {
-  const account = accountOf(cfg, g);
+ *  her smart account with `Signature::Ed25519`, or, without a deployer, for the key's own address. Base64 XDR.
+ *  `account` (4 Nov, NILA:N): the account the QR names (after a recovery it does not follow from the key); null = the
+ *  key's own address. */
+export function memberEntry(cfg, g, sig, exp, invocation, account = accountOf(cfg, g)) {
   const signature = account ? signatureVal('Ed25519', sig)
     : xdr.ScVal.scvVec([nativeToScVal({ public_key: StrKey.decodeEd25519PublicKey(g), signature: Buffer.from(sig) },
       { type: { public_key: ['symbol', null], signature: ['symbol', null] } })]);

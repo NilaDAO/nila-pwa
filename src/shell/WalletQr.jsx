@@ -1,15 +1,10 @@
 // A1a (board MemberWalletQR): her Stellar wallet as a QR in a white circle, for the leader to scan (invest, cash),
-// the short address with Copy, and the info note above the tab bar. While her investment withdrawal is ready (14 days
-// passed; executive decision 24 Oct) the QR carries her signed collect (NILA:W, deskCode.js), so the leader's one scan
-// pays it out; a leader's own withdrawal goes to her wallet (A3), so hers stays the plain address.
+// the short address with Copy, and the info note above the tab bar. Always the plain address (4 Nov: the signed collect
+// NILA:W is gone, nothing scanned it; the leader pays a withdrawal out from her G2).
 import MapCard from './MapCard';
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
-import { useStellarConfig } from '../stellar/hooks';
-import { deskClaim } from '../loan/desk';
-import { signDeskCode } from '../loan/deskCode';
 import { C, FONT, R, TAB_BAR_HEIGHT } from './tokens';
 import HelpQr from '../loan/HelpQr';
 import { NoteBar } from '../loan/AssetParts';
@@ -23,20 +18,14 @@ const assisted = () => { try { return localStorage.getItem('nila.mode') !== 'sel
 /** A member in assist mode shows the help QR (executive decision 26 Oct); a member in self mode and a leader show the
  *  plain account number (revised 31 Oct, executive decision). */
 export default function WalletQr({ onBack, leader }) {
-  return leader || !assisted() ? <AccountQr onBack={onBack} leader={leader} /> : <HelpQr onBack={onBack} />;
+  return leader || !assisted() ? <AccountQr onBack={onBack} /> : <HelpQr onBack={onBack} />;
 }
 
-function AccountQr({ onBack, leader }) {
+function AccountQr({ onBack }) {
   const s = useNilaSigner();
-  const { data: cfg } = useStellarConfig();
   const addr = s?.stellarAddress;
   const [img, setImg] = useState();
-  const claim = useQuery({ queryKey: ['stellar', 'deskClaim', addr], enabled: !!cfg && !!addr && !leader, queryFn: () => deskClaim(cfg, addr) });
-  const ready = claim.data?.shares > 0n;
-  const signed = useQuery({ queryKey: ['stellar', 'deskCode', addr, ready], enabled: ready && !!s?.ready,
-    queryFn: () => signDeskCode({ cfg, signer: s.senderAddress, signHash: s.signHash, kind: 'W' }), staleTime: 3_600_000 });
-  const text = ready ? signed.data?.qr : addr;
-  useEffect(() => { if (text) QRCode.toDataURL(text, { width: 400, margin: 0, errorCorrectionLevel: 'L' }).then(setImg); }, [text]);
+  useEffect(() => { if (addr) QRCode.toDataURL(addr, { width: 400, margin: 0, errorCorrectionLevel: 'L' }).then(setImg); }, [addr]);
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, minHeight: `calc(100dvh - ${TAB_BAR_HEIGHT + 16}px)`, display: 'flex', flexDirection: 'column' }}
       header={{ title: 'Your account number', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}>
@@ -45,11 +34,6 @@ function AccountQr({ onBack, leader }) {
         <div style={{ width: '100%', aspectRatio: '1', borderRadius: 9999, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {img && <img src={img} alt="Wallet address QR code" style={{ width: '62%', height: '62%', imageRendering: 'pixelated' }} />}
         </div>
-        {ready && signed.data && (
-          <p style={{ margin: 0, color: C.gold, textAlign: 'center', fontSize: 14, lineHeight: 1.5 }}>
-            Your withdrawal is ready. Let your leader scan this only after you have received the cash.
-          </p>
-        )}
         <AddressCopy addr={addr} />
       </section>
       <NoteBar>Your wallet address. The union uses it to give you nIN and vouchers.</NoteBar>

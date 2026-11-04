@@ -4,7 +4,7 @@ Branch `t1/pwa/P5` (from `snapshot/2026-10-08`). Behind the Privy flag; the live
 
 ## Decisions (executive, 16 Oct; LOAN_RULES §5 "Accept a loan and the cash desk")
 
-- The node sponsors the leader's cash-desk calls too (`cash_scan_mint`, `pay_out`; oracle O12); leaders need no XLM.
+- The node sponsors the leader's cash-desk calls too (`cash_scan_mint`; `pay_out` until it was removed 4 Nov; oracle O12); leaders need no XLM.
 - The loan request QR is signed by the leader's Stellar wallet and checked on her phone (signature, signer is a
   leader of her union, 48 h expiry); N10 shows only the signed values; Confirm / Cancel; one loan per food token.
 - Cash (seed included) and machine hours only; no seed stepper.
@@ -23,7 +23,7 @@ Branch `t1/pwa/P5` (from `snapshot/2026-10-08`). Behind the Privy flag; the live
 | `src/shell/WalletQr.jsx` | **A1a** her wallet QR (for the leader) |
 | `src/stellar/hooks.js` | `useInvestment` (`fund_core.position`); A1 shows "nIN invested" and adds it to the total |
 | `src/loan/Investment.jsx` | **A3** (P5c): invested, earned, locked; withdraw her free part (`request_unbond_junior`, shares = amount × RAY / index), 14 days, then `claim_junior` |
-| `src/loan/CashOut.jsx` | **A7 → A7b** (P5c): nIN amount → `fx_pool.request_cash_out` under the hash of a one-time 128-bit code (7 days less an hour; the code stays on her phone) → QR + text; leader **Pay out a cash-out** → `fx_pool.pay_out` (sponsored) |
+| `src/loan/CashOut.jsx` | **A7 → A7b** (P5c): nIN amount → `fx_pool.request_cash_out` under the hash of a one-time 128-bit code (7 days less an hour; the code stays on her phone) → QR + text; leader **Pay out a cash-out** → `fx_pool.pay_out` (sponsored). **Removed 4 Nov:** the code cash-out and `pay_out` are gone; A7 is `cash_out_signed` |
 | oracle O12 | `GET /plan/approvals/approved` (L11 list) and leader-call sponsoring |
 
 ## Changes after the first build (executive decision, 16 Oct)

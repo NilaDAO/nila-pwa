@@ -126,7 +126,8 @@ export function useUnionMembers(api) {
       const border = borderClient(s);
       const [titles, keypad, jobs, loanList] = await Promise.all([
         api.unionTitles().then((r) => r.titles || []).catch(() => []),
-        keypadClient(s).list().then((r) => r.members || []).catch(() => []),
+        // Not a smartphone member's recovery row (4 Nov, POST /keypad/recoveries): she is already a row under her account.
+        keypadClient(s).list().then((r) => (r.members || []).filter((k) => !(k.phone_type === 'smartphone' && k.account))).catch(() => []),
         border.jobs().then((r) => r || []).catch(() => []),
         api.unionLoans().then((r) => r.loans || []).catch(() => []),
       ]);

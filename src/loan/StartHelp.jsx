@@ -1,6 +1,7 @@
 // The leader scans a member's QR: an assist-mode member's help QR (executive decision 26 Oct) starts the
 // 5-minute session on the member's account (nila-account start_session, the member's signed QR as its authorization).
 // `member`: when the leader is on that member already (G2, L11), a QR of anyone else is refused. `onStarted(member)`.
+// `onDesk(text)` (Tasks, 4 Nov): a machine owner's signed nIN cash-out QR (NILA:N) goes there instead.
 import { useState } from 'react';
 import CameraView from '../shell/CameraView';
 import { readSessionQr, setSession } from '../stellar/session';
@@ -8,10 +9,11 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { C } from '../shell/tokens';
 import DeskCard from '../shell/DeskCard';
 import { muted } from '../plan/ui';
+import { isDeskCode } from './deskCode';
 import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
 import { useNilaSigner } from '../wallet/signer';
 
-export default function StartHelp({ member, label, onBack, onStarted }) {
+export default function StartHelp({ member, label, onBack, onStarted, onDesk }) {
   const tx = useSorobanTx();
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -19,6 +21,8 @@ export default function StartHelp({ member, label, onBack, onStarted }) {
   const [error, setError] = useState();
   const [tries, setTries] = useState(0);
   const read = async (t) => {
+    // His signed nIN cash-out QR (NILA:N, executive decision 4 Nov): no session; HandOver (CashOut.jsx) reads it.
+    if (onDesk && isDeskCode(t)) { onDesk(t); return; }
     // A self-mode member shows the plain account address (31 Oct): it opens the member (invest, repay: the leader signs
     // alone); a task that needs the member's consent is done on the member's own phone.
     const plain = (t || '').trim().replace(/^.*?([GC][A-Z2-7]{55}).*$/s, '$1');
