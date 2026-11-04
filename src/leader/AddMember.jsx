@@ -146,6 +146,7 @@ export default function AddMember({ id, go }) {
   const ok = name.trim() && phoneOk(phone);
   const onScan = (t) => {
     const m = memberOfQr(t);
+    console.log('[scan] Add a member:', m ? `member ${m.account}${m.join ? ' (with her signed join)' : ''}` : 'refused, it needs a smartphone help QR (kind 3 or 5)');
     if (!m) {
       setScanError(accountOfQr(t) ? 'This QR has no Polygon address. The member updates the Nila app and shows the QR again.'
         : 'This is not a member\'s Nila QR.');
