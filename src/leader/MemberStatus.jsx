@@ -422,7 +422,10 @@ function RemoveMember({ m, inv, go }) {
       ) : (
         <ConfirmCard title="Remove member" ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending}
           onCancel={() => setAsk(false)} onOk={() => rm.mutate()}
-          warn={`Remove ${m.label} from the union? The land title ${titleId} is burned, which ends the membership; this cannot be undone. nIN, USDC and vouchers stay in the member's wallet. To join again the member needs a new land title.`} />
+          warn={`Remove ${m.label} from the union? The land title ${titleId} is burned, which ends the membership; this cannot be undone. nIN, USDC and vouchers stay in the member's wallet. To join again the member needs a new land title.`}>
+          {/* The node's refusal (a 409's detail, 4 Nov) on the card itself; the text under the button sits behind it. */}
+          {rm.error && <Text style={{ color: C.coral }}>{rm.error.message}</Text>}
+        </ConfirmCard>
       ))}
     </>
   );

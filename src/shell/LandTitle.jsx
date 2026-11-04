@@ -1,9 +1,11 @@
 // A5 (board MemberAssetLand): her land title over the map of her areas — the title and its id, water on her land,
-// and burning the title (2 Nov: POST /stellar/titles/burn, the holder). DESIGN GAPs (no hook yet, so not shown or not
+// and burning the title (2 Nov: POST /stellar/titles/burn, the holder; 4 Nov, G4: a Polygon title goes to 0x…dEaD first). DESIGN GAPs (no hook yet, so not shown or not
 // active): marking a well or bore (A5a, useWaterSources / useSaveWaterSources), farm improvements (useImprovements,
 // useImprovementInterest), the trees row (useTreeCheck, TreeMap).
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ethers } from 'ethers';
+import { useProvider } from '../hooks/useWallet.ts';
 import { ConfirmCard } from './SettingsParts';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarTitles } from '../stellar/hooks';
@@ -15,6 +17,12 @@ import { areaM2, tapRule } from '../plan/mapTap';
 import { Sheet } from '../plan/ui';
 import { Loading } from '../register/Boot';
 import { C, R } from './tokens';
+
+const LAND_TITLE = process.env.REACT_APP_LAND_TITLE_MAIN;
+const CHAIN_ID = Number(process.env.REACT_APP_CHAIN_ID) || 137;
+const DEAD = '0x000000000000000000000000000000000000dEaD';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const hex0x = (h) => (h && !h.startsWith('0x') ? `0x${h}` : h);
 
 const line = { height: 1, background: C.raised, border: 0, margin: '16px 0' };
 const h2 = { fontSize: 16, fontWeight: 700, lineHeight: 1.3, margin: 0 };
@@ -42,12 +50,40 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
   const [picked, setPicked] = useState(null);
   const [ask, setAsk] = useState(false);
   const qc = useQueryClient();
+  const { provider } = useProvider();
+  const [step, setStep] = useState('');
+  // G4 (executive decision 4 Nov): a Polygon title is sent to 0x…dEaD from her own Polygon wallet first — the node tops
+  // up just enough POL (burn/gas), her wallet sends transferFrom, the receipt is waited for — then the node removes it
+  // on Stellar with that transfer's hash. A Stellar-only title: the node's burn alone, as before (2 Nov).
   const burn = useMutation({
     mutationFn: async () => {
-      const { signedCall } = await import('../plan/api');
-      return signedCall(s)('POST', '/stellar/titles/burn', { title_id: Number(landId) });
+      const { titleBurnClient } = await import('../plan/api');
+      const api = titleBurnClient(s);
+      if (!onPolygon) { setStep('Removing it on Stellar…'); return api.burn({ title_id: Number(landId) }); }
+      const ids = { token_id: Number(landId), ...(stellarTitles.data?.[0] ? { title_id: Number(stellarTitles.data[0].title_id) } : {}) };
+      setStep('Sending your land title to the burn address…');
+      const g = await api.burnGas(ids);
+      const gh = hex0x(g?.tx_hash);
+      if (gh) { for (let i = 0; i < 30 && !(await provider.getTransactionReceipt(gh).catch(() => null)); i++) await sleep(2000); }
+      const me = s.evmAddress;
+      const data = new ethers.Interface(['function transferFrom(address from, address to, uint256 tokenId)'])
+        .encodeFunctionData('transferFrom', [me, DEAD, landId]);
+      const [nonce, fees, gas] = await Promise.all([provider.getTransactionCount(me, 'pending'), provider.getFeeData(),
+        provider.estimateGas({ from: me, to: LAND_TITLE, data })]);
+      const raw = await s.signEvmTx({ to: LAND_TITLE, data, chainId: CHAIN_ID, nonce, gasLimit: (gas * 12n) / 10n,
+        maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas, value: 0, type: 2 });
+      const r = await (await provider.broadcastTransaction(raw)).wait();
+      if (r.status !== 1) throw new Error('The land title could not be sent to the burn address.');
+      setStep('Removing it on Stellar…');
+      return api.burn(ids, r.hash);
     },
-    onSuccess: () => { setAsk(false); qc.invalidateQueries({ queryKey: ['stellar', 'titleList'] }); window.location.hash = '#/assets'; },
+    onSettled: () => setStep(''),
+    onSuccess: () => {
+      setAsk(false);
+      qc.invalidateQueries({ queryKey: ['stellar', 'titleList'] });
+      qc.invalidateQueries({ queryKey: ['polygon', 'titles'] });
+      window.location.hash = '#/assets';
+    },
   });
   const onTap = tapRule(picked, { open: setPicked, back: () => setPicked(null) });
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
@@ -95,18 +131,20 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
         </button>
       </section>
       <hr style={line} />
-      {/* A5 Burn my land title (R68, executive decision 2 Nov): a Stellar title only (Polygon has no burn); the node checks
-          no crop share and no investment. Membership ends; a leader stays a leader (roles). */}
-      <button type="button" onClick={() => setAsk(true)} disabled={!stellarTitle}
-        style={{ ...btn, background: C.raised, color: C.coral, opacity: stellarTitle ? 1 : 0.5, cursor: stellarTitle ? 'pointer' : 'default' }}>
+      {/* A5 Burn my land title (R68, executive decision 2 Nov; Polygon titles too since 4 Nov, G4: sent to 0x…dEaD); the
+          node checks no crop share and no investment. Membership ends; a leader stays a leader (roles). */}
+      <button type="button" onClick={() => setAsk(true)} disabled={landId == null}
+        style={{ ...btn, background: C.raised, color: C.coral, opacity: landId != null ? 1 : 0.5, cursor: landId != null ? 'pointer' : 'default' }}>
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.coral} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
         Burn my land title
       </button>
-      {burn.error && <p style={{ ...muted, color: C.coral, marginTop: 8 }}>{burn.error.message}</p>}
       {ask && (
         <ConfirmCard title="Burn my land title" ok={burn.isPending ? 'Burning…' : 'Burn'} okStyle={{ background: C.coral }} okDisabled={burn.isPending}
           onCancel={() => setAsk(false)} onOk={() => burn.mutate()}
-          warn={`Burn land title ${landId}? This ends your membership of the union and cannot be undone. nIN, USDC and vouchers stay in your wallet. To join again you need a new land title (Crop plan). Not possible while you have a crop share or an investment.`} />
+          warn={`Burn land title ${landId}? This ends your membership of the union and cannot be undone. nIN, USDC and vouchers stay in your wallet. To join again you need a new land title (Crop plan). Not possible while you have a crop share or an investment.`}>
+          {step && <p style={muted}>{step}</p>}
+          {burn.error && <p style={{ ...muted, color: C.coral }}>{burn.error.message}</p>}
+        </ConfirmCard>
       )}
     </Sheet>
   );
