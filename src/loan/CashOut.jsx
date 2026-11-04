@@ -141,7 +141,10 @@ export default function CashOut({ onBack, kycOnly }) {
   const max = maxScan.data != null ? Math.min(nin, Number(BigInt(maxScan.data) / NIN)) : 0;
   const [amount, setAmount] = useState(1000);
   const lp = useLpStatus().data;
-  const canSwap = !!lp?.idChecked && !!lp?.trustline;
+  // The swap (G2, executive decision 4 Nov): a leader, or a member (self mode) whose identity is checked and who holds
+  // a title in the union; fx_pool takes her smart account as `leader` and the union her account names.
+  const canSwap = !!lp?.idChecked && !!lp?.trustline && (!kycOnly || lp.member);
+  const union = s?.stellarAccount?.union || cfg?.union;
   const [mode, setPick] = useState('cash');
   const [swapAmt, setSwapAmt] = useState(0);
   const rate = useFxRate().data;
@@ -189,11 +192,11 @@ export default function CashOut({ onBack, kycOnly }) {
   const swap = () => tx.run({
     label: `Swap ${sa} nIN to USDC`, rows: [['You give', `${sa} nIN`], ['You get about', `${money(rate ? sa / rate : 0)} USDC`]],
     contractName: 'fx_pool', fn: 'swap_nin_to_usdc',
-    args: [sv.address(me), sv.address(cfg.union), sv.i128(BigInt(sa) * NIN)],
+    args: [sv.address(me), sv.address(union), sv.i128(BigInt(sa) * NIN)],
     invalidate: [['stellar', 'account'], ['stellar', 'lp']],
   });
-  // The same layout as A9 (22 Oct): asset card, then one card with Cash out | Swap (the swap only for a leader whose
-  // identity is checked and who has a USDC account), then her open codes and the note.
+  // The same layout as A9 (22 Oct): asset card, then one card with Cash out | Swap (the swap for a leader, or a member
+  // since 4 Nov, whose identity is checked and who has a USDC account), then her open codes and the note.
   const form = pick === 'swap' ? (
     <AssetForm to={<SwapTarget title="Nila swap · your USDC" rate={rate ? `1 USDC = ${money(rate)} nIN` : 'Rate not available now'} />}
       amount={<Stepper value={sa} set={setSwapAmt} step={100} min={0} max={nin} unit="nIN" label="nIN to swap" />}
