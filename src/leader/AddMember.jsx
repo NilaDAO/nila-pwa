@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
-import { ensureKeypadAccount, readAccountUnion, useStellarConfig } from '../stellar/hooks';
+import { ensureKeypadAccount, ensureMemberAccount, readAccountUnion, useStellarConfig } from '../stellar/hooks';
 import { isDeployed } from '../stellar/soroban';
 import { C, FONT, R } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
@@ -219,8 +219,26 @@ const SCANNED = 'nila.l14.scanned';
 const readScanned = () => { try { return JSON.parse(sessionStorage.getItem(SCANNED) || 'null'); } catch { return null; } };
 const writeScanned = (m) => { try { sessionStorage.setItem(SCANNED, JSON.stringify(m)); } catch { /* this tab only */ } };
 
-/** A smartphone member's help QR was scanned (L14 or the Members scan, 29 Oct): { account, polygon }. */
-export const scannedNewMember = (m) => writeScanned({ account: m.account, polygon: m.polygon });
+/** A smartphone member's help QR was scanned (L14 or the Members scan, 29 Oct): { account, polygon, join }. */
+export const scannedNewMember = (m) => writeScanned({ account: m.account, polygon: m.polygon, join: m.join || null });
+
+/** A scanned smartphone member's account (4 Nov): she holds no XLM, so this leader's app makes it and sends her signed
+ *  set_union from her QR (kind 5), the leader's own XLM paying the fee. 'idle' with no join (already made and joined),
+ *  then 'busy' → 'done' | 'failed' (L4 asks for her QR again before the mint). */
+function useScannedAccount(m) {
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const [state, setState] = useState('idle');
+  const tried = useRef();
+  useEffect(() => {
+    if (!m?.join || !cfg || !s?.ready || tried.current === m.account) return;
+    tried.current = m.account;
+    setState('busy');
+    ensureMemberAccount(cfg, s, m.account, m.join).then((r) => setState(r.union ? 'done' : 'failed'))
+      .catch((e) => { console.error('[L14] account not made or union not set', e); setState('failed'); });
+  }, [m, cfg, s]);
+  return state;
+}
 
 /** tasks/member/qr (29 Oct): the scanned member's name and phone number, typed by the leader (nothing else knows
  *  them: no SMS, no node link), then the field points. */
@@ -228,6 +246,7 @@ function NewSmartphone({ go }) {
   const [m] = useState(readScanned);
   const [name, setName] = useState(m?.name || '');
   const [phone, setPhone] = useState(m?.phone || '+91');
+  const acct = useScannedAccount(m);
   useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
   if (!m) return null;
   const ok = name.trim() && phoneOk(phone);
@@ -239,6 +258,8 @@ function NewSmartphone({ go }) {
       <label style={label} htmlFor="l14-phone">Phone number</label>
       <PhoneField id="l14-phone" value={phone} onChange={setPhone} />
       <Row k={<b style={{ color: C.text }}>Account</b>} v={`${m.account.slice(0, 4)}…${m.account.slice(-4)}`} />
+      {acct !== 'idle' && <Step done={acct === 'done'} title="Account made and joined the union"
+        sub={acct === 'busy' ? 'Making it…' : acct === 'failed' ? 'Not done: you scan the member\'s QR again before the mint' : ''} />}
       <Notice kind="info">Do this at the farm: next you take the field points on your phone.</Notice>
       <Primary disabled={!ok} onClick={next}>Take field points</Primary>
     </Card>

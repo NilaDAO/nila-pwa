@@ -279,8 +279,9 @@ function SignerBridge({ children }) {
   // Made by itself at login for a new wallet (R4). A Polygon wallet ('137') waits for the move:
   // M1 step 1 calls the same setup (design R4: "Polygon wallet found → M1").
   // Smart accounts (26 Oct): her account is a contract of the account deployer (one for all unions, 3 Nov) at an
-  // address that follows from her Privy key; the key's own plain account (sponsored, 0 XLM) sends her calls, the node
-  // fee-bumps them.
+  // address that follows from her Privy key; the key's own plain account (sponsored) sends her calls and pays their fee
+  // from its own XLM (4 Nov, no node fee-bump). Only leaders and ID-checked accounts hold XLM (a node beat tops them
+  // up); an assist or keypad member's calls are sent by a leader's app (help QR session).
   const { data: cfg } = useStellarConfig();
   const smart = stellar && deployerOf(cfg) ? accountOf(cfg, stellar.address) : stellar?.address;
   const account = useAccount(signersReady ? stellar.address : undefined, signersReady ? smart : undefined);
@@ -301,6 +302,9 @@ function SignerBridge({ children }) {
   // once the account exists without a union and her union is known on this phone (R9 wrote it, a recovery restored
   // it, or the leader start saved it); R9 also calls joinUnion right after the choice. The union is the node's
   // (cfg.union, one union a node today). Without it no leader session and no recovery work for her account.
+  // 4 Nov: her phone sends it (and makes her account, useSetupAccount) only when her plain account holds XLM for the fee
+  // (leaders, ID-checked accounts). A member holds none: her help QR carries her signed set_union and a leader's app
+  // makes and joins the account (L14, L4; stellar/hooks ensureMemberAccount).
   const { refetch: refetchAccount } = account;
   const deployed = !!account.data?.deployed;    // not yet (or a recovering phone's new key): named once it is
   const joinUnion = useCallback(async () => {

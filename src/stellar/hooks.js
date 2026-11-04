@@ -101,10 +101,20 @@ async function addNinTrustline(cfg, me, signHash) {
  * wallet pair, the node's sponsor co-signs and submits. Safe to repeat: an existing account is a no-op, unless it lacks
  * this network's nIN trustline, which is then added (sponsored).
  */
-/** Her smart account (26 Oct): made once, by her own Privy key's plain account, through the account deployer (one for
- *  all unions since 3 Nov; anyone may create an account; its address follows from her key). */
+/** Whether a plain account holds XLM for its own fees (4 Nov, no node fee-bump): leaders and ID-checked accounts (self
+ *  mode, machine owners, LPs), which a node beat keeps topped up. An assist or keypad member holds none. */
+export async function hasFeeXlm(cfg, address) {
+  const a = await getAccount(cfg.horizon_url, address).catch(() => null);
+  return Number(a?.balances?.find((b) => b.asset_type === 'native')?.balance || 0) >= 0.5;
+}
+
+/** Her smart account (26 Oct): made through the account deployer (one for all unions since 3 Nov; anyone may create an
+ *  account; its address follows from her key). By her own Privy key's plain account only when it holds XLM for the fee
+ *  (4 Nov): a new member holds none, and a leader's app makes her account when it scans her help QR (L14, L4;
+ *  ensureMemberAccount). */
 async function createSmartAccount(cfg, sender, account, signHash) {
   if (!account || account === sender || await isDeployed(cfg, account)) return;
+  if (!(await hasFeeXlm(cfg, sender))) return;
   if (!deployerOf(cfg)) throw new Error('no account deployer in the node config');
   await invokeContract({ cfg, source: sender, signHash, contractName: 'account_deployer', fn: 'create',
     args: [signerVal(StrKey.decodeEd25519PublicKey(sender))] });
@@ -118,18 +128,22 @@ export async function readAccountUnion(cfg, account) {
 /** Names her union on her own account (`account.set_union(union)`, signed by the account itself: her Privy key on a
  *  smartphone). Done once the union is known: at registration (R9), at a recovery that restores the union, or at the
  *  next start of a moved or prepared member. A no-op when the account already names this union. The account refuses
- *  it while frozen (recovery pending), in a leader session, or with a USDC lien. */
+ *  it while frozen (recovery pending), in a leader session, or with a USDC lien. Sent by her own phone only when her
+ *  plain account holds XLM for the fee (4 Nov); otherwise her help QR carries her signed set_union and the leader's app
+ *  sends it (ensureMemberAccount). */
 export async function setAccountUnion(cfg, sender, account, signHash, union) {
   if (!account || account === sender || !union) return false;
   if ((await readAccountUnion(cfg, account).catch(() => null)) === union) return false;
+  if (!(await hasFeeXlm(cfg, sender))) return false;
   await invokeContract({ cfg, source: sender, account, signHash, contractName: account, fn: 'set_union', args: [sv.address(union)] });
   return true;
 }
 
-/** A keypad member's account (L14): the leader's app creates it from the phone's first key (anyone may; the node pays
- *  the fee), then submits the member's own signed `set_union` that the phone sent at F9 (`m.set_union`: { union?,
- *  nonce, exp, sig }, hex). Without that signature the account stays without a union (no session, no recovery) until
- *  the phone sends one. Returns { deployed, union }. */
+/** A member's account made by the leader's app (L14): created from the phone's first key (anyone may; the leader's
+ *  own XLM pays the fee since 4 Nov), then the member's own signed `set_union` is submitted (`m.set_union`: { union?,
+ *  nonce, exp, sig }, hex): a keypad's from F9 or its kind 4 help QR (P-256 device key, 65 bytes), a smartphone's from
+ *  its kind 5 help QR (Privy key, Ed25519, 32 bytes; 4 Nov). Without that signature the account stays without a union
+ *  (no session, no recovery) until the member sends one. Returns { deployed, union }. */
 export async function ensureKeypadAccount(cfg, s, m) {
   if (!(await isDeployed(cfg, m.account))) {
     if (!deployerOf(cfg)) throw new Error('no account deployer in the node config');
@@ -142,12 +156,16 @@ export async function ensureKeypadAccount(cfg, s, m) {
   const su = m.set_union;
   const want = su?.union || cfg.union;
   if (!union && su?.sig && want) {
+    const kind = (m.first_signer || m.signer).replace(/^0x/, '').length === 64 ? 'Ed25519' : 'P256';
     await invokeContract({ cfg, source: s.senderAddress, signHash: s.signHash, contractName: m.account, fn: 'set_union',
-      args: [sv.address(want)], auth: [unionEntry(m.account, want, su, 'P256')] });
+      args: [sv.address(want)], auth: [unionEntry(m.account, want, su, kind)] });
     union = want;
   }
   return { deployed: true, union };
 }
+
+/** The same for a smartphone member (4 Nov): from her help QR's join (kind 5, readSessionQr `join`). */
+export const ensureMemberAccount = (cfg, s, account, join) => ensureKeypadAccount(cfg, s, { account, first_signer: join.signer, set_union: join });
 
 export function useSetupAccount({ stellarAddress, account, evmWallet, signHash }) {
   const qc = useQueryClient();

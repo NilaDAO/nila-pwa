@@ -33,8 +33,9 @@ export default function StartHelp({ member, label, onBack, onStarted }) {
     if (member && q.member !== member) { setError("This is another member's QR."); setTries((x) => x + 1); return; }
     setError(undefined);
     if (q.join) {
-      // A keypad whose account names no union yet (kind 4, 3 Nov): this app makes her account and submits her signed
-      // set_union from the QR itself (this leader pays the fee), so it needs no node.
+      // A keypad whose account names no union yet (kind 4, 3 Nov), or a smartphone's (kind 5, 4 Nov): this app makes her
+      // account and submits her signed set_union from the QR itself (this leader's own XLM pays the fee), so it needs no
+      // node.
       setJoining(true);
       try { await ensureKeypadAccount(cfg, s, { account: q.member, first_signer: q.join.signer, set_union: q.join }); }
       catch (e) { console.error('[help] account not made or union not set', e); setError('Could not join her account to the union. Try again.'); setTries((x) => x + 1); return; }

@@ -4,7 +4,7 @@
 // field accepted or left out → L4 (mint). Data: the node's border job (O16). DESIGN GAP: no member names in the
 // app (the farm name or a short address stands in).
 import { cloneElement, useCallback, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
 import { acres, shapeFor } from './api';
@@ -16,6 +16,11 @@ import { TxScreens } from '../stellar/TxStatus';
 import { Notice, Sheet } from '../plan/ui';
 import { TrashIcon } from '../shell/icons';
 import { ConfirmCard } from '../shell/SettingsParts';
+import CameraView from '../shell/CameraView';
+import { useNilaSigner } from '../wallet/signer';
+import { ensureKeypadAccount, readAccountUnion, useStellarConfig } from '../stellar/hooks';
+import { isDeployed } from '../stellar/soroban';
+import { readSessionQr } from '../stellar/session';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
@@ -222,9 +227,46 @@ function Check({ job, n, onDone, onBack }) {
   );
 }
 
+/** Before the mint (4 Nov): whether the member's account exists on-chain and names this union. A member holds no XLM,
+ *  so her own phone no longer makes it; a member added before then (or whose L14 join failed) shows her help QR here
+ *  and this leader's app makes and joins the account (kind 4 / 5 join; the leader's own XLM pays). The leader's own
+ *  title, an address that is not a smart account, or a node without the account deployer: no step. */
+function useMemberJoined(job) {
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const member = job.member;
+  const check = !!cfg?.contracts?.account_deployer && /^C[A-Z2-7]{55}$/.test(member || '') && member !== s?.stellarAddress;
+  const q = useQuery({
+    queryKey: ['stellar', 'member-joined', member], enabled: check, staleTime: 15_000,
+    queryFn: async () => (await isDeployed(cfg, member)) && !!(await readAccountUnion(cfg, member).catch(() => null)),
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState();
+  const [tries, setTries] = useState(0);
+  const scan = async (t) => {
+    let r;
+    try { r = readSessionQr(t); } catch (e) { setError(e.message); setTries((x) => x + 1); return; }
+    if (r.member !== member) { setError("This is another member's QR."); setTries((x) => x + 1); return; }
+    if (!r.join) { setError('This QR cannot join the account. The member updates the Nila app and shows the QR again.'); setTries((x) => x + 1); return; }
+    setError(undefined); setBusy(true);
+    try {
+      const out = await ensureKeypadAccount(cfg, s, { account: member, first_signer: r.join.signer, set_union: r.join });
+      if (!out.union) throw new Error('no union');
+      await q.refetch();
+    } catch (e) {
+      console.error('[L4] account not made or union not set', e);
+      setError(e.message === 'no union' ? 'Could not join the account to the union. Try again.' : e.message);
+      setTries((x) => x + 1);
+    } finally { setBusy(false); }
+  };
+  // Not known yet (or no check): the mint is not held back.
+  return { needed: check && q.data === false, busy, error, tries, scan };
+}
+
 /** L4: every field accepted (or left out): mint her land title. */
 function Done({ job, onField, onBack, onAdd }) {
   const mint = useMintLandTitle(job.id);
+  const joined = useMemberJoined(job);
   const [farm, setFarm] = useState('');   // the title's name: hers from R6, else the leader names it here
   const [plotId, setPlotId] = useState();
   const plot = (job.plots || []).find((p) => p.id === plotId);
@@ -276,8 +318,17 @@ function Done({ job, onField, onBack, onAdd }) {
           The member opens the app link from the SMS on their phone. The land title is minted to that phone, so minting starts right after.
         </Notice>
       )}
+      {!st && job.polygon && joined.needed && (
+        // DESIGN GAP: no board for this step (4 Nov).
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Head title="Scan the member's help QR" sub="The member's account is not made yet. The member opens Your QR in the Nila app; your phone makes the account, then you mint." />
+          {joined.busy ? <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Making the member's account…</p>
+            : <CameraView key={joined.tries} mode="qr" onText={joined.scan} />}
+          {joined.error && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{joined.error}</p>}
+        </div>
+      )}
       {!st && (job.polygon
-        ? <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim())} style={{ ...btn(true), flex: 'none' }}
+        ? <button type="button" disabled={mint.isPending || joined.needed || !ok.length || (!job.farm && !farm.trim())} style={{ ...btn(true), flex: 'none' }}
           onClick={() => { setStarted(true); setClosed(false); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }}>Mint land title</button>
         : <button type="button" disabled style={{ ...btn(false), flex: 'none', color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: R.round, border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite' }} />
