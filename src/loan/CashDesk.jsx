@@ -116,7 +116,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
       return per.flat().filter(Boolean);
     },
   });
-  // Cash and the voucher's value, with interest, and the treasury's 5% of handed-back hours (26 Oct).
+  // Cash and the voucher's value, with interest, and the treasury's 5% of handed-back acres (26 Oct).
   const owed = (l) => Math.ceil(Number(owedOf(l.loan, l.vb)) / Number(NIN));
   // From her G2 with one open loan, or her crop share QR (24 Oct): that loan is picked for her.
   useEffect(() => {

@@ -1,6 +1,6 @@
-// Leader side of the LP offers (LP positions, executive decision 31 Oct): C4 "Let an LP take it" posts a Collect;
-// L11 #short and Pay out cash post a Bring; A1b #leader scans an LP's code and confirms (fx_pool.confirm moves the USDC
-// as fixed at accept). The node sponsors post_offer, confirm and cancel_offer for a leader of the union (O14). Offers
+// Leader side of the LP offers (LP positions, executive decision 31 Oct): Pay out cash posts a Bring (usePost; C4's
+// LetCollect and L11's PostBring, never mounted, removed 4 Nov, G17); A1b #leader scans an LP's code and confirms
+// (fx_pool.confirm moves the USDC as fixed at accept). The node sponsors post_offer, confirm and cancel_offer for a leader of the union (O14). Offers
 // run 48 h (≤ 7 days in fx_pool). On a Bring the leader counts the LP's rupees (less the 2% fee when it ends the LP's
 // position, whole rupees) with the C6 photo count before confirming.
 // DESIGN GAP: LP names ("LP Suresh K.") are shown as short wallet addresses. Her code is signed by her Stellar
@@ -16,16 +16,14 @@ import CameraView from '../shell/CameraView';
 import { Secondary } from '../loan/AssetParts';
 import PhotoCount from '../loan/PhotoCount';
 import { Choice, Primary, inr, muted } from '../plan/ui';
-import { C, R } from '../shell/tokens';
+import { C } from '../shell/tokens';
 import { Keypair, StrKey } from '@stellar/stellar-sdk';
-import { CODE_TTL, U, codeHash, useOfferQuote, useUnionOffers, usdcOf } from './hooks';
-import { BRING, COLLECT } from './sep';
+import { CODE_TTL, U, codeHash, usdcOf } from './hooks';
+import { BRING } from './sep';
 
 // No fixed period (31 Oct): an offer stays open until an LP accepts it or a leader cancels it.
 export const OPEN_END = 18446744073709551615n;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
-const left = (ts) => { const s = ts - Date.now() / 1000; return s <= 0 ? 'expired' : s < 86400 ? `${Math.ceil(s / 3600)} h left` : `In ${Math.round(s / 86400)} d`; };
-const STATE = ['Waiting', 'Accepted', 'Done', 'Cancelled', 'Expired'];
 
 export function usePost() {
   const s = useNilaSigner();
@@ -40,67 +38,6 @@ export function usePost() {
     invalidate: [['stellar', 'offers']],
   });
   return { tx, post };
-}
-
-function OfferList({ onCancel }) {
-  const offers = useUnionOffers();
-  const [sure, setSure] = useState();   // a second tap cancels (an accepted offer is her swap too)
-  if (!offers.data?.length) return null;
-  return (
-    <>
-      <h2 style={{ fontSize: 14, marginTop: 16 }}>LP offers</h2>
-      {offers.data.map((o) => (
-        <div key={o.id} style={{ background: C.raised, borderRadius: 12, padding: '12px 16px', marginBottom: 8, fontSize: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-            <span>{o.kind === BRING ? 'LP brings cash' : 'LP takes cash'} · {inr(o.inr)}</span><span>{o.expires > 4e9 ? '' : left(o.expires)}</span>
-          </div>
-          <div style={{ color: C.muted }}>{STATE[o.state]}{o.lp ? ` · LP ${short(o.lp)}` : ''}{o.state === 1 ? ` · ${usdcOf(o.usdc)} USDC` : ''}</div>
-          <button type="button" onClick={() => (sure === o.id ? onCancel(o) : setSure(o.id))} style={{ background: 'none', border: 0, padding: 0, color: C.coral, fontWeight: 700, marginTop: 4 }}>
-            {sure === o.id ? (o.state === 1 ? 'Tap again: the LP accepted it' : 'Tap again to cancel') : 'Cancel'}
-          </button>
-        </div>
-      ))}
-    </>
-  );
-}
-
-/** C4: spare cash at the office for an LP to take (Collect offer). */
-export function LetCollect({ onBack }) {
-  const s = useNilaSigner();
-  const { data: cfg } = useStellarConfig();
-  const { tx, post } = usePost();
-  const cancel = useSorobanTx();
-  const hand = useQuery({ queryKey: ['stellar', 'cashAtHand', cfg?.union], enabled: !!cfg,
-    queryFn: () => readContract(cfg, 'fx_pool', 'cash_at_hand', [sv.address(cfg.union)]) });
-  // Max: cash at hand less what open Collect offers already promise to LPs.
-  const offers = useUnionOffers();
-  const promised = (offers.data || []).filter((o) => o.kind === COLLECT && o.state <= 1).reduce((t, o) => t + o.inr, 0);
-  const max = hand.data != null ? Math.max(0, Math.min(10000, Math.floor(Number(BigInt(hand.data) / BigInt(U))) - promised)) : 0;
-  const [amount, setAmount] = useState(0);
-  const a = Math.min(amount, max);
-  const q = useOfferQuote(COLLECT, a);
-  const t = tx.status !== 'idle' ? tx : cancel.status !== 'idle' ? cancel : null;
-  if (t) return <TxScreens tx={t} onClose={() => t.reset()} onRetry={() => t.retry()} />;
-  const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
-  return (
-    <DeskCard title="Cash for an LP to take" onBack={onBack}>
-      <p style={{ ...muted, textAlign: 'center' }}>Cash at the office: {hand.data != null ? inr(Number(BigInt(hand.data) / BigInt(U))) : '…'}{promised ? ` · ${inr(promised)} offered already` : ''}</p>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, margin: '12px 0' }}>
-        <button type="button" aria-label="Less" style={b} onClick={() => setAmount(Math.max(0, a - 100))}>−</button>
-        <span style={{ minWidth: 90, textAlign: 'center', fontWeight: 700, fontSize: 20 }}>{inr(a)}</span>
-        <button type="button" aria-label="More" style={b} onClick={() => setAmount(Math.min(max, a + 100))}>+</button>
-        <button type="button" style={{ ...b, width: 'auto', padding: '0 14px', fontSize: 14 }} onClick={() => setAmount(max)}>Max</button>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, margin: '4px 0' }}>
-        <span style={{ color: C.muted }}>At today's rate</span><span style={{ fontWeight: 700 }}>{q.data && a ? `${usdcOf(q.data.usdc)} USDC` : '—'}</span>
-      </div>
-      <Primary disabled={!a || !tx.ready} onClick={() => post(COLLECT, a)}>Let an LP take {inr(a)}</Primary>
-      <OfferList onCancel={(o) => cancel.run({
-        label: `Cancel the offer of ${inr(o.inr)}`, rows: [['Offer', `${o.kind === BRING ? 'Bring' : 'Take'} ${inr(o.inr)}`]],
-        contractName: 'fx_pool', fn: 'cancel_offer', args: [sv.address(s.stellarAddress), sv.u64(o.id)], invalidate: [['stellar', 'offers']],
-      })} />
-    </DeskCard>
-  );
 }
 
 /** A1b #leader for an LP code: scan, check the offer, confirm the cash. */

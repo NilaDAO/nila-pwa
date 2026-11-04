@@ -25,14 +25,15 @@ export function appToOpen({ chain, signer, leader, mode }) {
  *  titles: { loading, count } of land titles (Polygon or Stellar); onboarded: the start steps (R9, R10) are done on
  *  this phone; demoNew: a demo number just made a new wallet; privyNew: Privy made the user at this login;
  *  tab / arg: from the hash (#/<tab>/<arg>); leader: the leader app.
- * → 'titleWait' (titles still loading) | 'start' (R9 union, R10 updates) | 'fields' (a member's R5–R8, full screen)
+ * → 'titleWait' (titles still loading) | 'start' (R9 union, R10 updates)
  *   | 'tab' (the app with its tab bar; a leader's own field points are a screen inside it).
  * Rule (LOAN_RULES "Start after the code and land titles", 28 Oct): after the code, R9 and R10 once, then the app.
+ * #/crop/register is a leader's own title only (4 Nov, G15; the leader maps every title, 3 Nov): a member there gets
+ * the tab, i.e. her crop plan, never the field-point steps R5–R8.
  */
 export function screenToOpen({ titles, onboarded, demoNew, privyNew, tab, arg, leader }) {
   if (titles.loading) return 'titleWait';
   if (!onboarded && (demoNew || (titles.count === 0 && privyNew === true))) return 'start';
-  if (tab === 'crop' && arg === 'register' && !leader) return 'fields';
   return 'tab';
 }
 

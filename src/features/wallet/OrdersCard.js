@@ -77,11 +77,9 @@ function dateDisplay(unix) {
 }
 
 // ── BatchRow ──────────────────────────────────────────────────────────────────
-function BatchRow({ batch, isOpen, onToggle, localPriceData, onChainPriceUpdate, onArchive }) {
-  const [editing, setEditing]   = useState(false);
-  const [draft, setDraft]       = useState('');
-  const [saving, setSaving]     = useState(false);
-  const [saveError, setSaveError] = useState(null);
+// No price update here (4 Nov, G18): a leader no longer sets a Polygon batch price (FoodToken setBatchPrice); the crop
+// price lives on Stellar (crop_calendar.set_price, H1). The price shows read-only.
+function BatchRow({ batch, isOpen, onToggle, localPriceData, onArchive }) {
   const [activeCert, setActiveCert] = useState(null);
   const [dx, setDx]             = useState(0);
   const [confirming, setConfirming] = useState(false);
@@ -133,31 +131,6 @@ function BatchRow({ batch, isOpen, onToggle, localPriceData, onChainPriceUpdate,
 
   const dot = cropColor(batch.cropColorKey);
   const iconUrl = cropIconUrl(batch.cropColorKey);
-
-  const startEdit = (e) => {
-    e.stopPropagation();
-    const onChainPerUnit = batch.pricePerKgUsdt > 0n
-      ? Number(batch.pricePerKgUsdt) / 1e6 * batchUnit.toKg
-      : null;
-    setDraft(onChainPerUnit != null ? String(onChainPerUnit.toFixed(0)) : localPricePerUnit != null ? String(localPricePerUnit.toFixed(0)) : '');
-    setEditing(true);
-  };
-
-  const handleSave = async (e) => {
-    e?.stopPropagation();
-    const v = parseFloat(draft);
-    if (isNaN(v) || v <= 0) { setEditing(false); return; }
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await onChainPriceUpdate?.(batch.id, v / batchUnit.toKg);
-      setEditing(false);
-    } catch (err) {
-      setSaveError(err?.reason ?? err?.message ?? 'Transaction failed');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <div className="relative overflow-hidden border-b border-gray-100 dark:border-slate-700 last:border-0">
@@ -225,31 +198,7 @@ function BatchRow({ batch, isOpen, onToggle, localPriceData, onChainPriceUpdate,
               <span className="text-[10px] bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap flex-shrink-0">Order</span>
             )}
             <span className="flex-1" />
-            {editing ? (
-              <div className="flex flex-col items-end gap-0.5" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    className="w-20 text-xs border border-gray-300 dark:border-slate-600 rounded px-1 py-0.5 dark:bg-slate-800 dark:text-white"
-                    value={draft}
-                    onChange={e => { setDraft(e.target.value); setSaveError(null); }}
-                    autoFocus
-                    onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false); }}
-                  />
-                  <span className="text-[10px] text-gray-400 dark:text-slate-500">{batchUnit.label}</span>
-                  <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 text-xs text-blue-500 dark:text-blue-400 font-bold ml-1">
-                    {saving ? <Spinner size="small" /> : 'Save'}
-                  </button>
-                  {!saving && <button onClick={() => { setEditing(false); setSaveError(null); }} className="text-[10px] text-gray-400 dark:text-slate-500 ml-0.5">✕</button>}
-                </div>
-                {saveError && <span className="text-[10px] text-red-500 dark:text-red-400 max-w-[160px] text-right">{saveError}</span>}
-              </div>
-            ) : (
-              <>
-                <span className="text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">{priceDisplay ?? '—'}</span>
-                <button onClick={startEdit} className="text-[10px] text-blue-500 dark:text-blue-400 font-medium ml-1.5 flex-shrink-0">Update</button>
-              </>
-            )}
+            <span className="text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">{priceDisplay ?? '—'}</span>
             <button
               onClick={onToggle}
               className="ml-2 p-1 text-gray-300 dark:text-slate-600 flex-shrink-0"
@@ -896,7 +845,7 @@ function CreateForm({ unionAddr, onCreated, onClose }) {
           value={priceUsdt} onChange={e => setPriceUsdt(e.target.value)}
         />
         <label className="text-[10px] text-gray-500 dark:text-slate-400 m-3 block">
-          * Sets the reference price members see for this crop. Update it as local rates change until a buyer confirms a final price.
+          * Sets the reference price members see for this crop.
         </label>
       </div>
 
@@ -1026,7 +975,7 @@ export default function OrdersCard({ unionAddr }) {
         element: '[data-tour="orders-form-price"]',
         popover: {
           title: 'Local price',
-          description: 'The reference price members see for this crop, in INR per unit. Update it as local rates change until a buyer confirms a final price — at that point the on-chain price is locked.',
+          description: 'The reference price members see for this crop, in INR per unit.',
         },
       },
       {
@@ -1074,14 +1023,6 @@ export default function OrdersCard({ unionAddr }) {
     } catch (e) {
       console.error('archiveBatch failed:', e?.reason ?? e?.message);
     }
-  };
-
-  const handleChainPriceUpdate = async (batchId, pricePerKg) => {
-    if (!foodToken) throw new Error('Wallet not connected');
-    const priceWei = BigInt(Math.round(pricePerKg * 1e6));
-    const tx = await foodToken.setBatchPrice(batchId, priceWei);
-    await tx.wait();
-    refetch();
   };
 
   const localPriceMap = useMemo(() => {
@@ -1137,7 +1078,6 @@ export default function OrdersCard({ unionAddr }) {
                     isOpen={expandedId === batch.id}
                     onToggle={() => setExpandedId(batch.id)}
                     localPriceData={localPriceMap[batch.cropCode] ?? null}
-                    onChainPriceUpdate={handleChainPriceUpdate}
                     onArchive={handleArchive}
                   />
                 ))}

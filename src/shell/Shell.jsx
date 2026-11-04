@@ -2,7 +2,7 @@
 // and to leaders who chose "New Nila". Today's cards stay for Polygon wallets (StellarGate).
 // Tabs are kept in the URL hash (#/assets …) so the phone's back button works.
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import A1, { resetA1Scroll } from './A1';
@@ -31,7 +31,7 @@ import IdCheck from '../anchor/IdCheck';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
 import Settings from './Settings';
-import LeaderTasks, { PlanFor } from '../leader/LeaderTasks';
+import LeaderTasks, { HandBackFor, PlanFor } from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
 import AddMember, { KeypadPoints, LeaderOwnPoints, SmartphonePoints } from '../leader/AddMember';
@@ -40,7 +40,7 @@ import LeaderBorder from '../border/LeaderBorder';
 import Registration, { onboarded } from '../register/Registration';
 import { BootLoading } from '../register/Boot';
 import RegFrame from '../register/RegFrame';
-import { TITLE_KEYS, useTitleCount } from '../register/titles';
+import { useTitleCount } from '../register/titles';
 import { demoNew } from '../register/AfterCode';
 import History from '../history/History';
 import BottomTabBar, { ASSISTED_TABS, LEADER_TABS, MEMBER_TABS } from './BottomTabBar';
@@ -85,6 +85,7 @@ function TasksView({ leader, go }) {
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
   if (leader && window.location.hash.startsWith('#/tasks/planfor')) return <PlanFor go={go} />;
+  if (leader && window.location.hash.startsWith('#/tasks/handback')) return <HandBackFor go={go} />;
   const member = readMember();
   if (leader && member && member[1] === 'qr' && member[2]) return <SmartphonePoints go={go} />;
   if (leader && member && member[2]) return <KeypadPoints key={member[1]} id={member[1]} go={go} />;
@@ -190,23 +191,17 @@ export default function Shell({ leader }) {
   }, [titleCount.loading, titleCount.count]); // eslint-disable-line react-hooks/exhaustive-deps
   // The start steps end without a reload (28 Oct): the shell reads onboarded() again.
   const [, setStarted] = useState(0);
-  const qc = useQueryClient();
 
-  // Registration (R5–R14, notes reg-recover): a member whose wallet holds no land title on Polygon registers her
-  // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
-  // A leader is also a member (notes leader-missing): the same gate applies to her; with a title she never sees it.
   // Until her titles are known she sees the registration ground, not a flash of the tab bar.
-  // Which screen: shell/start.js (titles loading, the start steps R9 + R10 once per wallet, a member's field points, a tab).
+  // Which screen: shell/start.js (titles loading, the start steps R9 + R10 once per wallet, a tab).
   const screen = screenToOpen({ titles: titleCount, onboarded: onboarded(s?.evmAddress), demoNew: demoNew(s?.evmAddress),
     privyNew: s?.privyNew, tab: view, arg: readArg(), leader });
   if (screen === 'titleWait') return <TitleWait titleCount={titleCount} s={s} />;
-  const onTitle = () => { TITLE_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })); go('crop'); };
   if (screen === 'start') {
     const onStarted = () => { go('crop'); setStarted((n) => n + 1); };
-    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} onStarted={onStarted} /></div>;
+    return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onStarted={onStarted} /></div>;
   }
-  // "Mint a new land title" on the Crop plan's no-title card (28 Oct): a member's R5–R14, full screen.
-  if (screen === 'fields') return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration fields onTitle={onTitle} /></div>;
+  // A member never gets the field-point steps (4 Nov, G15): #/crop/register falls through to her crop plan below.
 
   let body;
   if (view === 'assets') {

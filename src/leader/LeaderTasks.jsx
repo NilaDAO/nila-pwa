@@ -3,7 +3,7 @@
 // settle, LPs who arrived, paybacks coming and overdue), with a search. "Start a task": the board's groups, each
 // row opening the flow that exists. DESIGN GAPs: no member names (land and short address); not built yet and left
 // out of the list: Make a crop plan with a member, Change her crop plan, Get cash and
-// vouchers for her, Withdraw her investment, Use machine hours / seeds for her, Register trees, Add field note,
+// vouchers for her, Withdraw her investment, Use machine acres / seeds for her, Register trees, Add field note,
 // Add a water source, Farm improvements; "Your own" tasks; crop not seen, price updates. P11: field border checks
 // (L1 "Check field borders" → L2a–L4) from the node's border jobs (O16). P8: Add a member (L14, O17).
 import { useState } from 'react';
@@ -22,6 +22,9 @@ import { addressFromQr, useUnionMembers } from './unionMembers';
 import CameraView from '../shell/CameraView';
 import DeskCard from '../shell/DeskCard';
 import { ReadyShareRows, useMyShares } from '../loan/MyShares';
+import StartHelp from '../loan/StartHelp';
+import { sessionUntil, useSessionUntil } from '../stellar/session';
+import { HandBack } from '../machine/Machinery';
 
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
@@ -68,6 +71,33 @@ export function PlanFor({ go }) {
   );
 }
 
+/** Tasks → Hand back acres (executive decision 4 Nov, G7): for an assist or keypad member, the leader scans the
+ *  member's help QR (a 5-minute session on the member's account), then picks the crop share, the machine and the
+ *  acres; fund_core.return_voucher in the session. A self-mode member does it on their own phone (A8). */
+export function HandBackFor({ go }) {
+  const [member, setMember] = useState();
+  const [plain, setPlain] = useState(false);
+  const until = useSessionUntil(member);
+  const back = () => go('tasks');
+  if (!member) return <StartHelp label="Give back vouchers" onBack={back} onStarted={(a) => { setPlain(!sessionUntil(a)); setMember(a); }} />;
+  if (plain) {
+    return <DeskCard title="Give back vouchers" onBack={back}>
+      <p style={{ color: C.muted, margin: 0 }}>This member uses the app in self mode: the member hands back acres on their own phone, under Machinery.</p>
+    </DeskCard>;
+  }
+  if (!until) {
+    return <DeskCard title="Give back vouchers" onBack={back}>
+      <p style={{ color: C.muted, margin: 0 }}>The 5 minutes are over. Scan the member's QR again.</p>
+      <button type="button" onClick={() => setMember()} style={{ height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontFamily: FONT, cursor: 'pointer' }}>Scan again</button>
+    </DeskCard>;
+  }
+  return (
+    <MapCard header={{ title: 'Give back vouchers', onBack: back }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 16 }}>
+      <HandBack member={member} session={member} onDone={back} />
+    </MapCard>
+  );
+}
+
 // The board's groups (LeaderBorders "Start a task"), only the rows whose flow exists; icons as on the board.
 // "Scan an LP code" has no board row (LP scan, P9): it keeps the cash icon.
 const START = [
@@ -77,7 +107,8 @@ const START = [
   // repay. Her G2 in Members stays a second way in.
   ['Cash', [['Scan a member QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
     ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
-  ['Vouchers', [['Register a machine', 'The owner\'s machine, photos and price', 'cash/machine', TractorIcon]]],
+  ['Vouchers', [['Register a machine', 'The owner\'s machine, photos and price', 'cash/machine', TractorIcon],
+    ['Give back vouchers', 'Return unused vouchers', 'tasks/handback', TractorIcon]]],
 ];
 
 // To do icons by task kind (board LeaderBorders): accent for a new item to act on, coral for an overdue one.

@@ -18,14 +18,18 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { useCropChain, useLandTitles, usePlanClient } from '../plan/hooks';
 import { Primary, inr, muted } from '../plan/ui';
 import ListRow from '../shell/ListRow';
-import { Card, QrCircle } from './AssetParts';
+import { Card, QrCircle, Stepper } from './AssetParts';
 import { ta } from '../machine/hooks';
 import { LeaderLoan } from './LoanScreens';
 import HelpQr from './HelpQr';
+import { DeskQr } from './CashOut';
+import { signDeskCode } from './deskCode';
+import { capsFor, useUnionChecks } from './unionChecks';
 import { C, FONT } from '../shell/tokens';
 import { ChevronIcon, RupeeIcon, ShareTile } from '../shell/icons';
 import MapCard from '../shell/MapCard';
 
+const NIN = 10_000_000n;
 export const FLAG_DRAWN = 8;
 const FLAG_CLOSED = 4;
 // Assist mode (executive decision 26 Oct): every member starts in it; the identity check (K1) or the Settings toggle
@@ -143,7 +147,51 @@ function Page({ title, onBack, children }) {
  *  leader sets the amounts and uses it for the member in the session (L11). */
 function ShareScan({ x, onBack }) {
   const name = rowOf(x)?.name || x.crop.replace(/_/g, ' ');
+  if (!assisted()) return <ShareSign x={x} name={name} onBack={onBack} />;
   return <HelpQr onBack={onBack} note={`To use your ${name} crop share (Area ${x.area}), go to the union office. Your leader scans this, reads you the amounts and hands you the cash.`} />;
+}
+
+/** Self mode (G9, executive decision 4 Nov): taking up a share is debt, so she sets the cash and machine work and
+ *  signs fund_core.draw_loan on her own phone as a QR (NILA:L, deskCode.js); the leader's Scan a member QR reads it,
+ *  hands over the cash and submits. At most what the union can lend and her share allows (capsFor). */
+function ShareSign({ x, name, onBack }) {
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const checks = useUnionChecks(s?.stellarAddress);
+  const caps = capsFor(checks.data, x.ft);
+  const [cash, setCash] = useState();
+  const [acres, setAcres] = useState();
+  const [qr, setQr] = useState();
+  const [error, setError] = useState();
+  const c = Math.min(cash ?? caps.cash, caps.cash);
+  const maxAcres = Math.floor(caps.hours / 100);
+  const a = Math.min(acres ?? maxAcres, maxAcres);
+  const sign = async () => {
+    setError(undefined);
+    try {
+      setQr(await signDeskCode({ cfg, account: s.stellarAddress, signer: s.senderAddress, signHash: s.signHash, kind: 'L',
+        token: tokenHex(x.token_id), cash: BigInt(c) * NIN, hours: a * 100 }));
+    } catch (e) { setError(e.message); }
+  };
+  if (qr) {
+    return <DeskQr title={`${name} · Area ${x.area}`} qr={qr.qr} until={qr.until} onBack={() => setQr(undefined)}
+      rows={[['You get', `${inr(c)} in cash`], ...(a ? [['Machine vouchers', `${a} tractor acres`]] : [])]} />;
+  }
+  return (
+    <Page title={`${name} · Area ${x.area}`} onBack={onBack}>
+      {checks.isLoading ? <p style={muted}>…</p> : (
+        <>
+          <p style={muted}>Cash</p>
+          <Stepper value={c} set={setCash} min={0} max={caps.cash} unit="₹" label="Cash" />
+          <p style={muted}>Machine work</p>
+          <Stepper value={a} set={setAcres} step={1} min={0} max={maxAcres} unit="tractor acres" label="Tractor acres" />
+          <p style={muted}>Your leader scans the next QR, hands you the cash and records your crop share. You repay it with interest after the harvest.</p>
+          <Primary disabled={!s?.ready || !cfg || (c < 1 && a < 1)} onClick={sign}>Make my QR</Primary>
+          {error && <p style={{ ...muted, color: C.coral }}>{error}</p>}
+        </>
+      )}
+    </Page>
+  );
 }
 
 /** Taking up a Ready share: a member scans her leader's QR (ShareScan); a leader's own share opens L11 on it, where

@@ -92,11 +92,36 @@
       req.onerror = function () { fail(req.error); };
     });
   }
+  /** Her Polygon key is kept encrypted (4 Nov): under an AES-GCM key made on this phone that cannot be exported (as
+   *  the device key), so the stored bytes alone never give it away; its address is kept beside it, so the phone never
+   *  has to decrypt it to know where her title and crop shares are. `polygonKey`: the key in hex. */
+  function sealPolygon(polygonKey) {
+    var c = window.crypto.subtle, iv = window.crypto.getRandomValues(new Uint8Array(12)), seal;
+    return c.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']).then(function (k) {
+      seal = k;
+      return c.encrypt({ name: 'AES-GCM', iv: iv }, k, hexBytes(polygonKey));
+    }).then(function (ct) {
+      return { seal: seal, iv: iv, polygonSealed: new Uint8Array(ct), polygonAddress: window.NilaPolygon.addressOf(hexBytes(polygonKey)) };
+    });
+  }
   function keep(pair, polygonKey) {
+    return sealPolygon(polygonKey).then(function (sealed) { return put({ pair: pair, seal: sealed.seal, iv: sealed.iv,
+      polygonSealed: sealed.polygonSealed, polygonAddress: sealed.polygonAddress, at: Date.now() }); });
+  }
+  /** A phone from before 4 Nov keeps her Polygon key as plain hex: sealed in place the first time it is read. */
+  function sealOld(rec) {
+    if (!rec || !rec.polygon) return Promise.resolve(rec);
+    return sealPolygon(rec.polygon).then(function (sealed) {
+      var out = { pair: rec.pair, seal: sealed.seal, iv: sealed.iv, polygonSealed: sealed.polygonSealed,
+        polygonAddress: sealed.polygonAddress, at: rec.at || Date.now() };
+      return put(out).then(function () { return out; });
+    });
+  }
+  function put(rec) {
     return idb().then(function (db) {
       return new Promise(function (ok, fail) {
         var tx = db.transaction('keys', 'readwrite');
-        tx.objectStore('keys').put({ pair: pair, polygon: polygonKey, at: Date.now() }, 'device');
+        tx.objectStore('keys').put(rec, 'device');
         tx.oncomplete = function () { ok(); };
         tx.onerror = function () { fail(tx.error); };
         tx.onabort = function () { fail(tx.error); };
@@ -123,13 +148,13 @@
     // A re-sent link opened on the phone that already holds this member's key (26 Oct): the same key and Polygon
     // address again, so the account stays the same and needs no recovery. Another member on this phone: a new key.
     if (invite && invite.member && stored('nila.lite.member') === invite.member) {
-      return loadDevice().then(function (rec) { return rec && rec.pair ? reuseKey(code, rec) : newDeviceKey(code); });
+      return loadDevice().then(sealOld).then(function (rec) { return rec && rec.pair ? reuseKey(code, rec) : newDeviceKey(code); });
     }
     return newDeviceKey(code);
   }
   function hexBytes(h) { var a = new Uint8Array(h.length / 2); for (var i = 0; i < a.length; i++) a[i] = parseInt(h.substr(i * 2, 2), 16); return a; }
   function reuseKey(code, rec) {
-    var c = window.crypto.subtle, address = window.NilaPolygon.addressOf(hexBytes(rec.polygon)), spki;
+    var c = window.crypto.subtle, address = rec.polygonAddress, spki;
     return c.exportKey('spki', rec.pair.publicKey).then(function (der) {
       spki = b64(der);
       return c.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, rec.pair.privateKey,
@@ -162,14 +187,9 @@
       });
     });
   }
+  // Every use of the key also seals an old phone's plain Polygon key (4 Nov), so it is not left readable for long.
   function loadKey() {
-    return idb().then(function (db) {
-      return new Promise(function (ok, fail) {
-        var req = db.transaction('keys', 'readonly').objectStore('keys').get('device');
-        req.onsuccess = function () { ok(req.result && req.result.pair); };
-        req.onerror = function () { fail(req.error); };
-      });
-    });
+    return loadDevice().then(sealOld).then(function (rec) { return rec && rec.pair; });
   }
   /** A request signed by her device key (F14 on): the JSON text and its signature; the node checks both. */
   function signed(kind, fields) {
