@@ -6,14 +6,17 @@
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CardButton, ConfirmCard, Text, useUnionInfo } from '../shell/SettingsParts';
+import { btn as cardBtn, ConfirmCard, Text, useUnionInfo } from '../shell/SettingsParts';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { C, FONT, R } from '../shell/tokens';
+import { C, FONT, R, SHADOW } from '../shell/tokens';
+import ListRow from '../shell/ListRow';
+import { ChevronIcon, PhoneIcon, RepayIcon, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
 import AreaMap from '../plan/AreaMap';
 import { areaM2 } from '../plan/mapTap';
@@ -215,6 +218,8 @@ export default function MemberStatus({ id, go }) {
       {/* The card's 22 px side padding (MapCard takes the sheet's padding back for screens with cards of their own). */}
       <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* A recovery under way shows here, under her name, not in the Phone and membership card (4 Nov). */}
+        {m.address && <PhoneStatus address={m.address} />}
         {hasLand && <Row k="Property" v={`${acres.toFixed(1)} acres`} />}
         {/* Fields: the fields her title was minted with (L3/L4), from the title's record (meta.geometry.field_features);
             the record's areas are only for the crops on the map. "—" when the record lists none. */}
@@ -309,124 +314,168 @@ export default function MemberStatus({ id, go }) {
       )}
       {m.recordHash && (
         <Section>
-          <Row k="Record" v={<span style={{ color: C.accent }}>{`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`}</span>} />
+          {/* The record in the normal text colour (4 Nov: gold is for pins and icons only, the accent never on text). */}
+          <Row k="Record" v={`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`} />
         </Section>
       )}
-      <KeypadPhone address={m.address} name={m.name || m.label} phone={m.phone} />
-      <RemoveMember m={m} inv={inv} go={go} />
+      <PhoneAndMembership m={m} inv={inv} go={go} />
       </div>
     </MapCard>
   );
 }
 
-/** A lost phone (2 Nov), all on G2; one recovery path for every member (executive decision 4 Nov, LOAN_RULES "One
+const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+/** Her keypad row and recovery state (2 Nov): `applies` when the node knows her or her account is a smart account. */
+function useRecovery(address) {
+  const list = useKeypadMembers();
+  const k = (list.data || []).find((x) => x.account && x.account === address);
+  const r = k?.recovery?.state;
+  const l = k?.link || {};
+  return { k, r, keypad: k?.phone_type === 'keypad', applies: !!list.data && (!!k || /^C/.test(address || '')),
+    waiting: r !== 'needed' && r !== 'pending' && l.live && !l.used };
+}
+
+/** What needs attention on G2 itself (executive decision 4 Nov), under her name: a recovery waiting out the union's
+ *  wait, an SMS link not opened yet, or a recovery the leader's app must finish (tap: the same call as before). */
+function PhoneStatus({ address }) {
+  const qc = useQueryClient();
+  const { k, r, waiting } = useRecovery(address);
+  const rec = useRecoverPhone(k?.id);
+  if (r === 'pending') return <Row k="Phone" v={`Phone recovery · works from ${when(k.recovery.at)}`} />;
+  if (waiting) return <Row k="Phone" v="SMS sent · waiting for the new phone" />;
+  if (r !== 'needed') return null;
+  return (
+    <>
+      <button type="button" disabled={rec.isPending} onClick={() => rec.mutate(undefined, { onSuccess: () => qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }) })}
+        style={{ ...rowStyle, cursor: rec.isPending ? 'default' : 'pointer' }}>
+        <WarnIcon color={C.gold} />
+        <span style={{ flexGrow: 1, fontWeight: 700 }}>{rec.isPending ? 'Recovering…' : 'Recover the member\'s account'}</span>
+        <ChevronIcon color={C.text} />
+      </button>
+      {rec.error && <Text style={{ color: C.coral }}>{rec.error.message}</Text>}
+    </>
+  );
+}
+
+// The app's interactive row (A1's Row): surface-raised, radius-field 12, 18 px gold icon, bold title, chevron.
+const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: R.button, padding: '12px 16px',
+  minHeight: 48, width: '100%', border: 0, color: C.text, textAlign: 'left', fontSize: 14, lineHeight: 1.5, fontFamily: FONT, cursor: 'pointer' };
+
+/** G2 ends with one row (executive decision 4 Nov; a sheet ends with one primary and at most one secondary button,
+ *  choices are list rows): "Phone and membership" opens a small card of the actions that apply, each opening the same
+ *  confirm card as before (Recover on another number, Move to a keypad phone, Remove member). */
+function PhoneAndMembership({ m, inv, go }) {
+  const [menu, setMenu] = useState(false);
+  const [card, setCard] = useState();       // 'recover' | 'keypad' | 'remove'
+  const rcv = useRecovery(m.address);
+  const titleId = m.titleId || [...(m.lands || [])][0];
+  const p = inv.data;
+  const investment = p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
+  const why = m.shares.length ? 'The member has crop shares.'
+    : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
+      : investment > 0 ? 'The member has an investment: pay it out first.' : null;
+  // While a recovery waits out the union's wait or the app must finish it, its status on G2 is the way (no row here).
+  const choices = [
+    rcv.applies && rcv.r !== 'pending' && rcv.r !== 'needed' && { id: 'recover', icon: RepayIcon, title: 'Recover on another number' },
+    rcv.applies && !rcv.keypad && /^C/.test(m.address || '') && { id: 'keypad', icon: PhoneIcon, title: 'Move to a keypad phone' },
+    titleId && { id: 'remove', icon: TrashIcon, tone: 'urgent', title: <span style={{ color: C.coral }}>Remove member</span>, sub: why },
+  ].filter(Boolean);
+  if (!choices.length) return null;
+  const close = () => setCard();
+  return (
+    <>
+      <button type="button" onClick={() => setMenu(true)} style={rowStyle}>
+        <PhoneIcon color={C.gold} />
+        <span style={{ flexGrow: 1, fontWeight: 700 }}>Phone and membership</span>
+        <ChevronIcon color={C.text} />
+      </button>
+      {menu && createPortal(
+        <>
+          <div aria-hidden="true" onClick={() => setMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.6)' }} />
+          <div role="dialog" aria-modal="true" aria-label="Phone and membership" style={{ position: 'fixed', left: 8, right: 8, bottom: 88, zIndex: 21,
+            background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: '14px 22px 22px', display: 'flex', flexDirection: 'column', gap: 8,
+            fontFamily: FONT, color: C.text }}>
+            <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, paddingTop: 8 }}>Phone and membership</div>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
+              {choices.map((c, i) => <ListRow key={c.id} first={i === 0} icon={c.icon} tone={c.tone} title={c.title} sub={c.sub}
+                onClick={() => { setMenu(false); setCard(c.id); }} />)}
+            </ul>
+            <button type="button" onClick={() => setMenu(false)} style={{ ...cardBtn, width: '100%' }}>Cancel</button>
+          </div>
+        </>, document.body)}
+      {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
+      {card === 'keypad' && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={close} />}
+      {card === 'remove' && <RemoveMember m={m} why={why} titleId={titleId} go={go} onClose={close} />}
+    </>
+  );
+}
+
+/** A lost phone (2 Nov); one recovery path for every member (executive decision 4 Nov, LOAN_RULES "One
  *  recovery path"): "Recover on another number" sends the SMS link to the number the leader enters (a keypad member's
  *  stored one by default). Keypad: POST /keypad/members/{id}/link {phone}; smartphone: POST /keypad/recoveries from her
  *  account (her row is made then). The new phone opens it and registers its key (a smartphone after signing up with
  *  that number), and this leader's app then recovers the account by itself (KeypadAccounts; no second confirm; the
- *  node's SMS key co-signs); the button does it too if another phone sent the link. The new phone works after the wait.
- *  A smartphone member whose code still reaches her just logs in (Privy restores her key). */
-function KeypadPhone({ address, name, phone }) {
+ *  node's SMS key co-signs); G2's status row does it too if another phone sent the link. The new phone works after the
+ *  wait. A smartphone member whose code still reaches her just logs in (Privy restores her key). */
+function RecoverCard({ address, name, rcv, onClose }) {
   const qc = useQueryClient();
-  const list = useKeypadMembers();
   const union = useUnionInfo();
-  const k = (list.data || []).find((x) => x.account && x.account === address);
-  const keypad = k?.phone_type === 'keypad';
   const send = useInviteLink();
-  const rec = useRecoverPhone(k?.id);
-  const [ask, setAsk] = useState(false);
-  const [num, setNum] = useState('+91');
-  if (!list.data || (!k && !/^C/.test(address || ''))) return null;
-  const done = () => { setAsk(false); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); };
-  const r = k?.recovery?.state;
-  const l = k?.link || {};
-  const waiting = r !== 'needed' && r !== 'pending' && l.live && !l.used;
-  const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  const label = r === 'pending' ? `Phone recovery waiting · works from ${when(k.recovery.at)}`
-    : r === 'needed' ? 'Recover the member\'s account' : waiting ? 'SMS sent · waiting for the new phone' : 'Recover on another number';
-  const open = () => { setNum(keypad ? k.phone || '+91' : '+91'); setAsk(true); };
+  const { k, keypad } = rcv;
+  const [num, setNum] = useState(keypad ? k.phone || '+91' : '+91');
   const go = () => send.mutate(keypad ? { again: k.id, phone: phoneValue(num) }
     : { recoverTo: address, phone: phoneValue(num), name: k?.name || name, unionName: union.name, leaderName: union.rep },
-  { onSuccess: (m) => { markRecover(m.id); done(); } });
-  const err = send.error || rec.error;
+  { onSuccess: (m) => { markRecover(m.id); onClose(); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); } });
   return (
-    <>
-      <CardButton onClick={r === 'pending' ? undefined : r === 'needed' ? () => rec.mutate(undefined, { onSuccess: done }) : open} style={{ marginTop: 0 }}>{rec.isPending ? 'Recovering…' : label}</CardButton>
-      {err && <Text style={{ color: C.coral }}>{err.message}</Text>}
-      {ask && (
-        <ConfirmCard title="Recover on another number" ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending || !phoneOk(num)}
-          onCancel={() => setAsk(false)} onOk={go}
-          warn={`Send a link by SMS to this number? Once the member opens it on the new phone${keypad ? '' : ' and signs up there with this number'}, the member's account is recovered to it after the union's wait.`}>
-          <PhoneField id="g2-recover-phone" value={num} onChange={setNum} />
-          {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
-        </ConfirmCard>
-      )}
-      {!keypad && /^C/.test(address || '') && <MoveToKeypad address={address} name={name} phone={phone} />}
-    </>
+    <ConfirmCard title="Recover on another number" ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending || !phoneOk(num)}
+      onCancel={onClose} onOk={go}
+      warn={`Send a link by SMS to this number? Once the member opens it on the new phone${keypad ? '' : ' and signs up there with this number'}, the member's account is recovered to it after the union's wait.`}>
+      <PhoneField id="g2-recover-phone" value={num} onChange={setNum} />
+      {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
+    </ConfirmCard>
   );
 }
 
 /** Every member starts on a smartphone (2 Nov). A member with a JioPhone is moved here: the leader confirms Send SMS
  *  to the member's number; the keypad phone opens the link and makes its key, and this leader's app recovers the account
  *  to it (as Lost phone). The account keeps its address, land title, investment and Polygon pair. */
-function MoveToKeypad({ address, name, phone }) {
+function MoveToKeypad({ address, name, phone, onClose }) {
   const qc = useQueryClient();
   const union = useUnionInfo();
   const send = useInviteLink();
-  const [ask, setAsk] = useState(false);
   const [num, setNum] = useState(phone || '+91');
   const go = () => send.mutate({ name, phone: phoneValue(num), phoneType: 'keypad', unionName: union.name, leaderName: union.rep, account: address },
-    { onSuccess: (m) => { markRecover(m.id); setAsk(false); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); } });
+    { onSuccess: (m) => { markRecover(m.id); onClose(); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); } });
   return (
-    <>
-      <CardButton onClick={() => setAsk(true)} style={{ marginTop: 0 }}>Move to a keypad phone</CardButton>
+    <ConfirmCard title="Move to a keypad phone" ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending || !phoneOk(num)}
+      onCancel={onClose} onOk={go}
+      warn="Send a link by SMS to the keypad phone? Once the member opens it there, the member's account moves to that phone and the smartphone no longer signs.">
+      <PhoneField id="g2-keypad-phone" value={num} onChange={setNum} />
       {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
-      {ask && (
-        <ConfirmCard title="Move to a keypad phone" ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending || !phoneOk(num)}
-          onCancel={() => setAsk(false)} onOk={go}
-          warn="Send a link by SMS to the keypad phone? Once the member opens it there, the member's account moves to that phone and the smartphone no longer signs.">
-          <PhoneField id="g2-keypad-phone" value={num} onChange={setNum} />
-        </ConfirmCard>
-      )}
-    </>
+    </ConfirmCard>
   );
 }
 
 /** G2 Remove member (executive decision 28 Oct; the look of Settings → Reset account): the node burns the member's land
  *  title on Stellar, which ends the membership. Only with no crop share and no investment; nIN, USDC and vouchers stay
- *  in the member's wallet. */
-function RemoveMember({ m, inv, go }) {
+ *  in the member's wallet. The confirm says what it does, or why it cannot be done now (`why`). */
+function RemoveMember({ m, why, titleId, go, onClose }) {
   const api = usePlanClient();
   const qc = useQueryClient();
-  const [ask, setAsk] = useState(false);
-  const titleId = m.titleId || [...(m.lands || [])][0];
   const rm = useMutation({
     mutationFn: () => api.removeMember(titleId),
-    onSuccess: () => { setAsk(false); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
+    onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
   });
-  if (!titleId) return null;
-  const p = inv.data;
-  const investment = p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
-  const why = m.shares.length ? 'The member has crop shares.'
-    : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
-      : investment > 0 ? 'The member has an investment: pay it out first.' : null;
-  // Only the button on G2 (31 Oct); the confirm says what it does, or why it cannot be done now.
-  return (
-    <>
-      <CardButton color={C.coral} onClick={() => setAsk(true)} style={{ marginTop: 0 }}>Remove member</CardButton>
+  return why ? (
+    <ConfirmCard title="Remove member" ok="OK" onCancel={onClose} onOk={onClose}
+      warn={`${why} A member can be removed only with no crop share and no investment.`} />
+  ) : (
+    <ConfirmCard title="Remove member" ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending}
+      onCancel={onClose} onOk={() => rm.mutate()}
+      warn={`Remove ${m.label} from the union? The land title ${titleId} is burned, which ends the membership; this cannot be undone. nIN, USDC and vouchers stay in the member's wallet. To join again the member needs a new land title.`}>
+      {/* The node's refusal (a 409's detail, 4 Nov) on the card itself. */}
       {rm.error && <Text style={{ color: C.coral }}>{rm.error.message}</Text>}
-      {ask && (why ? (
-        <ConfirmCard title="Remove member" ok="OK" onCancel={() => setAsk(false)} onOk={() => setAsk(false)}
-          warn={`${why} A member can be removed only with no crop share and no investment.`} />
-      ) : (
-        <ConfirmCard title="Remove member" ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending}
-          onCancel={() => setAsk(false)} onOk={() => rm.mutate()}
-          warn={`Remove ${m.label} from the union? The land title ${titleId} is burned, which ends the membership; this cannot be undone. nIN, USDC and vouchers stay in the member's wallet. To join again the member needs a new land title.`}>
-          {/* The node's refusal (a 409's detail, 4 Nov) on the card itself; the text under the button sits behind it. */}
-          {rm.error && <Text style={{ color: C.coral }}>{rm.error.message}</Text>}
-        </ConfirmCard>
-      ))}
-    </>
+    </ConfirmCard>
   );
 }
-
