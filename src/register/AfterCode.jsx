@@ -10,6 +10,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { useTitleCount } from './titles';
 import RegFrame from './RegFrame';
 import { DEMO_COGNITO } from '../utils/demoMode';
+import { linkCode, recoveredAccount } from '../wallet/RecoverLink';
 
 // Demo only: the stand-in's "new" mark for a pooled wallet (src/register/Start.jsx), never in a real build.
 export const clearDemoNew = (evm) => { try { if (evm) sessionStorage.removeItem(`nila.demoNew.${evm.toLowerCase()}`); } catch { /* not kept */ } };
@@ -26,7 +27,10 @@ export default function AfterCode({ onNew, onExisting }) {
   const titles = titleCount.count;
   const known = s?.privyNew !== undefined && !!evm && titles !== undefined;
   useEffect(() => {
-    if (!known) return;
+    // A phone her account is recovered to (4 Nov, wallet/RecoverLink): no decision while the link waits (PrivyRoot
+    // shows it once her keys are made); afterwards she is an existing member (R9 restores her union from her title).
+    if (!known || linkCode()) return;
+    if (recoveredAccount(s.senderAddress)) { onExisting(evm); return; }
     // Demo only: the dummy member registers again every time, even though her earlier demo title on Stellar
     // cannot be taken back (the mark is cleared when R14 ends, see Registration).
     if (demoNew(evm) || (s.privyNew && titles === 0)) onNew(evm);

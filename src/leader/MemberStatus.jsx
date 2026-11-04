@@ -319,34 +319,49 @@ export default function MemberStatus({ id, go }) {
   );
 }
 
-/** A lost keypad phone (2 Nov), all on G2: the button asks to send a new SMS link to the member's number; the new phone
- *  opens it and makes its key, and this leader's app then recovers the account by itself (no second confirm; the
- *  node's SMS key co-signs); the button does it too if another phone sent the link. The new phone works after the wait. */
+/** A lost phone (2 Nov), all on G2; one recovery path for every member (executive decision 4 Nov, LOAN_RULES "One
+ *  recovery path"): "Recover on another number" sends the SMS link to the number the leader enters (a keypad member's
+ *  stored one by default). Keypad: POST /keypad/members/{id}/link {phone}; smartphone: POST /keypad/recoveries from her
+ *  account (her row is made then). The new phone opens it and registers its key (a smartphone after signing up with
+ *  that number), and this leader's app then recovers the account by itself (KeypadAccounts; no second confirm; the
+ *  node's SMS key co-signs); the button does it too if another phone sent the link. The new phone works after the wait.
+ *  A smartphone member whose code still reaches her just logs in (Privy restores her key). */
 function KeypadPhone({ address, name, phone }) {
   const qc = useQueryClient();
   const list = useKeypadMembers();
-  const k = (list.data || []).find((x) => x.phone_type === 'keypad' && x.account && x.account === address);
+  const union = useUnionInfo();
+  const k = (list.data || []).find((x) => x.account && x.account === address);
+  const keypad = k?.phone_type === 'keypad';
   const send = useInviteLink();
   const rec = useRecoverPhone(k?.id);
   const [ask, setAsk] = useState(false);
-  if (!k) return list.data && /^C/.test(address || '') ? <MoveToKeypad address={address} name={name} phone={phone} /> : null;
+  const [num, setNum] = useState('+91');
+  if (!list.data || (!k && !/^C/.test(address || ''))) return null;
   const done = () => { setAsk(false); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); };
-  const r = k.recovery?.state;
-  const l = k.link || {};
+  const r = k?.recovery?.state;
+  const l = k?.link || {};
   const waiting = r !== 'needed' && r !== 'pending' && l.live && !l.used;
   const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const label = r === 'pending' ? `Phone recovery waiting · works from ${when(k.recovery.at)}`
-    : r === 'needed' ? 'Recover the member\'s account' : waiting ? 'SMS sent · waiting for the new phone' : 'Lost phone · recover it';
+    : r === 'needed' ? 'Recover the member\'s account' : waiting ? 'SMS sent · waiting for the new phone' : 'Recover on another number';
+  const open = () => { setNum(keypad ? k.phone || '+91' : '+91'); setAsk(true); };
+  const go = () => send.mutate(keypad ? { again: k.id, phone: phoneValue(num) }
+    : { recoverTo: address, phone: phoneValue(num), name: k?.name || name, unionName: union.name, leaderName: union.rep },
+  { onSuccess: (m) => { markRecover(m.id); done(); } });
   const err = send.error || rec.error;
   return (
     <>
-      <CardButton onClick={r === 'pending' ? undefined : r === 'needed' ? () => rec.mutate(undefined, { onSuccess: done }) : () => setAsk(true)} style={{ marginTop: 0 }}>{rec.isPending ? 'Recovering…' : label}</CardButton>
+      <CardButton onClick={r === 'pending' ? undefined : r === 'needed' ? () => rec.mutate(undefined, { onSuccess: done }) : open} style={{ marginTop: 0 }}>{rec.isPending ? 'Recovering…' : label}</CardButton>
       {err && <Text style={{ color: C.coral }}>{err.message}</Text>}
       {ask && (
-        <ConfirmCard title="Lost phone" ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending}
-          onCancel={() => setAsk(false)} onOk={() => send.mutate({ again: k.id }, { onSuccess: () => { markRecover(k.id); done(); } })}
-          warn={`Send a new link by SMS to ${k.phone}? Once the member opens it on the new phone, the member's account is recovered to it.`} />
+        <ConfirmCard title="Recover on another number" ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending || !phoneOk(num)}
+          onCancel={() => setAsk(false)} onOk={go}
+          warn={`Send a link by SMS to this number? Once the member opens it on the new phone${keypad ? '' : ' and signs up there with this number'}, the member's account is recovered to it after the union's wait.`}>
+          <PhoneField id="g2-recover-phone" value={num} onChange={setNum} />
+          {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
+        </ConfirmCard>
       )}
+      {!keypad && /^C/.test(address || '') && <MoveToKeypad address={address} name={name} phone={phone} />}
     </>
   );
 }

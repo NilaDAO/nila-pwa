@@ -20,12 +20,12 @@ export function useInviteLink() {
   const api = useKeypadClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v) => (v.again ? api.sendAgain(v.again) : api.add(v)),
+    mutationFn: (v) => (v.recoverTo ? api.recoverTo({ ...v, account: v.recoverTo }) : v.again ? api.sendAgain(v.again, v.phone) : api.add(v)),
     onSuccess: (m) => qc.setQueryData(qkKeypad.member(m.id), m),
   });
 }
 
-/** A lost keypad phone (executive decision 2 Nov): once the new phone has opened the newest SMS link, the leader asks
+/** A lost phone (executive decision 2 Nov; every member, smartphone too, 4 Nov): once the new phone has opened the newest SMS link, the leader asks
  *  the node for the recovery and signs its payload hash with the leader's own key; the node adds the SMS key and sends
  *  recover_by_sms. The account works with the new phone after the union's wait. */
 export function useRecoverPhone(id) {
@@ -61,7 +61,8 @@ export { useKeypadClient };
  *  the union with the phone's own signed set_union (3 Nov). Runs while a
  *  leader's app is open, from the keypad members list it already polls; each account is checked once on this phone. */
 /** A lost phone (2 Nov): the leader who sends the new SMS link from G2 has decided the recovery; this phone remembers it
- *  and recovers the account as soon as the new phone has opened the link (KeypadAccounts below), with no second tap. */
+ *  and recovers the account as soon as the new phone has opened the link (KeypadAccounts below), with no second tap.
+ *  4 Nov: smartphone rows too (POST /keypad/recoveries), so this list is not filtered by phone_type. */
 const RECOVER = (id) => `nila.keypad.recover.${id}`;
 export function markRecover(id) { try { localStorage.setItem(RECOVER(id), '1'); } catch { /* the G2 button still works */ } }
 const wantsRecover = (id) => { try { return localStorage.getItem(RECOVER(id)) === '1'; } catch { return false; } };

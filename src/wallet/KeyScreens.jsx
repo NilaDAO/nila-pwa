@@ -1,11 +1,11 @@
 // Key backup screens (executive decision 29 Oct, handoffs/Claude_Code_Prompt_Key_Backup_Deletion.md K1). Shown by
 // wallet/PrivyRoot.jsx in place of the app while the Privy login needs the member's tap: a passkey (the phone's
 // screen lock) must be started by a button. DESIGN GAP: no board for these screens yet; they use the R1–R4 frame.
-import RegFrame, { btnDisabled, btnPrimary, btnSecondary, cardTitle, sheetText } from '../register/RegFrame';
+import RegFrame, { btnDisabled, btnPrimary, cardTitle, sheetText } from '../register/RegFrame';
 
 const errText = { margin: 0, textAlign: 'center', color: '#F87171', fontSize: 14 };
 
-function Card({ title, text, button, busy, error, onGo, extra }) {
+export function Card({ title, text, button, busy, error, onGo, extra }) {
   return (
     <RegFrame info="Nila keeps no copy of your keys. Your wallet opens with your phone's screen lock.">
       <h2 style={cardTitle}>{title}</h2>
@@ -20,25 +20,16 @@ function Card({ title, text, button, busy, error, onGo, extra }) {
 }
 
 /** A member whose key Cognito no longer keeps: log in to Privy with the passkey (login), or make one (signup). */
-export function PasskeyLogin({ mode, busy, error, noPasskey, onGo, onLost, confirming, onConfirmLost, onBack }) {
-  if (confirming) {
-    return <Card title="Is your old phone lost?" busy={busy} error={error} onGo={onConfirmLost} button="Yes, make new keys"
-      text="This phone gets new keys. Two leaders of your union then move your account to them; until then your account is frozen and your old phone stops working."
-      extra={<button type="button" style={busy ? btnDisabled : btnSecondary} disabled={busy} onClick={onBack}>Back</button>} />;
-  }
+export function PasskeyLogin({ mode, busy, error, noPasskey, onGo }) {
   if (mode === 'signup') {
     return <Card title="Protect your wallet" busy={busy} error={error} onGo={onGo} button="Continue"
       text="Your wallet opens with your phone's screen lock: fingerprint, face or PIN." />;
   }
+  // One recovery path (4 Nov): no new keys on this phone. The leader recovers her account to another number on G2.
   return (
     <Card title="Open your wallet" busy={busy} onGo={onGo} button="Unlock"
-      error={noPasskey ? 'This phone cannot open your wallet.' : error}
-      text="Use your phone's screen lock: fingerprint, face or PIN."
-      extra={noPasskey && (
-        <button type="button" style={busy ? btnDisabled : btnSecondary} disabled={busy} onClick={onLost}>
-          My old phone is lost
-        </button>
-      )} />
+      error={noPasskey ? 'This phone cannot open your wallet. Ask your union leader to recover your account on another number.' : error}
+      text="Use your phone's screen lock: fingerprint, face or PIN." />
   );
 }
 

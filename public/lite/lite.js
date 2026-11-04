@@ -839,7 +839,15 @@
     var h = location.hash, m;
     if (h !== '#/property') document.body.className = '';
     qrKey = false;
-    if ((m = /^#\/l\/([0-9A-Z]+)$/.exec(h))) { open(m[1], function () { welcome(m[1]); }); return; }
+    if ((m = /^#\/l\/([0-9A-Z]+)$/.exec(h))) {
+      open(m[1], function () {
+        // 4 Nov (one recovery path): a smartphone member's account recovered to this number. She signs up in the full
+        // app, which finishes the link with her new Privy key (src/wallet/RecoverLink.jsx); the code waits there.
+        if (invite.phone_type === 'smartphone') { store('nila.recoverLink', m[1]); location.replace('/'); return; }
+        welcome(m[1]);
+      });
+      return;
+    }
     if (h === '#/expired') { expired(); return; }
     var member = stored('nila.lite.member');
     if (!member) { qrKey = false; expired(); return; }

@@ -28,6 +28,7 @@ import { useLegacyBalances, useOpenPolygonLoans } from '../move/hooks';
 import { readAllItems } from '../utils/db';
 import { setAccountUnion, useAccount, useSetupAccount, useStellarConfig } from '../stellar/hooks';
 import { accountOf, deployerOf } from '../stellar/account';
+import RecoverLink, { linkCode, recoveredAccount, recoveryWaits } from './RecoverLink';
 
 const APP_ID = process.env.REACT_APP_PRIVY_APP_ID;
 // The one-time key migration (K1): off until the node (K2) and the Lambda (K3) ship with it.
@@ -46,12 +47,6 @@ const linkedEvm = (user) => (user?.linkedAccounts || [])
 /** The Privy embedded Polygon wallet (imported at the migration, or made for a new member); undefined if none. */
 const embeddedEvm = (user) => (user?.linkedAccounts || [])
   .find((a) => a.type === 'wallet' && a.chainType === 'ethereum' && a.walletClientType === 'privy' && a.address);
-
-// A lost phone (K1 recovery): this phone made a new Privy user for the member's number, so the member's account waits
-// for two leaders. Kept per Cognito address on the phone.
-const lostKey = (a) => `nila.recovering.${(a || '').toLowerCase()}`;
-export const readRecovering = (a) => { try { return !!a && localStorage.getItem(lostKey(a)) === '1'; } catch { return false; } };
-const writeRecovering = (a, v) => { try { if (v) localStorage.setItem(lostKey(a), '1'); else localStorage.removeItem(lostKey(a)); } catch { /* memory only */ } };
 
 // New or existing Privy user (LOAN_RULES §5, 20 Oct "New or existing after the code (R4)"): decided at the login
 // after the code and kept per wallet on the phone, so a reload during registration keeps the same path.
@@ -162,13 +157,13 @@ function SignerBridge({ children }) {
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState();
   const [noPasskey, setNoPasskey] = useState(false);
-  const [confirmLost, setConfirmLost] = useState(false);
   // A failed unlock is ambiguous (a cancelled prompt and a phone without the passkey look the same to the app), so the
   // lost-phone path shows only after two failed unlocks, never on a network error (review 29 Oct).
   const failedUnlocks = useRef(0);
-  const recovering = readRecovering(storedAddress);
+  // One recovery path (4 Nov): no new keys for a lost phone on the same number; the leader recovers her account to
+  // another number (G2), and that phone signs up as a new Privy user (RecoverLink).
   const passkeyMode = ready && !authenticated && session.active && backup?.none
-    ? (storedAddress && !recovering ? 'login' : 'signup') : null;
+    ? (storedAddress ? 'login' : 'signup') : null;
   const runKey = (fn) => async () => {
     if (keyBusy) return;
     setKeyBusy(true); setKeyError(undefined);
@@ -180,11 +175,8 @@ function SignerBridge({ children }) {
     } finally { setKeyBusy(false); }
   };
   const passkeyGo = runKey(() => (passkeyMode === 'login' ? loginWithPasskey() : signupWithPasskey()));
-  // A lost phone: a new Privy user (new keys) on this phone; two leaders move the member's account to it (K1 recovery).
-  // New keys only after the member confirms it (review 29 Oct).
-  const passkeyLost = runKey(async () => { writeRecovering(storedAddress, true); setConfirmLost(false); await signupWithPasskey(); });
 
-  // A new member (or a recovering phone): Privy makes the Polygon wallet; Nila generates none.
+  // A new member (or a phone her account is recovered to): Privy makes the Polygon wallet; Nila generates none.
   const makingEvm = useRef(false);
   useEffect(() => {
     if (!authenticated || !backup?.none || embedded || makingEvm.current) return;
@@ -194,7 +186,7 @@ function SignerBridge({ children }) {
   }, [authenticated, backup, embedded, createEvmWallet]);
 
   // Tell the node (K2): after the migration (it deletes the Cognito copy), or a new member's wallet (it records the
-  // address). Not for a recovering phone: its new address is not the member's until two leaders have moved the account.
+  // address; also a phone her account is recovered to, 4 Nov: its new number is a new Cognito user).
   const reported = useRef();
   const report = useCallback(async (address) => {
     await reportPrivyWallet({ cognitoToken: await getCognitoToken(), privyToken: await getAccessToken(), address });
@@ -206,11 +198,11 @@ function SignerBridge({ children }) {
   const migrated = !!embedded && !!evmWallet && embedded.address.toLowerCase() === evmWallet.address.toLowerCase();
   useEffect(() => {
     if (!authenticated || !embedded || reported.current === embedded.address) return;
-    const newMember = backup?.none && !storedAddress && !recovering;
+    const newMember = backup?.none && !storedAddress;
     if (!migrated && !newMember) return;
     reported.current = embedded.address;
     report(embedded.address).catch((e) => { console.error('[key] report failed', e); reported.current = undefined; });
-  }, [authenticated, embedded, migrated, backup, storedAddress, recovering, report]);
+  }, [authenticated, embedded, migrated, backup, storedAddress, report]);
 
   // The one-time migration: a passkey, then Privy imports her key (the same address).
   const migrate = runKey(async () => {
@@ -283,7 +275,11 @@ function SignerBridge({ children }) {
   // from its own XLM (4 Nov, no node fee-bump). Only leaders and ID-checked accounts hold XLM (a node beat tops them
   // up); an assist or keypad member's calls are sent by a leader's app (help QR session).
   const { data: cfg } = useStellarConfig();
-  const smart = stellar && deployerOf(cfg) ? accountOf(cfg, stellar.address) : stellar?.address;
+  // A recovered account (4 Nov, RecoverLink) no longer follows from her key: the one kept for this key wins.
+  const [, setRecTick] = useState(0);
+  const recoverDone = useCallback(() => setRecTick((x) => x + 1), []);
+  const smart = (stellar && recoveredAccount(stellar.address))
+    || (stellar && deployerOf(cfg) ? accountOf(cfg, stellar.address) : stellar?.address);
   const account = useAccount(signersReady ? stellar.address : undefined, signersReady ? smart : undefined);
   const { status: setupStatus, error: setupError, mutate: runSetup, mutateAsync: runSetupAsync } =
     useSetupAccount({ stellarAddress: stellar?.address, account: smart, evmWallet: evm, signHash });
@@ -306,7 +302,7 @@ function SignerBridge({ children }) {
   // (leaders, ID-checked accounts). A member holds none: her help QR carries her signed set_union and a leader's app
   // makes and joins the account (L14, L4; stellar/hooks ensureMemberAccount).
   const { refetch: refetchAccount } = account;
-  const deployed = !!account.data?.deployed;    // not yet (or a recovering phone's new key): named once it is
+  const deployed = !!account.data?.deployed;    // not yet: named once it is
   const joinUnion = useCallback(async () => {
     if (!signersReady || !cfg?.union || !stellar || !smart || smart === stellar.address || !deployed) return false;
     const done = await setAccountUnion(cfg, stellar.address, smart, signHash, cfg.union);
@@ -332,8 +328,6 @@ function SignerBridge({ children }) {
     privyNew,
     privyEvmAddress: linkedEvm(user)[0],
     evmAddress: evm?.address,
-    // A lost phone: this phone's new keys wait for two leaders to move the member's account here (K1 recovery).
-    recovering: recovering && !!embedded && embedded.address.toLowerCase() !== (storedAddress || '').toLowerCase(),
     memberAddress: storedAddress,
     // Her account (the smart account: titles, shares, investment, roles); senderAddress sends her transactions.
     stellarAddress: smart,
@@ -355,14 +349,15 @@ function SignerBridge({ children }) {
       if (!evm) throw new Error('no Polygon wallet');
       return evm.signMessage(msg);
     },
-  }), [signersReady, authenticated, error, user, privyNew, evm, recovering, embedded, storedAddress, stellar, smart,
+  }), [signersReady, authenticated, error, user, privyNew, evm, storedAddress, stellar, smart,
     signHash, signEvmTx, account.data, setupStatus, setupError, runSetup, runSetupAsync, joinUnion]);
 
   let screen = children;
   if (passkeyMode) {
-    screen = <PasskeyLogin mode={passkeyMode} busy={keyBusy} error={keyError} noPasskey={noPasskey}
-      onGo={passkeyGo} confirming={confirmLost} onLost={() => setConfirmLost(true)} onConfirmLost={passkeyLost}
-      onBack={() => setConfirmLost(false)} />;
+    screen = <PasskeyLogin mode={passkeyMode} busy={keyBusy} error={keyError} noPasskey={noPasskey} onGo={passkeyGo} />;
+  } else if (signersReady && (linkCode() || recoveryWaits(stellar.address))) {
+    // Her account is being recovered to this phone (4 Nov): the link, then the wait; the app once it is hers.
+    screen = <RecoverLink stellar={stellar.address} signHash={signHash} onDone={recoverDone} />;
   } else if (MIGRATION_ON && authenticated && evmWallet && !embedded) {
     screen = <MigrationGate chain={chain} evm={evmWallet.address} busy={keyBusy} error={keyError} onGo={migrate}>
       {children}</MigrationGate>;
