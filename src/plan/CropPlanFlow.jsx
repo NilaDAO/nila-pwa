@@ -65,11 +65,13 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
   // The table shows each season's cost as it is (executive decision 21 Oct): cash, including any part above the
   // ₹10,000 loan cap, plus machine vouchers. The cap is a note under the table, not a cut in the numbers.
   const cost = (f) => f.cash + (f.cash_above_cap || 0) + f.voucher_value;
-  const total = seasons.reduce((a, s) => {
+  // A green manure is its own crop share (4 Nov): seed in cash, machine vouchers, repaid with the next crop.
+  const gm = (p.soil_cover || []).filter((c) => c.finance);
+  const total = [...seasons, { rows: gm }].reduce((a, s) => {
     const sum = s.rows.reduce((b, r) => ({ cash: b.cash + cost(r.finance), financed: b.financed + r.finance.cash + r.finance.voucher_value, interest: b.interest + r.finance.interest }), { cash: 0, financed: 0, interest: 0 });
     return { cash: a.cash + sum.cash, financed: a.financed + sum.financed, interest: a.interest + sum.interest };
   }, { cash: 0, financed: 0, interest: 0 });
-  const above = seasons.reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.cash_above_cap || 0), 0), 0);
+  const above = [...seasons, { rows: gm }].reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.cash_above_cap || 0), 0), 0);
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance.due)).sort().pop();
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
   const [open, setOpen] = useState(null);   // the season whose areas' crops are open
@@ -114,15 +116,15 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
               <td style={{ padding: '8px 0' }} colSpan={3}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount} points off the rate ({rate}%) · trees registered</span></td>
             </tr>
           )}
-          {(() => {
-            // Soil cover (seed): green manure seed rides on the area's crop loan (21 Oct); it is in the seasons above.
-            const seed = seasons.reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.soil_cover_seed || 0), 0), 0);
-            return seed > 0 ? (
+          {gm.length > 0 && (() => {
+            const by = (p.shares || []).filter((sh) => sh.green_manure && sh.final_date).map((sh) => sh.final_date).sort().pop();
+            return (
               <tr style={{ borderTop: `1px solid ${C.raised}` }}>
-                <td style={{ padding: '8px 0' }} colSpan={2}>Soil cover (seed)<br /><span style={muted}>in the seasons above</span></td>
-                <td style={{ textAlign: 'right', color: C.muted }}>{inr(seed)}</td>
+                <td style={{ padding: '8px 0' }}><b>Green manure</b><br /><span style={muted}>repaid with the next crop</span></td>
+                <td>{by ? new Date(by).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</td>
+                <td style={{ textAlign: 'right' }}>{inr(gm.reduce((a, c) => a + cost(c.finance), 0))}</td>
               </tr>
-            ) : null;
+            );
           })()}
           <tr style={{ borderTop: `1px solid ${C.raised}`, fontWeight: 700 }}>
             <td style={{ padding: '8px 0' }} colSpan={2}>Total cost</td>

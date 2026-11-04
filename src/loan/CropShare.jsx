@@ -97,7 +97,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   }
   const r = rowOf(x) || {};
   const name = r.name || x.crop.replace(/_/g, ' ');
-  const fodder = !x.share.loan_amount && (x.share.acres_work ?? x.share.hours);
+  const fodder = !x.share.green_manure && !x.share.loan_amount && (x.share.acres_work ?? x.share.hours);
   const nAreas = areasOf(record).length;
   // The share's area in the crop's colour with the crop as its label; the other areas keep "Area n". A merged share
   // (same crop on several areas, 21 Oct) colours each of its areas.
