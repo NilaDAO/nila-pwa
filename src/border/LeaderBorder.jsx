@@ -153,16 +153,13 @@ function Check({ job, n, onDone, onBack }) {
   const shapes = [...(f?.shapes || [])].sort((a, b) => a.score - b.score);
   const start = f?.accepted || job.plan?.[String(n)] || shapes[0]?.id;
   const [sel, setSel] = useState(start);
-  const [plan, setPlan] = useState(job.plan);
-  const { accept, noneFit, preview, retry, remove } = useBorderDecision(job.id);
+  const plan = job.plan;
+  const { accept, noneFit, retry, remove } = useBorderDecision(job.id);
   const [ask, setAsk] = useState(false);   // the delete confirm (1 Nov)
   const busy = accept.isPending || noneFit.isPending || retry.isPending || remove.isPending;
-  const err = accept.error || noneFit.error || preview.error || remove.error;
-  const pick = async (id) => {
-    setSel(id);
-    if (id === (job.plan?.[String(n)])) { setPlan(job.plan); return; }
-    try { const r = await preview.mutateAsync({ field: n, shape: id }); setPlan(r.plan || r); } catch { /* shown below */ }
-  };
+  const err = accept.error || noneFit.error || remove.error;
+  // A tap only selects the shape (executive decision 4 Nov): no preview call to the node; Accept returns the new plan.
+  const pick = (id) => setSel(id);
   if (!f) return null;
   // The fencing itself failed (Earth Engine, the satellite tiles): an error screen as N6/N8 (executive decision 21 Oct;
   // no board for this case), her point stays, the leader tries again.
