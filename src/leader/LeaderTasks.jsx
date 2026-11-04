@@ -108,7 +108,7 @@ const START = [
   ['Cash', [['Scan a member QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
     ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
   ['Vouchers', [['Register a machine', 'The owner\'s machine, photos and price', 'cash/machine', TractorIcon],
-    ['Members give back vouchers', 'Unused machine acres off what a member owes', 'tasks/handback', TractorIcon]]],
+    ['Give back vouchers', 'Return unused vouchers', 'tasks/handback', TractorIcon]]],
 ];
 
 // To do icons by task kind (board LeaderBorders): accent for a new item to act on, coral for an overdue one.
