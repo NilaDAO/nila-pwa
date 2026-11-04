@@ -79,20 +79,20 @@ export function HandBackFor({ go }) {
   const [plain, setPlain] = useState(false);
   const until = useSessionUntil(member);
   const back = () => go('tasks');
-  if (!member) return <StartHelp label="Hand back acres" onBack={back} onStarted={(a) => { setPlain(!sessionUntil(a)); setMember(a); }} />;
+  if (!member) return <StartHelp label="Give back vouchers" onBack={back} onStarted={(a) => { setPlain(!sessionUntil(a)); setMember(a); }} />;
   if (plain) {
-    return <DeskCard title="Hand back acres" onBack={back}>
+    return <DeskCard title="Give back vouchers" onBack={back}>
       <p style={{ color: C.muted, margin: 0 }}>This member uses the app in self mode: the member hands back acres on their own phone, under Machinery.</p>
     </DeskCard>;
   }
   if (!until) {
-    return <DeskCard title="Hand back acres" onBack={back}>
+    return <DeskCard title="Give back vouchers" onBack={back}>
       <p style={{ color: C.muted, margin: 0 }}>The 5 minutes are over. Scan the member's QR again.</p>
       <button type="button" onClick={() => setMember()} style={{ height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontFamily: FONT, cursor: 'pointer' }}>Scan again</button>
     </DeskCard>;
   }
   return (
-    <MapCard header={{ title: 'Hand back acres', onBack: back }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 16 }}>
+    <MapCard header={{ title: 'Give back vouchers', onBack: back }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 16 }}>
       <HandBack member={member} session={member} onDone={back} />
     </MapCard>
   );
@@ -108,7 +108,7 @@ const START = [
   ['Cash', [['Scan a member QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
     ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
   ['Vouchers', [['Register a machine', 'The owner\'s machine, photos and price', 'cash/machine', TractorIcon],
-    ['Hand back acres', 'Unused machine acres off what a member owes', 'tasks/handback', TractorIcon]]],
+    ['Members give back vouchers', 'Unused machine acres off what a member owes', 'tasks/handback', TractorIcon]]],
 ];
 
 // To do icons by task kind (board LeaderBorders): accent for a new item to act on, coral for an overdue one.
