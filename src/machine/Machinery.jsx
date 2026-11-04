@@ -17,7 +17,7 @@ import { signVoucherCode } from './voucherCode';
 import { Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { Card, CardTitle, KV, NoteBar } from '../loan/AssetParts';
-import { TRACTOR, acresFor, acresText, loadVoucherCode as load, rateForCrop, saveVoucherCode as save, shareOfToken, ta, unitsOf, useMachines, useRates, useVouchers } from './hooks';
+import { TRACTOR, acresFor, acresText, num, loadVoucherCode as load, rateForCrop, saveVoucherCode as save, shareOfToken, ta, unitsOf, useMachines, useRates, useVouchers } from './hooks';
 import { tokenHex } from '../stellar/soroban';
 import { useMyShares } from '../loan/MyShares';
 import MapCard from '../shell/MapCard';
@@ -188,55 +188,111 @@ export default function Machinery({ onBack }) {
           <Primary disabled={!online || busy || !s?.ready || !cfg || !rate || acres <= 0 || !!open} onClick={make}>{!online ? 'Needs internet' : acres <= 0 ? 'Nothing left on this voucher' : `Make code for ${rate?.name || 'the job'}`}</Primary>
         </Card>
       )}
-      {balance > 0 && !assisted() && <HandBack list={list} tractorRate={tractorRate} />}
+      {balance > 0 && !assisted() && <HandBack member={s?.stellarAddress} />}
       {!vouchers.isLoading && balance === 0 && !open && <Card label="No machine work"><span style={{ color: C.muted, fontSize: 14 }}>No machine vouchers yet. They come with a crop share.</span></Card>}
     </Page>
   );
 }
 
-/** Hand back acres (executive decision 26 Oct): unused tractor acres of a voucher whose value she still owes come off
- *  her debt at their whole value; 5% of it is owed to the union treasury (fund_core.return_voucher). Self mode only:
- *  in assist mode her leader does it in a session. DESIGN GAP: no board. */
-function HandBack({ list, tractorRate }) {
-  const s = useNilaSigner();
+/** Hand back acres (executive decision 26 Oct; in acres and a leader task for assist and keypad members, 4 Nov, G7):
+ *  unused acres of a crop share's voucher whose value she still owes come off her debt at 95% of their value; 5% is
+ *  owed to the union treasury (fund_core.return_voucher, `units` = centi tractor acres). She picks the crop share and
+ *  the machine and the acres on that machine; capped by what is left unused and by what she still owes (the
+ *  contract's rule: with nothing owed the acres simply stay hers). Self mode: on her own phone (A8). Assist and
+ *  keypad: the leader's Tasks → Hand back acres, `session` = her account. DESIGN GAP: no board. */
+export function HandBack({ member, session, onDone }) {
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
-  const [hours, setHours] = useState(1);   // tractor acres
-  // Per voucher: what of its value she still owes (voucher_book), so how many of its tractor acres she may hand back.
+  const vouchers = useVouchers(member);
+  const rates = useRates();
+  const machines = useMachines();
+  const myShares = useMyShares().data || [];
+  const [pick, setPick] = useState();
+  const [type, setType] = useState();
+  const [want, setWant] = useState(1);     // acres on the picked machine
+  const list = (vouchers.data || []).filter((v) => v.left > 0);
+  // Per voucher: what of its value she still owes (voucher_book), so how many of its units she may hand back.
   const books = useQuery({
-    queryKey: ['stellar', 'voucherBooks', list.map((v) => v.token).join(',')], enabled: !!cfg && list.length > 0, staleTime: 30_000,
+    queryKey: ['stellar', 'voucherBooks', member, list.map((v) => v.token).join(',')], enabled: !!cfg && list.length > 0, staleTime: 30_000,
     queryFn: () => Promise.all(list.map(async (v) => {
       const b = await readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(v.token)]).catch(() => null);
-      const owedUnits = b && Number(b.per_hour) > 0 ? Math.floor(((Number(b.value) - Number(b.repaid)) * 100) / Number(b.per_hour)) : 0;
-      return { ...v, can: Math.max(0, Math.min(v.left, owedUnits)) };
+      const per = b ? BigInt(b.per_hour ?? 0) : 0n;
+      const owedUnits = per > 0n ? Number(((BigInt(b.value) - BigInt(b.repaid)) * 100n) / per) : 0;
+      return { ...v, per, reserve: b ? BigInt(b.reserve ?? 0) : 0n, can: Math.max(0, Math.min(v.left, owedUnits)) };
     })),
   });
-  const best = (books.data || []).filter((v) => v.can > 0).sort((a, b) => b.can - a.can)[0];
-  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
-  if (!best) return null;
-  const max = Math.floor(best.can / 10) / 10;           // tractor acres, a tenth
-  const h = Math.min(hours, max);
-  const units = Math.round(h * 100);
-  const off = (units / 100) * tractorRate;
-  const step = (d) => setHours(Math.max(0, Math.min(max, Math.round((h + d) * 10) / 10)));
+  const open = (books.data || []).filter((v) => v.can > 0);
+  const v = open.find((x) => x.token === pick) || open[0];
+  const share = v ? shareOfToken(v.token) : null;
+  const kinds = new Set((machines.data || []).map((m) => m.machine_type));
+  const avail = (rates.data || []).filter((r) => kinds.has(r.type));
+  const types = avail.length ? avail : (rates.data || []).filter((r) => r.type === TRACTOR);
+  const rate = types.find((r) => r.type === type) || types[0];
+  const price = useQuery({
+    queryKey: ['stellar', 'cropRate', cfg?.union, rate?.type, share?.family], enabled: !!cfg && !!rate && !!share, staleTime: 300_000,
+    queryFn: () => rateForCrop(cfg, rate.type, share.family),
+  });
+  const each = price.data?.total || rate?.total || 0;
+  const tractorRate = rates.data?.find((r) => r.type === TRACTOR)?.total || 0;
+  const nameOf = (token) => {
+    const x = myShares.find((y) => tokenHex(y.token_id).replace(/^0x/, '').toLowerCase().padStart(64, '0') === token);
+    const a = shareOfToken(token).centiAcres / 100;
+    return x ? `${(x.crop || '').replace(/_/g, ' ')} · Area ${x.area}` : `Crop share · ${acresText(a)}`;
+  };
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onDone?.(); }} onRetry={() => tx.retry()} />;
+  if (vouchers.isLoading || books.isLoading) return session ? <span style={{ color: C.muted, fontSize: 14 }}>…</span> : null;
+  if (!v) {
+    // Nothing the contract would take: no unused acres, or their value is no longer owed.
+    if (!session) return null;
+    return <span style={{ color: C.muted, fontSize: 14 }}>Nothing to hand back. Unused acres can be handed back only while their value is still owed; they stay the member's to use.</span>;
+  }
+  const max = each && tractorRate ? acresFor(v.can, each, tractorRate) : 0;   // acres on this machine, a hundredth
+  const acres = Math.min(want, max);
+  const units = Math.min(v.can, unitsOf(acres, each, tractorRate));
+  // As the contract: min(per unit × units ÷ 100, the voucher's reserve), in nIN units.
+  let value = (v.per * BigInt(units)) / 100n;
+  if (value > v.reserve) value = v.reserve;
+  const off = num(value);
+  const step = (d) => setWant(Math.max(0, Math.min(max, Math.round((acres + d) * 10) / 10)));
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, cursor: 'pointer' };
+  const chip = (on) => ({ height: 44, borderRadius: R.button, border: 0, padding: '0 14px', cursor: 'pointer', fontWeight: 700, fontFamily: 'inherit', fontSize: 14,
+    background: on ? C.accent : C.raised, color: on ? C.ink : C.text, textTransform: 'capitalize' });
+  const label = { fontSize: 14, fontWeight: 700, lineHeight: 1.5 };
+  const you = session ? 'the member owes' : 'you owe';
   return (
-    <Card label="Hand back machine work" style={{ gap: 12 }}>
-      <CardTitle>Hand back machine work</CardTitle>
-      <span style={{ color: C.muted, fontSize: 14 }}>Machine work you will not use comes off what you owe. 5% of its value goes to your union.</span>
+    <Card label="Hand back acres" style={{ gap: 12 }}>
+      <CardTitle>Hand back acres</CardTitle>
+      <span style={{ color: C.muted, fontSize: 14 }}>Machine acres {session ? 'the member' : 'you'} will not use come off what {you}. 5% of their value goes to the union.</span>
+      {open.length > 1 && (
+        <>
+          <span style={label}>Crop share</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {open.map((x) => <button key={x.token} type="button" onClick={() => setPick(x.token)} style={chip(x.token === v.token)}>{nameOf(x.token)}</button>)}
+          </div>
+        </>
+      )}
+      {types.length > 1 && (
+        <>
+          <span style={label}>Machine</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {types.map((r) => <button key={r.type} type="button" onClick={() => setType(r.type)} style={chip(r.type === rate.type)}>{r.name}</button>)}
+          </div>
+        </>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button type="button" aria-label="Less" style={b} onClick={() => step(-0.5)}>−</button>
-        <span style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: 700 }}>{h} tractor ac</span>
+        <span style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: 700 }}>{acresText(acres)}</span>
         <button type="button" aria-label="More" style={b} onClick={() => step(0.5)}>+</button>
       </div>
-      <KV k="Off what you owe" v={inr(off * 0.95)} />
-      <KV k="To your union (5%)" v={inr(off * 0.05)} />
-      <Primary disabled={units <= 0 || !tx.ready} onClick={() => tx.run({
-        label: `Hand back ${h} tractor acres`, rows: [['Machine work', `${h} tractor acres`], ['Off what you owe', inr(off * 0.95)]],
-        contractName: 'fund_core', fn: 'return_voucher',
-        args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.bytes32(best.token), sv.u32(units)],
+      <KV k="Unused, can hand back" v={`${acresText(max)} with ${rate?.name || 'this machine'}`} />
+      <KV k="Off what is owed" v={inr(off * 0.95)} />
+      <KV k="To the union (5%)" v={inr(off * 0.05)} />
+      <Primary disabled={units <= 0 || value <= 0n || !tx.ready} onClick={() => tx.run({
+        label: `Hand back ${acresText(acres)}`, rows: [['Machine', `${rate?.name || 'Machine'} · ${acresText(acres)}`], ['Off what is owed', inr(off * 0.95)]],
+        contractName: 'fund_core', fn: 'return_voucher', session,
+        args: [sv.address(member), sv.address(cfg.union), sv.bytes32(v.token), sv.u32(units)],
         invalidate: [['stellar', 'vouchers'], ['stellar', 'voucherBooks'], ['oracle', 'myShares']],
-      })}>{`Hand back ${h} tractor acres`}</Primary>
+      })}>{`Hand back ${acresText(acres)}`}</Primary>
     </Card>
   );
 }

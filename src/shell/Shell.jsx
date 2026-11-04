@@ -31,7 +31,7 @@ import IdCheck from '../anchor/IdCheck';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
 import Settings from './Settings';
-import LeaderTasks, { PlanFor } from '../leader/LeaderTasks';
+import LeaderTasks, { HandBackFor, PlanFor } from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
 import AddMember, { KeypadPoints, LeaderOwnPoints, SmartphonePoints } from '../leader/AddMember';
@@ -85,6 +85,7 @@ function TasksView({ leader, go }) {
   const [, borderId, field] = readBorder();
   if (leader && borderId) return <LeaderBorder key={`${borderId}/${field || ''}`} id={borderId} field={field} go={go} />;
   if (leader && window.location.hash.startsWith('#/tasks/planfor')) return <PlanFor go={go} />;
+  if (leader && window.location.hash.startsWith('#/tasks/handback')) return <HandBackFor go={go} />;
   const member = readMember();
   if (leader && member && member[1] === 'qr' && member[2]) return <SmartphonePoints go={go} />;
   if (leader && member && member[2]) return <KeypadPoints key={member[1]} id={member[1]} go={go} />;
