@@ -6,17 +6,15 @@
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { btn as cardBtn, ConfirmCard, Text, useUnionInfo } from '../shell/SettingsParts';
+import { ConfirmCard, Text, useUnionInfo } from '../shell/SettingsParts';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { C, FONT, R, SHADOW } from '../shell/tokens';
-import ListRow from '../shell/ListRow';
-import { ChevronIcon, PhoneIcon, RepayIcon, TrashIcon, WarnIcon } from '../shell/icons';
+import { C, FONT, R } from '../shell/tokens';
+import { ChevronIcon, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
 import AreaMap from '../plan/AreaMap';
 import { areaM2 } from '../plan/mapTap';
@@ -218,7 +216,7 @@ export default function MemberStatus({ id, go }) {
       {/* The card's 22 px side padding (MapCard takes the sheet's padding back for screens with cards of their own). */}
       <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {/* A recovery under way shows here, under her name, not in the Phone and membership card (4 Nov). */}
+        {/* A recovery under way shows here, under her name, not in the Account group (4 Nov). */}
         {m.address && <PhoneStatus address={m.address} />}
         {hasLand && <Row k="Property" v={`${acres.toFixed(1)} acres`} />}
         {/* Fields: the fields her title was minted with (L3/L4), from the title's record (meta.geometry.field_features);
@@ -312,13 +310,7 @@ export default function MemberStatus({ id, go }) {
           {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
         </Section>
       )}
-      {m.recordHash && (
-        <Section>
-          {/* The record in the normal text colour (4 Nov: gold is for pins and icons only, the accent never on text). */}
-          <Row k="Record" v={`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`} />
-        </Section>
-      )}
-      <PhoneAndMembership m={m} inv={inv} go={go} />
+      <Account m={m} inv={inv} go={go} />
       </div>
     </MapCard>
   );
@@ -362,11 +354,10 @@ function PhoneStatus({ address }) {
 const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: R.button, padding: '12px 16px',
   minHeight: 48, width: '100%', border: 0, color: C.text, textAlign: 'left', fontSize: 14, lineHeight: 1.5, fontFamily: FONT, cursor: 'pointer' };
 
-/** G2 ends with one row (executive decision 4 Nov; a sheet ends with one primary and at most one secondary button,
- *  choices are list rows): "Phone and membership" opens a small card of the actions that apply, each opening the same
- *  confirm card as before (Recover on another number, Move to a keypad phone, Remove member). */
-function PhoneAndMembership({ m, inv, go }) {
-  const [menu, setMenu] = useState(false);
+/** G2 ends with "Account" (Carst 4 Nov): one row of Recover and Move (secondary buttons sharing the row) and a square
+ *  delete button, each opening the same confirm card as before, then her record. Recover is disabled while a recovery
+ *  waits out the union's wait or the app must finish it (its status under her name says which). */
+function Account({ m, inv, go }) {
   const [card, setCard] = useState();       // 'recover' | 'keypad' | 'remove'
   const rcv = useRecovery(m.address);
   const titleId = m.titleId || [...(m.lands || [])][0];
@@ -375,39 +366,30 @@ function PhoneAndMembership({ m, inv, go }) {
   const why = m.shares.length ? 'The member has crop shares.'
     : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
       : investment > 0 ? 'The member has an investment: pay it out first.' : null;
-  // While a recovery waits out the union's wait or the app must finish it, its status on G2 is the way (no row here).
-  const choices = [
-    rcv.applies && rcv.r !== 'pending' && rcv.r !== 'needed' && { id: 'recover', icon: RepayIcon, title: 'Recover on another number' },
-    rcv.applies && !rcv.keypad && /^C/.test(m.address || '') && { id: 'keypad', icon: PhoneIcon, title: 'Move to a keypad phone' },
-    titleId && { id: 'remove', icon: TrashIcon, tone: 'urgent', title: <span style={{ color: C.coral }}>Remove member</span>, sub: why },
-  ].filter(Boolean);
-  if (!choices.length) return null;
+  const recoverOk = rcv.r !== 'pending' && rcv.r !== 'needed';
+  const move = rcv.applies && !rcv.keypad && /^C/.test(m.address || '');
+  if (!rcv.applies && !titleId && !m.recordHash) return null;
   const close = () => setCard();
   return (
-    <>
-      <button type="button" onClick={() => setMenu(true)} style={rowStyle}>
-        <PhoneIcon color={C.gold} />
-        <span style={{ flexGrow: 1, fontWeight: 700 }}>Phone and membership</span>
-        <ChevronIcon color={C.text} />
-      </button>
-      {menu && createPortal(
-        <>
-          <div aria-hidden="true" onClick={() => setMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.6)' }} />
-          <div role="dialog" aria-modal="true" aria-label="Phone and membership" style={{ position: 'fixed', left: 8, right: 8, bottom: 88, zIndex: 21,
-            background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: '14px 22px 22px', display: 'flex', flexDirection: 'column', gap: 8,
-            fontFamily: FONT, color: C.text }}>
-            <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, paddingTop: 8 }}>Phone and membership</div>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
-              {choices.map((c, i) => <ListRow key={c.id} first={i === 0} icon={c.icon} tone={c.tone} title={c.title} sub={c.sub}
-                onClick={() => { setMenu(false); setCard(c.id); }} />)}
-            </ul>
-            <button type="button" onClick={() => setMenu(false)} style={{ ...cardBtn, width: '100%' }}>Cancel</button>
-          </div>
-        </>, document.body)}
+    <Section title="Account">
+      {(rcv.applies || titleId) && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          {rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
+          {move && <button type="button" style={btn()} onClick={() => setCard('keypad')}>Move</button>}
+          {titleId && (
+            <button type="button" aria-label="Remove member" onClick={() => setCard('remove')}
+              style={{ ...btn(), flex: 'none', width: 44, marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <TrashIcon color={C.coral} />
+            </button>
+          )}
+        </div>
+      )}
+      {/* The record in the normal text colour (4 Nov: gold is for pins and icons only, the accent never on text). */}
+      {m.recordHash && <Row k="Record" v={`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`} />}
       {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
       {card === 'keypad' && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={close} />}
       {card === 'remove' && <RemoveMember m={m} why={why} titleId={titleId} go={go} onClose={close} />}
-    </>
+    </Section>
   );
 }
 

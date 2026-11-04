@@ -59,7 +59,6 @@ export const LandIcon = () => (
 // Task row icons (boards Tasks, LeaderBorders): 18 px in the row's round tile.
 const task = (children) => (p) => line(children, { size: 18, ...p });
 export const WarnIcon = task(<><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></>);
-export const PhoneIcon = task(<><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" /></>);
 export const RepayIcon = task(<><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></>);
 export const CalendarIcon = task(<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>);
 export const PinIcon = task(<><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></>);
