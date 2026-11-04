@@ -3,7 +3,7 @@
 // active): marking a well or bore (A5a, useWaterSources / useSaveWaterSources), farm improvements (useImprovements,
 // useImprovementInterest), the trees row (useTreeCheck, TreeMap).
 import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ethers } from 'ethers';
 import { useProvider } from '../hooks/useWallet.ts';
 import { ConfirmCard } from './SettingsParts';
@@ -18,6 +18,8 @@ import { fieldsMap, useTitleFields } from '../plan/titleFields';
 import { areaM2, tapRule } from '../plan/mapTap';
 import { Sheet } from '../plan/ui';
 import { Loading } from '../register/Boot';
+import { IdentityRow } from '../leader/LeaderSettings';
+import { useBorderClient } from '../border/hooks';
 import { C, R } from './tokens';
 
 const LAND_TITLE = process.env.REACT_APP_LAND_TITLE_MAIN;
@@ -92,6 +94,16 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
       window.location.hash = '#/assets';
     },
   });
+  // Land check (4 Nov, LOAN_RULES "Land check before more than ₹1 lakh"): read once per visit (no polling); "I placed
+  // the sheet" is her signed POST, only the title's holder.
+  const border = useBorderClient();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const check = useQuery({ queryKey: ['oracle', 'border', 'landCheck', landId], enabled: !!border && landId != null,
+    queryFn: () => border.landCheck(landId) });
+  const placed = useMutation({
+    mutationFn: () => border.sheetPlaced(landId),
+    onSuccess: (d) => { qc.setQueryData(['oracle', 'border', 'landCheck', landId], d); setSheetOpen(false); },
+  });
   const onTap = tapRule(picked, { open: setPicked, back: () => setPicked(null) });
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
   if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched) || field.isLoading) return <Loading />;
@@ -99,6 +111,26 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
     fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} />
     // No land title yet (4 Nov): the satellite map on the union's land behind the card, as the Crop plan (28 Oct).
     : <AreaMap record={null} center={unionCentre(unionMembers.data)} />;
+  if (sheetOpen) {
+    // The removed R8 SheetStep's wording (git 301ac35), now on her land title.
+    return (
+      <Sheet map={map} onBack={() => setSheetOpen(false)} bar={bar} onSwipe={onSwipe}>
+        <section aria-label="Land check" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <h2 style={h2}>Place a plastic sheet in one of your fields</h2>
+          <p style={muted}>Lay a white or light-coloured plastic sheet flat on the ground inside one of your fields. It must be plastic and not see-through. Weigh the corners down with stones so it stays in place. Leave it until the land check shows done; the next clear satellite image will show it.</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
+            <span style={{ color: C.muted }}>Size</span><span style={{ fontWeight: 700 }}>at least 4 m × 4 m</span>
+          </div>
+          <p style={muted}>Needed before your open cash passes ₹1 lakh.</p>
+          <button type="button" onClick={() => placed.mutate()} disabled={placed.isPending || !border}
+            style={{ ...btn, background: C.accent, color: C.ink, cursor: 'pointer' }}>
+            {placed.isPending ? 'Sending…' : 'I placed the sheet'}
+          </button>
+          {placed.error && <p style={{ ...muted, color: C.coral }}>{placed.error.message}</p>}
+        </section>
+      </Sheet>
+    );
+  }
   const f = picked && tf?.fields.find((y) => y.id === picked);
   if (f) {
     const m2 = areaM2(f.geometry);
@@ -129,6 +161,16 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
           <span style={{ color: C.muted }}>—</span>
         </span>
       </div>
+      {landId != null && (() => {
+        const st = check.data?.status;
+        const done = st === 'leader_gps' || st === 'sheet_found';
+        const sub = st === 'leader_gps' ? 'Checked: your leader took your fields on site'
+          : st === 'sheet_found' ? 'Checked: the sheet was seen'
+            : st === 'sheet_pending' ? `Waiting for a clear satellite image (sheet placed ${check.data.placed_at})`
+              : 'Needed before your open cash passes ₹1 lakh';
+        return <IdentityRow title="Land check" checked={done} sub={sub} todo={st === 'sheet_pending' ? 'Waiting' : 'Not checked'}
+          onClick={done || st === 'sheet_pending' ? undefined : () => setSheetOpen(true)} />;
+      })()}
       <hr style={line} />
       <section aria-label="Water on your land" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h2 style={h2}>Water on your land</h2>

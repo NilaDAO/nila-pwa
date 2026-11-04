@@ -28,6 +28,9 @@ export function borderClient(signer) {
     // L2 + Add a point (26 Oct): more fields for an open job, taken on the leader's phone.
     addPoints: (id, points) => call('POST', `/border/job/${id}/points`, { points }).then(jobOf),
     mint: (id, farm) => call('POST', `/border/job/${id}/mint`, farm ? { farm } : {}).then(jobOf),
+    // Land check (4 Nov, LOAN_RULES "Land check before more than ₹1 lakh"): her title's check, and "I placed the sheet".
+    landCheck: (titleId) => call('GET', `/border/title/${titleId}/check`),
+    sheetPlaced: (titleId) => call('POST', `/border/title/${titleId}/sheet`, {}),
   };
 }
 
