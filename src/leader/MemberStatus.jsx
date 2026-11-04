@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CardButton, ConfirmCard, Text, useUnionInfo } from '../shell/SettingsParts';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
-import { readContract, sv } from '../stellar/soroban';
+import { sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { C, FONT, R } from '../shell/tokens';
@@ -124,8 +124,6 @@ export default function MemberStatus({ id, go }) {
   const [scanning, setScanning] = useState(false);
   const [helpError, setHelpError] = useState();
   const helpUntil = useSessionUntil(m?.address);
-  const nin = useQuery({ queryKey: ['stellar', 'memberNin', m?.address], enabled: !!cfg && !!m?.address, staleTime: 30_000,
-    queryFn: async () => Number(BigInt(await readContract(cfg, 'nin', 'balance', [sv.address(m.address)]).catch(() => 0n) ?? 0n)) / 1e7 });
   const labels = useMemo(() => {
     // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
     // A financed share grows too (23 Oct): its draw is the start, whatever the plan's sowing date says.
@@ -170,19 +168,12 @@ export default function MemberStatus({ id, go }) {
   const free = p ? Math.max(0, n(p.free) - (BigInt(p.locked ?? 0) > 0n ? 1 : 0)) : 0;
   // Help (A2, 26 Oct): the member's help QR starts a 5-minute session in which this leader acts for the member.
   // No generic Help button (26 Oct): an action that needs the member's consent asks for the member's QR itself, then
-  // goes on (withdraw, pay out, pay out nIN); one scan covers 5 minutes of them.
+  // goes on (withdraw, pay out); one scan covers 5 minutes of them.
   if (scanning) {
     return <StartHelp member={m.address} label={`${scanning.what} · ${m.label}`} onBack={() => setScanning(false)}
       onStarted={() => { const then = scanning.then; setScanning(false); then(); }} />;
   }
   const withQr = (what, then) => () => (helpUntil > Date.now() / 1000 + 10 ? then() : setScanning({ what, then }));
-  // An identity-checked member's nIN (a machine owner's income), paid out in cash in the session (26 Oct).
-  const ninOut = () => tx.run({
-    label: `Pay out nIN · ${m.label}`, rows: [['Hand over', `₹${Math.floor(nin.data || 0).toLocaleString('en-IN')} in cash`]],
-    contractName: 'fx_pool', fn: 'cash_out_signed', session: m.address,
-    args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.address(m.address), sv.i128(BigInt(Math.floor(nin.data || 0)) * 10_000_000n)],
-    invalidate: [['stellar', 'memberNin']],
-  });
   const payOut = () => tx.run({
     label: `Pay out the withdrawal · ${m.label}`, rows: [['Member', m.label]],
     contractName: 'fund_core', fn: 'claim_junior_cash', session: m.address,
@@ -238,13 +229,6 @@ export default function MemberStatus({ id, go }) {
         <Section title="Crop plan" right={helpUntil ? `QR scanned · until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}>
           {planBtn}
           {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
-        </Section>
-      )}
-      {m.address && nin.data >= 1 && (
-        <Section title="nIN">
-          <button type="button" style={{ ...btn(tx.ready), flex: 'none', width: '100%' }} disabled={!tx.ready} onClick={withQr('Pay out nIN', ninOut)}>
-            Pay out {Math.floor(nin.data).toLocaleString('en-IN')} nIN in cash · scan their QR
-          </button>
         </Section>
       )}
       {m.loans.length > 0 && (
