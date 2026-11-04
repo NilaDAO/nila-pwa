@@ -9,9 +9,11 @@ import { useProvider } from '../hooks/useWallet.ts';
 import { ConfirmCard } from './SettingsParts';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarTitles } from '../stellar/hooks';
-import { useLandTitles, useTitleName } from '../plan/hooks';
+import { useLandTitles, usePlanClient, useTitleName } from '../plan/hooks';
 import { useFieldRecord } from '../plan/record';
 import AreaMap from '../plan/AreaMap';
+import { unionCentre } from '../leader/unionMap';
+import { useUnionMembers } from '../leader/unionMembers';
 import { fieldsMap, useTitleFields } from '../plan/titleFields';
 import { areaM2, tapRule } from '../plan/mapTap';
 import { Sheet } from '../plan/ui';
@@ -40,6 +42,8 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
   const landId = onPolygon ? titles.data[0] : stellarTitle?.title_id;
   const count = onPolygon ? titles.data.length : (stellarTitles.data || []).length;
   const field = useFieldRecord(landId, s?.evmAddress, stellarTitle ? stellarTitle.record_hash || '' : undefined);
+  const planApi = usePlanClient();
+  const unionMembers = useUnionMembers(count === 0 ? planApi : null);   // only for the no-title map's centre
   const record = field.data?.record;
   const farm = useTitleName(landId, onPolygon, stellarTitle);
   // The title's fields (24 Oct): from the land title NFT's metadata, else the record's fields or areas.
@@ -92,7 +96,9 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
   if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched) || field.isLoading) return <Loading />;
   const map = shape.record ? <AreaMap record={shape.record} labels={shape.labels} selected={picked} onSelect={onTap}
-    fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
+    fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} />
+    // No land title yet (4 Nov): the satellite map on the union's land behind the card, as the Crop plan (28 Oct).
+    : <AreaMap record={null} center={unionCentre(unionMembers.data)} />;
   const f = picked && tf?.fields.find((y) => y.id === picked);
   if (f) {
     const m2 = areaM2(f.geometry);
