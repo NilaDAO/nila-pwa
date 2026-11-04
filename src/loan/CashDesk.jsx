@@ -13,8 +13,7 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, R } from '../shell/tokens';
-import { PayOut } from './CashOut';
-import { deskClaim } from './desk';
+import { HandOver } from './CashOut';
 import { FLAG_DRAWN, opensOf } from './MyShares';
 import { NIN } from './request';
 import PhotoCount from './PhotoCount';
@@ -194,28 +193,30 @@ const FLAG_CLOSED = 4;
 const dayOf = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
 /** Tasks → Scan her QR (executive decision 26 Oct: one QR at the office, every mode): the member's help QR starts the
- *  session and opens the member's G2, where the leader invests, repays, uses a crop share or pays out. */
+ *  session and opens the member's G2, where the leader invests, repays, uses a crop share or pays out a withdrawal. A
+ *  machine owner's signed nIN cash-out QR (NILA:N, 4 Nov) opens Hand over ₹X instead. */
 function ScanAny({ onBack }) {
   const api = usePlanClient();
   const union = useUnionMembers(api);
   const [desk, setDesk] = useState();
-  if (desk) return <PayOut onBack={onBack} initial={desk} />;
+  if (desk) return <HandOver text={desk} nameOf={(a) => (union.data || []).find((x) => x.address === a)?.label} onBack={onBack} />;
   return <StartHelp onBack={onBack} onDesk={setDesk} onStarted={(who) => {
     const m = (union.data || []).find((x) => x.address === who);
     window.location.replace(m ? `#/members/${m.route}` : '#/members');
   }} />;
 }
 
-// An old #/cash/invest|withdraw/<her> link: her G2 does these in place now.
+// An old #/cash/invest|withdraw[/<her>] link: her G2 does these in place now (#/cash/payout and its scanner are gone,
+// 4 Nov: an nIN cash-out is scanned from Tasks → Scan a member QR).
 function ToMembersFrom({ member }) {
-  useEffect(() => { window.location.replace(`#/members/${member}`); }, [member]);
+  useEffect(() => { window.location.replace(member ? `#/members/${member}` : '#/members'); }, [member]);
   return null;
 }
 
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
 // Her own actions start from her QR (executive decision 24 Oct, as Pay out cash): a task without her scans her wallet or
 // crop share QR first, then the count. From her G2 they come as #/cash/<action>/<her Stellar address>.
-const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', payout: 'payout', machine: 'machine', withdraw: 'withdraw', share: 'share', scan: 'scan' };
+const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', machine: 'machine', withdraw: 'withdraw', share: 'share', scan: 'scan' };
 const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
 const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/([GC][A-Z2-7]{55})/) || [])[1];
 
@@ -239,10 +240,8 @@ export default function CashDesk({ initial }) {
       onFound={(f) => window.location.replace(`#/loan/${f.plan}_${f.token}`)} />;
   }
   if (found) return <Scan purpose={view} onBack={toTasks} initialMember={found.who} initialToken={found.token && tokenHex(found.token)} />;
-  if (!member && view === 'withdraw') return <PayOut onBack={toTasks} />;
   if (view === 'invest' || view === 'withdraw') return <ToMembersFrom member={member} />;
   if (view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
-  if (view === 'payout') return <PayOut onBack={back} />;
   if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member || ''} />;
   if (view === 'lpscan') return <ScanLp onBack={back} />;
   // The Cash tab is the C1–C4 board (P10): the union's money only; the cash tasks are on the Tasks tab (L1).
