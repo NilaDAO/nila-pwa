@@ -26,6 +26,7 @@ import ActivePlan, { currentSeason } from './ActivePlan';
 import { shareOn } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
 import RoundButton from '../shell/RoundButton';
+import ReadAloud from './ReadAloud';
 import { RefreshIcon } from '../shell/icons';
 import HelpQr from '../loan/HelpQr';
 import StartHelp from '../loan/StartHelp';
@@ -270,6 +271,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [months, setMonths] = useState([]);
   const [farmCash, setFarmCash] = useState('');
   const [basisOpen, setBasisOpen] = useState(false);
+  const [lang, setLang] = useState('ta');   // CP9's language (4 Nov): Tamil when the plan has it
   const [removing, setRemoving] = useState(null);   // the area asked to remove (CP10 confirm)
   const [afterMake, setAfterMake] = useState('why');
   const [jobId, setJobId] = useState();
@@ -562,7 +564,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   if (at === 'why') {
     // After a new plan or a change, the cached plan is the old one until the refetch lands: show the new one only.
     const fresh = !madeId || plan?.id === madeId;
-    const text = fresh ? plan?.plan?.explain?.text || plan?.plan?.proposal_why : null;
+    // Tamil (Anand, 4 Nov): the LLM's Tamil version, shown first when there is one; English one tap away.
+    const ta = fresh ? plan?.plan?.explain?.ta?.text : null;
+    const text = ta && lang === 'ta' ? ta : fresh ? plan?.plan?.explain?.text || plan?.plan?.proposal_why : null;
     return (
       <Sheet map={map} landName={name}>
         {/* The info button opens "What this plan is based on" (21 Oct): the node's plan.basis, by code. */}
@@ -570,6 +574,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           Why this plan{fresh && plan && <InfoButton label="What this plan is based on" onClick={() => setBasisOpen(true)} />}
         </h1>
         {text ? <p style={{ lineHeight: 1.5 }}>{text}</p> : <p style={muted}>…</p>}
+        {ta && (
+          <button type="button" onClick={() => setLang((l) => (l === 'ta' ? 'en' : 'ta'))}
+            style={{ background: 'none', border: 0, padding: 0, color: C.accent, fontFamily: FONT, fontSize: 14, cursor: 'pointer' }}>
+            {lang === 'ta' ? 'In English' : 'தமிழில்'}
+          </button>
+        )}
+        {text && <ReadAloud text={text} lang={ta && lang === 'ta' ? 'ta-IN' : 'en-IN'} />}
         {basisOpen && <BasisDrawer basis={plan?.plan?.basis} onClose={() => setBasisOpen(false)} />}
         <Primary disabled={!fresh} onClick={() => setStep('plan')}>See my plan</Primary>
         {/* Renew plan (moved from CP10, executive decision 21 Oct): her draft is removed and she starts again on CP1. */}
