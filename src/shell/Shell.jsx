@@ -197,7 +197,7 @@ export default function Shell({ leader }) {
   // fields first, without the tab bar; R14 ends once her title is there (r14-title-check) → the crop plan (CP1).
   // A leader is also a member (notes leader-missing): the same gate applies to her; with a title she never sees it.
   // Until her titles are known she sees the registration ground, not a flash of the tab bar.
-  // Which screen: shell/start.js (titles loading, the start steps R9 + R10 once per wallet, a member's field points, a tab).
+  // Which screen: shell/start.js (titles loading, the start steps R9 + R10 once per wallet, a tab).
   const screen = screenToOpen({ titles: titleCount, onboarded: onboarded(s?.evmAddress), demoNew: demoNew(s?.evmAddress),
     privyNew: s?.privyNew, tab: view, arg: readArg(), leader });
   if (screen === 'titleWait') return <TitleWait titleCount={titleCount} s={s} />;
@@ -206,8 +206,7 @@ export default function Shell({ leader }) {
     const onStarted = () => { go('crop'); setStarted((n) => n + 1); };
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onTitle={onTitle} onStarted={onStarted} /></div>;
   }
-  // "Mint a new land title" on the Crop plan's no-title card (28 Oct): a member's R5–R14, full screen.
-  if (screen === 'fields') return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration fields onTitle={onTitle} /></div>;
+  // A member never gets the field-point steps (4 Nov, G15): #/crop/register falls through to her crop plan below.
 
   let body;
   if (view === 'assets') {
