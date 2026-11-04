@@ -3,7 +3,6 @@
 //  - mode 'qr': decodes any QR in view and calls onText(text) once (html5-qrcode, as before).
 //  - mode 'photo': the shutter calls onPhoto(blob) with a JPEG of the frame; busy greys it out.
 // Every scanner in the app uses this; no screen opens the camera itself.
-import { explainQr } from '../stellar/session';
 import { useEffect, useRef, useState } from 'react';
 import { C, R } from './tokens';
 import { muted } from '../plan/ui';
@@ -44,12 +43,9 @@ export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false,
     import('html5-qrcode').then(({ Html5Qrcode }) => {
       if (!live || !box.current) return;
       scanner = new Html5Qrcode(id, { verbose: false });
-      // The console says what was read (4 Nov: "is it scanning?"); the screen that gets the text says what it made of it.
-      scanner.start({ facingMode: 'environment' }, { fps: 10, aspectRatio: 1 }, (t) => {
-        console.log('[scan] QR read:', explainQr(t)); demo?.recordQr(t); onText?.(t); stop();
-      }, () => {})
-        .then(() => { running = true; console.log('[scan] camera on, looking for a QR'); if (!live) stop(); })
-        .catch((e) => { console.warn('[scan] camera did not start:', e?.message || e); if (live) setDenied(true); });
+      scanner.start({ facingMode: 'environment' }, { fps: 10, aspectRatio: 1 }, (t) => { demo?.recordQr(t); onText?.(t); stop(); }, () => {})
+        .then(() => { running = true; if (!live) stop(); })
+        .catch(() => { if (live) setDenied(true); });
     });
     return () => { live = false; stop(); };
   }, [mode, id, onText]);

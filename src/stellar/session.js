@@ -94,20 +94,6 @@ export async function makeSessionQr(cfg, account, sign, kind = 'Ed25519', polygo
 
 export const isSessionQr = (text) => (text || '').trim().toUpperCase().startsWith(PREFIX);
 
-/** For the console (4 Nov): what a scanned text is, in a few words, never the whole QR. */
-export function explainQr(text) {
-  const t = (text || '').trim();
-  const head = `${t.slice(0, 12)}… (${t.length} chars)`;
-  if (/^[GC][A-Z2-7]{55}$/.test(t)) return `plain account ${t.slice(0, 6)}…${t.slice(-4)} (a self-mode member or a leader)`;
-  if (!isSessionQr(t)) return `not a Nila help QR: ${head}`;
-  let b;
-  try { b = fromB32(t.toUpperCase().slice(PREFIX.length)); } catch { return `help QR prefix, but not base32: ${head}`; }
-  const kind = b[0];
-  if (!KINDS[kind]) return `help QR of unknown kind ${kind}: ${head}`;
-  return sizeOk(b) ? `help QR kind ${kind}, ${b.length} bytes, account ${StrKey.encodeContract(Buffer.from(b.slice(1, 33))).slice(0, 6)}…`
-    : `help QR kind ${kind} with a wrong length (${b.length} bytes): an older or newer app`;
-}
-
 /** The leader's app: { member, notAfter, entry (base64 XDR) } from a scanned session QR. The signature is checked by
  *  the member's account when start_session is sent (its key type is the account's). Throws a plain reason. */
 export function readSessionQr(text) {
