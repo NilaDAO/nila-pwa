@@ -12,7 +12,7 @@ import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
-import { usePlanClient } from '../plan/hooks';
+import { usePendingApprovals, usePlanClient } from '../plan/hooks';
 import { C, FONT, R } from '../shell/tokens';
 import { ChevronIcon, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
@@ -91,6 +91,7 @@ export default function MemberStatus({ id, go }) {
   // Her plan (what grows on each area today): one call for her plan only, not one per member.
   const planId = shares.data?.[found?.address]?.planId;
   // Self mode (5 Nov): an ID-checked member (fx_pool.id_checked) makes her crop plan in her own app; G2 offers none.
+  const pendingPlans = usePendingApprovals();
   const idChecked = useQuery({ queryKey: ['stellar', 'idChecked', found?.address], enabled: !!cfg && !!found?.address,
     staleTime: 5 * 60_000, queryFn: () => readContract(cfg, 'fx_pool', 'id_checked', [sv.address(found.address)]).catch(() => false) });
   const plan = useQuery({ queryKey: ['plan', 'byId', planId], enabled: !!api && !!planId, staleTime: 5 * 60_000,
@@ -211,6 +212,8 @@ export default function MemberStatus({ id, go }) {
   // No record yet: the title's fields, as the Assets map (28 Oct).
   const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} />
     : fields.length ? <AreaMap record={{ zones: fields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry })) }} onSelect={() => go('members')} /> : <span />;
+  const myLands = new Set([m.titleId, ...(m.lands || [])].filter((x) => x != null).map(String));
+  const waiting = (pendingPlans.data?.plans || []).find((p) => myLands.has(String(p.land_id)));
   const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>;
   return (
     <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings'), busy: refreshing,
@@ -230,7 +233,13 @@ export default function MemberStatus({ id, go }) {
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
       </div>
-      {m.recordHash && !m.shares.length && idChecked.isSuccess && !idChecked.data && (
+      {waiting && (
+        // Her plan waits for a leader's approval (L12): here as in the task list, also for a self-mode member (5 Nov).
+        <Section title="Crop plan" right="Waiting for approval">
+          <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`approvals/${waiting.id}`)}>Approve crop plan</button>
+        </Section>
+      )}
+      {!waiting && m.recordHash && !m.shares.length && idChecked.isSuccess && !idChecked.data && (
         // The member's crop plan (26 Oct): made with the member without a session; the member's QR accepts it at the end.
         <Section title="Crop plan" right={helpUntil ? `QR scanned · until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}>
           {planBtn}
