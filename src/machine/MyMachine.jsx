@@ -12,7 +12,7 @@
 // no indexer yet); photos are shown as the 8 positions, not the images; the hold switch sits here, not in
 // Settings (A11 #machine); the claim screen has no board.
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, server, sv } from '../stellar/soroban';
@@ -184,6 +184,7 @@ function Costs({ parts, acres, split }) {
 function Claim({ machine, rate, tractor, onBack }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
+  const qc = useQueryClient();
   const tx = useSorobanTx();
   const split = useUnionSplit().data;
   const [scan, setScan] = useState();
@@ -225,11 +226,21 @@ function Claim({ machine, rate, tractor, onBack }) {
         ...(scan.price && scan.tractor ? [['Uses', `${ta(unitsOf(acres, scan.price.total, scan.tractor))} tractor acres`]] : [])],
       contractName: 'machinery', fn: 'claim',
       args: [sv.address(s.stellarAddress), sv.u64(machine.id), sv.address(cfg.union), sv.bytes32(scan.token), sv.u32(scan.signed), sv.u32(centi(acres))],
-      auth: [scan.entry], invalidate: [['stellar', 'machine'], ['stellar', 'dues'], ['stellar', 'account']],
+      auth: [scan.entry], invalidate: [['stellar', 'machine'], ['stellar', 'account']],
     });
     // claim returns (prepay, pending) in nIN; a retry that found the sent call carries no result: 0 then.
     const [prepay, pending] = Array.isArray(out?.result) ? out.result.map((x) => Number(BigInt(x)) / 1e7) : [0, 0];
-    if (out) saveJob({ owner: s.stellarAddress, token: scan.token, acres, prepay, pending, ts: Math.floor(Date.now() / 1000) });
+    if (!out) return;
+    const job = { owner: s.stellarAddress, token: scan.token, acres, prepay, pending, ts: Math.floor(Date.now() / 1000) };
+    saveJob(job);
+    // "Paid to you" from the claim's own result at once, no chain read to wait for: the prepay is paid, the pending
+    // part adds to what this crop share owes her (one figure per share and owner, shown on its latest job).
+    qc.setQueryData(['stellar', 'dues', cfg?.union, s.stellarAddress], (d) => {
+      if (!d) return d;
+      const before = d.jobs.find((j) => j.token === job.token && j.pendingNow > 0)?.pendingNow || 0;
+      return { ...d, received: d.received + prepay, pending: d.pending + pending,
+        jobs: [{ ...job, pendingNow: before + pending }, ...d.jobs.map((j) => (j.token === job.token ? { ...j, pendingNow: 0 } : j))] };
+    });
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700 };
