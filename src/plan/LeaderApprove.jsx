@@ -23,6 +23,9 @@ function voucherKinds(rows) {
   return parts.length ? parts.join(' · ') : 'None';
 }
 
+// "Mulch, then green manure: wild indigo (kolinji)" → "Green manure: wild indigo (kolinji)".
+const gmName = (n) => { const t = String(n || 'Green manure').replace(/^mulch, then /i, ''); return t.charAt(0).toUpperCase() + t.slice(1); };
+
 const REASONS = ['Crops do not fit the land', 'Amounts too high', 'Wrong areas', 'Other'];
 const STELLAR_ONLY = 900000;   // demo Stellar-only titles (900043, 900050 …) have no Polygon tokenURI
 const card = { flexShrink: 0, background: C.ink, borderRadius: 24, boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px',
@@ -85,7 +88,10 @@ function L12({ plan, onDone, approvedAlready = false }) {
   const p = plan.plan;
   const seasons = p.seasons || [];
   const sum = (rows, f) => rows.reduce((a, r) => a + (f(r.finance) || 0), 0);
-  const all = seasons.flatMap((s) => s.rows);
+  // A green manure is its own crop share (4 Nov), listed in the season it grows in and counted in the totals (5 Nov).
+  const gm = (p.soil_cover || []).filter((c) => c.finance).map((c) => ({ ...c, name: gmName(c.name) }));
+  const rowsOf = (s) => [...s.rows, ...gm.filter((c) => (c.slots || [])[0] === s.slot)];
+  const all = seasons.flatMap(rowsOf);
   const mint = useMintCropShares();
   const [approved, setApproved] = useState(approvedAlready);
   // An approved plan reopened (from its task): which of her crop shares are made already.
@@ -129,14 +135,15 @@ function L12({ plan, onDone, approvedAlready = false }) {
           </Rows>
         </section>
         {seasons.map((s) => {
-          const due = s.rows.map((r) => r.finance.due).filter(Boolean).sort().pop();
+          const rows = rowsOf(s);
+          const due = rows.map((r) => r.finance.due).filter(Boolean).sort().pop();
           return (
             <section key={s.slot} aria-label={SEASON[s.slot]} style={card}>
               {/* Simplified (executive decision 21 Oct): "Season N · crops" as the title, the kinds of vouchers (or none), repay. */}
-              <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>{SEASON[s.slot]} · {[...new Set(s.rows.map((r) => r.name))].join(', ') || '—'}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>{SEASON[s.slot]} · {[...new Set(rows.map((r) => r.name))].join(', ') || '—'}</span>
               <Rows>
-                <Row top k="Vouchers" v={voucherKinds(s.rows)} />
-                <Row k="Repay" v={`${inr(sum(s.rows, (f) => f.repay))}${due ? ` · end of ${month(due)}` : ''}`} />
+                <Row top k="Vouchers" v={voucherKinds(rows)} />
+                <Row k="Repay" v={`${inr(sum(rows, (f) => f.repay))}${due ? ` · end of ${month(due)}` : ''}`} />
               </Rows>
             </section>
           );
