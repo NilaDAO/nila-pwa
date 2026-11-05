@@ -110,7 +110,8 @@ export function usePlanJob(jobId) {
 
 export function useSubmitIntake(landId) {
   const api = usePlanClient();
-  return useMutation({ mutationFn: ({ intake, trees, wells }) => api.makePlan(landId, intake, { trees, wells }) });
+  // exclude (5 Nov): the areas she left out just before (buildings, roadsides), for this plan only.
+  return useMutation({ mutationFn: ({ intake, trees, wells, exclude }) => api.makePlan(landId, intake, { trees, wells, exclude }) });
 }
 
 /** CP11 "I accept": every area of the plan (the node accepts per area). */

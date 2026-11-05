@@ -272,7 +272,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [farmCash, setFarmCash] = useState('');
   const [basisOpen, setBasisOpen] = useState(false);
   const [lang, setLang] = useState('ta');   // CP9's language (4 Nov): Tamil when the plan has it
-  const [removing, setRemoving] = useState(null);   // the area asked to remove (CP10 confirm)
+  const [removing, setRemoving] = useState(null);
+  const [leftOut, setLeftOut] = useState(() => new Set());   // areas left out before the plan is made (5 Nov)
+  const [cashGiven, setCashGiven] = useState(null);   // CP7b's answer, sent with the leave-out step   // the area asked to remove (CP10 confirm)
   const [afterMake, setAfterMake] = useState('why');
   const [jobId, setJobId] = useState();
   const [pending, setPending] = useState({});   // crops picked, not sent yet (CP10, 28 Oct)
@@ -523,15 +525,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   if (at === 'farmcash') {
     // CP7b, her farm business's money now (executive decision 21 Oct). DESIGN GAP: no board. Optional and skippable:
     // skipped = no farm_cash_now at all (the cash flow starts at ₹0; nothing assumes or mentions her farm's money).
-    const make = async (amount) => {
-      setError(undefined);
-      try {
-        const intake = { crops: [...crops], cows: COWS[cows], hard_months: months, land_role: LAND_ROLE[role] };
-        if (amount != null) intake.farm_cash_now = amount;
-        const r = await submit.mutateAsync({ intake });
-        setJobId(r.job_id); setStep('making');
-      } catch (e) { setError(e.message); }
-    };
+    // Then the areas to leave out (5 Nov), the last step before the plan is made.
+    const make = (amount) => { setError(undefined); setCashGiven(amount); setLeftOut(new Set()); setStep('leaveout'); };
     const n = Number(farmCash.replace(/[^0-9]/g, ''));
     const given = farmCash.trim() !== '' && Number.isFinite(n);
     return (
@@ -552,12 +547,40 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       </Sheet>
     );
   }
+  if (at === 'leaveout') {
+    // Leave out areas (executive decision 5 Nov; DESIGN GAP: no board): just before the plan is made, she taps the
+    // areas with buildings, a road or a path; they get no crops in this plan. Asked again at every new plan (areas
+    // change), sent with this plan only, never stored with her land; her land title keeps its acres.
+    const make = async () => {
+      setError(undefined);
+      try {
+        const intake = { crops: [...crops], cows: COWS[cows], hard_months: months, land_role: LAND_ROLE[role] };
+        if (cashGiven != null) intake.farm_cash_now = cashGiven;
+        const r = await submit.mutateAsync({ intake, exclude: [...leftOut] });
+        setJobId(r.job_id); setStep('making');
+      } catch (e) { setError(e.message); }
+    };
+    const toggle = (z) => z && setLeftOut((x) => { const y = new Set(x); if (y.has(z)) y.delete(z); else y.add(z); return y; });
+    const outLabels = Object.fromEntries(zoneOrder.map((z, i) => [z, leftOut.has(z)
+      ? { text: 'Left out', sub: `Area ${i + 1}`, colour: '#8A94A6' } : { text: `Area ${i + 1}` }]));
+    const all = zoneOrder.length > 0 && zoneOrder.every((z) => leftOut.has(z));
+    return (
+      <Sheet map={record ? <AreaMap record={record} labels={outLabels} onSelect={toggle}
+        fitBottom={Math.round(window.innerHeight / 2) + 72} /> : map} landName={name} onBack={back('farmcash')}>
+        <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Leave out areas you do not farm</h1>
+        <p style={{ ...muted, textAlign: 'center' }}>Tap an area with a house, a shed, a road or a path. It gets no crops in this plan. Tap it again to keep it.</p>
+        <p style={{ ...muted, textAlign: 'center', margin: '4px 0 0' }}>{leftOut.size ? `${leftOut.size} of ${zoneOrder.length} areas left out` : 'No areas left out'}</p>
+        {error && <p style={{ color: C.coral }}>{error}</p>}
+        <Primary disabled={submit.isPending || all} onClick={make}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
+      </Sheet>
+    );
+  }
   if (at === 'making') {
     return (
       // No farm name over the wait (26 Oct): the card's header says whose plan is made (a leader for a member: the name).
       <Sheet map={map} title={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : 'Making your crop plan'} noSettings>
         <Making label={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : undefined} jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
-          onError={(e) => { setError(e); setStep('farmcash'); }} />
+          onError={(e) => { setError(e); setStep('leaveout'); }} />
       </Sheet>
     );
   }
