@@ -303,9 +303,10 @@ function SignerBridge({ children }) {
   // makes and joins the account (L14, L4; stellar/hooks ensureMemberAccount).
   const { refetch: refetchAccount } = account;
   const deployed = !!account.data?.deployed;    // not yet: named once it is
-  const joinUnion = useCallback(async () => {
-    if (!signersReady || !cfg?.union || !stellar || !smart || smart === stellar.address || !deployed) return false;
-    const done = await setAccountUnion(cfg, stellar.address, smart, signHash, cfg.union);
+  const joinUnion = useCallback(async (picked) => {
+    const union = picked || cfg?.union;
+    if (!signersReady || !union || !stellar || !smart || smart === stellar.address || !deployed) return false;
+    const done = await setAccountUnion(cfg, stellar.address, smart, signHash, union);
     if (done) await refetchAccount();
     return done;
   }, [signersReady, cfg, stellar, smart, signHash, refetchAccount, deployed]);
@@ -315,7 +316,7 @@ function SignerBridge({ children }) {
     joining.current = smart;
     readAllItems('Init').catch(() => ({})).then((db) => {
       if (!db?.union) { joining.current = undefined; return; }      // R9 not done yet: it calls joinUnion itself
-      return joinUnion();
+      return joinUnion(db.union.stellar);
     }).catch((e) => { joining.current = undefined; console.error('[privy] union not set on the account', e); });
   }, [signersReady, account.data, smart, joinUnion]);
 

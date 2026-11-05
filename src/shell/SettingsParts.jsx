@@ -121,7 +121,8 @@ export function useUnionInfo() {
   const u = init.data?.union;
   const stored = readUnion(s?.evmAddress);
   const known = unionByPolygon(u?.address || stored?.polygon);
-  return { name: u?.name || stored?.name || known?.name, rep: u?.rep || known?.rep };
+  // stellar: the union she picked on R9 from the anchor's directory (decision 008); absent for the node's own union.
+  return { name: u?.name || stored?.name || known?.name, rep: u?.rep || known?.rep, stellar: u?.stellar || stored?.stellar };
 }
 
 /** "Your credit union": the union's Stellar address, representative and name; `extra` for the leader's identity row.
@@ -131,7 +132,7 @@ export function UnionCard({ extra }) {
   const u = useUnionInfo();
   return (
     <Card title="Your credit union">
-      <Row k="Union address" v={<CopyChip label="Copy union address" value={cfg?.union} />} />
+      <Row k="Union address" v={<CopyChip label="Copy union address" value={u.stellar || cfg?.union} />} />
       <Row k="Representative" v={u.rep || '—'} />
       <Row k="Union" v={u.name || '—'} />
       {extra}
