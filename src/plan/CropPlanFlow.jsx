@@ -302,6 +302,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const labels = useMemo(() => {
     const ss = plan?.plan?.seasons;
     if (!ss?.length) return {};
+    // Areas she left out (the step before the plan, or CP10's bin; 5 Nov) are not on the plan's map.
+    const gone = Object.entries(plan.plan.left_out_reasons || {}).filter(([, why]) => why === 'removed by her')
+      .map(([z]) => [z, { gone: true }]);
     const i = Math.min(season, ss.length - 1);
     const rows = rowsInSeason(ss, i);
     // Crops picked and not sent yet (28 Oct): the area shows the picked crop, in its colour.
@@ -323,7 +326,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
-    return out;
+    return { ...out, ...Object.fromEntries(gone) };
   }, [plan, season, checked, areaNo, pending, catalogue.data]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);

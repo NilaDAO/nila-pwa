@@ -105,6 +105,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       const rings = ringsOf(z.geometry);
       if (!rings.length) return;
       const lab = labels[z.zone_id] || { text: `Area ${i + 1}` };
+      if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const faded = !!selected && selected !== z.zone_id;
       const colour = lab.colour || '#ffffff';
       let sx = 0; let sy = 0; let k = 0;
@@ -170,6 +171,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
     areas.forEach((z, i) => {
       if (!z.geometry) return;
       const lab = labels[z.zone_id] || { text: `Area ${i + 1}` };
+      if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const faded = !!selected && selected !== z.zone_id;
       const colour = lab.colour || '#ffffff';
       const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, opacity: faded ? 0.3 : 1, fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
