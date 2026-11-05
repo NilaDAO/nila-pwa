@@ -86,16 +86,19 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
         <thead><tr style={{ color: C.muted }}><td>Season</td><td>Use it by</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
         <tbody>
           {seasons.map((s) => {
-            const cash = s.rows.reduce((a, r) => a + cost(r.finance), 0);
-            // The season's shares: their planned sowing is one of the season's rows' sowing dates.
-            const sows = new Set(s.rows.map((r) => r.sow).filter(Boolean));
+            // A green manure is counted in the season it grows in (5 Nov), as that season's crops are.
+            const gmHere = gm.filter((c) => (c.slots || [])[0] === s.slot);
+            const cash = [...s.rows, ...gmHere].reduce((a, r) => a + cost(r.finance), 0);
+            // The season's shares: their planned sowing is one of the season's rows' (or green manures') sowing dates.
+            const sows = new Set([...s.rows, ...gmHere].map((r) => r.sow).filter(Boolean));
             const by = (p.shares || []).filter((sh) => sows.has(sh.from_date) && sh.final_date).map((sh) => sh.final_date).sort().pop();
             return (
               <Fragment key={s.slot}>
               {/* A tap on the season opens its areas' crops (28 Oct, replaces Change my plan): one list per area. */}
               <tr onClick={!readOnly && onCrop ? () => setOpen(open === s.slot ? null : s.slot) : undefined} aria-expanded={open === s.slot}
                 style={{ borderTop: `1px solid ${C.raised}`, cursor: !readOnly && onCrop ? 'pointer' : 'default', background: open === s.slot ? C.raised : undefined }}>
-                <td style={{ padding: open === s.slot ? '8px 0 8px 10px' : '8px 0', borderRadius: open === s.slot ? '12px 0 0 0' : undefined }}><b>{SEASON[s.slot]}</b>{!readOnly && onCrop && <span style={{ color: C.muted }}> {open === s.slot ? '▴' : '▾'}</span>}</td>
+                <td style={{ padding: open === s.slot ? '8px 0 8px 10px' : '8px 0', borderRadius: open === s.slot ? '12px 0 0 0' : undefined }}><b>{SEASON[s.slot]}</b>{!readOnly && onCrop && <span style={{ color: C.muted }}> {open === s.slot ? '▴' : '▾'}</span>}
+                  {gmHere.length > 0 && <><br /><span style={muted}>with green manure, repaid with the next crop</span></>}</td>
                 <td>{by ? new Date(by).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</td>
                 <td style={{ textAlign: 'right', paddingRight: open === s.slot ? 10 : 0, borderRadius: open === s.slot ? '0 12px 0 0' : undefined }}>{inr(cash)}</td>
               </tr>
@@ -117,16 +120,6 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
               <td style={{ padding: '8px 0' }} colSpan={3}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount} points off the rate ({rate}%) · trees registered</span></td>
             </tr>
           )}
-          {gm.length > 0 && (() => {
-            const by = (p.shares || []).filter((sh) => sh.green_manure && sh.final_date).map((sh) => sh.final_date).sort().pop();
-            return (
-              <tr style={{ borderTop: `1px solid ${C.raised}` }}>
-                <td style={{ padding: '8px 0' }}><b>Green manure</b><br /><span style={muted}>repaid with the next crop</span></td>
-                <td>{by ? new Date(by).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{inr(gm.reduce((a, c) => a + cost(c.finance), 0))}</td>
-              </tr>
-            );
-          })()}
           <tr style={{ borderTop: `1px solid ${C.raised}`, fontWeight: 700 }}>
             <td style={{ padding: '8px 0' }} colSpan={2}>Total cost</td>
             <td style={{ textAlign: 'right' }}>{inr(total.cash)}</td>
