@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ConfirmCard, Text, useUnionInfo } from '../shell/SettingsParts';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
-import { sv } from '../stellar/soroban';
+import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
 import { C, FONT, R } from '../shell/tokens';
@@ -90,6 +90,9 @@ export default function MemberStatus({ id, go }) {
   const shares = useUnionShares(api, { fresh: found?.key });
   // Her plan (what grows on each area today): one call for her plan only, not one per member.
   const planId = shares.data?.[found?.address]?.planId;
+  // Self mode (5 Nov): an ID-checked member (fx_pool.id_checked) makes her crop plan in her own app; G2 offers none.
+  const idChecked = useQuery({ queryKey: ['stellar', 'idChecked', found?.address], enabled: !!cfg && !!found?.address,
+    staleTime: 5 * 60_000, queryFn: () => readContract(cfg, 'fx_pool', 'id_checked', [sv.address(found.address)]).catch(() => false) });
   const plan = useQuery({ queryKey: ['plan', 'byId', planId], enabled: !!api && !!planId, staleTime: 5 * 60_000,
     queryFn: () => api.plan(planId) });
   // The refresh icon (27 Oct): the members list, this member's crop shares on-chain and the plan again; it turns meanwhile.
@@ -227,7 +230,7 @@ export default function MemberStatus({ id, go }) {
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
       </div>
-      {m.recordHash && !m.shares.length && (
+      {m.recordHash && !m.shares.length && idChecked.isSuccess && !idChecked.data && (
         // The member's crop plan (26 Oct): made with the member without a session; the member's QR accepts it at the end.
         <Section title="Crop plan" right={helpUntil ? `QR scanned · until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}>
           {planBtn}
