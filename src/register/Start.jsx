@@ -15,8 +15,9 @@ import { signUp, initAuth, respondToAuthChallenge, getUserAttributes } from '../
 import { announceAuthChange } from '../wallet/session';
 import { DEMO_COGNITO, DEMO_STATIC } from '../utils/demoMode';
 import RegFrame, { Bouncing, btnDisabled, btnPrimary, btnSecondary, cardTitle } from './RegFrame';
+import { STELLAR_CHAIN_ATTR, chainFromCognito } from '../wallet/chainAttr';
 
-const NEW_CHAIN = 'stellar';
+const NEW_CHAIN = STELLAR_CHAIN_ATTR;
 // Demo stack only (utils/demoMode.js): R2 sends nothing; R3 takes the dummy code 000000, and only then the
 // wallet is made (the demo's Cognito stand-in, never AWS). Unset in every real build.
 const DEMO = DEMO_COGNITO;                               // utils/demoMode.js: never in a real build
@@ -37,7 +38,7 @@ async function storeLocal({ phone, salt, attrs, refresh, access }) {
   for (const id of ['withdrawal', 'refin', 'backup', 'farmname']) await createItem({ id, value: undefined }, 'Init');
   await createItem({ id: 'thumb', value: undefined }, 'FarmData');
   await createItem({ id: 'invest', value: undefined }, 'FarmData');
-  await createItem({ id: 'chain', value: get('custom:chain') }, 'Init');
+  await createItem({ id: 'chain', value: chainFromCognito(get('custom:chain')) }, 'Init');
   await createItem({ id: 'address', value: get('custom:address') }, 'Init');
   // Demo only (DEMO_COGNITO: flag + chain 31337 + localhost): the stand-in marks a pooled wallet handed to a new
   // number as new, so the new-user path (R5) runs without making a Privy user (AfterCode reads it).

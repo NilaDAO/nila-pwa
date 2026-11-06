@@ -29,6 +29,7 @@ import Spinner from './components/UI/spinner.js';
 // 🔌 Hooks & context updaters 
 import { readAllItems, setDBitem, deleteItem } from './utils/db';
 import { getUserAttributes } from './utils/cognito_helpers.js'
+import { chainFromCognito } from './wallet/chainAttr';
 import { useErc20Balances, useGrantInfo, useLandTitle } from './hooks/useLoadETH.ts';
 import { useUnionGenericFunds } from './hooks/useLoadFunds.ts';
 import { useDataContext } from './utils/NavigationContext.js';
@@ -272,7 +273,7 @@ function App({installAvailable}) {
       if (!initDb.address){
         const attributes = await getUserAttributes(db['token'])
         address = attributes.UserAttributes.find(attribute => attribute.Name === 'custom:address')?.Value;
-        chain = attributes.UserAttributes.find(attribute => attribute.Name === 'custom:chain')?.Value;
+        chain = chainFromCognito(attributes.UserAttributes.find(attribute => attribute.Name === 'custom:chain')?.Value);
       }
       // set the props to load the wallet properties
       setChain(merged.chain || chain || process.env.REACT_APP_CHAIN_ID || '137');
