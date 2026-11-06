@@ -5,7 +5,8 @@
 //  - Voucher prices: a slider, one card per machine type (A1's MessageSlider); a tap shows the price's build-up (driver,
 //    diesel, maintenance, insurance, depreciation, margin: machinery's RateParts, on-chain). A signer proposes a change
 //    part by part; a card with an open proposal comes first, with Sign. Recently set: a list that opens on a tap. Every open
-//    proposal shows "n of 3 signed" and a Sign button for a signer who has not signed. The third signature sends it.
+//    proposal shows "n of 2 signed" and a Sign button for a signer who has not signed. The second signature sends it
+//    (2-of-3 since 6 Nov, executive decision; was 3-of-5).
 // PersonalName: G2's full name and phone for a member's address (the leaders' reference, not the farm name).
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
@@ -23,6 +24,9 @@ import { addressFromQr } from '../leader/unionMembers';
 import { useBookActions, useContactBook, useMyKey, useProposalActions, useProposals, useUnionSigners } from './hooks';
 
 const NIN = 10_000_000;
+// The union account: 3 signers, thresholds 2 (executive decision 6 Nov, was 3-of-5; node: union_sign.UNION_SIGNERS).
+const UNION_SIGNERS = 3;
+const UNION_THRESHOLD = 2;
 const inr = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
 const field = { height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14,
@@ -104,7 +108,7 @@ function SignerRow({ s, me, book, onLock, note, replacing, leaving, onLeave }) {
 /** A key with its name from the contact book, else short. */
 const nameOf = (book, key) => book?.names.get(key)?.name || short(key);
 
-/** The waiting change of signers: who leaves, who comes in, n of 3 signed, Sign / Withdraw. */
+/** The waiting change of signers: who leaves, who comes in, n of 2 signed, Sign / Withdraw. */
 function SignersChange({ p, signers, book, me, act }) {
   const isSigner = !!signers?.signers.some((s) => s.key === me);
   return (
@@ -112,8 +116,8 @@ function SignersChange({ p, signers, book, me, act }) {
       <span style={{ fontSize: 14, fontWeight: 700 }}>{p.args.remove ? 'Change of signers' : 'New signer'}</span>
       {p.args.remove && <Row k="Leaves" v={<span style={{ color: C.muted, textDecoration: 'line-through' }}>{nameOf(book, p.args.remove)}</span>} />}
       <Row k="Comes in" v={nameOf(book, p.args.add)} />
-      {p.args.activates && <Text>With this fifth signer the union account needs 3 of 5 from now on.</Text>}
-      <Text>{p.status === 'sending' ? 'Sending…' : `${p.signed.length} of ${signers?.high || 3} signed`}{signers?.members < 3 ? ' · the union account signs it (your operator)' : ''}
+      {p.args.activates && <Text>{`With this third signer the union account needs ${UNION_THRESHOLD} of ${UNION_SIGNERS} from now on.`}</Text>}
+      <Text>{p.status === 'sending' ? 'Sending…' : `${p.signed.length} of ${signers?.high || UNION_THRESHOLD} signed`}{signers?.members < UNION_SIGNERS ? ' · the union account signs it (your operator)' : ''}
         {p.error && p.status === 'open' ? ` · last try failed: ${p.error.slice(0, 80)}` : ''}</Text>
       {p.status === 'open' && isSigner && (
         <div style={{ display: 'flex', gap: 8 }}>
@@ -175,17 +179,17 @@ export function SignersCard() {
   const d = signers.data && { ...signers.data, list, members: list.length };
   const isSigner = list.some((s) => s.key === me);
   const waiting = (proposals.data || []).find((p) => p.fn === 'set_signers' && (p.status === 'open' || p.status === 'sending'));
-  const canAdd = list.length < 5 && (isSigner || list.length === 0);   // a new union: any leader adds the first
+  const canAdd = list.length < UNION_SIGNERS && (isSigner || list.length === 0);   // a new union: any leader adds the first
   return (
     <Card title="Union signers">
       {signers.isLoading && <Text>…</Text>}
       <div style={{ display: 'flex', flexDirection: 'column', margin: '8px 0' }}>
         {list.map((s) => <SignerRow key={s.key} s={s} me={me} book={book.data} note={note} onLock={() => setNote(!note)}
           replacing={changing === 'replace'} leaving={leave === s.key} onLeave={() => setLeave(leave === s.key ? null : s.key)} />)}
-        {/* Until there are five (2 Nov): one Add a signer row; the fifth makes the union account 3 of 5. */}
-        {d && list.length < 5 && !waiting && (
+        {/* Until there are three (2 Nov; 6 Nov 2-of-3): one Add a signer row; the third makes the union account 2 of 3. */}
+        {d && list.length < UNION_SIGNERS && !waiting && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44, fontSize: 14 }}>
-            <span style={{ color: C.muted }}>Add a signer ({list.length} of 5)</span>
+            <span style={{ color: C.muted }}>Add a signer ({list.length} of {UNION_SIGNERS})</span>
             {canAdd && <AddToggle on={changing === 'add'} label="Add a signer" onToggle={() => (changing === 'add' ? stop() : setChanging('add'))} />}
           </div>
         )}
@@ -193,7 +197,7 @@ export function SignersCard() {
       {waiting && <SignersChange p={waiting} signers={d} book={book.data} me={me} act={act} />}
       {changing && !waiting && <ChangeSigners book={book.data} act={act} leave={leave} addOnly={changing === 'add'} isSigner={isSigner} onDone={stop} />}
       <Err e={signers.error || act.sign.error || act.withdraw.error} />
-      {!changing && !waiting && list.length === 5 && <CardButton onClick={isSigner ? () => setChanging('replace') : undefined}>Change signers</CardButton>}
+      {!changing && !waiting && list.length === UNION_SIGNERS && <CardButton onClick={isSigner ? () => setChanging('replace') : undefined}>Change signers</CardButton>}
       {note && <NoteBar>{NOTE}</NoteBar>}
     </Card>
   );
@@ -268,7 +272,7 @@ const rupees = (p, k) => Math.round(Number(p?.[k] || 0) / NIN);    // a proposal
 const sumOf = (parts) => PARTS.reduce((t, [k]) => t + Number(parts?.[k] || 0), 0) / NIN;
 
 /** One machine type's card in the slider: the machinery voucher icon, its price an acre and its build-up (six parts).
- *  With an open proposal the card comes first and shows the new price, the parts that change (old grey, new white), "n of 3 signed" and Sign. A signer
+ *  With an open proposal the card comes first and shows the new price, the parts that change (old grey, new white), "n of 2 signed" and Sign. A signer
  *  without an open proposal may propose a change: the six parts become fields (whole rupees an acre). */
 function MachineSlide({ r, p, signers, me, act }) {
   const [draft, setDraft] = useState(null);
@@ -317,7 +321,7 @@ function MachineSlide({ r, p, signers, me, act }) {
       <span style={{ fontSize: 12, color: C.muted, textAlign: 'right' }}>All prices per acre</span>
       {p && (
         <>
-          <Text>{p.status === 'sending' ? 'Sending…' : `${p.signed.length} of ${signers?.threshold || 3} signed`}
+          <Text>{p.status === 'sending' ? 'Sending…' : `${p.signed.length} of ${signers?.threshold || UNION_THRESHOLD} signed`}
             {p.error && p.status === 'open' ? ` · last try failed: ${p.error.slice(0, 80)}` : ''}</Text>
           {p.status === 'open' && isSigner && (
             <div style={{ display: 'flex', gap: 8 }}>
@@ -380,7 +384,7 @@ function TypePicker({ value, options, onChange }) {
 }
 
 /** The slider's last card (2 Nov): a signer adds a machine type from the standard range (TYPE_NAMES) with its six
- *  parts; its first price adds the type for the union (machinery.set_rate, 3 of 5). At most 16 types a union. */
+ *  parts; its first price adds the type for the union (machinery.set_rate, 2 of 3). At most 16 types a union. */
 function AddMachineSlide({ priced, pending, signers, me, act }) {
   const free = TYPES.filter((t) => !priced.includes(t) && !pending.includes(t));
   const [type, setType] = useState('');
@@ -467,7 +471,7 @@ export function VoucherPrices() {
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 14px 0' }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Voucher prices</h2>
-        <Text>The price of an acre per machine, built from its parts. A change needs {signers.data?.threshold || 3} signers of the union.</Text>
+        <Text>The price of an acre per machine, built from its parts. A change needs {signers.data?.threshold || UNION_THRESHOLD} signers of the union.</Text>
         {rates.isLoading && <Text>…</Text>}
                 <Err e={proposals.error} />
       </div>

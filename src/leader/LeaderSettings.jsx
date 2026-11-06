@@ -1,6 +1,6 @@
 // LS — leader settings (board LeaderSettings; no assisted mode). Your credit union (with the leader's identity
 // check), union signers, contact book, voucher prices (machinery.rate per type; a signer proposes,
-// 3 of 5 sign in the app), liquidity provider, notifications, account and reset — the parts shared with A11 in
+// 2 of 3 sign in the app), liquidity provider, notifications, account and reset — the parts shared with A11 in
 // shell/SettingsParts.
 // The identity-check row opens K1 #leader (22 Oct; checked = fx_pool.id_checked).
 // Union signers, contact book and voucher prices (1 Nov): src/union/UnionCards.jsx. Still disabled: "Change signers"
