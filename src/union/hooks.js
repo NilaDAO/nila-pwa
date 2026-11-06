@@ -1,4 +1,4 @@
-// The union's signers, its 3-of-5 calls and the leaders' contact book (executive decision 1 Nov), from the node
+// The union's signers, its 2-of-3 calls (3-of-5 until 6 Nov) and the leaders' contact book (executive decision 1 Nov), from the node
 // (nila-sensing app/routers/union_book.py). Every call is signed like /plan; the contact book is opened on the phone.
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -97,7 +97,7 @@ export function useBookActions() {
   return { useKey, setName };
 }
 
-// ---------- the union's 3-of-5 calls ----------
+// ---------- the union's 2-of-3 calls ----------
 
 export function useProposals() {
   const call = useCall();
@@ -113,7 +113,7 @@ export function useProposalActions() {
     qc.invalidateQueries({ queryKey: ['union', 'proposals'] });
     qc.invalidateQueries({ queryKey: ['stellar', 'rates'] });
   };
-  // The proposer signs straight away: one of the three signatures.
+  // The proposer signs straight away: one of the two signatures.
   const signOne = async (p) => {
     const sig = await s.signHash(fromHex(p.hash));
     return call('POST', `/stellar/union/proposals/${p.id}/sign`, { signature: b64(sig) });
