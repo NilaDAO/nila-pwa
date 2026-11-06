@@ -7,6 +7,7 @@ import { ethers } from 'ethers';
 import { buildAccount, buildNinTrustline, getAccount, getStellarConfig, linkMessage, submitAccount, submitNinTrustline } from './api';
 import { qk } from './keys';
 import { invokeContract, isDeployed, readContract, sv } from './soroban';
+import { isDue, parseMove, waitsFor } from './move';
 
 export function useStellarConfig() {
   return useQuery({ queryKey: qk.stellar.config(), queryFn: getStellarConfig, staleTime: Infinity, retry: 2 });
@@ -125,6 +126,21 @@ export async function readAccountUnion(cfg, account) {
   return (await readContract(cfg, account, 'union', [])) || null;
 }
 
+/** Her account's waiting move (`account.pending_move()`), or null (review 5 Nov; stellar/move). */
+export async function readPendingMove(cfg, account) {
+  return parseMove(await readContract(cfg, account, 'pending_move', []).catch(() => null));
+}
+
+/** Applies her account's waiting move once its wait is over (`account.finish_move()`): no signature, `sender` only pays
+ *  the fee from its own XLM. Silent: her own start, or the leader's app at her help QR. Returns true when sent. */
+export async function finishMoveIfDue(cfg, sender, account) {
+  if (!account || account === sender) return false;
+  if (!isDue(await readPendingMove(cfg, account))) return false;
+  if (!(await hasFeeXlm(cfg, sender))) return false;
+  await invokeContract({ cfg, source: sender, contractName: account, fn: 'finish_move', args: [] });
+  return true;
+}
+
 /** Names her union on her own account (`account.set_union(union)`, signed by the account itself: her Privy key on a
  *  smartphone). Done once the union is known: at registration (R9), at a recovery that restores the union, or at the
  *  next start of a moved or prepared member. A no-op when the account already names this union. The account refuses
@@ -134,6 +150,9 @@ export async function readAccountUnion(cfg, account) {
 export async function setAccountUnion(cfg, sender, account, signHash, union) {
   if (!account || account === sender || !union) return false;
   if ((await readAccountUnion(cfg, account).catch(() => null)) === union) return false;
+  // A change of union waits (review 5 Nov): asked once, then finished after the wait, never asked again meanwhile.
+  const waiting = await readPendingMove(cfg, account);
+  if (waitsFor(waiting, union)) return finishMoveIfDue(cfg, sender, account);
   if (!(await hasFeeXlm(cfg, sender))) return false;
   await invokeContract({ cfg, source: sender, account, signHash, contractName: account, fn: 'set_union', args: [sv.address(union)] });
   return true;
@@ -160,6 +179,10 @@ export async function ensureKeypadAccount(cfg, s, m) {
     await invokeContract({ cfg, source: s.senderAddress, signHash: s.signHash, contractName: m.account, fn: 'set_union',
       args: [sv.address(want)], auth: [unionEntry(m.account, want, su, kind)] });
     union = want;
+  } else if (union) {
+    // Her account already names a union: a move she asked for earlier is applied here once its wait is over (review
+    // 5 Nov). No signature of hers; the leader's XLM pays, as for set_union.
+    if (await finishMoveIfDue(cfg, s.senderAddress, m.account).catch(() => false)) union = await readAccountUnion(cfg, m.account).catch(() => union);
   }
   return { deployed: true, union };
 }

@@ -26,7 +26,7 @@ import { reportPrivyWallet } from './keyApi';
 import { KeyMigration, PasskeyLogin } from './KeyScreens';
 import { useLegacyBalances, useOpenPolygonLoans } from '../move/hooks';
 import { readAllItems } from '../utils/db';
-import { setAccountUnion, useAccount, useSetupAccount, useStellarConfig } from '../stellar/hooks';
+import { finishMoveIfDue, setAccountUnion, useAccount, useSetupAccount, useStellarConfig } from '../stellar/hooks';
 import { accountOf, deployerOf } from '../stellar/account';
 import RecoverLink, { linkCode, recoveredAccount, recoveryWaits } from './RecoverLink';
 
@@ -319,6 +319,17 @@ function SignerBridge({ children }) {
       return joinUnion(db.union.stellar);
     }).catch((e) => { joining.current = undefined; console.error('[privy] union not set on the account', e); });
   }, [signersReady, account.data, smart, joinUnion]);
+
+  // A move of her account to another union waits the union's recovery wait (review 5 Nov); at her first start after it
+  // her phone applies it (`finish_move`, no signature, her XLM pays; without XLM the leader's app does it at her help QR).
+  const moving = useRef();
+  useEffect(() => {
+    if (!signersReady || !account.data?.deployed || !account.data.union || !stellar || !smart || moving.current === smart) return;
+    moving.current = smart;
+    finishMoveIfDue(cfg, stellar.address, smart)
+      .then((done) => done && refetchAccount())
+      .catch((e) => console.error('[privy] move not finished', e));
+  }, [signersReady, account.data, stellar, smart, cfg, refetchAccount]);
 
   const value = useMemo(() => ({
     ready: signersReady,
