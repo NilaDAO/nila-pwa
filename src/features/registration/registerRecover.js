@@ -10,6 +10,7 @@ import { announceAuthChange } from '../../wallet/session'
 import { InformationCircleIcon, WifiIcon } from '@heroicons/react/24/outline'
 import MemberUnion from '../../components/Forms/memberUnion';
 import { setMetaThemeColor } from '../../utils/metaTheme';
+import { chainFromCognito } from '../../wallet/chainAttr';
 
 const RegisterRecover = ( { setBootStage }) => {
     const [ page, setPage ] = useState(0)  // TEMP 0 
@@ -130,7 +131,7 @@ const RegisterRecover = ( { setBootStage }) => {
         const address = data.find(attribute => attribute.Name === 'custom:address');
         const chain = data.find(attribute => attribute.Name === 'custom:chain');
         setAddress(address['Value'])
-        await createItem({ id: 'chain', value: chain['Value']},'Init'); // chain
+        await createItem({ id: 'chain', value: chainFromCognito(chain['Value'])},'Init'); // chain
         await createItem({ id: 'address', value: address['Value'] },'Init'); // address
 
         console.log('data stored in new AppDB')

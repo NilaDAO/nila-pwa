@@ -89,6 +89,7 @@ function Settings({ handleOpenForm, LAND }) {
     const getChainName = () => {
         const chain = db['chain'];
         if (chain) {
+            if (chain === 'stellar') return 'Stellar';
             if (chain === '137')    return 'Polygon';
             if (chain === '80002')  return 'Polygon Amoy';
             if (chain === '44787')  return 'Celo';
