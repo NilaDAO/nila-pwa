@@ -7,6 +7,10 @@
 import { signAccountEntries, signatureVal } from './account';
 import { Account, Address, Asset, BASE_FEE, Contract, Operation, TransactionBuilder, authorizeEntry, nativeToScVal, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
 
+// Inclusion fee bid per operation, in stroops (7 Nov): mainnet Soroban calls need 200 or more at busy times, and a bid
+// of 100 (the SDK's BASE_FEE) sits unconfirmed until it expires. The network charges the going rate, not the whole bid.
+export const FEE = process.env.REACT_APP_STELLAR_FEE || '10000';
+
 // The static demo build (src/demo/shim.js): her own calls return a canned success after a moment (N1 → N2), nothing is sent.
 const DEMO_STATIC = process.env.REACT_APP_DEMO_STATIC === '1';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -176,7 +180,7 @@ export async function invokeContract({ cfg, source, account, signHash, contractN
   // (prepare) then checks them all with the given ones.
   const given = (auth || []).map((a) => xdr.SorobanAuthorizationEntry.fromXDR(a, 'base64'));
   // A copy each time: building advances the account's sequence.
-  const build = (op) => new TransactionBuilder(new Account(acct.accountId(), acct.sequenceNumber()), { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
+  const build = (op) => new TransactionBuilder(new Account(acct.accountId(), acct.sequenceNumber()), { fee: FEE, networkPassphrase: cfg.passphrase })
     .addOperation(op).setTimeout(300).build();
   let op = new Contract(id).call(fn, ...args);
   // `account`: her smart account (26 Oct), which the call names; `source` (her Privy key's plain account) sends it.
@@ -239,7 +243,7 @@ export async function signAuthFor({ cfg, source, signer, signHash, contractName,
   const id = contractId(cfg, contractName);
   if (!id) throw new Error(`no ${contractName} contract in the node config`);
   const acct = await s.getAccount(source);
-  const tx = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase: cfg.passphrase })
+  const tx = new TransactionBuilder(acct, { fee: FEE, networkPassphrase: cfg.passphrase })
     .addOperation(new Contract(id).call(fn, ...args)).setTimeout(60).build();
   const sim = await s.simulateTransaction(tx);
   if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
