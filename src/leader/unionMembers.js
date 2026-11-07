@@ -47,10 +47,20 @@ const addTitlePlace = (m, t, tf) => {
   shapes.forEach((geometry, i) => m.places.push({ id: `land-${t.title_id}${i ? `-${i}` : ''}`, geometry }));
 };
 
+// Joined on this phone (7 Nov): the leader's scan sent her set_union; the node reads a "no" again only after 10
+// minutes, so the scan's own result hides G2's "Not joined yet" and the Tasks row at once.
+const JOINED = 'nila.joinedHere';
+export function joinedHere(address) {
+  try { return !!address && (JSON.parse(localStorage.getItem(JOINED) || '[]')).includes(address); } catch { return false; }
+}
+export function markJoined(address) {
+  try { const l = JSON.parse(localStorage.getItem(JOINED) || '[]'); if (!l.includes(address)) localStorage.setItem(JOINED, JSON.stringify([...l, address].slice(-200))); } catch { /* private */ }
+}
+
 // The list as it was last seen, kept on the phone per account and union (22 Oct): G1 shows it at once on the next open
 // and refreshes it in the background. Only the list fields are kept (no field records), so it stays small.
 const cacheKey = (acct, union) => `nila.members.${union}.${acct}`;
-const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label'];
+const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label', 'joined'];
 function readKept(acct, union) {
   try { const v = JSON.parse(localStorage.getItem(cacheKey(acct, union)) || 'null'); return Array.isArray(v) ? v : undefined; } catch { return undefined; }
 }
@@ -105,6 +115,8 @@ export function useUnionMembers(api) {
           const m = { key: r.key || r.address, address: r.address || '', name: r.name || '', phone: r.phone || '', lands: new Set(), places: [], fields: [],
             note: r.note || '', job: r.job, nextHarvest: r.next_harvest || null, shareCounts: r.shares || {},
             seq: r.seq || 0, shareList: r.share_list || [],
+            // Her account names the union (7 Nov): false for a moved member until the leader scans her help QR; undefined unknown.
+            joined: r.joined === false && joinedHere(r.address) ? true : r.joined,
             loans: (r.loans || []).map((l) => ({ token: String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'), left: Number(l.left ?? l.cash ?? 0), overdue: !!l.overdue, due: Number(l.due || 0) })) };
           await Promise.all((r.titles || []).map(async (t) => {
             m.lands.add(t.title_id);

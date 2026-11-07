@@ -23,7 +23,7 @@ import { rowsInSeason } from '../plan/PlanResult';
 import { SEASON } from '../loan/MyShares';
 import { SkeletonRows } from '../shell/Skeleton';
 import { inr } from '../plan/ui';
-import { useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
+import { markJoined, useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
 import { useNilaSigner } from '../wallet/signer';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
@@ -231,6 +231,15 @@ export default function MemberStatus({ id, go }) {
         {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
         {/* The leaders' contact book (1 Nov): the member's full name, beside the public farm name in the header. */}
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
+        {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
+            scan of her help QR sends her signed set_union (StartHelp), which also turns on her recovery. */}
+        {m.joined === false && (
+          <Section title="Account" right="Not joined yet">
+            <span style={{ color: C.muted }}>Her account was moved. Scan her help QR once to join it to the union.</span>
+            <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }}
+              onClick={() => setScanning({ what: 'Join the union', then: () => { markJoined(m.address); refetchMembers(); } })}>Scan her help QR</button>
+          </Section>
+        )}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
       </div>
       {waiting && (
