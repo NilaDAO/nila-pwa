@@ -17,6 +17,10 @@ import MoveFlow, { LeaderStart } from './MoveFlow';
 import Shell from '../shell/Shell';
 import RegFrame from '../register/RegFrame';
 import { BootLoading } from '../register/Boot';
+import { movedToStellar } from './chainRefresh';
+import { getUserAttributes } from '../utils/cognito_helpers';
+import { freshAccessToken } from '../utils/getEncryptedKey';
+import { readAllItems, setDBitem } from '../utils/db';
 import { appToOpen } from '../shell/start';
 
 // This start only, per wallet: 'old' (today's app) or 'new' (Stellar, leaders).
@@ -38,6 +42,20 @@ export default function StellarGate({ children }) {
   const addr = db?.address;
   const [mode, setMode] = useState(() => readMode(addr));
   useEffect(() => { setMode(readMode(addr)); }, [addr]);
+  // Moved by the operator while logged in here (custom:chain set to Stellar after this phone stored '137'): read
+  // Cognito once at this start and, if it now says Stellar, store it and start again in the Stellar app.
+  useEffect(() => {
+    let live = true;
+    movedToStellar(db?.chain, async () => (await getUserAttributes(await freshAccessToken(await readAllItems('Init'))))
+      .UserAttributes)
+      .then(async (chain) => {
+        if (!live || !chain) return;
+        await setDBitem('chain', chain, 'Init');
+        window.location.reload();
+      })
+      .catch((e) => console.warn('[move] chain not re-read', e));
+    return () => { live = false; };
+  }, [db?.chain]);
   const choose = (m) => { try { sessionStorage.setItem(modeKey(addr), m); } catch { /* private mode */ } setMode(m); };
 
   // The leader flag: shell/leader.js (the roles contract; the Init record only while it has not answered). A yes the
