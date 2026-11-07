@@ -113,7 +113,7 @@ const START = [
 
 // To do icons by task kind (board LeaderBorders): accent for a new item to act on, coral for an overdue one.
 const KIND = { approve: [CropIcon, 'new'], share: [RupeeIcon, 'new'], collect: [RepayIcon], payback: [CalendarIcon],
-  settle: [BanknoteIcon], lp: [BanknoteIcon], border: [PinIcon] };
+  settle: [BanknoteIcon], lp: [BanknoteIcon], border: [PinIcon], join: [UserPlusIcon] };
 
 export default function LeaderTasks({ go }) {
   const api = usePlanClient();
@@ -123,6 +123,7 @@ export default function LeaderTasks({ go }) {
   const borders = useBorderJobs().data || [];
   const keypads = useKeypadMembers().data || [];
   const lp = useLpStatus().data;
+  const members = useUnionMembers(api);
   const ownReady = (useMyShares().data || []).some((x) => x.ready);
   const [q, setQ] = useState('');
   const now = Date.now() / 1000;
@@ -142,6 +143,13 @@ export default function LeaderTasks({ go }) {
   // with or without the member's phone set up.
   for (const m of keypads.filter((x) => x.phone_type === 'keypad' && !x.job)) {
     items.unshift({ key: `border-pts-${m.id}`, title: 'Take field points', who: m.name, to: `tasks/member/${m.id}/points`, ready: true });
+  }
+  // Moved members whose account does not name the union yet (7 Nov): one row; one member opens her G2, more the list.
+  const notJoined = (members.data || []).filter((m) => m.joined === false);
+  if (notJoined.length) {
+    items.push({ key: 'join', title: notJoined.length === 1 ? 'Moved member to join' : `Moved members to join: ${notJoined.length}`,
+      who: notJoined.length === 1 ? `${notJoined[0].label} · scan her help QR` : 'Scan each one\'s help QR on her G2',
+      to: notJoined.length === 1 ? `members/${notJoined[0].route}` : 'members' });
   }
   const shown = items.filter((t) => !q || `${t.title} ${t.who}`.toLowerCase().includes(q.toLowerCase()));
   const row = (t, i) => {
