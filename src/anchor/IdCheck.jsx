@@ -70,13 +70,17 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
   }, [k1.data?.status, lpNow]); // eslint-disable-line react-hooks/exhaustive-deps
   // A leader accepted (22 Oct): no result screen; once her flag is on-chain she goes straight back to her assets,
   // where the USDC row is now open.
+  // Her identity already checked as an LP (7 Nov): the leader's check is the same flag, so straight back too.
   useEffect(() => {
-    if (leader && k1.data?.status === 'ACCEPTED' && lpNow) onAccepted?.();
+    if (leader && lpNow && (k1.data?.status === 'ACCEPTED' || k1.data?.status === 'NEEDS_INFO')) onAccepted?.();
   }, [leader, k1.data?.status, lpNow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const status = k1.data?.status;
   const needs = status === 'NEEDS_INFO' && Object.values(k1.data.provided_fields || {}).some((f) => f.error);
   const asked = needs ? Object.keys(k1.data.fields || {}) : FIELDS.map(([k]) => k);
+  // Identity already checked (7 Nov: a leader, then "I am also an LP"): no form again; an empty request makes the
+  // anchor reuse her checked details, and the trust adds her as an LP.
+  const reuse = !leader && status === 'NEEDS_INFO' && !needs && !!lp.data?.idChecked;
   const [fieldErrors, setFieldErrors] = useState({});
   const send = async () => {
     const errs = Object.fromEntries(FIELDS.filter(([k]) => asked.includes(k)).map(([k]) => [k, fieldError(k, vals[k])]).filter(([, e]) => e));
@@ -120,6 +124,18 @@ export default function IdCheck({ kind = 'lp', onBack, onOffers, onAccepted }) {
           if ((await lp.refetch()).data?.trustline) onOffers();
         }}>{trust.isPending ? 'Opening your USDC account…' : 'See the offers on Assets'}</Primary>
         {!lp.data?.lp && <p style={muted}>Waiting for the network…</p>}
+      </>
+    );
+  } else if (reuse) {
+    body = (
+      <>
+        <p style={muted}>Your identity is already checked. The Nila trust adds you as an LP.</p>
+        {error && <p style={{ color: C.coral }}>{error}</p>}
+        <Primary disabled={busy} onClick={async () => {
+          setBusy(true); setError(undefined);
+          try { await putCustomer(info.data, await getToken(), {}, null, kind); await k1.refetch(); } catch (e) { setError(e.message); }
+          setBusy(false);
+        }}>{busy ? '…' : 'Become an LP'}</Primary>
       </>
     );
   } else if (status === 'REJECTED') {
