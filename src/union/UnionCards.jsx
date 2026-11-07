@@ -17,7 +17,7 @@ import { ChevronIcon, LockIcon, MachineryTile } from '../shell/icons';
 import Segmented from '../shell/Segmented';
 import { NoteBar } from '../loan/AssetParts';
 import { Card, CardButton, ConfirmCard, Row, Text, btn } from '../shell/SettingsParts';
-import { MAX_UNION_TYPES, PARTS, TYPES, VOUCHER_CATEGORIES, useRates, typeName } from '../machine/hooks';
+import { MAX_UNION_TYPES, PARTS, TYPES, VOUCHER_CATEGORIES, useMachines, useRates, typeName } from '../machine/hooks';
 import { useStellarConfig } from '../stellar/hooks';
 import { keyQr, loadKey, parseKeyQr } from './book';
 import { addressFromQr } from '../leader/unionMembers';
@@ -462,7 +462,11 @@ export function VoucherPrices() {
   // A proposal for a type the union has no price for yet: a new machine (its card leads, like any proposal).
   const pendingNew = [...new Set(all.filter((p) => (p.status === 'open' || p.status === 'sending')
     && !(rates.data || []).some((r) => r.type === Number(p.args.machine_type))).map((p) => Number(p.args.machine_type)))];
-  const list = [...(rates.data || [])].sort((x, y) => {
+  // Settings shows only the priced types with a registered machine in the union (7 Nov), or with a proposal open;
+  // registering a machine (RegisterMachine) still lists every priced type, and Add a voucher every standard one.
+  const machines = useMachines();
+  const registered = machines.data ? new Set(machines.data.map((m) => m.machine_type)) : null;
+  const list = [...(rates.data || [])].filter((r) => !registered || registered.has(r.type) || openOf(r.type)).sort((x, y) => {
     const px = openOf(x.type); const py = openOf(y.type);
     if (!!px !== !!py) return px ? -1 : 1;
     return px ? py.created_at - px.created_at : x.type - y.type;
