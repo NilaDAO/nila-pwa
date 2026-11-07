@@ -40,7 +40,13 @@ export default function PhotoCount({ name, target, verb, onDone, onBack, desk, l
   const total = list.reduce((a, r) => a + r.denomination * r.count, 0);
   const remove = (d) => setGroups((g) => g.map((x) => ({ ...x, items: x.items.filter((it) => it.denomination !== d) })).filter((x) => x.items.length));
   const left = target ? target - total : 0;
-  const tooMuch = limit && !!desk && total > desk.room;
+  // The office keeps at most the target (7 Nov): an invest takes its amount and a repay what is owed; the rest of the
+  // count goes back as change, so only what stays is checked against the room.
+  const kept = target ? Math.min(total, target) : total;
+  const tooMuch = limit && !!desk && kept > desk.room;
+  // Invest with an amount (7 Nov): the whole amount must be counted; more is change.
+  const investShort = verb === 'Invest' && target > 0 && total < target;
+  const change = verb === 'Invest' && target > 0 ? Math.max(0, total - target) : 0;
   return (
     <div style={{ fontFamily: FONT, color: C.text, padding: '16px 8px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -67,10 +73,10 @@ export default function PhotoCount({ name, target, verb, onDone, onBack, desk, l
         {state === 'counting' && <p style={{ ...muted, textAlign: 'center' }}>Counting…</p>}
         {state === 'error' && <p style={{ ...muted, color: C.coral, textAlign: 'center' }}>No cash detected — try again</p>}
         {target > 0 && total > 0 && (
-          <p style={muted}>{left <= 0 ? '✓ Full amount counted.' : `ⓘ ${inr(left)} still to count.${verb === 'Repay' ? ' The member can also repay part now.' : ''}`}</p>
+          <p style={muted}>{left <= 0 ? `✓ Full amount counted.${change > 0 ? ` Hand back ${inr(change)} in change.` : ''}` : `ⓘ ${inr(left)} still to count.${verb === 'Repay' ? ' The member can also repay part now.' : ''}`}</p>
         )}
-        {tooMuch && <p style={{ ...muted, color: C.coral }}>{overRoom(desk, total)}</p>}
-        <Primary disabled={!total || (limit && !desk) || tooMuch} onClick={() => onDone({ total, s3Keys: groups.map((g) => g.s3Key).filter(Boolean) })}>{verb} {inr(total)}</Primary>
+        {tooMuch && <p style={{ ...muted, color: C.coral }}>{overRoom(desk, kept)}</p>}
+        <Primary disabled={!total || (limit && !desk) || tooMuch || investShort} onClick={() => onDone({ total, s3Keys: groups.map((g) => g.s3Key).filter(Boolean) })}>{verb} {inr(verb === 'Invest' && target > 0 ? target : total)}</Primary>
       </div>
     </div>
   );
