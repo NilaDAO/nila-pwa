@@ -26,19 +26,23 @@ import { overRoom, useDeskRoom } from './deskRoom';
 import { Secondary } from './AssetParts';
 import { loanOf, owedOf } from './owed';
 import StartHelp from './StartHelp';
+import { investSplit } from './investSplit';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
 
 /** Records counted cash for her (fx_pool.cash_scan_mint; the leader signs, the node pays the fee). The receipt is the
- *  stored photos of this count (one scan per receipt, ScanUsed on reuse). Returns false when no photo was stored. */
-export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys, token }) {
+ *  stored photos of this count (one scan per receipt, ScanUsed on reuse). Returns false when no photo was stored.
+ *  Invest (7 Nov): `amount` is what she invests (Bring cash to the office); the count may be more, and the leader
+ *  hands the difference back in change, shown on the result until closed. */
+export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys, token, amount }) {
   if (!s3Keys?.length) return false;
-  const amt = BigInt(Math.round(total)) * NIN;
+  const { invest, change: investChange } = purpose === 'invest' ? investSplit(total, amount) : { invest: total, change: 0 };
+  const amt = BigInt(Math.round(invest)) * NIN;
   const scanHash = await sha(`${s3Keys.join('|')}|${who}|${purpose}|${amt}`);
   // A repay counted above what is owed (24 Oct): the contract takes what is owed and burns the rest, so the leader
   // hands the difference back in cash; read fresh so the change is right to the rupee.
-  let change = 0;
+  let change = investChange;
   if (purpose === 'repay' && token) {
     const [loan, vb] = await Promise.all([
       readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(token)]).then(loanOf).catch(() => null),
@@ -50,8 +54,9 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
     }
   }
   await tx.run({
-    label: purpose === 'invest' ? `Invest ${inr(total)}` : `Repay ${inr(total)}`,
-    rows: [...(change > 0 ? [['Hand back', `${inr(change)} in change`], ['Counted', inr(total)], ['Repaid', inr(total - change)]] : [['Amount', inr(total)]]),
+    label: purpose === 'invest' ? `Invest ${inr(invest)}` : `Repay ${inr(total)}`,
+    rows: [...(change > 0 ? [['Hand back', `${inr(change)} in change`], ['Counted', inr(total)], [purpose === 'invest' ? 'Invested' : 'Repaid', inr(total - change)]]
+      : [['Amount', inr(invest)]]),
       ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
     hold: change > 0,
     contractName: 'fx_pool', fn: 'cash_scan_mint',
@@ -130,9 +135,10 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
   const sel = loans.data?.find((l) => l.token === token);
   const who = purpose === 'repay' ? sel?.loan?.borrower : member.trim();
   const record = async ({ total, s3Keys }) => {
-    setAmount(total);
-    // Without stored photos there is no unique scan, so nothing is recorded.
-    if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose, who, total, s3Keys, token: sel?.token }))) setNoPhotos(true);
+    // Without stored photos there is no unique scan, so nothing is recorded. Invest (7 Nov): the amount set here is
+    // invested, the rest of the count is handed back as change.
+    if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose, who, total, s3Keys, token: sel?.token,
+      amount: purpose === 'invest' ? amount : undefined }))) setNoPhotos(true);
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   if (counting) {

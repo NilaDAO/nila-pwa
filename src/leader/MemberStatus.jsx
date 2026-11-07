@@ -27,7 +27,8 @@ import { markJoined, useLoanDues, useUnionMembers, useUnionShares } from './unio
 import { useNilaSigner } from '../wallet/signer';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
-import { useDeskRoom } from '../loan/deskRoom';
+import { overRoom, useDeskRoom } from '../loan/deskRoom';
+import { Stepper } from '../loan/AssetParts';
 import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
 import { PersonalName } from '../union/UnionCards';
@@ -126,6 +127,7 @@ export default function MemberStatus({ id, go }) {
   const [act, setAct] = useState();          // 'invest': the row shows the count choice
   const [step, setStep] = useState();        // 'count' (C6)
   const [noPhotos, setNoPhotos] = useState(false);
+  const [bring, setBring] = useState(0);     // Invest (7 Nov): Bring cash to the office, the amount she invests
   const [scanning, setScanning] = useState(false);
   const [helpError, setHelpError] = useState();
   const helpUntil = useSessionUntil(m?.address);
@@ -159,10 +161,11 @@ export default function MemberStatus({ id, go }) {
     );
   }
   if (step === 'count') {
-    return <PhotoCount name={`Invest · ${m.label}`} target={0} verb="Invest" desk={desk.data}
+    // Invest (7 Nov): the amount set under Bring cash to the office is invested; the rest of the count is change.
+    return <PhotoCount name={`Invest · ${m.label}`} target={bring} verb="Invest" desk={desk.data}
       onBack={() => setStep()} onDone={async (c) => {
         setStep();
-        if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose: 'invest', who: m.address, total: c.total, s3Keys: c.s3Keys }))) setNoPhotos(true);
+        if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose: 'invest', who: m.address, total: c.total, s3Keys: c.s3Keys, amount: bring }))) setNoPhotos(true);
       }} />;
   }
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); setStep(); members.refetch(); }} onRetry={() => tx.retry()} />;
@@ -283,13 +286,19 @@ export default function MemberStatus({ id, go }) {
                 onClick={withdrawing ? withQr('Pay out the withdrawal', payOut) : withQr('Withdraw', () => setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" style={btn()} onClick={() => setStep('count')}>Photo count</button>
-              <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
-            </div>
+            <>
+              {/* Invest (7 Nov): the amount first, as on her A7 Invest; the count then needs at least this much. */}
+              <span style={{ color: C.muted }}>Bring cash to the office</span>
+              <Stepper value={bring} set={setBring} min={0} unit="₹" label="Rupees to invest" />
+              {desk.data && bring > desk.data.room && <span style={{ color: C.coral }}>{overRoom(desk.data, bring)}</span>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" style={btn(bring >= 1)} disabled={bring < 1 || (desk.data && bring > desk.data.room)} onClick={() => setStep('count')}>Photo count</button>
+                <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
+              </div>
+            </>
           )}
           {act && (
-            <button type="button" onClick={() => setAct()} style={{ alignSelf: 'center', border: 0, background: 'transparent', color: C.muted,
+            <button type="button" onClick={() => { setAct(); setBring(0); }} style={{ alignSelf: 'center', border: 0, background: 'transparent', color: C.muted,
               fontFamily: FONT, fontSize: 14, cursor: 'pointer', padding: 4 }}>
               Cancel
             </button>
