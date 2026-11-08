@@ -8,7 +8,9 @@ export function useTitleCount(evm, stellarAddress) {
   const legacy = useLegacyBalances(evm);
   const st = useStellarTitleCount(stellarAddress);
   // A failed read counts as none (a new wallet has none; the mint refuses a second title anyway).
-  const polygon = legacy.data ? legacy.data.titles : legacy.isError ? 0 : undefined;
+  // No Polygon wallet in this session (7 Nov: a moved member signed in with Privy only): the Polygon read never
+  // starts, so it counts as none and her Stellar titles decide; waiting for it left her on the loader for good.
+  const polygon = !evm ? 0 : legacy.data ? legacy.data.titles : legacy.isError ? 0 : undefined;
   const stellar = !stellarAddress ? 0 : st.data != null ? st.data : st.isError ? 0 : undefined;
   const count = polygon === undefined || stellar === undefined ? undefined : Math.max(polygon, stellar);
   return { count, polygon, stellar, loading: count === undefined, legacy };
