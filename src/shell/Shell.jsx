@@ -138,7 +138,9 @@ function TitleWait({ titleCount, s }) {
       evm: !!s?.evmAddress, stellarAddress: !!s?.stellarAddress,
     });
   }, [late]); // eslint-disable-line react-hooks/exhaustive-deps
-  return late ? <RegFrame><p style={{ margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>Check your internet and open the app again.</p></RegFrame>
+  // Names the step that stalled (8 Nov), as the console line above.
+  const what = titleCount.stellar === undefined ? 'your land title' : 'your land title on Polygon';
+  return late ? <RegFrame><p style={{ margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>Still waiting for: {what}. Check your internet and open the app again.</p></RegFrame>
     : <BootLoading />;
 }
 

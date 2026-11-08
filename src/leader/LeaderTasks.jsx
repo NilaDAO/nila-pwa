@@ -8,7 +8,8 @@
 // (L1 "Check field borders" → L2a–L4) from the node's border jobs (O16). P8: Add a member (L14, O17).
 import { useState } from 'react';
 import { usePlanClient } from '../plan/hooks';
-import { useLpStatus } from '../anchor/hooks';
+import { LpOwnRows } from '../anchor/LpOffers';
+import { useNilaSigner } from '../wallet/signer';
 import { useUnionOffers } from '../anchor/hooks';
 import { useBorderJobs } from '../border/hooks';
 import { useKeypadMembers } from '../keypad/hooks';
@@ -122,7 +123,8 @@ export default function LeaderTasks({ go }) {
   const offers = useUnionOffers().data || [];
   const borders = useBorderJobs().data || [];
   const keypads = useKeypadMembers().data || [];
-  const lp = useLpStatus().data;
+  const me = useNilaSigner()?.stellarAddress;
+  const lpMine = offers.some((o) => o.state === 1 && o.lp === me);
   const members = useUnionMembers(api);
   const ownReady = (useMyShares().data || []).some((x) => x.ready);
   const [q, setQ] = useState('');
@@ -174,8 +176,9 @@ export default function LeaderTasks({ go }) {
           task is the LP's cash offers; her crop plan and shares are on the Crop plan and Assets tabs. */}
       <ListSection title="Your own">
         <ReadyShareRows go={go} />
-        {lp?.lp && lp?.trustline && <ListRow first={!ownReady} icon={BanknoteIcon} title="Cash offers" sub="As an LP" onClick={() => go('offers')} />}
-        {!ownReady && !(lp?.lp && lp?.trustline) && <li style={{ color: C.muted, padding: '12px 0' }}>Nothing of your own to do.</li>}
+        {/* As an LP (8 Nov): her accepted offer's code, for another leader to scan (the offers are cards on A1). */}
+        <LpOwnRows go={go} first={!ownReady} sub="Show your code to another leader" />
+        {!ownReady && !lpMine && <li style={{ color: C.muted, padding: '12px 0' }}>Nothing of your own to do.</li>}
       </ListSection>
       <h2 style={{ margin: '8px 0 -8px 14px', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Start a task</h2>
       {START.map(([group, rows]) => (

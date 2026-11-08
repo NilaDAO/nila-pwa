@@ -141,7 +141,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const card = stage ? { background: 'transparent', boxShadow: 'none', padding: 0, borderRadius: 0 } : {};
   // The LP offers come first in the slider (25 Oct): an LP may be on the way; then her machine, the union's cards, hers.
   // An LP's own cards (31 Oct): accept an offer on its card, then the same card shows the QR; first in the slider.
-  const mySlides = useLpSlides({ on: !leader && !!lp?.lp });
+  // A leader may be an LP too (8 Nov): any accepted LP sees the offers it can answer (another leader scans its code).
+  const mySlides = useLpSlides({ on: !!lp?.lp });
   const lpSlides = [...mySlides, ...leaderSlides.filter((el) => String(el.key).startsWith('lp-'))];
   const slides = [...lpSlides, ...leaderSlides.filter((el) => !lpSlides.includes(el)), ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans, onRepayQr: (t) => onShare(`${t}/qr`),
     index: juniorIndex.data, onWithdrawal: onInvested, leader: !!leader })];

@@ -32,7 +32,8 @@ function Holding() {
   const [late, setLate] = useState(false);
   useEffect(() => { const t = setTimeout(() => setLate(true), 20_000); return () => clearTimeout(t); }, []);
   // On the registration ground, so R3 → R5 stays one flow. DESIGN GAP: the late line has no board.
-  return late ? <RegFrame><p style={{ margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>Check your internet and open the app again.</p></RegFrame>
+  // Names the step that stalled (8 Nov): the same words on three loaders hid which one it was.
+  return late ? <RegFrame><p style={{ margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>Still waiting for: your wallet. Check your internet and open the app again.</p></RegFrame>
     : <BootLoading />;
 }
 
