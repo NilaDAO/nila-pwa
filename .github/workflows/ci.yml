@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps   # as the local installs: @privy-io/react-auth peers (@solana/kit) conflict
       - name: Build (no production settings, no demo flags)
         run: npx react-app-rewired build
         env:
@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps   # as the local installs: @privy-io/react-auth peers (@solana/kit) conflict
       - run: npx react-app-rewired test --watchAll=false
         env:
           CI: 'true'
