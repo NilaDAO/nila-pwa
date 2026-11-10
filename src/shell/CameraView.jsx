@@ -8,9 +8,9 @@ import { C, R } from './tokens';
 import { muted } from '../plan/ui';
 
 let seq = 0;
-// Demo builds only (src/demo/shim.js): record mode keeps each QR read; the static build has no camera and offers
-// the recorded QR, or a grey stand-in photo, through one button. Dropped from real builds (literal flags).
-const demo = process.env.REACT_APP_DEMO_RECORD === '1' || process.env.REACT_APP_DEMO_STATIC === '1' ? require('../demo/shim') : null;
+// The static demo build only (src/demo/shim.js): it has no camera and offers the recorded QR, or a grey stand-in
+// photo, through one button. Dropped from real builds (a literal flag).
+const demo = process.env.REACT_APP_DEMO_STATIC === '1' ? require('../demo/shim') : null;
 const STATIC = process.env.REACT_APP_DEMO_STATIC === '1';
 const demoPhoto = () => new Promise((r) => {
   const c = document.createElement('canvas'); c.width = 640; c.height = 480;
@@ -43,7 +43,7 @@ export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false,
     import('html5-qrcode').then(({ Html5Qrcode }) => {
       if (!live || !box.current) return;
       scanner = new Html5Qrcode(id, { verbose: false });
-      scanner.start({ facingMode: 'environment' }, { fps: 10, aspectRatio: 1 }, (t) => { demo?.recordQr(t); onText?.(t); stop(); }, () => {})
+      scanner.start({ facingMode: 'environment' }, { fps: 10, aspectRatio: 1 }, (t) => { onText?.(t); stop(); }, () => {})
         .then(() => { running = true; if (!live) stop(); })
         .catch(() => { if (live) setDenied(true); });
     });

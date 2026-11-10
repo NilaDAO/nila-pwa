@@ -35,7 +35,6 @@ module.exports = (config, env) => {
       // a literal, so webpack drops the Privy imports when it is empty (wallet/WalletRoot.jsx)
       'process.env.REACT_APP_PRIVY_APP_ID': JSON.stringify(process.env.REACT_APP_PRIVY_APP_ID || ''),
       // demo builds only (src/demo): literals, so a real build carries none of the shim
-      'process.env.REACT_APP_DEMO_RECORD': JSON.stringify(process.env.REACT_APP_DEMO_RECORD || ''),
       'process.env.REACT_APP_DEMO_STATIC': JSON.stringify(process.env.REACT_APP_DEMO_STATIC || ''),
     })
   );
