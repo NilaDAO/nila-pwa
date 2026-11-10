@@ -1,14 +1,14 @@
 import { SignUpCommand, ConfirmSignUpCommand,UpdateUserAttributesCommand,RespondToAuthChallengeCommand,GetUserCommand,ForgotPasswordCommand,ConfirmForgotPasswordCommand,InitiateAuthCommand,AdminUpdateUserAttributesCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
-import { DEMO_COGNITO } from './demoMode';
+import { DEMO_STATIC } from './demoMode';
 
 const ClientId = process.env.REACT_APP_COGNITO_CLIENTID
 
-// Demo stack only (utils/demoMode.js: the flag, chain 31337 and a localhost page): the same calls go to the demo
-// server's Cognito stand-in on this origin (fixed code, wallets made on the fork), never to AWS.
+// The static demo build only (src/demo/shim.js answers these calls in the browser). The local demo stack's
+// stand-in is reached outside the app (nila-integrations scripts/demo/serve.mjs redirects the Cognito calls).
 
 // Initialize AWS Cognito
-const client = new CognitoIdentityProviderClient(DEMO_COGNITO ? {
+const client = new CognitoIdentityProviderClient(DEMO_STATIC ? {
     region: 'ap-south-1',
     endpoint: `${window.location.origin}/__demo/cognito`,
     credentials: { accessKeyId: 'demo', secretAccessKey: 'demo' },

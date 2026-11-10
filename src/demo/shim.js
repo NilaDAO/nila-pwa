@@ -1,25 +1,21 @@
-// Demo only: one fetch-level shim for the static demo build (executive decision 23 Oct). Never in a real build:
-// src/demo/install.js loads it only when REACT_APP_DEMO_RECORD or REACT_APP_DEMO_STATIC is '1' (both literals at
-// build time, config-overrides.js, so webpack drops this module otherwise).
+// The static demo build only (REACT_APP_DEMO_STATIC=1; executive decision 23 Oct). Never in a real build:
+// src/demo/install.js loads it only for that build-time literal (config-overrides.js), so webpack drops it otherwise.
 //
-// Record (REACT_APP_DEMO_RECORD=1, the local demo stack): every call to the node, the Soroban RPC, Horizon and the
-// Polygon RPC goes through as usual, and {who, key, status, ct, body} is posted to /__demo/record on the app's own
-// origin (nila-integrations scripts/demo/serve.mjs appends it to .demo/recordings/pwa-<port>.jsonl).
-// Static (REACT_APP_DEMO_STATIC=1): the same calls are answered from /demo-fixtures.json (built from the recordings
-// by nila-integrations scripts/demo/static-fixtures.mjs). A miss logs `[demo-static] miss <key>` and answers neutrally
+// Every call to the node, the Soroban RPC, Horizon and the Polygon RPC is answered from /demo-fixtures.json, built by
+// nila-integrations scripts/demo/static-fixtures.mjs from the local demo stack's recordings (recorded outside the app,
+// scripts/demo/serve.mjs, with the same keys as below). A miss logs `[demo-static] miss <key>` and answers neutrally
 // (node GET 404, node POST {}, Soroban/Polygon a JSON-RPC error, getLedgerEntries/getEvents empty). Writes never get
 // here: soroban.js invokeContract and plan/mint.js send return a canned success in static mode. The Cognito calls
 // (/__demo/cognito) are answered here too, for the demo numbers in the fixtures, code 000000.
 //
-// Keys (stable across sessions): node `node <METHOD> <path> <body>` with signatures, timestamps, nonces and tx XDR
-// dropped from the body (a body over 4 KB, e.g. photos, is left out); Soroban `sim <contract>.<fn>(<args>)` decoded
-// from the simulated tx, `ledger <keys>`, `events <filters>`, `stellar <method> [<hash>]`; Polygon `eth_call <to> <data>`,
-// else `<method> <params>`; Horizon and other GETs by URL. Per user: `who` = her Polygon address (from her Cognito
-// login); a key not recorded for her falls back to the last answer recorded for anyone.
+// Keys (stable across sessions; the recorder in nila-integrations serve.mjs makes the same): node
+// `node <METHOD> <path> <body>` with signatures, timestamps, nonces and tx XDR dropped from the body (a body over 4 KB,
+// e.g. photos, is left out); Soroban `sim <contract>.<fn>(<args>)` decoded from the simulated tx, `ledger <keys>`,
+// `events <filters>`, `stellar <method> [<hash>]`; Polygon `eth_call <to> <data>`, else `<method> <params>`; Horizon
+// and other GETs by URL. Per user: `who` = her Polygon address (from her Cognito login); a key not recorded for her
+// falls back to the last answer recorded for anyone.
 import AES from 'crypto-js/aes';
 
-const RECORD = process.env.REACT_APP_DEMO_RECORD === '1';
-const STATIC = process.env.REACT_APP_DEMO_STATIC === '1';
 const API = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/$/, '');
 const realFetch = window.fetch.bind(window);
 const WHO = 'nila.demo.who';
@@ -83,27 +79,9 @@ async function classify(url, init) {
   return null;
 }
 
-// ── record ──
-const send = (rows) => realFetch('/__demo/record', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Nila-Demo': '1' },
-  body: JSON.stringify(rows) }).catch(() => {});
-
-async function record(c, res) {
-  const ct = res.headers.get('content-type') || 'application/json';
-  if (!/json|text/.test(ct)) return;                     // images and other binaries are not recorded
-  const text = await res.clone().text().catch(() => null);
-  if (text == null) return;
-  if (c.kind !== 'rpc') { send([{ who: who(), key: c.keys[0], status: res.status, ct, body: text }]); return; }
-  let out; try { out = JSON.parse(text); } catch { return; }
-  const byId = new Map((Array.isArray(out) ? out : [out]).map((r) => [r.id, r]));
-  send(c.list.map((m, i) => { const r = byId.get(m.id) || {}; return { who: who(), key: c.keys[i], rpc: 'error' in r ? { error: r.error } : { result: r.result } }; }));
-}
-
-/** Demo QR texts (shell/CameraView): recorded per screen, offered again in the static build. */
-export function recordQr(text) { if (RECORD) send([{ who: who(), key: `qr ${location.pathname}${location.hash}`, status: 200, ct: 'text/plain', body: text }]); }
-
 // ── static ──
 let fx = {};
-const loaded = STATIC ? realFetch('/demo-fixtures.json').then((r) => r.json()).then((j) => { fx = j; }).catch((e) => console.error('[demo-static] no fixtures', e)) : null;
+const loaded = realFetch('/demo-fixtures.json').then((r) => r.json()).then((j) => { fx = j; }).catch((e) => console.error('[demo-static] no fixtures', e));
 const find = (key) => fx[who()]?.[key] ?? fx['*']?.[key];
 const miss = (key) => { console.warn(`[demo-static] miss ${key}`); };
 const reply = (body, status = 200, ct = 'application/json') => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'content-type': ct } });
@@ -221,20 +199,14 @@ window.fetch = async function demoFetch(input, init = {}) {
     let b = {}; try { b = JSON.parse(merged.body || '{}'); } catch { /* empty */ }
     const h = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
     const op = String(h.get('x-amz-target') || '').split('.').pop();
-    if (STATIC) return cognito(op, b);
-    const res = await realFetch(input, init);
-    if (op === 'GetUser') res.clone().json().then((j) => setWho(j.UserAttributes?.find((a) => a.Name === 'custom:address')?.Value)).catch(() => {});
-    return res;
+    return cognito(op, b);
   }
   let c = null;
   try { c = await classify(url, merged); } catch { c = null; }
   if (!c) return realFetch(input, init);
-  if (STATIC) return (await answer(c, init)) || realFetch(input, init);
-  const res = await realFetch(input, init);
-  record(c, res).catch(() => {});
-  return res;
+  return (await answer(c, init)) || realFetch(input, init);
 };
 
 // The static demo runs in a phone's browser tab too (no install step), as the app's own allowWeb switch does.
-if (STATIC) { try { localStorage.setItem('allowWeb', '1'); } catch { /* not kept */ } }
-console.log(`[demo] ${STATIC ? 'static: answers from /demo-fixtures.json' : 'record: calls are recorded to /__demo/record'}`);
+try { localStorage.setItem('allowWeb', '1'); } catch { /* not kept */ }
+console.log('[demo] static: answers from /demo-fixtures.json');
