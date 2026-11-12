@@ -20,10 +20,11 @@ export function seasonLabel(s, i) {
   return `Season ${i + 1} · ${from} to ${MON[b.getMonth()]} ${b.getFullYear()}`;
 }
 
-/** Her plan year: October of the first season to September a year on. */
-export function yearLabel(seasons) {
-  const y = new Date(seasons?.[0]?.start || Date.now()).getFullYear();
-  return `year plan, Oct ${y} to Sep ${y + 1}`;
+/** The plan year a date falls in: October to September, named by the year it starts in. */
+export const planYear = (d) => { const t = new Date(d || Date.now()); return t.getMonth() >= 9 ? t.getFullYear() : t.getFullYear() - 1; };
+/** Her plan year on the bar (12 Nov: just the years): "2026–27". */
+export function yearLabel(seasons, y = planYear(seasons?.[0]?.start)) {
+  return `${y}–${String(y + 1).slice(2)}`;
 }
 
 /** A row's areas: areas with the same crop in a season are one row (executive decision 21 Oct), `zones` lists them. */
@@ -86,6 +87,66 @@ export function SlideBar({ label, onPrev, onNext, prevLabel, nextLabel }) {
 
 const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear() - y0) * 12 + t.getMonth() - 9 + (t.getDate() - 1) / 31; };
 
+/** One area's year as bars on one lane (12 Nov): crops follow each other, so one lane holds them all, the crop's name in
+ *  its bar. Crops in their colour; soil covers hatched; a crop she picked and has not sent yet in its colour.
+ *  → [{ key, slot, s0, s1, name, fill, ink, editable, row }] for plan year y0 (months 0–12 from October). */
+export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readOnly } = {}) {
+  const at = monthsFrom(y0);
+  const clamp = (a, b) => { const s0 = Math.max(0, Math.min(12, at(a))); return [s0, Math.max(s0 + 0.3, Math.min(12, at(b)))]; };
+  const out = [];
+  const taken = new Set();
+  for (const se of plan.plan.seasons || []) {
+    for (const r of se.rows.filter((x) => zonesOf(x).includes(zone))) {
+      if (at(r.harvest) <= 0 || at(r.sow) >= 12) continue;
+      const [s0, s1] = clamp(r.sow, r.harvest);
+      const pick = picked[se.slot] && cropOf(picked[se.slot]);
+      const colour = (pick && pick.colour) || r.colour || C.muted;
+      taken.add(se.slot);
+      out.push({ key: `${se.slot}-${r.crop}`, slot: se.slot, s0, s1, name: pick ? pick.name : r.name, fill: colour,
+        ink: lightBg(colour) ? C.ink : C.text, editable: !readOnly, row: { ...r, slot: se.slot } });
+    }
+  }
+  for (const c of (plan.plan.soil_cover || []).filter((x) => x.zone === zone)) {
+    const from = c.mulch_first || !c.sow ? c.from : c.sow;
+    if (at(c.turn_in || c.until) <= 0 || at(from) >= 12) continue;
+    const [s0, s1] = clamp(from, c.turn_in || c.until);
+    const slot = (c.slots || [])[0];
+    const short = c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/ \(.*\)$/, '');
+    const pick = slot && !taken.has(slot) && picked[slot] && cropOf(picked[slot]);
+    const label = pick ? pick.name : c.kind === 'bare' ? 'Bare' : c.kind === 'mulch' ? 'Mulch' : short.charAt(0).toUpperCase() + short.slice(1);
+    const fill = pick ? pick.colour || C.muted : c.kind === 'bare' ? `repeating-linear-gradient(45deg, ${C.coral} 0 3px, transparent 3px 6px)`
+      : `repeating-linear-gradient(45deg, ${c.colour || '#7FB069'} 0 3px, rgba(127,176,105,0.25) 3px 6px)`;
+    // A soil cover is advice (21 Oct): a crop may be picked in its season instead (28 Oct).
+    out.push({ key: `soil-${c.from}`, slot, s0, s1, name: label, fill, ink: C.text, soil: true, cover: c,
+      editable: !readOnly && !!slot && !taken.has(slot), row: { slot } });
+  }
+  return out.sort((a, b) => a.s0 - b.s0);
+}
+
+/** One lane: the bars with their names inside. onBar(item): a bar tapped (its crops open); open: the open bar's key. */
+export function Lane({ items, height = 40, onBar, open }) {
+  return (
+    <div style={{ position: 'relative', height }}>
+      {items.map((it) => {
+        const style = { position: 'absolute', left: `${(it.s0 / 12) * 100}%`, width: `calc(${((it.s1 - it.s0) / 12) * 100}% - 2px)`, top: 0, bottom: 0,
+          borderRadius: 6, background: it.fill, color: it.ink, border: open === it.key ? `2px solid ${C.text}` : 0, padding: '0 6px', boxSizing: 'border-box',
+          display: 'flex', alignItems: 'center', fontFamily: FONT, fontSize: 12, fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap',
+          textShadow: it.soil ? '0 0 3px #000' : undefined };
+        const text = <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>;
+        return onBar && it.editable
+          ? <button key={it.key} type="button" aria-label={`Change ${it.name}`} aria-expanded={open === it.key} onClick={() => onBar(it)} style={{ ...style, cursor: 'pointer' }}>{text}</button>
+          : <span key={it.key} title={it.name} style={style}>{text}</span>;
+      })}
+    </div>
+  );
+}
+
+export const MonthAxis = ({ inset = 0 }) => (
+  <div aria-hidden="true" style={{ display: 'flex', marginLeft: inset, fontSize: 12, lineHeight: '16px', color: C.muted }}>
+    {AXIS.map((m, i) => <span key={i} style={{ flex: 1, textAlign: 'center' }}>{m}</span>)}
+  </div>
+);
+
 /** The area card (an area picked): her year as bars, sales, Back and Accept Area N. */
 // Ink on a light crop colour, white on a dark one (black gram's grey, Cumbu Napier's green).
 const lightBg = (hex) => {
@@ -125,148 +186,119 @@ export function CropSelect({ label, crops, current, currentName, disabled, onPic
 
 /** crops: the catalogue's crops for the season rows' list; onCrop(row, cropKey): that crop instead on this area in that
  *  row's season; changing: a change is being sent. */
-export function AreaCard({ plan, zone, name, record, area, accepted, total, done, onBack, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, picked = {}, onUpdate, acceptLabel = 'Accept the plan' }) {
-  // picked (28 Oct): crops chosen on this area's rows, not sent yet (slot → crop key); the accept button then reads
-  // Update crop plan and sends them all (onUpdate).
+export function AreaCard({ plan, zone, name, area, accepted, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, picked = {}, onUpdate, acceptLabel = 'Accept the plan', y0, total }) {
+  // picked (28 Oct): crops chosen on this area's rows, not sent yet (slot → crop key); the button then reads Update
+  // crop plan and sends them all (onUpdate).
+  // Simplified (12 Nov): one lane with the crops' names in their bars, one money line, the soil covers as one line each
+  // (ⓘ for the long text); no Back (the header ← goes back), no split / merge (not built).
   const changed = Object.keys(picked).length > 0;
   const cropOf = (key) => (crops || []).find((c) => c.key === key);
-  const [open, setOpen] = useState(null);   // the season row whose crop list is open
+  const [open, setOpen] = useState(null);   // the bar whose crop list is open
+  const [why, setWhy] = useState(null);     // the soil cover whose long text is open
   const seasons = plan.plan.seasons || [];
-  // A row merged with other areas (same crop that season) counts here by this area's share of its acres.
+  const year = y0 ?? planYear(seasons[0]?.start);
   const own = area?.area_m2 ? area.area_m2 / 4046.86 : null;
-  const rows = seasons.flatMap((s) => s.rows.filter((r) => zonesOf(r).includes(zone)).map((r) => {
-    if (zonesOf(r).length < 2 || !own || !r.acres) return { ...r, slot: s.slot };
-    const k = own / r.acres;
-    return { ...r, slot: s.slot, acres: own, kg: Math.round((r.kg || 0) * k), value: Math.round((r.value || 0) * k) };
-  }));
-  const y0 = new Date(seasons[0]?.start || Date.now()).getFullYear();
-  const at = monthsFrom(y0);
-  const acres = rows[0]?.acres ?? (area?.area_m2 ? area.area_m2 / 4046.86 : 0);
-  const fields = fieldsIn(record, area);
-  const sales = rows.reduce((a, r) => a + (r.value || 0), 0);
-  const fodder = rows.some((r) => !r.value && !r.off_catalogue);
-  const soil = (plan.plan.soil_cover || []).filter((c) => c.zone === zone);
+  // A row merged with other areas (same crop that season) counts here by this area's share of its acres.
+  const share = (r) => (zonesOf(r).length < 2 || !own || !r.acres ? 1 : own / r.acres);
+  const rows = seasons.flatMap((se) => se.rows.filter((r) => zonesOf(r).includes(zone)).map((r) => ({ ...r, k: share(r) })));
+  const acres = own ?? rows[0]?.acres ?? 0;
+  const sales = Math.round(rows.reduce((a, r) => a + (r.value || 0) * r.k, 0));
+  const cost = Math.round(rows.reduce((a, r) => a + ((r.finance?.cash || 0) + (r.finance?.cash_above_cap || 0) + (r.finance?.voucher_value || 0)) * r.k, 0));
+  const items = laneOf(plan, zone, { y0: year, picked, cropOf, readOnly: readOnly || !onCrop });
+  const openItem = items.find((it) => it.key === open);
+  const covers = items.filter((it) => it.soil && it.cover && it.cover.kind !== 'bare');
   const off = rows.filter((r) => r.off_catalogue && !r.continues);
-  const salesLine = `${sales ? `Estimated sales this year: ${inr(sales)}` : 'No sales planned here'}${fodder ? (sales ? ', plus fodder.' : ', fodder for your animals.') : '.'}`;
-  const CL = 116;
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>
-          {name} · {acres.toFixed(2)} acres{fields ? ` · ${fields} ${fields === 1 ? 'field' : 'fields'}` : ''}
-        </span>
-        <span style={{ ...muted, margin: 0, whiteSpace: 'nowrap' }}>{done} of {total} areas accepted</span>
-      </div>
-      <figure style={{ margin: '20px 0 0' }} aria-label={`${name} year plan: ${rows.map((r) => r.name).join('; ')}`}>
-        <div style={{ position: 'relative' }}>
-          {rows.map((r) => {
-            const s0 = Math.max(0, Math.min(12, at(r.sow))); const s1 = Math.max(s0 + 0.3, Math.min(12, at(r.harvest)));
-            const rowKey = `${r.slot}-${r.crop}`;
-            const list = sortedCrops(crops);
-            return (
-              // Open, the row itself grows and holds the crops (28 Oct): a raised box around the bar and the chips.
-              <div key={rowKey} style={open === rowKey ? { background: C.raised, borderRadius: 12, margin: '4px -10px', padding: '2px 10px 10px' } : undefined}>
-              <button type="button" disabled={readOnly || !onCrop} onClick={() => setOpen(open === rowKey ? null : rowKey)} aria-label={`Change ${r.name}`} aria-expanded={open === rowKey}
-                style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30, padding: 0, border: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: readOnly ? 'default' : 'pointer' }}>
-                <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{picked[r.slot] ? cropOf(picked[r.slot])?.name || picked[r.slot] : r.name}</span>
-                <span style={{ position: 'relative', flexGrow: 1, height: 14 }}>
-                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: (picked[r.slot] && cropOf(picked[r.slot])?.colour) || r.colour || C.muted }} />
-                </span>
-              </button>
-              {open === rowKey && (
-                // The crop list for this area in this season: picking one sends the change (a new plan version).
-                <CropSelect crops={list} current={picked[r.slot] || r.crop} currentName={r.name} disabled={changing}
-                  onPick={(key) => onCrop(r, key)} />
-              )}
-              </div>
-            );
-          })}
-          {/* Soil covers (no bare soil in the dry months, 21 Oct): hatched bars, never a crop for sale. */}
-          {soil.map((c) => {
-            const from = c.mulch_first || !c.sow ? c.from : c.sow;
-            const s0 = Math.max(0, Math.min(12, at(from))); const s1 = Math.max(s0 + 0.3, Math.min(12, at(c.turn_in || c.until)));
-            const short = c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/ \(.*\)$/, '');
-            const label = c.kind === 'bare' ? 'Bare soil' : c.kind === 'mulch' ? 'Mulch' : short.charAt(0).toUpperCase() + short.slice(1);
-            const fill = c.kind === 'bare' ? `repeating-linear-gradient(45deg, ${C.coral} 0 3px, transparent 3px 6px)`
-              : `repeating-linear-gradient(45deg, ${c.colour || '#7FB069'} 0 3px, rgba(127,176,105,0.25) 3px 6px)`;
-            // A soil cover is advice (21 Oct): a crop may be picked in its season instead (28 Oct); the pick replaces it.
-            const slot = (c.slots || [])[0];
-            const rowKey = `soil-${c.from}`;
-            const pick = slot && picked[slot] && !rows.some((r) => r.slot === slot) ? cropOf(picked[slot]) : null;
-            const can = !readOnly && !!onCrop && !!slot && !rows.some((r) => r.slot === slot);
-            return (
-              <div key={rowKey} style={open === rowKey ? { background: C.raised, borderRadius: 12, margin: '4px -10px', padding: '2px 10px 10px' } : undefined}>
-              <button type="button" title={c.name} disabled={!can} onClick={() => setOpen(open === rowKey ? null : rowKey)} aria-label={`Change ${label}`} aria-expanded={open === rowKey}
-                style={{ display: 'flex', alignItems: 'center', width: '100%', height: 30, padding: 0, border: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: can ? 'pointer' : 'default' }}>
-                <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: C.text }}>{pick ? pick.name : label}</span>
-                <span style={{ position: 'relative', flexGrow: 1, height: 14 }}>
-                  <span style={{ position: 'absolute', left: `${(s0 / 12) * 100}%`, width: `${((s1 - s0) / 12) * 100}%`, top: 0, height: 14, borderRadius: 4, background: pick ? pick.colour || C.muted : fill }} />
-                </span>
-              </button>
-              {open === rowKey && (
-                <CropSelect crops={sortedCrops(crops)} current={slot && picked[slot]} disabled={changing} onPick={(key) => onCrop({ slot }, key)} />
-              )}
-              </div>
-            );
-          })}
-          <div aria-hidden="true" style={{ display: 'flex', marginLeft: CL, marginTop: 4, fontSize: 12, lineHeight: '16px', color: C.muted }}>
-            {AXIS.map((m, i) => <span key={i} style={{ flex: 1, textAlign: 'center' }}>{m}</span>)}
-          </div>
-        </div>
+      <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{name} · {acres.toFixed(2)} acres</span>
+      <figure style={{ margin: '16px 0 0' }} aria-label={`${name}: ${items.map((it) => it.name).join(', ')}`}>
+        <Lane items={items} height={40} open={open} onBar={(it) => setOpen(open === it.key ? null : it.key)} />
+        <div style={{ marginTop: 4 }}><MonthAxis /></div>
       </figure>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 14, lineHeight: 1.5, color: C.muted, marginTop: 12 }}>
-        <span>{salesLine}</span>
-        {!readOnly && <span>Tap a crop to change it.</span>}
-      </div>
-      {soil.filter((c) => c.kind !== 'bare').map((c) => (
-        <Notice key={`sn-${c.from}`} kind="info" title={c.name}>
-          {c.kind === 'mulch' ? 'The last crop\'s residue stays on the soil through the dry months, so it does not erode.'
-            : `Sown so it stands through the driest weeks and is ploughed in before the next crop, to rebuild the soil.${c.finance ? ` It is its own crop share (${inr(c.finance.cash + c.finance.voucher_value)}: seed and machine work), repaid with the next crop.` : c.unfinanced_reason ? ` Not in the loan: ${c.unfinanced_reason}.` : ''}`}
-          {c.risks?.includes('water source not confirmed') ? ' Needs some water: your water source is not confirmed.' : ''}
-        </Notice>
-      ))}
-      {soil.filter((c) => c.kind === 'bare').map((c) => (
-        <Notice key={`sb-${c.from}`} title="Bare soil in the dry months">You keep this area bare in the dry months: bare soil erodes.</Notice>
+      {openItem && (
+        <div style={{ background: C.raised, borderRadius: 12, padding: '10px 10px 12px', marginTop: 12 }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>{openItem.name}: change to</span>
+          <CropSelect crops={sortedCrops(crops)} current={picked[openItem.slot] || (openItem.soil ? undefined : openItem.row.crop)} currentName={openItem.name}
+            disabled={changing} onPick={(key) => { onCrop(openItem.row, key); setOpen(null); }} />
+        </div>
+      )}
+      <p style={{ ...muted, margin: '12px 0 0' }}>
+        {sales ? `Sales ${inr(sales)}` : 'No sales planned'} · Cost {inr(cost)}{!readOnly && onCrop ? ' · tap a crop to change it' : ''}
+      </p>
+      {covers.map((it) => {
+        const c = it.cover;
+        const long = c.kind === 'mulch' ? 'The last crop\'s residue stays on the soil through the dry months, so it does not erode.'
+          : `Sown so it stands through the driest weeks and is ploughed in before the next crop, to rebuild the soil.${c.finance ? ` It is its own crop share (${inr(c.finance.cash + c.finance.voucher_value)}: seed and machine work), repaid with the next crop.` : c.unfinanced_reason ? ` Not in the loan: ${c.unfinanced_reason}.` : ''}${c.risks?.includes('water source not confirmed') ? ' Needs some water: your water source is not confirmed.' : ''}`;
+        return (
+          <div key={it.key} style={{ marginTop: 8 }}>
+            <button type="button" onClick={() => setWhy(why === it.key ? null : it.key)} aria-expanded={why === it.key}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, border: 0, background: 'transparent', padding: 0, color: C.muted, fontFamily: FONT, fontSize: 14, cursor: 'pointer', textAlign: 'left' }}>
+              <span aria-hidden="true" style={{ width: 14, height: 10, borderRadius: 2, background: it.fill, flexShrink: 0 }} />
+              {it.name}: {c.kind === 'mulch' ? 'mulch' : 'green manure'}
+              <span aria-hidden="true" style={{ width: 16, height: 16, borderRadius: '50%', border: `1.5px solid ${C.muted}`, fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>i</span>
+            </button>
+            {why === it.key && <p style={{ ...muted, margin: '4px 0 0' }}>{long}</p>}
+          </div>
+        );
+      })}
+      {items.filter((it) => it.soil && it.cover?.kind === 'bare').map((it) => (
+        <Notice key={it.key} title="Bare soil in the dry months">You keep this area bare in the dry months: bare soil erodes.</Notice>
       ))}
       {off.map((r) => (
-        <Notice key={`off-${r.slot}-${r.crop}`} title={`${r.name}: not in Nila's crop list`}>
+        <Notice key={`off-${r.crop}`} title={`${r.name}: not in Nila's crop list`}>
           Its yield, costs and sowing months are not checked by Nila, so it gets no loan or voucher.
           {r.estimate?.kg ? ` Estimate (not checked): about ${fmtKg(r.estimate.kg)}.` : ''}
         </Notice>
       ))}
       {!readOnly && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, marginTop: 12 }}>
-          {/* NOT BUILT: split and merge need a node call (an area is a group of fields with one plan). */}
-          {fields > 1 && <button type="button" disabled aria-disabled="true" style={{ ...pill, opacity: 0.5, cursor: 'not-allowed' }}><SplitIcon />Split this area · {fields} fields</button>}
-          {total > 1 && <button type="button" disabled aria-disabled="true" style={{ ...pill, opacity: 0.5, cursor: 'not-allowed' }}><MergeIcon />Merge with other areas</button>}
-          {(fields > 1 || total > 1) && <span style={{ ...muted, margin: 0, fontSize: 12 }}>Split and merge are not built yet.</span>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+          {/* Remove this area (21 Oct): left-over bits leave the plan; a confirm first (CropPlanFlow). */}
+          {onRemove && total > 1 && (
+            <button type="button" onClick={onRemove} aria-label={`Remove ${name} from your plan`} style={{ ...btn, flex: 'none', width: 44, padding: 0, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F1F5F9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+            </button>
+          )}
+          {changed ? <button type="button" disabled={changing} onClick={onUpdate} style={{ ...btn, background: C.accent, color: C.ink, opacity: changing ? 0.5 : 1 }}>{changing ? 'Updating…' : 'Update crop plan'}</button>
+            : !accepted ? <button type="button" onClick={onAccept} style={{ ...btn, background: C.accent, color: C.ink }}>Accept</button>
+              : nextName ? <button type="button" onClick={onNext} style={{ ...btn, background: C.accent, color: C.ink }}>Next area</button>
+                : <button type="button" onClick={onAll} style={{ ...btn, background: C.accent, color: C.ink }}>{acceptLabel}</button>}
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
-        <button type="button" onClick={onBack} style={{ ...btn, background: C.raised, color: C.text }}>Back</button>
-        {!readOnly && changed && <button type="button" disabled={changing} onClick={onUpdate} style={{ ...btn, background: C.accent, color: C.ink, opacity: changing ? 0.5 : 1 }}>{changing ? 'Updating…' : 'Update crop plan'}</button>}
-        {!readOnly && !changed && !accepted && <button type="button" onClick={onAccept} style={{ ...btn, background: C.accent, color: C.ink }}>Accept {name}</button>}
-        {!readOnly && !changed && accepted && nextName && <button type="button" onClick={onNext} style={{ ...btn, background: C.accent, color: C.ink }}>Next: {nextName}</button>}
-        {!readOnly && !changed && accepted && !nextName && <button type="button" onClick={onAll} style={{ ...btn, background: C.accent, color: C.ink }}>{acceptLabel}</button>}
-        {/* Remove this area (21 Oct): left-over bits leave the plan; a confirm first (CropPlanFlow). */}
-        {!readOnly && onRemove && total > 1 && (
-          <button type="button" onClick={onRemove} aria-label={`Remove ${name} from your plan`} style={{ ...btn, flex: 'none', width: 44, padding: 0, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F1F5F9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
-          </button>
-        )}
-      </div>
     </>
   );
 }
 
+/** The overview chart (12 Nov): one lane per area, its name on the left (✓ when she checked it); a tap opens the area.
+ *  Areas left out are named and greyed. */
+export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending = {}, onArea }) {
+  const cropOf = (key) => (crops || []).find((c) => c.key === key);
+  const CL = 104;
+  const out = plan.plan.left_out || [];
+  return (
+    <figure style={{ margin: '12px 0 0' }} aria-label="Your plan per area">
+      <MonthAxis inset={CL} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+        {zones.map((z) => (
+          <button key={z} type="button" onClick={onArea ? () => onArea(z) : undefined} disabled={!onArea}
+            style={{ display: 'flex', alignItems: 'center', border: 0, padding: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: onArea ? 'pointer' : 'default', width: '100%' }}>
+            <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {checked?.has(z) && <span aria-label="checked" style={{ color: C.accent }}>✓ </span>}{areaName(z)}
+            </span>
+            <span style={{ flexGrow: 1 }}><Lane items={laneOf(plan, z, { y0, picked: pending[z] || {}, cropOf, readOnly: true })} height={30} /></span>
+          </button>
+        ))}
+        {out.map((z) => (
+          <div key={z} style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: C.muted, height: 22 }}>
+            <span style={{ width: CL - 8, marginRight: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{areaName(z)}</span>
+            <span>left out</span>
+          </div>
+        ))}
+      </div>
+    </figure>
+  );
+}
+
 const btn = { flex: 1, height: 44, borderRadius: R.button, border: 0, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
-const pill = { height: 36, border: 0, borderRadius: 12, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 14, fontWeight: 700, padding: '0 14px', display: 'flex', alignItems: 'center', gap: 6 };
-const SplitIcon = () => (
-  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F1F5F9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M12 3v18" /></svg>
-);
-const MergeIcon = () => (
-  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F1F5F9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m8 6 4-4 4 4" /><path d="M12 2v10.3a4 4 0 0 1-1.17 2.83L4 22" /><path d="m20 22-5-5" /></svg>
-);
 
 /** The overview line (board: the hand icon, then the count). */
 export function TapLine({ done, total }) {

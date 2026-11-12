@@ -22,7 +22,7 @@ import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
-import { AreaCard, CropSelect, SEASON, SlideBar, sortedCrops, TapLine, fmtKg, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
+import { AreaCard, CropSelect, PlanChart, SEASON, SlideBar, sortedCrops, fmtKg, planYear, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
 import { shareOn } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
@@ -60,7 +60,7 @@ function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
 
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
-function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan' }) {
+function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan', y0, onArea }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
@@ -77,10 +77,24 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance.due)).sort().pop();
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
   const [open, setOpen] = useState(null);   // the season whose areas' crops are open
+  const [money, setMoney] = useState(false); // the money details (12 Nov: folded away under three rows)
+  const sales = seasons.reduce((a, se) => a + se.rows.reduce((b, r) => b + (r.value || 0), 0), 0);
+  const order = [...zones].sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
   return (
     <>
-      {!readOnly && <TapLine done={checked.size} total={zones.length} />}
-      <h2 style={{ fontSize: 14, fontWeight: 700, color: C.muted, margin: '16px 0 8px' }}>Finance</h2>
+      {/* The overview (12 Nov): every area's year on one chart, three money rows, the details folded away. */}
+      <PlanChart plan={plan} zones={order} areaName={areaName} checked={checked} y0={y0} crops={crops} pending={pending} onArea={onArea} />
+      <hr style={{ height: 1, background: C.raised, border: 0, margin: '16px 0 12px' }} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <KV k="Cost" v={inr(total.cash)} />
+        <KV k="Loans" v={inr(total.financed)} />
+        {sales > 0 && <KV k="Sales (estimate)" v={inr(sales)} />}
+      </div>
+      <button type="button" onClick={() => setMoney((v) => !v)} aria-expanded={money}
+        style={{ marginTop: 10, border: 0, background: 'transparent', padding: 0, color: C.accent, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+        {money ? 'Hide money details' : 'Money details ›'}
+      </button>
+      {money && <>
       <table style={{ width: '100%', fontSize: 14, marginTop: 8, borderCollapse: 'collapse' }}>
         {/* Simplified (executive decision 21 Oct): season (its months), use it by, total — no rate column, no repay line, no tabs.
             "Use it by" (25 Oct): the season's last draw date (no floor any more: a share is usable once made). */}
@@ -147,7 +161,7 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
         </Notice>
       )}
       {lastDue && <p style={muted}>The loans are {inr(total.financed)}; you repay {inr(total.financed + total.interest)} in {seasons.length} parts, each 21 days after its harvest.</p>}
-      {p.left_out?.length > 0 && <p style={muted}>Areas too small to plan: {p.left_out.length}.</p>}
+      </>}
       {/* Her changes are hard rules (21 Oct); only a hard fact refuses one, and anything the node could not read is named. */}
       {p.member_request?.not_followed?.length > 0 && (
         <Notice title="Not followed">{p.member_request.not_followed.map((n) => (n.zone
@@ -156,7 +170,8 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
       )}
       {!readOnly && (Object.keys(pending).length
         ? <Primary disabled={changing} onClick={onUpdate}>{changing ? 'Updating…' : 'Update crop plan'}</Primary>
-        : <Primary disabled={checked.size < zones.length} onClick={onAccept}>{acceptLabel}</Primary>)}
+        : <Primary onClick={onAccept}>{acceptLabel}</Primary>)}
+      {!readOnly && !Object.keys(pending).length && <p style={{ ...muted, textAlign: 'center', marginTop: 8 }}>Tap an area to check it.</p>}
       {/* CP10: a crop is changed on its season row in the area card (28 Oct; Renew plan is on CP9). */}
     </>
   );
@@ -705,24 +720,29 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const zones = zoneOrder.filter((z) => plan.plan.proposal[z]).concat(Object.keys(plan.plan.proposal).filter((z) => !zoneOrder.includes(z)));
     const readOnly = plan.status !== 'draft';
     const step1 = (d) => { const k = zones.indexOf(area); pickArea(zones[(k + d + zones.length) % zones.length]); };
+    // The bar steps plan years (12 Nov: Oct–Sep, "2026–27"); the map shows the first season of the year shown.
+    const years = [...new Set(ss.map((x) => planYear(x.start)))];
+    const y0 = planYear(ss[Math.min(season, ss.length - 1)]?.start);
+    const toYear = (d) => {
+      const k = (years.indexOf(y0) + d + years.length) % years.length;
+      setSeason(Math.max(0, ss.findIndex((x) => planYear(x.start) === years[k])));
+    };
     const bar = area
-      ? <SlideBar label={<><b>{areaName(area)}</b> · {yearLabel(ss)}</>} prevLabel="Previous area" nextLabel="Next area" onPrev={() => step1(-1)} onNext={() => step1(1)} />
-      : ss.length > 0 && <SlideBar label={seasonLabel(ss[Math.min(season, ss.length - 1)], Math.min(season, ss.length - 1))} prevLabel="Previous season" nextLabel="Next season"
-        onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
+      ? <SlideBar label={<b>{areaName(area)}</b>} prevLabel="Previous area" nextLabel="Next area" onPrev={() => step1(-1)} onNext={() => step1(1)} />
+      : ss.length > 0 && <SlideBar label={yearLabel(ss, y0)} prevLabel="Previous year" nextLabel="Next year" onPrev={() => toYear(-1)} onNext={() => toYear(1)} />;
     const next = zones.find((z) => z !== area && !checked.has(z));
     return (
       <Sheet map={map} landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}>
         {area ? (
           <AreaCard plan={plan} zone={area} name={areaName(area)} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
-            accepted={checked.has(area)} total={zones.length} done={checked.size} readOnly={readOnly}
+            accepted={checked.has(area)} total={zones.length} readOnly={readOnly} y0={y0}
             nextName={next ? areaName(next) : null} onNext={() => pickArea(next)} onAll={toTerms} acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined}
-            onBack={() => pickArea(null)}
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
             crops={catalogue.data?.crops} changing={revise.isPending} onCrop={(r, key) => changeCrop(area, r.slot, key)}
             picked={pending[area] || {}} onUpdate={updatePlan}
             onRemove={() => setRemoving(area)} />
         ) : (
-          <PlanView plan={plan} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly}
+          <PlanView plan={plan} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={pickArea}
             crops={catalogue.data?.crops} changing={revise.isPending} onCrop={changeCrop} pending={pending} onUpdate={updatePlan}
             acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined} />
         )}
