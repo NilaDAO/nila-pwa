@@ -833,7 +833,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <button type="button" disabled={!read || accept.isPending} aria-disabled={!read} onClick={go} style={{
           width: '100%', height: 44, border: 0, borderRadius: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, padding: '0 24px', marginTop: 14,
-          color: read ? C.ink : C.muted, background: read ? C.accent : C.raised, cursor: read ? 'pointer' : 'not-allowed' }}>{forLand ? 'Scan the member\'s QR and accept' : 'I accept'}</button>
+          color: read ? C.ink : C.muted, background: read ? C.accent : C.raised, cursor: read ? 'pointer' : 'not-allowed' }}>{forLand ? 'Ask the member to show the QR' : 'I accept'}</button>
       </Sheet>
     );
   }
