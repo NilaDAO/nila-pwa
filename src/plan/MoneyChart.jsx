@@ -1,7 +1,8 @@
 // CP11, the accept screen's chart (12 Nov, rethought with Carst): one chart for the whole plan year. Seasons as shaded
 // bands with their names; up at sowing the crop share received (hatched yellow); at harvest the sale in the crop's
-// colour, the part repaid from it hatched over its top; inputs (grey) below zero; the money left as one white line.
-// No "without the plan" line (12 Nov: dropped, too busy).
+// colour, the part repaid from it hatched over its top; inputs (grey) below zero; what she owes as one white line.
+// The scale follows the crop share, not the sales (12 Nov, option B): a sale taller than the chart is cut at its top
+// with its amount written above it. No running "money left" line: a year of estimated sales added up looked unreal.
 //
 // Every series is a direct sum of the plan's rows (no new numbers): sales = the row's value in its harvest month (and
 // the crop in the field now, plan.standing_sales, at its end of season); crop share = its cash and voucher value in its
@@ -10,13 +11,12 @@
 import { useMemo } from 'react';
 import { C, FONT } from '../shell/tokens';
 
-const W = 330, H = 196, X0 = 34, X1 = 324, Y0 = 26, Y1 = 176;
+const W = 330, H = 210, X0 = 34, X1 = 324, Y0 = 40, Y1 = 190;
 const BW = (X1 - X0) / 12;
 const INPUTS = '#64748B';
 const SPAN = { S1: 5, S2: 3, S3: 3 };   // months in the season
 const ym = (d) => (d ? d.slice(0, 7) : null);
 const rs = (v) => `₹${Math.abs(Math.round(v)).toLocaleString('en-IN')}`;
-const sg = (v) => `${v < 0 ? '−' : v > 0 ? '+' : ''}${rs(v)}`;
 const k = (v) => (v === 0 ? '₹0' : `${v < 0 ? '−' : ''}₹${Math.abs(v) >= 1000 ? `${Math.abs(v) / 1000}k` : Math.abs(v)}`);
 const r100 = (v) => Math.round(v / 100) * 100;
 
@@ -44,7 +44,7 @@ export function series(plan) {
   const months = (p.cashflow || []).map((m) => m.month);
   const at = Object.fromEntries(months.map((m, i) => [m, i]));
   const z = () => new Array(months.length).fill(0);
-  const sales = months.map(() => []), take = z(), inputs = z(), repay = z();
+  const sales = months.map(() => []), take = z(), inputs = z(), repay = z(), principal = z();
   for (const r of financedRows(p)) {
     const f = r.finance;
     const h = at[ym(r.harvest)], w = at[ym(r.sow)], d = at[ym(f.due)];
@@ -59,16 +59,16 @@ export function series(plan) {
     }
     // Repaid from the sale: in the harvest month when it falls in the year, else in the due month.
     const back = h !== undefined && r.value > 0 ? h : d;
-    if (back !== undefined) repay[back] += f.repay || 0;
+    if (back !== undefined) { repay[back] += f.repay || 0; principal[back] += (f.cash || 0) + (f.voucher_value || 0); }
   }
   for (const st of p.standing_sales || []) {
     const h = at[ym(st.harvest)];
     if (h !== undefined && st.value > 0) sales[h].push({ name: st.name, colour: st.colour, v: st.value, standing: true });
   }
-  const opening = Number(p.intake?.farm_cash_now) || 0;
-  let a = opening;
-  const left = months.map((_, i) => { a += sales[i].reduce((t, c) => t + c.v, 0) + take[i] - inputs[i] - repay[i]; return a; });
-  return { months, sales, take, inputs, repay, left };
+  // What she owes (12 Nov, option B): the crop share received, less what is paid back of it (interest apart).
+  let o = 0;
+  const owed = months.map((_, i) => { o = Math.max(0, o + take[i] - principal[i]); return o; });
+  return { months, sales, take, inputs, repay, owed };
 }
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -79,13 +79,13 @@ export default function MoneyChart({ plan }) {
   const n = s.months.length;
   if (!n) return null;
   const sold = s.sales.map((x) => x.reduce((t, c) => t + c.v, 0));
-  const up = s.months.map((_, i) => sold[i] + s.take[i]);
-  const dn = s.months.map((_, i) => -(s.inputs[i] + Math.max(0, s.repay[i] - sold[i])));
-  const hi = Math.max(0, ...up, ...s.left);
-  const lo = Math.min(0, ...dn, ...s.left);
-  const step = niceStep(hi - lo || 1000);
-  const top = Math.ceil(hi / step) * step || step, bot = Math.floor(lo / step) * step;
-  const cy = (v) => Y0 + ((Y1 - Y0) * (top - v)) / (top - bot);
+  const fromSale = s.months.map((_, i) => Math.min(s.repay[i], sold[i]));
+  // The scale: the crop share, what she owes and what she repays; sales are cut at the top.
+  const hi = Math.max(1000, ...s.take, ...s.owed, ...s.repay) * 1.25;
+  const lo = Math.min(0, ...s.months.map((_, i) => -(s.inputs[i] + s.repay[i] - fromSale[i])));
+  const step = niceStep(hi - lo);
+  const top = Math.ceil(hi / step) * step, bot = Math.floor(lo / step) * step;
+  const cy = (v) => Y0 + ((Y1 - Y0) * (top - Math.min(v, top))) / (top - bot);
   const cx = (i) => X0 + i * BW + BW / 2;
   const ticks = [];
   for (let v = bot; v <= top + 1e-6; v += step) ticks.push(v);
@@ -95,41 +95,43 @@ export default function MoneyChart({ plan }) {
   const bands = (plan.plan.seasons || []).map((se, j) => ({ i: at[ym(se.start)], len: SPAN[se.slot] || 3, label: `Season ${j + 1}` }))
     .filter((b) => b.i !== undefined);
 
-  const bars = [];
+  const bars = [], cut = [];
   s.months.forEach((_, i) => {
     const x = cx(i) - 8;
     // Up: the crop share received, then the sales in their crop colours (a crop in the field now is faded).
     const ups = [['url(#cf-in)', s.take[i], 1], ...s.sales[i].map((c) => [c.colour || C.muted, c.v, c.standing ? 0.55 : 1])].filter(([, v]) => v > 0);
     let base = 0;
     ups.forEach(([fill, v, op], j) => {
+      if (base >= top) return;
       const y2 = cy(base) - (j === 0 ? 1 : 2), y1 = cy(base + v);
-      bars.push({ x, y: y1, h: Math.max(y2 - y1, 0.5), rx: j === ups.length - 1 ? 3 : 0, fill, op, key: `u${i}${j}` });
+      bars.push({ x, y: y1, h: Math.max(y2 - y1, 0.5), rx: j === ups.length - 1 || base + v > top ? 3 : 0, fill, op, key: `u${i}${j}` });
       base += v;
     });
-    // The repaid part of the month's sale: hatched over the top of the sale; what the sale cannot cover goes below zero.
-    const fromSale = Math.min(s.repay[i], sold[i]);
-    if (fromSale > 0) {
-      const y1 = cy(base), y2 = cy(base - fromSale);
+    if (base > top) cut.push({ i, v: sold[i] });
+    // The repaid part of the month's sale: hatched over the top of the (shown) sale; what the sale cannot cover goes
+    // below zero.
+    if (fromSale[i] > 0) {
+      const shownTop = Math.min(base, top);
+      const y1 = cy(shownTop), y2 = cy(Math.max(shownTop - fromSale[i], 0));
       bars.push({ x, y: y1, h: Math.max(y2 - y1, 0.5), rx: 3, fill: 'url(#cf-back)', key: `r${i}` });
     }
     base = 0;
-    const dns = [[INPUTS, s.inputs[i]], ['url(#cf-back)', s.repay[i] - fromSale]].filter(([, v]) => v > 0);
+    const dns = [[INPUTS, s.inputs[i]], ['url(#cf-back)', s.repay[i] - fromSale[i]]].filter(([, v]) => v > 0);
     dns.forEach(([fill, v], j) => {
       const y1 = cy(base) + (j === 0 ? 1 : 2), y2 = cy(base - v);
       bars.push({ x, y: y1, h: Math.max(y2 - y1, 0.5), rx: j === dns.length - 1 ? 3 : 0, fill, key: `d${i}${j}` });
       base -= v;
     });
   });
-  const pts = s.left.map((v, i) => `${cx(i).toFixed(1)},${cy(v).toFixed(1)}`).join(' ');
-  const min = Math.min(...s.left), iMin = s.left.indexOf(min);
-  const end = s.left[n - 1];
+  const pts = s.owed.map((v, i) => `${cx(i).toFixed(1)},${cy(v).toFixed(1)}`).join(' ');
+  const peak = Math.max(...s.owed), iPeak = s.owed.indexOf(peak);
   const crops = [...new Map(s.sales.flat().map((c) => [c.name, c.colour])).entries()];
   const tip = (i) => [monthName(s.months[i]),
     s.take[i] ? `crop share received ${rs(s.take[i])}` : null,
     ...s.sales[i].map((c) => `${c.name} sold ${rs(c.v)}`),
     s.repay[i] ? `repaid ${rs(s.repay[i])}` : null,
     s.inputs[i] ? `inputs −${rs(s.inputs[i])}` : null,
-    `money left ${sg(s.left[i])}`].filter(Boolean).join(' · ');
+    `you owe ${rs(s.owed[i])}`].filter(Boolean).join(' · ');
   const key = (mark, label) => (
     <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{mark}{label}</span>
   );
@@ -137,7 +139,7 @@ export default function MoneyChart({ plan }) {
 
   return (
     <figure style={{ margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <svg role="img" aria-label={`Money left each month with the crop plan. It is lowest at ${sg(r100(min))} in ${monthName(s.months[iMin])} and ends at ${sg(r100(end))}.`}
+      <svg role="img" aria-label={`What you owe each month: at most ${rs(r100(peak))} in ${monthName(s.months[iPeak])}, paid back from your harvests.`}
         width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible', fontFamily: FONT }}>
         <defs>
           <pattern id="cf-in" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -149,8 +151,8 @@ export default function MoneyChart({ plan }) {
         </defs>
         {bands.map((b, j) => (
           <g key={b.label}>
-            <rect x={X0 + b.i * BW} y={Y0 - 22} width={Math.min(b.len, 12 - b.i) * BW} height={Y1 - Y0 + 22} fill={j % 2 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.07)'} />
-            <text x={X0 + b.i * BW + 4} y={Y0 - 8} fill={C.muted} fontSize="11" fontWeight="700">{b.label}</text>
+            <rect x={X0 + b.i * BW} y={0} width={Math.min(b.len, 12 - b.i) * BW} height={Y1} fill={j % 2 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.07)'} />
+            <text x={X0 + b.i * BW + 4} y={13} fill={C.muted} fontSize="11" fontWeight="700">{b.label}</text>
           </g>
         ))}
         {ticks.map((v) => (
@@ -161,16 +163,16 @@ export default function MoneyChart({ plan }) {
         ))}
         {bars.map((b) => <rect key={b.key} x={b.x.toFixed(1)} y={b.y.toFixed(1)} width="16" height={b.h.toFixed(1)} rx={b.rx} fill={b.fill} opacity={b.op ?? 1} />)}
         <polyline points={pts} fill="none" stroke={C.text} strokeWidth="2" strokeLinejoin="round" />
-        {s.left.map((v, i) => <circle key={i} cx={cx(i)} cy={cy(v)} r={i === n - 1 ? 4 : 2.5} fill={C.text} stroke={C.ink} strokeWidth="2" />)}
-        {min < 0 && <text x={cx(iMin)} y={cy(min) + 16} fill={C.text} fontSize="12" fontWeight="700" textAnchor="middle">{sg(r100(min))}</text>}
-        <text x={cx(n - 1) + 6} y={cy(end) - 8} fill={C.text} fontSize="12" fontWeight="700" textAnchor="end">{sg(r100(end))}</text>
+        {s.owed.map((v, i) => <circle key={i} cx={cx(i)} cy={cy(v)} r={2.5} fill={C.text} stroke={C.ink} strokeWidth="2" />)}
+        {/* A sale cut at the top: its amount above it. */}
+        {cut.map((c) => <text key={`c${c.i}`} x={cx(c.i)} y={Y0 - 6} fill={C.text} fontSize="11" fontWeight="700" textAnchor="middle">{k(r100(c.v))}↑</text>)}
         {s.months.map((m, i) => (
           <text key={m} x={cx(i)} y={H - 4} fill={C.muted} fontSize="12" textAnchor="middle">{MON[Number(m.slice(5, 7)) - 1][0]}</text>
         ))}
         {s.months.map((m, i) => <rect key={`h${m}`} x={cx(i) - 12} y={0} width={24} height={Y1} fill="transparent"><title>{tip(i)}</title></rect>)}
       </svg>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', marginTop: 8, fontSize: 12, lineHeight: 1.4, color: C.muted }}>
-        {key(<span style={{ width: 14, height: 0, borderTop: `2px solid ${C.text}` }} />, 'Money left')}
+        {key(<span style={{ width: 14, height: 0, borderTop: `2px solid ${C.text}` }} />, 'What you owe')}
         {key(sq(`repeating-linear-gradient(45deg, ${C.accent} 0 1.5px, ${C.raised} 1.5px 3px)`), 'Crop share received')}
         {crops.map(([name, colour]) => key(sq(colour || C.muted), `${name} sold`))}
         {key(sq(`repeating-linear-gradient(-45deg, ${C.text} 0 1.5px, ${C.ink} 1.5px 3px)`), 'Repaid')}
