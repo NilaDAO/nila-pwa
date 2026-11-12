@@ -93,8 +93,9 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       <div style={{ fontFamily: FONT, color: C.text, position: 'fixed', inset: 0, zIndex: 0, background: staged ? 'transparent' : '#25361f', pointerEvents: staged ? 'none' : undefined }}>
         {shown && <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>{isValidElement(shown) ? cloneElement(shown, { height: '100%' }) : shown}</div>}
         {!inShell && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 76, zIndex: 5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>{head}</div>}
-        <div data-sheet-scroll style={{ position: 'absolute', left: 0, right: 0, top: 76, bottom: 0, overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none', zIndex: 4, pointerEvents: 'none' }}>
-          <div aria-hidden="true" style={{ height: Math.max(120, Math.round(window.innerHeight / 3) - 76) }} />
+        {/* full (12 Nov, the accept screen): the card starts at the top of the screen, its header row inside it. */}
+        <div data-sheet-scroll style={{ position: 'absolute', left: 0, right: 0, top: full && inShell ? 0 : 76, bottom: 0, overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none', zIndex: 4, pointerEvents: 'none' }}>
+          {!full && <div aria-hidden="true" style={{ height: Math.max(120, Math.round(window.innerHeight / 3) - 76) }} />}
           <section ref={drag.ref} className="cp-sheet" {...swipe} style={{ pointerEvents: 'auto', background: cardBg, borderRadius: '24px 24px 0 0', padding: '10px 22px 104px', boxSizing: 'border-box', minHeight: '100%', boxShadow: 'rgba(0,0,0,0.15) 0 12px 10px 0, rgba(0,0,0,0.06) 0 5px 12px 2px', ...drag.style }}>
             <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}.cp-sheet [data-sheet-head] h1{margin:0!important}[data-sheet-scroll]::-webkit-scrollbar{display:none}'}</style>
             <div style={{ marginBottom: inShell ? 4 : 16 }}>{drag.handle}</div>

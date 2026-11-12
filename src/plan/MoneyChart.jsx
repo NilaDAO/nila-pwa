@@ -29,11 +29,13 @@ function niceStep(range) {
 /** All the plan's rows that carry a crop share: the seasons' rows and the green manures. */
 const financedRows = (p) => [...(p.seasons || []).flatMap((s) => s.rows), ...(p.soil_cover || []).filter((c) => c.finance)];
 
-/** What she repays in all, and when (the headline). */
+/** What she gets (cash and machine vouchers), the interest on it, and when she repays (the headline). */
 export function repayment(plan) {
   const rows = financedRows(plan.plan).filter((r) => r.finance?.repay);
   const dues = [...new Set(rows.map((r) => ym(r.finance.due)).filter(Boolean))].sort();
-  return { total: rows.reduce((a, r) => a + r.finance.repay, 0), parts: dues.length, first: dues[0], last: dues[dues.length - 1] };
+  const get = rows.reduce((a, r) => a + (r.finance.cash || 0) + (r.finance.voucher_value || 0), 0);
+  const total = rows.reduce((a, r) => a + r.finance.repay, 0);
+  return { get, interest: total - get, total, parts: dues.length, first: dues[0], last: dues[dues.length - 1] };
 }
 
 /** The chart's numbers from the plan (months from the node's cashflow, the 12 months of her plan year). */
