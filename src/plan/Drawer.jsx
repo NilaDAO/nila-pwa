@@ -1,5 +1,6 @@
 // The bottom drawer of the CP screens (CP11's legend style: scrim, rounded card above the tab bar, Close), reused for
 // CP9's "What this plan is based on" and CP10's remove-area confirm (executive decision 21 Oct).
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { C, FONT } from '../shell/tokens';
 import { Notice, muted } from './ui';
@@ -83,27 +84,41 @@ export function BasisDrawer({ basis, onClose }) {
   );
 }
 
-/** The accept screen's short version of "What this plan is based on" (12 Nov): one line per source (the detail only
- *  where a source is not used or warns), vouchers, record and account problems in a line each. */
+/** The accept screen's short version of "What this plan is based on" (12 Nov): an accordion, one row per item with its
+ *  tick, all closed; a tap opens the item's explanation. */
 export function BasisList({ basis }) {
+  const [open, setOpen] = useState(null);
   if (!basis) return null;
   const acct = basis.account_problems || {};
-  const line = (on, text, sub, key = text) => (
-    <div key={key} style={{ display: 'flex', gap: 8, fontSize: 13, lineHeight: 1.45 }}>
-      <Tick on={on} />
-      <span style={{ display: 'flex', flexDirection: 'column' }}><span>{text}</span>{sub && <span style={{ color: C.muted }}>{sub}</span>}</span>
-    </div>
-  );
   const rec = basis.record_problems || [];
   const acc = acct.items || [];
+  const items = [
+    ...basis.inputs.map((i) => ({ on: i.used && !i.warn, title: i.name,
+      text: `${i.used ? 'Used' : 'Not used'}: ${i.detail}${i.used && i.source && i.source !== '—' ? ` (${i.source})` : ''}` })),
+    { on: !!basis.vouchers?.used, title: 'Machine vouchers', text: `${basis.vouchers?.used ? 'Used' : 'Not used'}: ${basis.vouchers?.why}.` },
+    { on: !rec.length, title: 'Problems in your field record', text: rec.length ? rec.join(' ') : 'None found in your record.' },
+    { on: acct.checked && !acc.length, title: 'Problems in your account',
+      text: acct.checked ? (acc.length ? acc.join(' ') : 'No late or missed repayments.') : acct.note || 'Not checked yet.' },
+  ];
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <section style={{ display: 'flex', flexDirection: 'column' }}>
       <h2 style={{ fontSize: 14, fontWeight: 700, margin: '16px 0 4px' }}>What this plan is based on</h2>
-      {basis.inputs.map((i) => line(i.used && !i.warn, i.name, i.warn || !i.used ? i.detail : null))}
-      {line(!!basis.vouchers?.used, 'Machine vouchers', basis.vouchers?.used ? null : basis.vouchers?.why)}
-      {line(!rec.length, rec.length ? `Field record: ${rec.length} problem${rec.length > 1 ? 's' : ''}` : 'Field record: no problems', rec.join(' · ') || null)}
-      {line(acct.checked && !acc.length, acct.checked ? (acc.length ? 'Your account: late or missed repayments' : 'Your account: no late or missed repayments') : 'Your account: not checked yet',
-        acc.join(' · ') || null)}
+      {items.map((it) => {
+        const isOpen = open === it.title;
+        return (
+          <div key={it.title} style={{ borderBottom: `1px solid ${C.raised}` }}>
+            <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : it.title)}
+              style={{ width: '100%', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, border: 0, padding: 0, background: 'transparent',
+                color: C.text, fontFamily: FONT, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
+              <Tick on={it.on} />
+              <span style={{ flexGrow: 1 }}>{it.title}</span>
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            {isOpen && <p style={{ ...muted, margin: '0 0 12px 26px', fontSize: 13 }}>{it.text}</p>}
+          </div>
+        );
+      })}
     </section>
   );
 }

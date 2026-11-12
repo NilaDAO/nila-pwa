@@ -798,22 +798,21 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     };
     return (
       <Sheet map={map} landName={name} onBack={back('plan')} scroll full>
-        {/* 12 Nov (Carst): the screen answers the money question. The big number is what she gets, the interest under it (sales are an
+        {/* 12 Nov (Carst): the screen answers the money question. What she gets and the interest come first (sales are an
             estimate); one chart holds the year; the notices made way for the plan's basis, shortened. */}
         {(() => {
           const due = repayment(plan);
           const mon = (m) => m && new Date(`${m}-01`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+          // The field record's segment rows (12 Nov): what she gets, the interest, when she repays; then a line.
           return (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 2, marginTop: 4 }}>
-              <span style={{ fontSize: 14, color: C.muted }}>You get</span>
-              <span style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.2 }}>{inr(due.get)}</span>
-              <span style={{ fontSize: 14, color: C.muted }}>in cash and machine vouchers</span>
-              {due.parts > 0 && (
-                <span style={{ fontSize: 14, lineHeight: 1.5, marginTop: 6 }}>
-                  You pay it back with <b>{inr(due.interest)}</b> interest, {due.parts === 1 ? `in ${mon(due.first)}` : `in ${due.parts} parts, ${mon(due.first)} to ${mon(due.last)}`}, after your harvests
-                </span>
-              )}
-            </div>
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <KV k="You get" v={inr(due.get)} />
+                <KV k="Interest" v={inr(due.interest)} />
+                {due.parts > 0 && <KV k="You repay" v={due.parts === 1 ? mon(due.first) : `${due.parts} parts, ${mon(due.first)} – ${mon(due.last)}`} />}
+              </div>
+              <hr style={{ height: 1, background: C.raised, border: 0, margin: '16px 0 0' }} />
+            </>
           );
         })()}
         <MoneyChart plan={plan} />
