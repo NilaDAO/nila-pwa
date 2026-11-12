@@ -73,8 +73,12 @@ const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-
 /** A member's crop plan, made by the leader with the member (assist mode, 26 Oct): #/memberplan/<route>. */
 function MemberPlan({ route }) {
   const api = usePlanClient();
+  const s = useNilaSigner();
   const m = (useUnionMembers(api).data || []).find((x) => x.route === route);
   if (!m) return <BootLoading />;
+  // The leader's own land, opened from the member list (12 Nov): their own plan, accepted by themselves, no member QR.
+  const mine = (s?.stellarAddress && m.address === s.stellarAddress) || (s?.evmAddress && m.polygon && m.polygon.toLowerCase() === s.evmAddress.toLowerCase());
+  if (mine) return <CropPlanFlow self />;
   // Close (a notice that cannot be finished now): back where the leader came from (Tasks or the member's G2).
   const onClose = () => { if (window.history.length > 1) window.history.back(); else window.location.hash = '#/tasks'; };
   return <CropPlanFlow forLand={{ landId: Number(m.titleId || m.lands[0]), recordHash: m.recordHash, evm: m.polygon, account: m.address, label: m.label, onClose }} />;

@@ -295,11 +295,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });
     } catch (e) { setError(e.message); }
   };
-  // The member's scan is the acceptance (26 Oct): no CP11 conditions step in assist mode.
-  const toTerms = () => {
-    if (!forLand) { setStep('terms'); return; }
-    if (sessionUntil > Date.now() / 1000 + 10) makeMine(); else setScanToAccept(true);
-  };
+  // CP11 for everyone (12 Nov): a member's plan made with the leader also goes through the accept screen and its checks;
+  // the member's QR is scanned there, at "Scan the member's QR and accept" (was 26 Oct: the scan right from CP10).
+  const toTerms = () => setStep('terms');
   const when = useRef(new Date());
   const revise = useRevisePlan();
   const discard = useDiscardPlan(landId);
@@ -753,7 +751,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {area ? (
           <AreaCard plan={plan} zone={area} name={areaName(area)} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
             accepted={checked.has(area)} total={zones.length} readOnly={readOnly} y0={y0}
-            nextName={next ? areaName(next) : null} onNext={() => pickArea(next)} onAll={toTerms} acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined}
+            nextName={next ? areaName(next) : null} onNext={() => pickArea(next)} onAll={toTerms}
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
             crops={catalogue.data?.crops} changing={revise.isPending} onCrop={(r, key) => changeCrop(area, r.slot, key)}
             picked={pending[area] || {}} onUpdate={updatePlan}
@@ -761,7 +759,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         ) : (
           <PlanView plan={plan} record={record} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={pickArea}
             crops={catalogue.data?.crops} changing={revise.isPending} onCrop={changeCrop} pending={pending} onUpdate={updatePlan}
-            acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined} />
+            />
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}
         {removing && (() => {
