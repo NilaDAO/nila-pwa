@@ -394,7 +394,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaNo, areaName, pending, catalogue.data, record, growing, leftOut]);
+  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
