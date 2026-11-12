@@ -189,6 +189,22 @@ function AssistPlan({ map, name, waiting }) {
   );
 }
 
+// What grows on each area now, from the field record's satellite reading (`current_cycle`, one entry per area, 12 Nov):
+// the map shows it on load until she has a plan. An area the reading does not know (unknown, not read yet) keeps
+// "Area n". The crop's name and colour from the catalogue when it lists the crop, else the record's own key.
+const words = (k) => String(k).replace(/_/g, ' ');
+function growingNow(record, crops = []) {
+  const out = {};
+  for (const c of Array.isArray(record?.current_cycle) ? record.current_cycle : []) {
+    const z = c.cluster_id ?? c.zone_id;
+    if (z == null || !c.crop_type || c.crop_type === 'unknown') continue;
+    const hit = crops.find((x) => x.key === c.crop_type) || crops.find((x) => c.crop_type.startsWith(`${x.key}_`));
+    const name = hit && hit.key === c.crop_type ? hit.name : words(c.crop_type).replace(/^./, (x) => x.toUpperCase());
+    out[z] = { text: name, sub: c.stage ? words(c.stage) : undefined, colour: hit?.colour };
+  }
+  return out;
+}
+
 export default function CropPlanFlow({ forLand, self = false } = {}) {
   // A member's plan made by the leader (26 Oct): the member's name on every card, no settings button.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -294,7 +310,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   // The map is the list (CP10): each area's chip shows what grows there in the season shown, or just "Area n".
   const labels = useMemo(() => {
     const ss = plan?.plan?.seasons;
-    if (!ss?.length) return {};
+    if (!ss?.length) return growingNow(record, catalogue.data?.crops);
     // Areas she left out (the step before the plan, or CP10's bin; 5 Nov) are not on the plan's map.
     const gone = Object.entries(plan.plan.left_out_reasons || {}).filter(([, why]) => why === 'removed by her')
       .map(([z]) => [z, { gone: true }]);
@@ -320,7 +336,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaNo, pending, catalogue.data]);
+  }, [plan, season, checked, areaNo, pending, catalogue.data, record]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
