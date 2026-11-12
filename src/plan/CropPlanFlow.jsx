@@ -520,12 +520,12 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
             <CropSelect crops={cropList} current={growing[growArea]}
               onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
           </div>
-        ) : toSet.length > 0 && (
-          <p role="note" style={{ ...muted, textAlign: 'center' }}>
-            {toSet.length === 1 ? 'One area has' : `${toSet.length} areas have`} a crop the satellite could not identify. Tap a grey area to set what grows there.
-          </p>
-        )}
+        ) : null}
         <Primary disabled={toSet.length > 0} onClick={() => setStep('intro')}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
+        {/* Under the button (12 Nov, option B): why it waits. */}
+        {!growArea && toSet.length > 0 && (
+          <p role="note" style={{ ...muted, textAlign: 'center', marginTop: 8 }}>Tap the grey areas to set what is growing there at this moment.</p>
+        )}
       </Sheet>
     );
   }
