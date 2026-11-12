@@ -1,7 +1,9 @@
-// CP11, the accept screen's chart (12 Nov, with Carst): month by month, two overlapping filled areas (not stacked, not
-// added up over the year): what comes in that month (the crop share at sowing, the sales at harvest) and what she keeps
-// of it (in, less inputs and repayment that month; below zero in a month she pays more than she gets). Seasons as
-// shaded bands. Earlier versions (bars per kind, a running "money left" line, a "what you owe" line) were too complex.
+// CP11, the accept screen's chart (12 Nov, rethought with Carst; back to bars and the line after a month-by-month area
+// version: money comes at once, not as a build-up): one chart for the whole plan year. Seasons as shaded
+// bands with their names; up at sowing the crop share received (hatched yellow); at harvest the sale in the crop's
+// colour, the part repaid from it hatched over its top; inputs (grey) below zero; what she owes as one white line.
+// The scale follows the crop share, not the sales (12 Nov, option B): a sale taller than the chart is cut at its top
+// with its amount written above it. No running "money left" line: a year of estimated sales added up looked unreal.
 //
 // Every series is a direct sum of the plan's rows (no new numbers): sales = the row's value in its harvest month (and
 // 12 Nov: not the crop already in the field, named on a line under the chart); crop share = its cash and voucher value in its
@@ -12,6 +14,7 @@ import { C, FONT } from '../shell/tokens';
 
 const W = 330, H = 210, X0 = 34, X1 = 324, Y0 = 40, Y1 = 190;
 const BW = (X1 - X0) / 12;
+const INPUTS = '#64748B';
 const SPAN = { S1: 5, S2: 3, S3: 3 };   // months in the season
 const ym = (d) => (d ? d.slice(0, 7) : null);
 const rs = (v) => `₹${Math.abs(Math.round(v)).toLocaleString('en-IN')}`;
@@ -80,41 +83,75 @@ export default function MoneyChart({ plan }) {
   const n = s.months.length;
   if (!n) return null;
   const sold = s.sales.map((x) => x.reduce((t, c) => t + c.v, 0));
-  const inflow = s.months.map((_, i) => sold[i] + s.take[i]);
-  const keep = s.months.map((_, i) => inflow[i] - s.inputs[i] - s.repay[i]);
-  const hi = Math.max(1000, ...inflow, ...keep);
-  const lo = Math.min(0, ...keep);
+  const fromSale = s.months.map((_, i) => Math.min(s.repay[i], sold[i]));
+  // The scale: the crop share, what she owes and what she repays; sales are cut at the top.
+  const hi = Math.max(1000, ...s.take, ...s.owed, ...s.repay) * 1.25;
+  const lo = Math.min(0, ...s.months.map((_, i) => -(s.inputs[i] + s.repay[i] - fromSale[i])));
   const step = niceStep(hi - lo);
   const top = Math.ceil(hi / step) * step, bot = Math.floor(lo / step) * step;
-  const cy = (v) => Y0 + ((Y1 - Y0) * (top - v)) / (top - bot);
+  const cy = (v) => Y0 + ((Y1 - Y0) * (top - Math.min(v, top))) / (top - bot);
   const cx = (i) => X0 + i * BW + BW / 2;
   const ticks = [];
   for (let v = bot; v <= top + 1e-6; v += step) ticks.push(v);
+
+  // Season bands: from each season's first month, its length (S1 Oct–Feb, S2 Mar–May, S3 Jun–Aug).
   const at = Object.fromEntries(s.months.map((m, i) => [m, i]));
   const bands = (plan.plan.seasons || []).map((se, j) => ({ i: at[ym(se.start)], len: SPAN[se.slot] || 3, label: `Season ${j + 1}` }))
     .filter((b) => b.i !== undefined);
-  // A filled area from zero: the line through the months, closed along the zero line at both ends.
-  const area = (vals) => `M${cx(0).toFixed(1)},${cy(0).toFixed(1)} ${vals.map((v, i) => `L${cx(i).toFixed(1)},${cy(v).toFixed(1)}`).join(' ')} L${cx(n - 1).toFixed(1)},${cy(0).toFixed(1)} Z`;
-  const line = (vals) => vals.map((v, i) => `${i ? 'L' : 'M'}${cx(i).toFixed(1)},${cy(v).toFixed(1)}`).join(' ');
-  const best = Math.max(...keep), iBest = keep.indexOf(best);
-  const worst = Math.min(...keep), iWorst = keep.indexOf(worst);
+
+  const bars = [], cut = [];
+  s.months.forEach((_, i) => {
+    const x = cx(i) - 8;
+    // Up: the crop share received, then the sales in their crop colours (a crop in the field now is faded).
+    const ups = [['url(#cf-in)', s.take[i], 1], ...s.sales[i].map((c) => [c.colour || C.muted, c.v, c.standing ? 0.55 : 1])].filter(([, v]) => v > 0);
+    let base = 0;
+    ups.forEach(([fill, v, op], j) => {
+      if (base >= top) return;
+      const y2 = cy(base) - (j === 0 ? 1 : 2), y1 = cy(base + v);
+      bars.push({ x, y: y1, h: Math.max(y2 - y1, 0.5), rx: j === ups.length - 1 || base + v > top ? 3 : 0, fill, op, key: `u${i}${j}` });
+      base += v;
+    });
+    if (base > top) cut.push({ i, v: sold[i] });
+    // The repaid part of the month's sale: hatched over the top of the (shown) sale; what the sale cannot cover goes
+    // below zero.
+    if (fromSale[i] > 0) {
+      const shownTop = Math.min(base, top);
+      const y1 = cy(shownTop), y2 = cy(Math.max(shownTop - fromSale[i], 0));
+      bars.push({ x, y: y1, h: Math.max(y2 - y1, 0.5), rx: 3, fill: 'url(#cf-back)', key: `r${i}` });
+    }
+    base = 0;
+    const dns = [[INPUTS, s.inputs[i]], ['url(#cf-back)', s.repay[i] - fromSale[i]]].filter(([, v]) => v > 0);
+    dns.forEach(([fill, v], j) => {
+      const y1 = cy(base) + (j === 0 ? 1 : 2), y2 = cy(base - v);
+      bars.push({ x, y: y1, h: Math.max(y2 - y1, 0.5), rx: j === dns.length - 1 ? 3 : 0, fill, key: `d${i}${j}` });
+      base -= v;
+    });
+  });
+  const pts = s.owed.map((v, i) => `${cx(i).toFixed(1)},${cy(v).toFixed(1)}`).join(' ');
+  const peak = Math.max(...s.owed), iPeak = s.owed.indexOf(peak);
+  const crops = [...new Map(s.sales.flat().map((c) => [c.name, c.colour])).entries()];
   const tip = (i) => [monthName(s.months[i]),
-    s.take[i] ? `crop share ${rs(s.take[i])}` : null,
+    s.take[i] ? `crop share received ${rs(s.take[i])}` : null,
     ...s.sales[i].map((c) => `${c.name} sold ${rs(c.v)}`),
+    s.repay[i] ? `repaid ${rs(s.repay[i])}` : null,
     s.inputs[i] ? `inputs −${rs(s.inputs[i])}` : null,
-    s.repay[i] ? `repaid −${rs(s.repay[i])}` : null,
-    `you keep ${keep[i] < 0 ? '−' : ''}${rs(keep[i])}`].filter(Boolean).join(' · ');
-  const IN = 'rgba(212,207,90,0.22)';
-  const key = (mark, label) => <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{mark}{label}</span>;
-  const sq = (bg, border) => <span style={{ width: 12, height: 10, borderRadius: 2, background: bg, border, boxSizing: 'border-box', flexShrink: 0 }} />;
+    `you owe ${rs(s.owed[i])}`].filter(Boolean).join(' · ');
+  const key = (mark, label) => (
+    <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{mark}{label}</span>
+  );
+  const sq = (bg) => <span style={{ width: 10, height: 10, borderRadius: 2, background: bg, flexShrink: 0 }} />;
 
   return (
     <figure style={{ margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <svg role="img" aria-label={`Month by month: what comes in and what you keep. Most kept: ${rs(r100(best))} in ${monthName(s.months[iBest])}.`}
+      <svg role="img" aria-label={`What you owe each month: at most ${rs(r100(peak))} in ${monthName(s.months[iPeak])}, paid back from your harvests.`}
         width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible', fontFamily: FONT }}>
         <defs>
-          <clipPath id="cf-up"><rect x={0} y={0} width={W} height={cy(0)} /></clipPath>
-          <clipPath id="cf-dn"><rect x={0} y={cy(0)} width={W} height={H} /></clipPath>
+          <pattern id="cf-in" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="4" height="4" fill={C.raised} /><rect width="2" height="4" fill={C.accent} />
+          </pattern>
+          <pattern id="cf-back" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+            <rect width="4" height="4" fill={C.ink} /><rect width="2" height="4" fill={C.text} />
+          </pattern>
         </defs>
         {bands.map((b, j) => (
           <g key={b.label}>
@@ -128,21 +165,22 @@ export default function MoneyChart({ plan }) {
             <text x={X0 - 6} y={cy(v)} fill={C.muted} fontSize="12" textAnchor="end" dominantBaseline="middle">{k(v)}</text>
           </g>
         ))}
-        <path d={area(inflow)} fill={IN} />
-        <path d={line(inflow)} fill="none" stroke={C.accent} strokeWidth="1.5" strokeOpacity="0.6" strokeLinejoin="round" />
-        <path d={area(keep)} fill={C.accent} clipPath="url(#cf-up)" />
-        <path d={area(keep)} fill={C.coral} clipPath="url(#cf-dn)" />
-        {best > 0 && <text x={cx(iBest)} y={cy(best) - 6} fill={C.text} fontSize="12" fontWeight="700" textAnchor="middle">+{k(r100(best))}</text>}
-        {worst < 0 && <text x={cx(iWorst)} y={cy(worst) + 14} fill={C.text} fontSize="12" fontWeight="700" textAnchor="middle">−{rs(r100(worst))}</text>}
+        {bars.map((b) => <rect key={b.key} x={b.x.toFixed(1)} y={b.y.toFixed(1)} width="16" height={b.h.toFixed(1)} rx={b.rx} fill={b.fill} opacity={b.op ?? 1} />)}
+        <polyline points={pts} fill="none" stroke={C.text} strokeWidth="2" strokeLinejoin="round" />
+        {s.owed.map((v, i) => <circle key={i} cx={cx(i)} cy={cy(v)} r={2.5} fill={C.text} stroke={C.ink} strokeWidth="2" />)}
+        {/* A sale cut at the top: its amount above it. */}
+        {cut.map((c) => <text key={`c${c.i}`} x={cx(c.i)} y={Y0 - 6} fill={C.text} fontSize="11" fontWeight="700" textAnchor="middle">{k(r100(c.v))}↑</text>)}
         {s.months.map((m, i) => (
           <text key={m} x={cx(i)} y={H - 4} fill={C.muted} fontSize="12" textAnchor="middle">{MON[Number(m.slice(5, 7)) - 1][0]}</text>
         ))}
         {s.months.map((m, i) => <rect key={`h${m}`} x={cx(i) - 12} y={0} width={24} height={Y1} fill="transparent"><title>{tip(i)}</title></rect>)}
       </svg>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', marginTop: 8, fontSize: 12, lineHeight: 1.4, color: C.muted }}>
-        {key(sq(IN, `1.5px solid ${C.accent}`), 'Comes in (crop share, sales)')}
-        {key(sq(C.accent), 'You keep')}
-        {worst < 0 && key(sq(C.coral), 'You pay more than you get')}
+        {key(<span style={{ width: 14, height: 0, borderTop: `2px solid ${C.text}` }} />, 'What you owe')}
+        {key(sq(`repeating-linear-gradient(45deg, ${C.accent} 0 1.5px, ${C.raised} 1.5px 3px)`), 'Crop share received')}
+        {crops.map(([name, colour]) => key(sq(colour || C.muted), `${name} sold`))}
+        {key(sq(`repeating-linear-gradient(-45deg, ${C.text} 0 1.5px, ${C.ink} 1.5px 3px)`), 'Repaid')}
+        {key(sq(INPUTS), 'Inputs')}
       </div>
       {[...(plan.plan.standing_sales || []).reduce((m, st) => {
         const x = m.get(st.name) || { name: st.name, v: 0, month: st.harvest };
