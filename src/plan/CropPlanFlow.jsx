@@ -799,9 +799,10 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const owe = repayment(plan);
     const lastMon = owe.last && new Date(`${owe.last}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
     const checks = [
-      ['repay', `I repay the whole amount: ${inr(owe.get)} plus ${inr(owe.interest)} interest, ${inr(owe.total)} in all.`],
+      // Locally, paying only the interest and keeping the principal is common; Nila does not work that way (12 Nov).
+      ['repay', `I repay all ${inr(owe.total)}: the ${inr(owe.get)} I get and ${inr(owe.interest)} interest. Paying only the interest is not enough.`],
       owe.parts > 0 && ['when', `I repay after each harvest, the last part by ${lastMon}.`],
-      ['estimate', 'The sales in this plan are estimates, not a promise.'],
+      ['change', 'My union leader can change the cash and voucher amounts at intake.'],
     ].filter(Boolean);
     const read = checks.every(([key]) => ticks.has(key));
     const tick = (key) => setTicks((t) => { const n = new Set(t); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -827,7 +828,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           <Notice key={c.kind + c.text} kind="warn" title={c.title}>{c.text}</Notice>
         ))}
         {plan.plan.basis && <Section title="What this plan is based on"><BasisList basis={plan.plan.basis} /></Section>}
-        <p style={{ ...muted, margin: '14px 0 0' }}>Yields and prices are estimates. Cash and vouchers depend on the funds available; you can change them with your union leaders.</p>
+        <p style={{ ...muted, margin: '14px 0 0' }}>Yields, prices and sales are estimates. Cash and vouchers depend on the funds available.</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
           {checks.map(([key, text]) => <CheckRow key={key} on={ticks.has(key)} onClick={() => tick(key)}>{text}</CheckRow>)}
         </div>
