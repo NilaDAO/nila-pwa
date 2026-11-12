@@ -29,7 +29,8 @@ export function yearLabel(seasons) {
 /** A row's areas: areas with the same crop in a season are one row (executive decision 21 Oct), `zones` lists them. */
 export const zonesOf = (r) => r.zones || [r.zone];
 /** "Area 1" or, merged, "Area 1 + 2". */
-export const areaLabel = (r, areaNo) => `Area ${zonesOf(r).map(areaNo).join(' + ')}`;
+// areaName (12 Nov): the record's names for the areas (after their field), else "Area n".
+export const areaLabel = (r, areaNo, areaName) => (areaName ? zonesOf(r).map(areaName).join(' + ') : `Area ${zonesOf(r).map(areaNo).join(' + ')}`);
 
 /** The row on each area in season i (a merged row on each of its areas); a whole-year crop from an earlier season
  *  carries on. */

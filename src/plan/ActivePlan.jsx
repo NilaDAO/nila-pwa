@@ -36,12 +36,12 @@ export function currentSeason(seasons, today = new Date()) {
 const job = (m, name) => { const v = VERB.find(([re]) => re.test(m.for)); return v ? `${v[1]} ${name}` : `${m.for.charAt(0).toUpperCase()}${m.for.slice(1)} · ${name}`; };
 const kg = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')} t` : `${Math.round(n).toLocaleString('en-IN')} kg`);
 
-export function tasksOf(plan, areaNo) {
+export function tasksOf(plan, areaNo, areaName) {
   const out = [];
   for (const [si, s] of (plan.seasons || []).entries()) {
     const at = out.length;
     for (const r of s.rows) {
-      const area = typeof areaNo(r.zone) === 'number' ? areaLabel(r, areaNo) : '';
+      const area = typeof areaNo(r.zone) === 'number' ? areaLabel(r, areaNo, areaName) : '';
       if (r.sow && !r.continues) out.push({ date: r.sow, text: `Plant ${r.name}`, area });
       for (const m of Object.values(r.finance?.machines || {})) {
         if (m.when && m.for && !/sowing|land preparation/.test(m.for)) out.push({ date: m.when, text: job(m, r.name), area });
@@ -63,7 +63,7 @@ export function tasksOf(plan, areaNo) {
     if (!sh.from_date || (!sh.loan_amount && !work)) continue;
     const si = Math.max(0, ss.reduce((k, s, i) => (s.start <= sh.from_date ? i : k), 0));
     out.push({ date: sh.from_date, text: work ? 'Receive cash + vouchers' : 'Receive cash', share: sh.key, season: si,
-      area: [typeof areaNo(sh.zone) === 'number' ? areaLabel(sh, areaNo) : '', sh.loan_amount ? inr(sh.loan_amount) : '', work ? `${Math.round(work * 100) / 100} ac of machine work` : '', lastDayText(sh.final_date), 'union office'].filter(Boolean).join(' · ') });
+      area: [typeof areaNo(sh.zone) === 'number' ? areaLabel(sh, areaNo, areaName) : '', sh.loan_amount ? inr(sh.loan_amount) : '', work ? `${Math.round(work * 100) / 100} ac of machine work` : '', lastDayText(sh.final_date), 'union office'].filter(Boolean).join(' · ') });
   }
   // Same month: she receives the cash before she plants.
   return out.sort((a, b) => a.date.slice(0, 7).localeCompare(b.date.slice(0, 7)) || (!!b.share - !!a.share) || a.date.localeCompare(b.date));
@@ -113,14 +113,14 @@ function Group({ name, items, now }) {
  *  month; a drawn one is done and not listed. assist: a shared phone, where the leader extends the plan.
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
-export default function ActivePlan({ plan, areaNo, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError }) {
+export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError }) {
   const seasons = plan.plan.seasons || [];
   const now = today.toISOString().slice(0, 10);
   const idx = currentSeason(seasons, today);
   const shown = Math.min(season ?? idx, Math.max(0, seasons.length - 1));
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance?.due)).filter(Boolean).sort().pop();
   const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
-  const all = tasksOf(plan.plan, areaNo).filter((t) => t.season === shown && !(t.share && byKey[t.share]?.drawn));
+  const all = tasksOf(plan.plan, areaNo, areaName).filter((t) => t.season === shown && !(t.share && byKey[t.share]?.drawn));
   const ready = (t) => !!(t.share && byKey[t.share]?.ready);
   const thisMonth = all.filter((t) => ready(t) || (t.date.slice(0, 7) === now.slice(0, 7) && !(t.share && byKey[t.share] && !ready(t))));
   const later = all.filter((t) => !thisMonth.includes(t) && t.date.slice(0, 7) > now.slice(0, 7));

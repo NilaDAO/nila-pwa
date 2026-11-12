@@ -59,7 +59,7 @@ function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
 
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
-function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, acceptLabel = 'Accept the plan' }) {
+function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan' }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
@@ -107,7 +107,7 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
                 <tr style={{ background: C.raised }}><td colSpan={3} style={{ padding: '0 10px 10px', borderRadius: '0 0 12px 12px' }}>
                   {[...zones].sort((a, b) => Number(areaNo(a)) - Number(areaNo(b))).map((z) => {
                     const r = s.rows.find((x) => zonesOf(x).includes(z));
-                    return <CropSelect key={z} label={`Area ${areaNo(z)}`} crops={sortedCrops(crops)} current={pending[z]?.[s.slot] || r?.crop} currentName={r?.name} disabled={changing}
+                    return <CropSelect key={z} label={areaName(z)} crops={sortedCrops(crops)} current={pending[z]?.[s.slot] || r?.crop} currentName={r?.name} disabled={changing}
                       onPick={(key) => onCrop(z, s.slot, key)} />;
                   })}
                 </td></tr>
@@ -150,7 +150,7 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
       {/* Her changes are hard rules (21 Oct); only a hard fact refuses one, and anything the node could not read is named. */}
       {p.member_request?.not_followed?.length > 0 && (
         <Notice title="Not followed">{p.member_request.not_followed.map((n) => (n.zone
-          ? `Area ${areaNo(n.zone)}${n.slot ? `, ${SEASON[n.slot] || n.slot}` : ''}${n.crop ? ` (${n.crop.replace(/_/g, ' ')})` : ''}: ${n.why}`
+          ? `${areaName(n.zone)}${n.slot ? `, ${SEASON[n.slot] || n.slot}` : ''}${n.crop ? ` (${n.crop.replace(/_/g, ' ')})` : ''}: ${n.why}`
           : n.why || n.reason || JSON.stringify(n))).join('; ')}</Notice>
       )}
       {!readOnly && (Object.keys(pending).length
@@ -319,6 +319,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const name = (forLand && forLand.label) || titleName || (landId != null ? `Land ${landId}` : 'Nila');
   const zoneOrder = useMemo(() => areasOf(record).map((z) => z.zone_id), [record]);
   const areaNo = useCallback((zone) => (zoneOrder.indexOf(zone) + 1) || zone, [zoneOrder]);
+  // The area's name from the record (12 Nov: after its field, "field in 3 · 2"), else "Area n".
+  const zoneNames = useMemo(() => Object.fromEntries(areasOf(record).filter((z) => z.name).map((z) => [z.zone_id, z.name])), [record]);
+  const areaName = useCallback((zone) => zoneNames[zone] || `Area ${areaNo(zone)}`, [zoneNames, areaNo]);
   // The map is the list (CP10): each area's chip shows what grows there in the season shown, or just "Area n".
   const labels = useMemo(() => {
     const ss = plan?.plan?.seasons;
@@ -334,7 +337,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // A merged row (same crop on several areas, 21 Oct): its harvest on the first area's chip, "with Area n" on the others.
     const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, pickedHere(z) ? { text: pickedHere(z).name, sub: 'changed',
       colour: pickedHere(z).colour, acc: false } : { text: r.name,
-      sub: r.off_catalogue ? 'not in the crop list' : z !== zonesOf(r)[0] ? `with Area ${areaNo(zonesOf(r)[0])}` : fmtKg(r.kg),
+      sub: r.off_catalogue ? 'not in the crop list' : z !== zonesOf(r)[0] ? `with ${areaName(zonesOf(r)[0])}` : fmtKg(r.kg),
       colour: r.colour, acc: checked.has(z) }]));
     // An area with no crop that season but a pick for it.
     for (const z of Object.keys(pending)) if (!out[z] && pickedHere(z)) out[z] = { text: pickedHere(z).name, sub: 'changed', colour: pickedHere(z).colour };
@@ -348,7 +351,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaNo, pending, catalogue.data, record]);
+  }, [plan, season, checked, areaNo, areaName, pending, catalogue.data, record]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
@@ -586,7 +589,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     };
     const toggle = (z) => z && setLeftOut((x) => { const y = new Set(x); if (y.has(z)) y.delete(z); else y.add(z); return y; });
     const outLabels = Object.fromEntries(zoneOrder.map((z, i) => [z, leftOut.has(z)
-      ? { text: 'Left out', sub: `Area ${i + 1}`, colour: '#8A94A6' } : { text: `Area ${i + 1}` }]));
+      ? { text: 'Left out', sub: areaName(z), colour: '#8A94A6' } : { text: areaName(z) }]));
     const all = zoneOrder.length > 0 && zoneOrder.every((z) => leftOut.has(z));
     return (
       <Sheet map={record ? <AreaMap record={record} labels={outLabels} onSelect={toggle}
@@ -646,30 +649,30 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const readOnly = plan.status !== 'draft';
     const step1 = (d) => { const k = zones.indexOf(area); pickArea(zones[(k + d + zones.length) % zones.length]); };
     const bar = area
-      ? <SlideBar label={<><b>Area {areaNo(area)}</b> · {yearLabel(ss)}</>} prevLabel="Previous area" nextLabel="Next area" onPrev={() => step1(-1)} onNext={() => step1(1)} />
+      ? <SlideBar label={<><b>{areaName(area)}</b> · {yearLabel(ss)}</>} prevLabel="Previous area" nextLabel="Next area" onPrev={() => step1(-1)} onNext={() => step1(1)} />
       : ss.length > 0 && <SlideBar label={seasonLabel(ss[Math.min(season, ss.length - 1)], Math.min(season, ss.length - 1))} prevLabel="Previous season" nextLabel="Next season"
         onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
     const next = zones.find((z) => z !== area && !checked.has(z));
     return (
       <Sheet map={map} landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}>
         {area ? (
-          <AreaCard plan={plan} zone={area} name={`Area ${areaNo(area)}`} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
+          <AreaCard plan={plan} zone={area} name={areaName(area)} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
             accepted={checked.has(area)} total={zones.length} done={checked.size} readOnly={readOnly}
-            nextName={next ? `Area ${areaNo(next)}` : null} onNext={() => pickArea(next)} onAll={toTerms} acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined}
+            nextName={next ? areaName(next) : null} onNext={() => pickArea(next)} onAll={toTerms} acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined}
             onBack={() => pickArea(null)}
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
             crops={catalogue.data?.crops} changing={revise.isPending} onCrop={(r, key) => changeCrop(area, r.slot, key)}
             picked={pending[area] || {}} onUpdate={updatePlan}
             onRemove={() => setRemoving(area)} />
         ) : (
-          <PlanView plan={plan} checked={checked} areaNo={areaNo} onAccept={toTerms} readOnly={readOnly}
+          <PlanView plan={plan} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly}
             crops={catalogue.data?.crops} changing={revise.isPending} onCrop={changeCrop} pending={pending} onUpdate={updatePlan}
             acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined} />
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}
         {removing && (() => {
           // CP10 remove-area confirm (21 Oct): the node removes it by code (no Claude call).
-          const label = `Area ${areaNo(removing)}`;
+          const label = areaName(removing);
           const remove = async () => {
             setError(undefined);
             try {
@@ -741,7 +744,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
       return (
         <Sheet map={map} landName={name} bar={bar}>
-          <ActivePlan plan={plan} areaNo={areaNo} season={shown} shares={myShares.data} assist={!self && assisted()}
+          <ActivePlan plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
             canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
             onExtend={async () => {
               setError(undefined);
