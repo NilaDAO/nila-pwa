@@ -338,7 +338,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [pending, setPending] = useState({});   // crops picked, not sent yet (CP10, 28 Oct)
   const [madeId, setMadeId] = useState();   // the plan the last job made: CP9 waits until the latest plan is that one
   const [error, setError] = useState();
-  const [read, setRead] = useState(false);
+  const [ticks, setTicks] = useState(() => new Set());   // the accept screen's checks she has ticked
   // CP10: the season shown (overview), the area picked, and her area accepts until CP11 accepts them on the node.
   const [season, setSeason] = useState(0);
   // A plan year before the plan (12 Nov: plan history from the record); null = the plan's years.
@@ -347,7 +347,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [area, setArea] = useState(null);
   const [checked, setChecked] = useState(() => new Set());
   const planId = current.data?.id;
-  useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); setPastYear(null); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); setPastYear(null); setTicks(new Set()); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Approved: the chain as one plan (its seasons and shares, 25 Oct); a waiting extension shows as itself.
   const plan = current.data?.approval?.decision === 'approve' ? mergedPlan(chainQ.data, current.data) : current.data;
   const myShares = useMyShares();   // CP13: a crop share she can collect now is a to-do
@@ -795,6 +795,16 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       if (forLand || self) { await makeMine(); return; }
       try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
     };
+    // The checks she ticks before I accept (12 Nov): first and foremost that she repays all of it, principal and interest.
+    const owe = repayment(plan);
+    const lastMon = owe.last && new Date(`${owe.last}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    const checks = [
+      ['repay', `I repay the whole amount: ${inr(owe.get)} plus ${inr(owe.interest)} interest, ${inr(owe.total)} in all.`],
+      owe.parts > 0 && ['when', `I repay after each harvest, the last part by ${lastMon}.`],
+      ['estimate', 'The sales in this plan are estimates, not a promise.'],
+    ].filter(Boolean);
+    const read = checks.every(([key]) => ticks.has(key));
+    const tick = (key) => setTicks((t) => { const n = new Set(t); if (n.has(key)) n.delete(key); else n.add(key); return n; });
     return (
       <Sheet map={map} landName={name} onBack={back('plan')} scroll full>
         {/* 12 Nov (Carst): the screen answers the money question. What she gets and the interest come first (sales are an
@@ -818,7 +828,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         ))}
         {plan.plan.basis && <Section title="What this plan is based on"><BasisList basis={plan.plan.basis} /></Section>}
         <p style={{ ...muted, margin: '14px 0 0' }}>Yields and prices are estimates. Cash and vouchers depend on the funds available; you can change them with your union leaders.</p>
-        <CheckRow on={read} onClick={() => setRead((r) => !r)} style={{ marginTop: 14 }}>I have read these conditions</CheckRow>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+          {checks.map(([key, text]) => <CheckRow key={key} on={ticks.has(key)} onClick={() => tick(key)}>{text}</CheckRow>)}
+        </div>
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <button type="button" disabled={!read || accept.isPending} aria-disabled={!read} onClick={go} style={{
           width: '100%', height: 44, border: 0, borderRadius: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, padding: '0 24px', marginTop: 14,
