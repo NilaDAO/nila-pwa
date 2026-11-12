@@ -108,7 +108,6 @@ export function BasisList({ basis }) {
   ];
   return (
     <section style={{ display: 'flex', flexDirection: 'column' }}>
-      <h2 style={{ fontSize: 14, fontWeight: 700, margin: '28px 0 4px' }}>What this plan is based on</h2>
       {items.map((it) => {
         const isOpen = open === it.title;
         return (

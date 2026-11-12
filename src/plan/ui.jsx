@@ -191,6 +191,19 @@ export function Steps({ items }) {
 export const inr = (n) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 export const muted = { color: C.muted, fontSize: 14 };
 
+/** A category as on G2 (board LeaderMember, 12 Nov): a line on top, a 16 px bold title, a value on its right. */
+export const Section = ({ title, right, children, style }) => (
+  <section style={{ borderTop: `1px solid ${C.raised}`, paddingTop: 16, marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8, ...style }}>
+    {(title || right) && (
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
+        {right && <span style={{ fontWeight: 700 }}>{right}</span>}
+      </div>
+    )}
+    {children}
+  </section>
+);
+
 /** CP11's notice row (board CropPlanTerms): an amber icon — warning triangle or info circle — a bold line and muted text. */
 export function Notice({ kind = 'warn', title, children }) {
   return (

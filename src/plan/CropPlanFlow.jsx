@@ -10,7 +10,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { C, FONT } from '../shell/tokens';
 import { KV } from '../loan/AssetParts';
 import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanClient, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
-import { CheckRow, Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
+import { CheckRow, Choice, Notice, Primary, Section, Sheet, Steps, inr, muted } from './ui';
 import { Sheet as BaseSheet } from './ui';
 import { BasisDrawer, BasisList, Drawer, InfoButton } from './Drawer';
 import { useMintCropShares } from './mint';
@@ -805,22 +805,19 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           const mon = (m) => m && new Date(`${m}-01`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
           // The field record's segment rows (12 Nov): what she gets, the interest, when she repays; then a line.
           return (
-            <>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <KV k="You get" v={inr(due.get)} />
-                <KV k="Interest" v={inr(due.interest)} />
-                {due.parts > 0 && <KV k="You repay" v={due.parts === 1 ? mon(due.first) : `${due.parts} parts, ${mon(due.first)} – ${mon(due.last)}`} />}
-              </div>
-              <hr style={{ height: 1, background: C.raised, border: 0, margin: '16px 0 0' }} />
-            </>
+            <Section title="Crop share" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
+              <KV k="You get" v={inr(due.get)} />
+              <KV k="Interest" v={inr(due.interest)} />
+              {due.parts > 0 && <KV k="You repay" v={due.parts === 1 ? mon(due.first) : `${due.parts} parts, ${mon(due.first)} – ${mon(due.last)}`} />}
+            </Section>
           );
         })()}
-        <MoneyChart plan={plan} />
+        <Section title="Your money through the year"><MoneyChart plan={plan} /></Section>
         {/* Only what the chart does not show: water, crops outside the list, bare soil, sales after this year. */}
         {(plan.plan.consequences || []).filter((c) => ['water_not_confirmed', 'off_catalogue', 'bare_soil', 'harvest_after_year'].includes(c.kind)).map((c) => (
           <Notice key={c.kind + c.text} kind="warn" title={c.title}>{c.text}</Notice>
         ))}
-        <BasisList basis={plan.plan.basis} />
+        {plan.plan.basis && <Section title="What this plan is based on"><BasisList basis={plan.plan.basis} /></Section>}
         <p style={{ ...muted, margin: '14px 0 0' }}>Yields and prices are estimates. Cash and vouchers depend on the funds available; you can change them with your union leaders.</p>
         <CheckRow on={read} onClick={() => setRead((r) => !r)} style={{ marginTop: 14 }}>I have read these conditions</CheckRow>
         {error && <p style={{ color: C.coral }}>{error}</p>}

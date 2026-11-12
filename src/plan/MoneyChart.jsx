@@ -136,8 +136,7 @@ export default function MoneyChart({ plan }) {
   const sq = (bg) => <span style={{ width: 10, height: 10, borderRadius: 2, background: bg, flexShrink: 0 }} />;
 
   return (
-    <figure style={{ margin: '24px 0 8px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <figcaption style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>Your money through the year</figcaption>
+    <figure style={{ margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <svg role="img" aria-label={`Money left each month with the crop plan. It is lowest at ${sg(r100(min))} in ${monthName(s.months[iMin])} and ends at ${sg(r100(end))}.`}
         width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible', fontFamily: FONT }}>
         <defs>
