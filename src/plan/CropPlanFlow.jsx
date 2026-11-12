@@ -352,7 +352,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   // The map is the list (CP10): each area's chip shows what grows there in the season shown, or just "Area n".
   const labels = useMemo(() => {
     const ss = plan?.plan?.seasons;
-    if (!ss?.length) return nowLabelsOf(record, catalogue.data?.crops, growing);
+    // Before a plan: what grows now; the areas she left out (the step before the plan, 5 Nov) are not drawn.
+    if (!ss?.length) return { ...nowLabelsOf(record, catalogue.data?.crops, growing), ...Object.fromEntries([...leftOut].map((z) => [z, { gone: true }])) };
     // Areas she left out (the step before the plan, or CP10's bin; 5 Nov) are not on the plan's map.
     const gone = Object.entries(plan.plan.left_out_reasons || {}).filter(([, why]) => why === 'removed by her')
       .map(([z]) => [z, { gone: true }]);
@@ -378,7 +379,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaNo, areaName, pending, catalogue.data, record, growing]);
+  }, [plan, season, checked, areaNo, areaName, pending, catalogue.data, record, growing, leftOut]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).

@@ -113,7 +113,8 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
         const path = ring.map(([lng, lat]) => ({ lat, lng }));
         path.forEach((q) => { bounds.extend(q); sx += q.lng; sy += q.lat; k += 1; });
         const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1),
-          strokeColor: colour, strokeOpacity: faded ? 0.3 : 1, strokeWeight: 1.5 });
+          // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
+          strokeColor: colour, strokeOpacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
         if (pick) poly.addListener('click', pick(z.zone_id));
         drawn.current.push(poly);
       });
@@ -174,7 +175,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
       if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const faded = !!selected && selected !== z.zone_id;
       const colour = lab.colour || '#ffffff';
-      const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, opacity: faded ? 0.3 : 1, fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
+      const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, opacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
       layer.addTo(group);
       if (onSelect) layer.on('click', () => onSelect(selected === z.zone_id ? null : z.zone_id));
       if (!lab.hide && !chipsOff) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
