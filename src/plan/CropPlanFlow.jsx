@@ -64,9 +64,8 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
-  // The table shows each season's cost as it is (executive decision 21 Oct): cash, including any part above the
-  // ₹10,000 loan cap, plus machine vouchers. The cap is a note under the table, not a cut in the numbers.
-  const cost = (f) => f.cash + (f.cash_above_cap || 0) + f.voucher_value;
+  // What a season costs is what Nila finances (12 Nov: no ₹10,000 cap anywhere): cash plus machine vouchers.
+  const cost = (f) => f.cash + f.voucher_value;
   // A green manure is its own crop share (4 Nov): seed in cash, machine vouchers, repaid with the next crop.
   const gm = (p.soil_cover || []).filter((c) => c.finance);
   const total = [...seasons, { rows: gm }].reduce((a, s) => {

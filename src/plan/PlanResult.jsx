@@ -288,7 +288,7 @@ export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, o
   const rows = seasons.flatMap((se) => se.rows.filter((r) => zonesOf(r).includes(zone)).map((r) => ({ ...r, k: share(r) })));
   const acres = own ?? rows[0]?.acres ?? 0;
   const sales = Math.round(rows.reduce((a, r) => a + (r.value || 0) * r.k, 0));
-  const cost = Math.round(rows.reduce((a, r) => a + ((r.finance?.cash || 0) + (r.finance?.cash_above_cap || 0) + (r.finance?.voucher_value || 0)) * r.k, 0));
+  const cost = Math.round(rows.reduce((a, r) => a + ((r.finance?.cash || 0) + (r.finance?.voucher_value || 0)) * r.k, 0));
   const items = laneOf(plan, zone, { y0: year, picked, cropOf, readOnly: readOnly || !onCrop, record, crops });
   const openItem = items.find((it) => it.key === open);
   const covers = items.filter((it) => it.soil && it.cover && it.cover.kind !== 'bare');
