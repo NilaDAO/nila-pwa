@@ -196,17 +196,18 @@ function AssistPlan({ map, name, waiting }) {
 const words = (k) => String(k).replace(/_/g, ' ');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const sinceOf = (d) => (/^\d{4}-\d{2}/.test(d || '') ? `since ${MONTH[Number(d.slice(5, 7)) - 1]}` : undefined);
-// The chip keeps the area's name on top (12 Nov) with the crop under it; every area growing something is filled, an
-// unidentified crop in a neutral green.
+// The chip keeps the area's name on top (12 Nov) with the crop under it; every area growing something is filled: a
+// crop the catalogue lists in its colour, another named crop in a neutral green, an unidentified one in grey.
 const GROWING = '#7BA05B';
+const UNKNOWN = '#8A94A6';
 function growingNow(record, crops = []) {
   const zones = areasOf(record);
   const nameOf = (z) => zones.find((x) => x.zone_id === z)?.name || `Area ${zones.findIndex((x) => x.zone_id === z) + 1}`;
   const label = (z, key, when) => {
     const hit = key && key !== 'unknown' && (crops.find((x) => x.key === key) || crops.find((x) => key.startsWith(`${x.key}_`)));
-    const crop = !key || key === 'unknown' ? 'Unidentified'
-      : hit && hit.key === key ? hit.name : words(key).replace(/^./, (x) => x.toUpperCase());
-    return { text: nameOf(z), sub: [crop, when].filter(Boolean).join(', '), colour: hit?.colour || GROWING };
+    const unknown = !key || key === 'unknown';
+    const crop = unknown ? 'Unidentified' : hit && hit.key === key ? hit.name : words(key).replace(/^./, (x) => x.toUpperCase());
+    return { text: nameOf(z), sub: [crop, when].filter(Boolean).join(', '), colour: unknown ? UNKNOWN : hit?.colour || GROWING, unknown };
   };
   const out = {};
   for (const c of Array.isArray(record?.current_cycle) ? record.current_cycle : []) {
@@ -301,6 +302,10 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [lang, setLang] = useState('ta');   // CP9's language (4 Nov): Tamil when the plan has it
   const [removing, setRemoving] = useState(null);
   const [leftOut, setLeftOut] = useState(() => new Set());   // areas left out before the plan is made (5 Nov)
+  // What grows now, first (12 Nov): she sets the crop on every area the satellite could not identify before the plan
+  // is made (area → crop key); sent with the intake as `growing`.
+  const [growing, setGrowing] = useState({});
+  const [growArea, setGrowArea] = useState(null);
   const [cashGiven, setCashGiven] = useState(null);   // CP7b's answer, sent with the leave-out step   // the area asked to remove (CP10 confirm)
   const [afterMake, setAfterMake] = useState('why');
   const [jobId, setJobId] = useState();
@@ -490,11 +495,32 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     }
     if (!recordReady) return <Pending map={map} error={field.error} />;
     const sum = summarize(record);
+    // First what grows now (12 Nov): every area the satellite could not identify needs its crop before the plan.
+    const now = growingNow(record, catalogue.data?.crops);
+    const cropList = sortedCrops(catalogue.data?.crops || []);
+    const toSet = Object.keys(now).filter((z) => now[z].unknown && !growing[z]);
+    const nowLabels = Object.fromEntries(Object.entries(now).map(([z, l]) => {
+      const c = growing[z] && cropList.find((x) => x.key === growing[z]);
+      return [z, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : l];
+    }));
+    const settable = (z) => !!now[z]?.unknown;
     return (
-      <Sheet map={map} landName={name} title={forLand ? 'Field record' : 'Your field record'}>
+      <Sheet map={<AreaMap record={record} labels={nowLabels} selected={growArea} onSelect={(z) => setGrowArea(settable(z) ? z : null)} />}
+        landName={name} title={forLand ? 'Field record' : 'Your field record'}>
         {sum.from && <p style={{ ...muted, textAlign: 'center', margin: 0 }}>{sum.from} to {sum.to}</p>}
         <p style={{ ...muted, textAlign: 'center' }}>{sum.cultivations} cultivations on {sum.areas} areas</p>
-        <Primary onClick={() => setStep('intro')}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
+        {growArea && settable(growArea) ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>What grows on {nowLabels[growArea].text} now?</span>
+            <CropSelect crops={cropList} current={growing[growArea]}
+              onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
+          </div>
+        ) : toSet.length > 0 && (
+          <p role="note" style={{ ...muted, textAlign: 'center' }}>
+            {toSet.length === 1 ? 'One area has' : `${toSet.length} areas have`} a crop the satellite could not identify. Tap a grey area to set what grows there.
+          </p>
+        )}
+        <Primary disabled={toSet.length > 0} onClick={() => setStep('intro')}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
       </Sheet>
     );
   }
@@ -587,7 +613,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const make = async () => {
       setError(undefined);
       try {
-        const intake = { crops: [...crops], cows: COWS[cows], hard_months: months, land_role: LAND_ROLE[role] };
+        const intake = { crops: [...crops], cows: COWS[cows], hard_months: months, land_role: LAND_ROLE[role], growing };
         if (cashGiven != null) intake.farm_cash_now = cashGiven;
         const r = await submit.mutateAsync({ intake, exclude: [...leftOut] });
         setJobId(r.job_id); setStep('making');
