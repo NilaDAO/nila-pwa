@@ -1,6 +1,6 @@
 // CP11, the accept screen's chart (12 Nov, rethought with Carst; back to bars and the line after a month-by-month area
 // version: money comes at once, not as a build-up): one chart for the whole plan year. Seasons as shaded
-// bands with their names; up at sowing the crop share received (hatched yellow); at harvest the sale in the crop's
+// bands with their names; up at sowing the cash she gets (hatched yellow); at harvest the sale in the crop's
 // colour, the part repaid from it hatched over its top; inputs (grey) below zero; what she owes as one white line.
 // The scale follows the crop share, not the sales (12 Nov, option B): a sale taller than the chart is cut at its top
 // with its amount written above it. No running "money left" line: a year of estimated sales added up looked unreal.
@@ -102,21 +102,22 @@ export default function MoneyChart({ plan }) {
   const bars = [], cut = [];
   s.months.forEach((_, i) => {
     const x = cx(i) - 8;
-    // Up: the crop share received, then the sales in their crop colours (a crop in the field now is faded).
-    const ups = [['url(#cf-in)', s.take[i], 1], ...s.sales[i].map((c) => [c.colour || C.muted, c.v, c.standing ? 0.55 : 1])].filter(([, v]) => v > 0);
+    // Up: the cash she gets, then the sales in their crop colours. A month taller than the chart (12 Nov): its sales
+    // are scaled down together to fit, so every crop keeps its share of the bar (none is cut off), the real total on
+    // top; the repaid part is scaled the same way.
+    const room = Math.max(0, top - s.take[i]);
+    const f = sold[i] > room ? room / sold[i] : 1;
+    if (f < 1) cut.push({ i, v: sold[i] });
+    const ups = [['url(#cf-in)', s.take[i], 1], ...s.sales[i].map((c) => [c.colour || C.muted, c.v * f, c.standing ? 0.55 : 1])].filter(([, v]) => v > 0);
     let base = 0;
     ups.forEach(([fill, v, op], j) => {
-      if (base >= top) return;
       const y2 = cy(base) - (j === 0 ? 1 : 2), y1 = cy(base + v);
-      bars.push({ x, y: y1, h: Math.max(y2 - y1, 0.5), rx: j === ups.length - 1 || base + v > top ? 3 : 0, fill, op, key: `u${i}${j}` });
+      bars.push({ x, y: y1, h: Math.max(y2 - y1, 0.5), rx: j === ups.length - 1 ? 3 : 0, fill, op, key: `u${i}${j}` });
       base += v;
     });
-    if (base > top) cut.push({ i, v: sold[i] });
-    // The repaid part of the month's sale: hatched over the top of the (shown) sale; what the sale cannot cover goes
-    // below zero.
+    // The repaid part of the month's sale: hatched over the top of the sale; what the sale cannot cover goes below zero.
     if (fromSale[i] > 0) {
-      const shownTop = Math.min(base, top);
-      const y1 = cy(shownTop), y2 = cy(Math.max(shownTop - fromSale[i], 0));
+      const y1 = cy(base), y2 = cy(Math.max(base - fromSale[i] * f, 0));
       bars.push({ x, y: y1, h: Math.max(y2 - y1, 0.5), rx: 3, fill: 'url(#cf-back)', key: `r${i}` });
     }
     base = 0;
@@ -131,7 +132,7 @@ export default function MoneyChart({ plan }) {
   const peak = Math.max(...s.owed), iPeak = s.owed.indexOf(peak);
   const crops = [...new Map(s.sales.flat().map((c) => [c.name, c.colour])).entries()];
   const tip = (i) => [monthName(s.months[i]),
-    s.take[i] ? `crop share received ${rs(s.take[i])}` : null,
+    s.take[i] ? `you get ${rs(s.take[i])}` : null,
     ...s.sales[i].map((c) => `${c.name} sold ${rs(c.v)}`),
     s.repay[i] ? `repaid ${rs(s.repay[i])}` : null,
     s.inputs[i] ? `inputs −${rs(s.inputs[i])}` : null,
@@ -177,7 +178,7 @@ export default function MoneyChart({ plan }) {
       </svg>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', marginTop: 8, fontSize: 12, lineHeight: 1.4, color: C.muted }}>
         {key(<span style={{ width: 14, height: 0, borderTop: `2px solid ${C.text}` }} />, 'What you owe')}
-        {key(sq(`repeating-linear-gradient(45deg, ${C.accent} 0 1.5px, ${C.raised} 1.5px 3px)`), 'Crop share received')}
+        {key(sq(`repeating-linear-gradient(45deg, ${C.accent} 0 1.5px, ${C.raised} 1.5px 3px)`), 'Cash you get')}
         {crops.map(([name, colour]) => key(sq(colour || C.muted), `${name} sold`))}
         {key(sq(`repeating-linear-gradient(-45deg, ${C.text} 0 1.5px, ${C.ink} 1.5px 3px)`), 'Repaid')}
         {key(sq(INPUTS), 'Inputs')}
