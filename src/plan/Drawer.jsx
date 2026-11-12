@@ -36,9 +36,10 @@ export function InfoButton({ label, onClick }) {
 }
 
 const h = { fontSize: 14, fontWeight: 700, margin: 0 };
-// One mark in one circle (12 Nov): green check = used, grey dash = not used, amber "!" = used with a warning.
+// One mark in one circle (12 Nov), in Nila's tokens: accent check = used, muted dash = not used, gold "!" = a warning
+// (gold is the tokens' warning icon colour, as on the notices; the tokens have no green).
 const Tick = ({ on, warn }) => {
-  const col = warn ? '#E5A93A' : on ? '#4ADE80' : '#94A3B8';
+  const col = warn ? C.gold : on ? C.accent : C.muted;
   return (
     <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
       <circle cx="12" cy="12" r="10" />
