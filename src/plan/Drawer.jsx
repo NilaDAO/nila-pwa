@@ -96,7 +96,7 @@ export function BasisDrawer({ basis, onClose }) {
 const GROUPS = [
   { title: 'Field record', names: ['Field record'], problems: 'record' },
   { title: 'Your answers', names: ['Your answers', 'Your changes'] },
-  { title: 'Yields and prices', names: ['Reference yields', 'Reference costs and rates', 'Market prices'], core: ['Reference yields', 'Reference costs and rates'] },
+  { title: 'Yields, prices and costs', names: ['Reference yields', 'Reference costs and rates', 'Harvest costs', 'Market prices'], core: ['Reference yields', 'Reference costs and rates'], gap: 'Harvest costs' },
   { title: 'Machines', names: ['Union machines'], vouchers: true },
   { title: 'Water and trees', names: ['Water sources', 'Trees'], all: true },
   { title: 'Soil and climate', names: ['Soil covers', 'Season climate outlook'] },
@@ -123,7 +123,8 @@ export function BasisList({ basis }) {
     if (g.vouchers) lines.push(`Machine vouchers: ${basis.vouchers?.used ? 'used' : 'not used'}. ${basis.vouchers?.why || ''}`.trim());
     const core = g.core ? parts.filter((i) => g.core.includes(i.name)) : parts;
     const used = (g.all ? core.length > 0 && core.every((i) => i.used) : core.some((i) => i.used)) || (g.vouchers && basis.vouchers?.used);
-    const warn = parts.some((i) => i.warn) || (g.problems && rec.length > 0);
+    // A gap that makes the money look better than it is (harvest costs not counted) is a warning, not a dash.
+    const warn = parts.some((i) => i.warn) || (g.problems && rec.length > 0) || (g.gap && byName[g.gap] && !byName[g.gap].used);
     return { title: g.title, on: !!used && !warn, warn, text: lines.length ? lines : ['Not used yet.'] };
   });
   return (

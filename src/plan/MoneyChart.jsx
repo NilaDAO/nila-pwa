@@ -4,7 +4,7 @@
 // shaded bands. Earlier versions (bars per kind, a running "money left" line, a "what you owe" line) were too complex.
 //
 // Every series is a direct sum of the plan's rows (no new numbers): sales = the row's value in its harvest month (and
-// the crop in the field now, plan.standing_sales, at its end of season); crop share = its cash and voucher value in its
+// 12 Nov: not the crop already in the field, named on a line under the chart); crop share = its cash and voucher value in its
 // sowing month; inputs = seed, cash inputs and hand or hired work at sowing, machine work in the month it is used;
 // repayment = its repay in its harvest month (she repays from that sale; the due date is 21 days after).
 import { useMemo } from 'react';
@@ -59,10 +59,13 @@ export function series(plan) {
     const back = h !== undefined && r.value > 0 ? h : d;
     if (back !== undefined) { repay[back] += f.repay || 0; principal[back] += (f.cash || 0) + (f.voucher_value || 0); }
   }
-  for (const st of p.standing_sales || []) {
-    const h = at[ym(st.harvest)];
-    if (h !== undefined && st.value > 0) sales[h].push({ name: st.name, colour: st.colour, v: st.value, standing: true });
+  // Harvest work and transport (12 Nov): hers, at harvest; usually none yet (no figures in the catalogue).
+  for (const r of financedRows(p)) {
+    const h = at[ym(r.harvest)];
+    if (h !== undefined && r.finance?.harvest_cost) inputs[h] += r.finance.harvest_cost;
   }
+  // The crop already in the field (plan.standing_sales) is not in the chart (12 Nov): its costs fell before the plan,
+  // so its sale alone would read as profit. It is named on one line under the chart.
   // What she owes (12 Nov, option B): the crop share received, less what is paid back of it (interest apart).
   let o = 0;
   const owed = months.map((_, i) => { o = Math.max(0, o + take[i] - principal[i]); return o; });
@@ -141,6 +144,15 @@ export default function MoneyChart({ plan }) {
         {key(sq(C.accent), 'You keep')}
         {worst < 0 && key(sq(C.coral), 'You pay more than you get')}
       </div>
+      {[...(plan.plan.standing_sales || []).reduce((m, st) => {
+        const x = m.get(st.name) || { name: st.name, v: 0, month: st.harvest };
+        x.v += st.value; if (st.harvest > x.month) x.month = st.harvest;
+        return m.set(st.name, x);
+      }, new Map()).values()].map((x) => (
+        <p key={x.name} style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: C.muted }}>
+          {x.name} already in your field: you sell about {rs(r100(x.v))} around {monthName(ym(x.month))}. Not part of this plan, so not in the chart.
+        </p>
+      ))}
     </figure>
   );
 }
