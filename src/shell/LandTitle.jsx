@@ -19,7 +19,7 @@ import { areaM2, tapRule } from '../plan/mapTap';
 import { Sheet } from '../plan/ui';
 import { Loading } from '../register/Boot';
 import { IdentityRow } from '../leader/LeaderSettings';
-import { useBorderClient } from '../border/hooks';
+import { useBorderClient, useMyBorderJob } from '../border/hooks';
 import { C, R } from './tokens';
 
 const LAND_TITLE = process.env.REACT_APP_LAND_TITLE_MAIN;
@@ -35,7 +35,7 @@ const btn = { width: '100%', height: 44, border: 0, borderRadius: R.button, font
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
 
 /** bar / onSwipe (map-central trial): the ‹ asset › bar on top of the card, and a swipe on the card that steps it. */
-export default function LandTitle({ onBack, bar, onSwipe }) {
+export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
   const s = useNilaSigner();
   const titles = useLandTitles(s?.evmAddress);
   const stellarTitles = useStellarTitles(s);
@@ -104,6 +104,10 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
     mutationFn: () => border.sheetPlaced(landId),
     onSuccess: (d) => { qc.setQueryData(['oracle', 'border', 'landCheck', landId], d); setSheetOpen(false); },
   });
+  // A leader without a title (burned it, 12 Nov): the mint button in place of Burn, as on the Crop plan's no-title
+  // card — her field points already with the union open that border job, else a new title starts (L2a–L4).
+  const myJob = useMyBorderJob();
+  const openJob = myJob.data && myJob.data.status !== 'failed' && myJob.data.status !== 'minted' ? myJob.data : null;
   const onTap = tapRule(picked, { open: setPicked, back: () => setPicked(null) });
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
   if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched) || field.isLoading) return <Loading />;
@@ -183,12 +187,20 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
       </section>
       <hr style={line} />
       {/* A5 Burn my land title (R68, executive decision 2 Nov; Polygon titles too since 4 Nov, G4: sent to 0x…dEaD); the
-          node checks no crop share and no investment. Membership ends; a leader stays a leader (roles). */}
-      <button type="button" onClick={() => setAsk(true)} disabled={landId == null}
-        style={{ ...btn, background: C.raised, color: C.coral, opacity: landId != null ? 1 : 0.5, cursor: landId != null ? 'pointer' : 'default' }}>
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.coral} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-        Burn my land title
-      </button>
+          node checks no crop share and no investment. Membership ends; a leader stays a leader (roles). Without a title a
+          leader gets the mint button instead (12 Nov); a member's leader mints hers (3 Nov), so she sees neither. */}
+      {landId == null ? (leader && (
+        <button type="button" onClick={() => { window.location.hash = openJob ? `#/tasks/border/${openJob.id}` : '#/crop/register'; }}
+          style={{ ...btn, background: C.accent, color: C.ink, cursor: 'pointer' }}>
+          {openJob ? (openJob.status === 'ready' ? 'Check borders and mint' : 'See my fields') : 'Mint a new land title'}
+        </button>
+      )) : (
+        <button type="button" onClick={() => setAsk(true)}
+          style={{ ...btn, background: C.raised, color: C.coral, cursor: 'pointer' }}>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.coral} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+          Burn my land title
+        </button>
+      )}
       {ask && (
         <ConfirmCard title="Burn my land title" ok={burn.isPending ? 'Burning…' : 'Burn'} okStyle={{ background: C.coral }} okDisabled={burn.isPending}
           onCancel={() => setAsk(false)} onOk={() => burn.mutate()}
