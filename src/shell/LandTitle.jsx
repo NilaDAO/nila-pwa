@@ -107,6 +107,8 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
   // A leader without a title (burned it, 12 Nov): the mint button in place of Burn, as on the Crop plan's no-title
   // card — her field points already with the union open that border job, else a new title starts (L2a–L4).
   const myJob = useMyBorderJob();
+  // Only with a balance of 0 read on both chains (Polygon and Stellar): never while a read is loading or failed.
+  const noTitle = titles.isSuccess && stellarTitles.isSuccess && count === 0;
   const openJob = myJob.data && myJob.data.status !== 'failed' && myJob.data.status !== 'minted' ? myJob.data : null;
   const onTap = tapRule(picked, { open: setPicked, back: () => setPicked(null) });
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
@@ -189,7 +191,7 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
       {/* A5 Burn my land title (R68, executive decision 2 Nov; Polygon titles too since 4 Nov, G4: sent to 0x…dEaD); the
           node checks no crop share and no investment. Membership ends; a leader stays a leader (roles). Without a title a
           leader gets the mint button instead (12 Nov); a member's leader mints hers (3 Nov), so she sees neither. */}
-      {landId == null ? (leader && (
+      {landId == null ? (leader && noTitle && (
         <button type="button" onClick={() => { window.location.hash = openJob ? `#/tasks/border/${openJob.id}` : '#/crop/register'; }}
           style={{ ...btn, background: C.accent, color: C.ink, cursor: 'pointer' }}>
           Mint land title
