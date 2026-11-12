@@ -45,7 +45,7 @@ export default function MapStage({ children }) {
       {props?.record || props?.center ? (
         // Clipped: the map's tiles reach past its box and would otherwise make the page taller than the card.
         <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }} data-testid="map-stage">
-          <AreaMap {...props} labels={shownLabels} height="100%" />
+          <AreaMap {...props} labels={shownLabels} chipsOff={off} height="100%" />
           {props.chip && <Chip text={props.chip} />}
         </div>
       ) : (

@@ -196,16 +196,22 @@ function AssistPlan({ map, name, waiting }) {
 const words = (k) => String(k).replace(/_/g, ' ');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const sinceOf = (d) => (/^\d{4}-\d{2}/.test(d || '') ? `since ${MONTH[Number(d.slice(5, 7)) - 1]}` : undefined);
+// The chip keeps the area's name on top (12 Nov) with the crop under it; every area growing something is filled, an
+// unidentified crop in a neutral green.
+const GROWING = '#7BA05B';
 function growingNow(record, crops = []) {
-  const label = (key, sub) => {
-    if (!key || key === 'unknown') return { text: 'Unidentified', sub };
-    const hit = crops.find((x) => x.key === key) || crops.find((x) => key.startsWith(`${x.key}_`));
-    return { text: hit && hit.key === key ? hit.name : words(key).replace(/^./, (x) => x.toUpperCase()), sub, colour: hit?.colour };
+  const zones = areasOf(record);
+  const nameOf = (z) => zones.find((x) => x.zone_id === z)?.name || `Area ${zones.findIndex((x) => x.zone_id === z) + 1}`;
+  const label = (z, key, when) => {
+    const hit = key && key !== 'unknown' && (crops.find((x) => x.key === key) || crops.find((x) => key.startsWith(`${x.key}_`)));
+    const crop = !key || key === 'unknown' ? 'Unidentified'
+      : hit && hit.key === key ? hit.name : words(key).replace(/^./, (x) => x.toUpperCase());
+    return { text: nameOf(z), sub: [crop, when].filter(Boolean).join(', '), colour: hit?.colour || GROWING };
   };
   const out = {};
   for (const c of Array.isArray(record?.current_cycle) ? record.current_cycle : []) {
     const z = c.cluster_id ?? c.zone_id;
-    if (z != null) out[z] = label(c.crop_type, c.stage ? words(c.stage) : sinceOf(c.sos));
+    if (z != null) out[z] = label(z, c.crop_type, c.stage ? words(c.stage) : sinceOf(c.sos));
   }
   const open = {};
   for (const c of Array.isArray(record?.cycles) ? record.cycles : []) {
@@ -213,7 +219,7 @@ function growingNow(record, crops = []) {
     if (z == null || out[z] || c.eos) continue;
     if (!open[z] || (c.sos || '') > (open[z].sos || '')) open[z] = c;
   }
-  for (const [z, c] of Object.entries(open)) out[z] = label(c.crop_type, sinceOf(c.sos));
+  for (const [z, c] of Object.entries(open)) out[z] = label(z, c.crop_type, sinceOf(c.sos));
   return out;
 }
 

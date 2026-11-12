@@ -85,7 +85,7 @@ export const ringsOf = (g) => (g?.type === 'Polygon' ? [g.coordinates[0]] : g?.t
  *  and border (board CP10). selected / onSelect: tapping an area or its chip picks it; the others fade. */
 /** center ({ lat, lng }): where the map looks when there is no record to draw (26 Oct: a leader's filter with nothing
  *  in it shows the union's land, never a black screen). */
-function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, fitBottom, fitSide = 40, center }) {
+function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, fitBottom, fitSide = 40, center, chipsOff = false }) {
   const map = useRef(null);
   const drawn = useRef([]);
   const fitted = useRef(null);
@@ -117,7 +117,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
         if (pick) poly.addListener('click', pick(z.zone_id));
         drawn.current.push(poly);
       });
-      if (k && !lab.hide && g.marker?.AdvancedMarkerElement) {   // hide: a shape with no chip (a member's further fields)
+      if (k && !lab.hide && !chipsOff && g.marker?.AdvancedMarkerElement) {   // hide: a shape with no chip (a member's further fields)
         const mk = new g.marker.AdvancedMarkerElement({ map: m, position: { lat: sy / k, lng: sx / k }, gmpClickable: !!pick,
           title: lab.text, content: chip(lab, selected === z.zone_id, faded, !!pick) });
         if (pick) mk.addListener('click', pick(z.zone_id));
@@ -146,7 +146,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       m.fitBounds(target, full ? { top: 80, left: fitSide, right: fitSide, bottom: fitBottom ?? Math.round(window.innerHeight * 0.6) } : 16);
     }
   };
-  useEffect(draw, [record, labels, selected, onSelect, height, fitBottom, center]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(draw, [record, labels, selected, onSelect, height, fitBottom, center, chipsOff]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; }); }, []);
   return (
     <div style={{ height, width: '100%', background: '#25361f' }} aria-label="Map of your areas">
@@ -156,7 +156,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
   );
 }
 
-function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, center }) {
+function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, center, chipsOff = false }) {
   const box = useRef();
   const ready = useLeaflet();
   useEffect(() => {
@@ -177,13 +177,13 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
       const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, opacity: faded ? 0.3 : 1, fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
       layer.addTo(group);
       if (onSelect) layer.on('click', () => onSelect(selected === z.zone_id ? null : z.zone_id));
-      if (!lab.hide) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
+      if (!lab.hide && !chipsOff) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
     });
     const out = record?.meta?.geometry?.out;
     if (out) L.geoJSON(out, { interactive: false, style: { color: '#F1F5F9', weight: 1.5, dashArray: '6 4', fill: false } }).addTo(map);
     if (group.getLayers().length) map.fitBounds(group.getBounds(), { padding: [16, 16] });
     return () => map.remove();
-  }, [ready, record, labels, selected, onSelect, center]);
+  }, [ready, record, labels, selected, onSelect, center, chipsOff]);
   return (
     <>
       <style>{`.nila-area-label{background:${C.ink};color:${C.text};border:0;border-radius:9999px;padding:4px 10px;font:700 12px Inter,system-ui,sans-serif;box-shadow:none;text-align:center}.nila-area-label:before{display:none}`}</style>
