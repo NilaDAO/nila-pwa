@@ -533,11 +533,12 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const cropList = [...sortedCrops(catalogue.data?.crops || []), EMPTY];
     const toSet = Object.keys(now).filter((z) => now[z].unknown && !growing[z]);
     // An empty area can take a crop too (12 Nov): she may have just sown it, which no image shows yet. Optional there;
-    // an unidentified area must be set. A crop the satellite named is not asked again.
+    // an unidentified area must be set.
     const zoneIds = areasOf(record).map((z) => z.zone_id);
     const nameOf = (z) => areasOf(record).find((x) => x.zone_id === z)?.name || `Area ${zoneIds.indexOf(z) + 1}`;
     const nowLabels = nowLabelsOf(record, catalogue.data?.crops, growing);
-    const settable = (z) => !!z && (!now[z] || !!now[z].unknown);
+    // Any area can be set (12 Nov): hers replaces the satellite's reading; only an unidentified one must be set.
+    const settable = (z) => !!z;
     const growingCount = zoneIds.filter((z) => (growing[z] ? growing[z] !== 'empty' : !!now[z])).length;
     // Option A (12 Nov, as G2's top block): the record's facts as rows, a line, then the button.
     return (

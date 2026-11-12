@@ -95,6 +95,16 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
   const clamp = (a, b) => { const s0 = Math.max(0, Math.min(12, at(a))); return [s0, Math.max(s0 + 0.3, Math.min(12, at(b)))]; };
   const out = [];
   const taken = new Set();
+  // The crop in the field now (12 Nov, plan.standing): a faded bar until its (estimated) end of season, before the
+  // plan's first crop there. Set on the field record, so not changed here.
+  for (const st of (plan.plan.standing || []).filter((x) => x.zone === zone)) {
+    if (at(st.until) <= 0) continue;
+    const s0 = Math.max(0, Math.min(12, at(st.sow || st.until)));
+    const s1 = Math.max(s0 + 0.3, Math.min(12, at(st.until)));
+    const m = MON[new Date(st.until).getMonth()];
+    out.push({ key: `standing-${st.crop}`, s0, s1, name: `${st.name}, until ${st.estimate ? '~' : ''}${m}`, fill: st.colour || C.muted,
+      ink: lightBg(st.colour) ? C.ink : C.text, faded: true, editable: false, row: {} });
+  }
   for (const se of plan.plan.seasons || []) {
     for (const r of se.rows.filter((x) => zonesOf(x).includes(zone))) {
       if (at(r.harvest) <= 0 || at(r.sow) >= 12) continue;
@@ -129,7 +139,7 @@ export function Lane({ items, height = 40, onBar, open }) {
     <div style={{ position: 'relative', height }}>
       {items.map((it) => {
         const style = { position: 'absolute', left: `${(it.s0 / 12) * 100}%`, width: `calc(${((it.s1 - it.s0) / 12) * 100}% - 2px)`, top: 0, bottom: 0,
-          borderRadius: 6, background: it.fill, color: it.ink, border: open === it.key ? `2px solid ${C.text}` : 0, padding: '0 6px', boxSizing: 'border-box',
+          borderRadius: 6, background: it.fill, opacity: it.faded ? 0.55 : 1, color: it.ink, border: open === it.key ? `2px solid ${C.text}` : 0, padding: '0 6px', boxSizing: 'border-box',
           display: 'flex', alignItems: 'center', fontFamily: FONT, fontSize: 12, fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap',
           textShadow: it.soil ? '0 0 3px #000' : undefined };
         const text = <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>;
