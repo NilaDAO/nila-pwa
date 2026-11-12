@@ -800,9 +800,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const lastMon = owe.last && new Date(`${owe.last}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
     const checks = [
       // Locally, paying only the interest and keeping the principal is common; Nila does not work that way (12 Nov).
-      ['repay', `I repay all ${inr(owe.total)}: the ${inr(owe.get)} I get and ${inr(owe.interest)} interest. Paying only the interest is not enough.`],
-      owe.parts > 0 && ['when', `I repay after each harvest, the last part by ${lastMon}.`],
-      ['change', 'My union leader can change the cash and voucher amounts at intake.'],
+      ['repay', `I pay back all ${inr(owe.total)}, not only the interest.`],
+      owe.parts > 0 && ['when', `I pay after each harvest, all by ${lastMon}.`],
+      ['change', 'My leader can change the amounts.'],
     ].filter(Boolean);
     const read = checks.every(([key]) => ticks.has(key));
     const tick = (key) => setTicks((t) => { const n = new Set(t); if (n.has(key)) n.delete(key); else n.add(key); return n; });
