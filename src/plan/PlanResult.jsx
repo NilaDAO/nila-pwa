@@ -139,7 +139,7 @@ export function Lane({ items, height = 40, onBar, open }) {
     <div style={{ position: 'relative', height }}>
       {items.map((it) => {
         const style = { position: 'absolute', left: `${(it.s0 / 12) * 100}%`, width: `calc(${((it.s1 - it.s0) / 12) * 100}% - 2px)`, top: 0, bottom: 0,
-          borderRadius: 6, background: it.fill, opacity: it.faded ? 0.55 : 1, color: it.ink, border: open === it.key ? `2px solid ${C.text}` : 0, padding: '0 6px', boxSizing: 'border-box',
+          borderRadius: 6, background: it.fill, opacity: it.faded ? 0.4 : 1, color: it.ink, border: open === it.key ? `2px solid ${C.text}` : 0, padding: '0 6px', boxSizing: 'border-box',
           display: 'flex', alignItems: 'center', fontFamily: FONT, fontSize: 12, fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap',
           textShadow: it.soil ? '0 0 3px #000' : undefined };
         const text = <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>;
@@ -297,12 +297,12 @@ export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending =
             <span style={{ flexGrow: 1 }}><Lane items={laneOf(plan, z, { y0, picked: pending[z] || {}, cropOf, readOnly: true })} height={30} /></span>
           </button>
         ))}
-        {out.map((z) => (
-          <div key={z} style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: C.muted, height: 22 }}>
-            <span style={{ width: CL - 8, marginRight: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{areaName(z)}</span>
-            <span>left out</span>
-          </div>
-        ))}
+        {/* Left-out areas (corners, trees; 12 Nov): one muted line, not a row each. */}
+        {out.length > 0 && (
+          <p title={out.map(areaName).join(', ')} style={{ margin: '2px 0 0', fontSize: 13, color: C.muted }}>
+            {out.length === 1 ? `${areaName(out[0])} left out` : `${out.length} small areas left out`}
+          </p>
+        )}
       </div>
     </figure>
   );

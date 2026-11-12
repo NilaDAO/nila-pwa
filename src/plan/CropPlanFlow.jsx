@@ -73,7 +73,7 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
     const sum = s.rows.reduce((b, r) => ({ cash: b.cash + cost(r.finance), financed: b.financed + r.finance.cash + r.finance.voucher_value, interest: b.interest + r.finance.interest }), { cash: 0, financed: 0, interest: 0 });
     return { cash: a.cash + sum.cash, financed: a.financed + sum.financed, interest: a.interest + sum.interest };
   }, { cash: 0, financed: 0, interest: 0 });
-  const above = [...seasons, { rows: gm }].reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.cash_above_cap || 0), 0), 0);
+  const vouchersAll = [...seasons, { rows: gm }].reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.voucher_value || 0), 0), 0);
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance.due)).sort().pop();
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
   const [open, setOpen] = useState(null);   // the season whose areas' crops are open
@@ -86,13 +86,14 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
       <PlanChart plan={plan} zones={order} areaName={areaName} checked={checked} y0={y0} crops={crops} pending={pending} onArea={onArea} />
       <hr style={{ height: 1, background: C.raised, border: 0, margin: '16px 0 12px' }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <KV k="Cost" v={inr(total.cash)} />
-        <KV k="Loans" v={inr(total.financed)} />
+        {/* 12 Nov: no ₹10,000 cap in the app; what the plan costs is what Nila finances (cash and machine vouchers). */}
+        <KV k="Financed" v={inr(total.cash)} />
+        <KV k="of which machine vouchers" v={inr(vouchersAll)} />
         {sales > 0 && <KV k="Sales (estimate)" v={inr(sales)} />}
       </div>
       <button type="button" onClick={() => setMoney((v) => !v)} aria-expanded={money}
         style={{ marginTop: 10, border: 0, background: 'transparent', padding: 0, color: C.accent, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-        {money ? 'Hide money details' : 'Money details ›'}
+        {money ? 'Hide financed per season' : 'Financed per season ›'}
       </button>
       {money && <>
       <table style={{ width: '100%', fontSize: 14, marginTop: 8, borderCollapse: 'collapse' }}>
@@ -136,7 +137,7 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
             </tr>
           )}
           <tr style={{ borderTop: `1px solid ${C.raised}`, fontWeight: 700 }}>
-            <td style={{ padding: '8px 0' }} colSpan={2}>Total cost</td>
+            <td style={{ padding: '8px 0' }} colSpan={2}>Total financed</td>
             <td style={{ textAlign: 'right' }}>{inr(total.cash)}</td>
           </tr>
         </tbody>
@@ -155,12 +156,7 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
           </Notice>
         );
       })()}
-      {above > 0 && (
-        <Notice title="Loans are capped at ₹10,000">
-          Each loan (one area in one season) gives at most ₹10,000 in cash. The {inr(above)} above the cap is financed by the member contributions in Nila.
-        </Notice>
-      )}
-      {lastDue && <p style={muted}>The loans are {inr(total.financed)}; you repay {inr(total.financed + total.interest)} in {seasons.length} parts, each 21 days after its harvest.</p>}
+      {lastDue && <p style={muted}>You repay {inr(total.cash + total.interest)} in {seasons.length} parts, each 21 days after its harvest.</p>}
       </>}
       {/* Her changes are hard rules (21 Oct); only a hard fact refuses one, and anything the node could not read is named. */}
       {p.member_request?.not_followed?.length > 0 && (
