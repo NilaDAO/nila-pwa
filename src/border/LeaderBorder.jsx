@@ -30,6 +30,8 @@ const btn = (primary) => ({ flex: 1, height: 44, borderRadius: R.button, border:
 // 'inside' (1 Nov): the field's point lies in another field's accepted shape, so that field holds it; minted with it.
 const DONE = ['accepted', 'left_out', 'inside'];
 const insideText = (f) => `Inside field ${f.inside}`;
+// The name given with the field's point (R6, R7; 12 Nov: it was dropped before the node and the title), else its number.
+const fieldName = (f) => f?.name || `Field ${f?.n}`;
 
 // The map fills the screen behind the card; the card is the app's one map card (plan/ui.jsx Sheet, 28 Oct): header row
 // inside the card, drag line, clear of the tab bar. It starts at 40 % of the screen.
@@ -49,7 +51,7 @@ function FieldRow({ f, sub, right, onClick }) {
   return (
     <button type="button" onClick={onClick} disabled={!onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: C.raised, border: 0, borderRadius: 12, padding: '12px 16px', color: C.text, fontFamily: FONT, fontSize: 14 }}>
       <span style={{ width: 24, height: 24, borderRadius: R.round, background: C.ink, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{f.n}</span>
-      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>Field {f.n}</b>{sub && <span style={{ color: C.muted }}>{sub}</span>}</span>
+      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={{ color: C.muted }}>{sub}</span>}</span>
       {right && <span style={{ color: C.muted }}>{right}</span>}
     </button>
   );
@@ -95,7 +97,7 @@ function PlotChoice({ job, plot, onClose }) {
       <Head title={`Plot next to the fields · ${acres(plot.acres)}`} sub="Part of this land? Add it to a field or make it a field of its own." />
       {accepted.map((f) => (
         <button key={f.n} type="button" disabled={busy} style={{ ...btn(false), flex: 'none' }}
-          onClick={() => addPlot.mutate({ field: f.n, plot: plot.id }, { onSuccess: onClose })}>Add to field {f.n}</button>
+          onClick={() => addPlot.mutate({ field: f.n, plot: plot.id }, { onSuccess: onClose })}>Add to {fieldName(f)}</button>
       ))}
       {!accepted.length && <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>Accept a field first to add this plot to it.</p>}
       <button type="button" disabled={busy} style={{ ...btn(true), flex: 'none' }}
@@ -122,7 +124,7 @@ function Plan({ job, onField, onBack, onAdd }) {
       <Head title={`${open.length} fields · proposed plan`} sub="Accept the plan, or tap a field to check it" />
       {drawing.length > 0 && (
         <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>
-          {drawing.map((f) => `Field ${f.n}`).join(', ')} still being drawn. More shapes are coming; the plan may change.
+          {drawing.map(fieldName).join(', ')} still being drawn. More shapes are coming; the plan may change.
         </p>
       )}
       {waiting.length > 0 && (
@@ -177,7 +179,7 @@ function Check({ job, n, onDone, onBack }) {
   return (
     <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={plan} active={n} shapeOverride={sel} onField={() => {}} />}>
-      <Head title={`Field ${n}`} sub={memberName(job)} />
+      <Head title={fieldName(f)} sub={memberName(job)} />
       <div role="group" aria-label={`Shapes for field ${n}`} style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
         {shapes.map((s, i) => (
           <button key={s.id} type="button" aria-label={`Shape ${i + 1}, ${acres(s.acres)}`} aria-pressed={s.id === sel} onClick={() => pick(s.id)} style={{
@@ -303,8 +305,9 @@ function Done({ job, onField, onBack, onAdd }) {
       {st === 'minted' && <p role="status" style={{ margin: 0, fontSize: 14, color: C.accent, fontWeight: 700 }}>Land title minted.</p>}
       {(st === 'failed' || mint.error) && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{mint.error?.message || job.mint?.error || 'The mint failed.'}</p>}
       {!st && !job.farm && (
-        <label style={{ display: 'grid', gap: 4, fontSize: 14 }}>Name of the land
-          <input value={farm} onChange={(e) => setFarm(e.target.value)} maxLength={64}
+        // On the land title, so anyone can read it (12 Nov): the label says so, the placeholder steers away from a person's name.
+        <label style={{ display: 'grid', gap: 4, fontSize: 14 }}>Name this land (publicly visible)
+          <input value={farm} onChange={(e) => setFarm(e.target.value)} maxLength={64} placeholder="e.g. Lake side farm, not a person's name"
             style={{ padding: 10, fontSize: 16, borderRadius: 8, border: `1px solid ${C.muted}`, background: C.raised, color: C.text }} />
         </label>
       )}
@@ -344,7 +347,7 @@ function AddPoints({ job, onDone }) {
   const qc = useQueryClient();
   const key = `job-${job.id}`;
   const add = useMutation({
-    mutationFn: () => api.addPoints(job.id, readPoints(key).points.map(({ lat, lng, acc }) => ({ lat, lng, acc }))),
+    mutationFn: () => api.addPoints(job.id, readPoints(key).points.map(({ lat, lng, acc, name }) => ({ lat, lng, acc, ...(name ? { name } : {}) }))),
     onSuccess: (j) => { clearPoints(key); qc.invalidateQueries({ queryKey: ['oracle', 'border'] }); qc.setQueryData(['oracle', 'border', 'job', job.id], j); onDone(); },
   });
   if (add.isPending) return <Loading />;
