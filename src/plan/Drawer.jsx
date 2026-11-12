@@ -90,22 +90,42 @@ export function BasisDrawer({ basis, onClose }) {
   );
 }
 
-/** The accept screen's short version of "What this plan is based on" (12 Nov): an accordion, one row per item with its
- *  tick, all closed; a tap opens the item's explanation. */
+/** The accept screen's short version of "What this plan is based on" (12 Nov): an accordion of eight groups, all
+ *  closed, a tap opens the group's explanation. Grouped here from the node's plan.basis (code, no AI); a source not used
+ *  yet keeps its dash so the gap stays visible. A crop outside the list has its own warning above, so it is left out. */
+const GROUPS = [
+  { title: 'Field record', names: ['Field record'], problems: 'record' },
+  { title: 'Your answers', names: ['Your answers', 'Your changes'] },
+  { title: 'Yields and prices', names: ['Reference yields', 'Reference costs and rates', 'Market prices'], core: ['Reference yields', 'Reference costs and rates'] },
+  { title: 'Machines', names: ['Union machines'], vouchers: true },
+  { title: 'Water and trees', names: ['Water sources', 'Trees'], all: true },
+  { title: 'Soil and climate', names: ['Soil covers', 'Season climate outlook'] },
+  { title: 'Local competition', names: ['Local competition'] },
+  { title: 'Your account', account: true },
+];
+
 export function BasisList({ basis }) {
   const [open, setOpen] = useState(null);
   if (!basis) return null;
   const acct = basis.account_problems || {};
   const rec = basis.record_problems || [];
   const acc = acct.items || [];
-  const items = [
-    ...basis.inputs.map((i) => ({ on: i.used && !i.warn, warn: !!i.warn, title: i.name,
-      text: `${i.used ? 'Used' : 'Not used'}: ${i.detail}${i.used && i.source && i.source !== '—' ? ` (${i.source})` : ''}` })),
-    { on: !!basis.vouchers?.used, title: 'Machine vouchers', text: `${basis.vouchers?.used ? 'Used' : 'Not used'}: ${basis.vouchers?.why}.` },
-    { on: !rec.length, title: 'Problems in your field record', text: rec.length ? rec.join(' ') : 'None found in your record.' },
-    { on: acct.checked && !acc.length, title: 'Problems in your account',
-      text: acct.checked ? (acc.length ? acc.join(' ') : 'No late or missed repayments.') : acct.note || 'Not checked yet.' },
-  ];
+  const byName = Object.fromEntries(basis.inputs.map((i) => [i.name, i]));
+  const say = (i) => `${i.name}: ${i.used ? 'used' : 'not used yet'}. ${i.detail || ''}`.trim();
+  const items = GROUPS.map((g) => {
+    if (g.account) {
+      return { title: g.title, on: acct.checked && !acc.length, warn: acc.length > 0,
+        text: [acct.checked ? (acc.length ? acc.join(' ') : 'No late or missed repayments.') : acct.note || 'Not checked yet.'] };
+    }
+    const parts = g.names.map((n) => byName[n]).filter(Boolean);
+    const lines = parts.map(say);
+    if (g.problems) lines.push(rec.length ? `Problems: ${rec.join(' ')}` : 'No problems found in your record.');
+    if (g.vouchers) lines.push(`Machine vouchers: ${basis.vouchers?.used ? 'used' : 'not used'}. ${basis.vouchers?.why || ''}`.trim());
+    const core = g.core ? parts.filter((i) => g.core.includes(i.name)) : parts;
+    const used = (g.all ? core.length > 0 && core.every((i) => i.used) : core.some((i) => i.used)) || (g.vouchers && basis.vouchers?.used);
+    const warn = parts.some((i) => i.warn) || (g.problems && rec.length > 0);
+    return { title: g.title, on: !!used && !warn, warn, text: lines.length ? lines : ['Not used yet.'] };
+  });
   return (
     <section style={{ display: 'flex', flexDirection: 'column' }}>
       {items.map((it) => {
@@ -120,7 +140,11 @@ export function BasisList({ basis }) {
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                 style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}><path d="m6 9 6 6 6-6" /></svg>
             </button>
-            {isOpen && <p style={{ ...muted, margin: '0 0 12px 26px', fontSize: 13 }}>{it.text}</p>}
+            {isOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '0 0 12px 26px' }}>
+                {it.text.map((t) => <p key={t} style={{ ...muted, margin: 0, fontSize: 13 }}>{t}</p>)}
+              </div>
+            )}
           </div>
         );
       })}
