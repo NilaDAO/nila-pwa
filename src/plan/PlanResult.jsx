@@ -85,16 +85,58 @@ export function SlideBar({ label, onPrev, onNext, prevLabel, nextLabel }) {
   );
 }
 
+/** A crop key from the record ("sugarcane_ratoon") as the catalogue's crop: its name and colour; no key = Unidentified. */
+export function cropLook(key, crops = []) {
+  if (!key || key === 'unknown') return { name: 'Unidentified', colour: '#8A94A6' };
+  const hit = crops.find((x) => x.key === key) || crops.find((x) => key.startsWith(`${x.key}_`));
+  return { name: hit && hit.key === key ? hit.name : key.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()), colour: hit?.colour || '#7BA05B' };
+}
+
+/** The record's finished cycles (12 Nov: plan history): those on an area that overlap plan year y0. */
+export function pastCycles(record, zone, y0) {
+  const today = new Date().toISOString().slice(0, 10);
+  const from = `${y0}-10-01`, to = `${y0 + 1}-10-01`;
+  return (Array.isArray(record?.cycles) ? record.cycles : [])
+    .filter((c) => c.zone_id === zone && c.sos && c.eos && c.eos <= today && c.eos > from && c.sos < to);
+}
+
+/** The first plan year the record holds a finished cycle in (the year bar steps back to it). */
+export const firstRecordYear = (record) => {
+  const ys = (Array.isArray(record?.cycles) ? record.cycles : []).filter((c) => c.sos && c.eos).map((c) => planYear(c.sos));
+  return ys.length ? Math.min(...ys) : null;
+};
+
+/** The map in a past year: each area's main crop that year (the cycle that covers most of it). */
+export function pastLabels(record, zones, y0, crops) {
+  const a = new Date(`${y0}-10-01`).getTime(), b = new Date(`${y0 + 1}-10-01`).getTime();
+  const days = (c) => Math.min(b, new Date(c.eos).getTime()) - Math.max(a, new Date(c.sos).getTime());
+  const out = {};
+  for (const z of zones) {
+    const best = pastCycles(record, z, y0).sort((x, y) => days(y) - days(x))[0];
+    if (!best) continue;
+    const look = cropLook(best.crop_type, crops);
+    out[z] = { text: look.name, sub: yearLabel(null, y0), colour: look.colour, unknown: !best.crop_type };
+  }
+  return out;
+}
+
 const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear() - y0) * 12 + t.getMonth() - 9 + (t.getDate() - 1) / 31; };
 
 /** One area's year as bars on one lane (12 Nov): crops follow each other, so one lane holds them all, the crop's name in
  *  its bar. Crops in their colour; soil covers hatched; a crop she picked and has not sent yet in its colour.
  *  → [{ key, slot, s0, s1, name, fill, ink, editable, row }] for plan year y0 (months 0–12 from October). */
-export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readOnly } = {}) {
+export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readOnly, record, crops } = {}) {
   const at = monthsFrom(y0);
   const clamp = (a, b) => { const s0 = Math.max(0, Math.min(12, at(a))); return [s0, Math.max(s0 + 0.3, Math.min(12, at(b)))]; };
   const out = [];
   const taken = new Set();
+  // What grew before (12 Nov): the record's finished cycles, faded, never changed here.
+  for (const c of pastCycles(record, zone, y0)) {
+    const [s0, s1] = clamp(c.sos, c.eos);
+    const look = cropLook(c.crop_type, crops);
+    out.push({ key: `past-${c.sos}`, s0, s1, name: look.name, fill: look.colour, ink: lightBg(look.colour) ? C.ink : C.text,
+      faded: true, editable: false, row: {} });
+  }
   // The crop in the field now (12 Nov, plan.standing): a faded bar until its (estimated) end of season, before the
   // plan's first crop there. Set on the field record, so not changed here.
   for (const st of (plan.plan.standing || []).filter((x) => x.zone === zone)) {
@@ -194,9 +236,41 @@ export function CropSelect({ label, crops, current, currentName, disabled, onPic
   );
 }
 
+/** How a crop's cost is made (12 Nov): every action with its price, all from the plan's rows (the node's reference
+ *  tables, no AI): seed and inputs per acre, each machine job per acre (a voucher), hired work, interest; the sale as
+ *  kg × price. k: this area's share of a row merged with other areas. */
+export function CostList({ r, k = 1 }) {
+  const f = r.finance || {};
+  const ac = (r.acres || 0) * k;
+  const n = (v) => Math.round((v || 0) * k);
+  const per = (v) => (ac ? ` · ${inr(Math.round(n(v) / ac))}/acre` : '');
+  const lines = [
+    f.seed ? ['Seed', `${ac.toFixed(2)} acres${per(f.seed)}`, n(f.seed)] : null,
+    f.cash_inputs ? ['Fertiliser and sprays', `${ac.toFixed(2)} acres${per(f.cash_inputs)}`, n(f.cash_inputs)] : null,
+    ...Object.values(f.machines || {}).map((m) => [m.for.replace(/^./, (c) => c.toUpperCase()), `${(m.acres * k).toFixed(2)} acres${m.acres ? ` · ${inr(Math.round(m.value / m.acres))}/acre` : ''} · voucher`, n(m.value)]),
+    ...Object.values(f.hand_work || {}).map((m) => [`${m.for.replace(/^./, (c) => c.toUpperCase())}, hired`, `${(m.acres * k).toFixed(2)} acres · ${inr(m.rate_inr_acre)}/acre · no union machine`, n(m.value)]),
+  ].filter(Boolean);
+  const total = lines.reduce((a, l) => a + l[2], 0);
+  const row = (a, b, v, bold) => (
+    <div key={a} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, lineHeight: 1.4, fontWeight: bold ? 700 : 400 }}>
+      <span style={{ display: 'flex', flexDirection: 'column' }}><span>{a}</span>{b && <span style={{ color: C.muted }}>{b}</span>}</span>
+      <span style={{ whiteSpace: 'nowrap' }}>{v}</span>
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={{ fontSize: 14, fontWeight: 700 }}>{r.name}</span>
+      {lines.map(([a, b, v]) => row(a, b, inr(v)))}
+      {row('Cost', null, inr(total), true)}
+      {f.interest ? row('Interest', `${((f.interest / Math.max(1, (f.cash || 0) + (f.voucher_value || 0))) * 100).toFixed(1)}% of the loan, sowing to repayment`, inr(n(f.interest))) : null}
+      {r.kg > 0 && row('Sale (estimate)', `${fmtKg(r.kg * k)} × ${inr(Math.round(r.value / r.kg))}/kg`, inr(n(r.value)), true)}
+    </div>
+  );
+}
+
 /** crops: the catalogue's crops for the season rows' list; onCrop(row, cropKey): that crop instead on this area in that
  *  row's season; changing: a change is being sent. */
-export function AreaCard({ plan, zone, name, area, accepted, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, picked = {}, onUpdate, acceptLabel = 'Accept the plan', y0, total }) {
+export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, picked = {}, onUpdate, acceptLabel = 'Accept the plan', y0, total }) {
   // picked (28 Oct): crops chosen on this area's rows, not sent yet (slot → crop key); the button then reads Update
   // crop plan and sends them all (onUpdate).
   // Simplified (12 Nov): one lane with the crops' names in their bars, one money line, the soil covers as one line each
@@ -205,6 +279,7 @@ export function AreaCard({ plan, zone, name, area, accepted, onAccept, onNext, n
   const cropOf = (key) => (crops || []).find((c) => c.key === key);
   const [open, setOpen] = useState(null);   // the bar whose crop list is open
   const [why, setWhy] = useState(null);     // the soil cover whose long text is open
+  const [costs, setCosts] = useState(false); // how the cost is made, action by action
   const seasons = plan.plan.seasons || [];
   const year = y0 ?? planYear(seasons[0]?.start);
   const own = area?.area_m2 ? area.area_m2 / 4046.86 : null;
@@ -214,7 +289,7 @@ export function AreaCard({ plan, zone, name, area, accepted, onAccept, onNext, n
   const acres = own ?? rows[0]?.acres ?? 0;
   const sales = Math.round(rows.reduce((a, r) => a + (r.value || 0) * r.k, 0));
   const cost = Math.round(rows.reduce((a, r) => a + ((r.finance?.cash || 0) + (r.finance?.cash_above_cap || 0) + (r.finance?.voucher_value || 0)) * r.k, 0));
-  const items = laneOf(plan, zone, { y0: year, picked, cropOf, readOnly: readOnly || !onCrop });
+  const items = laneOf(plan, zone, { y0: year, picked, cropOf, readOnly: readOnly || !onCrop, record, crops });
   const openItem = items.find((it) => it.key === open);
   const covers = items.filter((it) => it.soil && it.cover && it.cover.kind !== 'bare');
   const off = rows.filter((r) => r.off_catalogue && !r.continues);
@@ -235,6 +310,17 @@ export function AreaCard({ plan, zone, name, area, accepted, onAccept, onNext, n
       <p style={{ ...muted, margin: '12px 0 0' }}>
         {sales ? `Sales ${inr(sales)}` : 'No sales planned'} · Cost {inr(cost)}{!readOnly && onCrop ? ' · tap a crop to change it' : ''}
       </p>
+      {rows.some((r) => !r.continues && !r.off_catalogue) && (
+        <button type="button" onClick={() => setCosts((v) => !v)} aria-expanded={costs}
+          style={{ marginTop: 6, border: 0, background: 'transparent', padding: 0, color: C.accent, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}>
+          {costs ? 'Hide the costs' : 'What it costs, step by step ›'}
+        </button>
+      )}
+      {costs && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 8, background: C.raised, borderRadius: 12, padding: 12 }}>
+          {rows.filter((r) => !r.continues && !r.off_catalogue).map((r) => <CostList key={`${r.slot || r.sow}-${r.crop}`} r={r} k={r.k} />)}
+        </div>
+      )}
       {covers.map((it) => {
         const c = it.cover;
         const long = c.kind === 'mulch' ? 'The last crop\'s residue stays on the soil through the dry months, so it does not erode.'
@@ -280,7 +366,7 @@ export function AreaCard({ plan, zone, name, area, accepted, onAccept, onNext, n
 
 /** The overview chart (12 Nov): one lane per area, its name on the left (✓ when she checked it); a tap opens the area.
  *  Areas left out are named and greyed. */
-export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending = {}, onArea }) {
+export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending = {}, onArea, record }) {
   const cropOf = (key) => (crops || []).find((c) => c.key === key);
   const CL = 104;
   const out = plan.plan.left_out || [];
@@ -294,7 +380,7 @@ export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending =
             <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {checked?.has(z) && <span aria-label="checked" style={{ color: C.accent }}>✓ </span>}{areaName(z)}
             </span>
-            <span style={{ flexGrow: 1 }}><Lane items={laneOf(plan, z, { y0, picked: pending[z] || {}, cropOf, readOnly: true })} height={30} /></span>
+            <span style={{ flexGrow: 1 }}><Lane items={laneOf(plan, z, { y0, picked: pending[z] || {}, cropOf, readOnly: true, record, crops })} height={30} /></span>
           </button>
         ))}
         {/* Left-out areas (corners, trees; 12 Nov): one muted line, not a row each. */}

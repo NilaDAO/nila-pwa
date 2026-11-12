@@ -82,3 +82,28 @@ export function BasisDrawer({ basis, onClose }) {
     </Drawer>
   );
 }
+
+/** The accept screen's short version of "What this plan is based on" (12 Nov): one line per source (the detail only
+ *  where a source is not used or warns), vouchers, record and account problems in a line each. */
+export function BasisList({ basis }) {
+  if (!basis) return null;
+  const acct = basis.account_problems || {};
+  const line = (on, text, sub, key = text) => (
+    <div key={key} style={{ display: 'flex', gap: 8, fontSize: 13, lineHeight: 1.45 }}>
+      <Tick on={on} />
+      <span style={{ display: 'flex', flexDirection: 'column' }}><span>{text}</span>{sub && <span style={{ color: C.muted }}>{sub}</span>}</span>
+    </div>
+  );
+  const rec = basis.record_problems || [];
+  const acc = acct.items || [];
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <h2 style={{ fontSize: 14, fontWeight: 700, margin: '16px 0 4px' }}>What this plan is based on</h2>
+      {basis.inputs.map((i) => line(i.used && !i.warn, i.name, i.warn || !i.used ? i.detail : null))}
+      {line(!!basis.vouchers?.used, 'Machine vouchers', basis.vouchers?.used ? null : basis.vouchers?.why)}
+      {line(!rec.length, rec.length ? `Field record: ${rec.length} problem${rec.length > 1 ? 's' : ''}` : 'Field record: no problems', rec.join(' · ') || null)}
+      {line(acct.checked && !acc.length, acct.checked ? (acc.length ? 'Your account: late or missed repayments' : 'Your account: no late or missed repayments') : 'Your account: not checked yet',
+        acc.join(' · ') || null)}
+    </section>
+  );
+}

@@ -12,17 +12,17 @@ import { KV } from '../loan/AssetParts';
 import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanClient, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { CheckRow, Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { Sheet as BaseSheet } from './ui';
-import { BasisDrawer, Drawer, InfoButton } from './Drawer';
+import { BasisDrawer, BasisList, Drawer, InfoButton } from './Drawer';
 import { useMintCropShares } from './mint';
 import { NoticeScreen, TxScreens } from '../stellar/TxStatus';
-import MoneyChart from './MoneyChart';
+import MoneyChart, { repayment } from './MoneyChart';
 import { areasOf, summarize, useFieldRecord } from './record';
 import { useTitleName } from './hooks';
 import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
-import { AreaCard, CropSelect, PlanChart, SEASON, SlideBar, sortedCrops, fmtKg, planYear, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
+import { AreaCard, CropSelect, PlanChart, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
 import { shareOn } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
@@ -60,7 +60,7 @@ function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
 
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
-function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan', y0, onArea }) {
+function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan', y0, onArea }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   const seasons = p.seasons || [];
@@ -83,7 +83,7 @@ function PlanView({ plan, checked, onAccept, readOnly, crops, changing, onCrop, 
   return (
     <>
       {/* The overview (12 Nov): every area's year on one chart, three money rows, the details folded away. */}
-      <PlanChart plan={plan} zones={order} areaName={areaName} checked={checked} y0={y0} crops={crops} pending={pending} onArea={onArea} />
+      <PlanChart plan={plan} record={record} zones={order} areaName={areaName} checked={checked} y0={y0} crops={crops} pending={pending} onArea={onArea} />
       <hr style={{ height: 1, background: C.raised, border: 0, margin: '16px 0 12px' }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {/* 12 Nov: no ₹10,000 cap in the app; what the plan costs is what Nila finances (cash and machine vouchers). */}
@@ -342,10 +342,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [read, setRead] = useState(false);
   // CP10: the season shown (overview), the area picked, and her area accepts until CP11 accepts them on the node.
   const [season, setSeason] = useState(0);
+  // A plan year before the plan (12 Nov: plan history from the record); null = the plan's years.
+  const [pastYear, setPastYear] = useState(null);
+  useEffect(() => { if (step !== 'plan') setPastYear(null); }, [step]);
   const [area, setArea] = useState(null);
   const [checked, setChecked] = useState(() => new Set());
   const planId = current.data?.id;
-  useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); setPastYear(null); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Approved: the chain as one plan (its seasons and shares, 25 Oct); a waiting extension shows as itself.
   const plan = current.data?.approval?.decision === 'approve' ? mergedPlan(chainQ.data, current.data) : current.data;
   const myShares = useMyShares();   // CP13: a crop share she can collect now is a to-do
@@ -365,6 +368,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const ss = plan?.plan?.seasons;
     // Before a plan: what grows now; the areas she left out (the step before the plan, 5 Nov) are not drawn.
     if (!ss?.length) return { ...nowLabelsOf(record, catalogue.data?.crops, growing), ...Object.fromEntries([...leftOut].map((z) => [z, { gone: true }])) };
+    // A past year on the bar: each area's main crop that year, from the record.
+    if (pastYear != null) return pastLabels(record, areasOf(record).map((z) => z.zone_id), pastYear, catalogue.data?.crops);
     // Areas she left out (the step before the plan, or CP10's bin; 5 Nov) are not on the plan's map.
     const gone = Object.entries(plan.plan.left_out_reasons || {}).filter(([, why]) => why === 'removed by her')
       .map(([z]) => [z, { gone: true }]);
@@ -390,7 +395,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut]);
+  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, pastYear]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
@@ -718,15 +723,31 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const readOnly = plan.status !== 'draft';
     const step1 = (d) => { const k = zones.indexOf(area); pickArea(zones[(k + d + zones.length) % zones.length]); };
     // The bar steps plan years (12 Nov: Oct–Sep, "2026–27"); the map shows the first season of the year shown.
-    const years = [...new Set(ss.map((x) => planYear(x.start)))];
-    const y0 = planYear(ss[Math.min(season, ss.length - 1)]?.start);
+    // 12 Nov: the bar also steps back through the record's years (history, faded, on the chart and the map); a button
+    // above it comes back to this year.
+    const planYears = [...new Set(ss.map((x) => planYear(x.start)))];
+    const first = Math.min(firstRecordYear(record) ?? planYears[0], planYears[0]);
+    const years = Array.from({ length: Math.max(...planYears) - first + 1 }, (_, i) => first + i);
+    const y0 = pastYear ?? planYear(ss[Math.min(season, ss.length - 1)]?.start);
     const toYear = (d) => {
-      const k = (years.indexOf(y0) + d + years.length) % years.length;
-      setSeason(Math.max(0, ss.findIndex((x) => planYear(x.start) === years[k])));
+      const y = years[Math.max(0, Math.min(years.length - 1, years.indexOf(y0) + d))];
+      if (planYears.includes(y)) { setPastYear(null); setSeason(Math.max(0, ss.findIndex((x) => planYear(x.start) === y))); } else setPastYear(y);
     };
+    const thisYear = planYears.includes(planYear()) ? planYear() : planYears[0];
+    const reset = () => { setPastYear(null); setSeason(Math.max(0, ss.findIndex((x) => planYear(x.start) === thisYear))); };
     const bar = area
       ? <SlideBar label={<b>{areaName(area)}</b>} prevLabel="Previous area" nextLabel="Next area" onPrev={() => step1(-1)} onNext={() => step1(1)} />
-      : ss.length > 0 && <SlideBar label={yearLabel(ss, y0)} prevLabel="Previous year" nextLabel="Next year" onPrev={() => toYear(-1)} onNext={() => toYear(1)} />;
+      : ss.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          {y0 !== thisYear && (
+            <button type="button" onClick={reset} style={{ height: 32, padding: '0 14px', borderRadius: 16, border: 0, background: 'rgba(18,18,18,0.85)', color: C.accent,
+              fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Back to {yearLabel(null, thisYear)}</button>
+          )}
+          <div style={{ alignSelf: 'stretch' }}>
+            <SlideBar label={`${yearLabel(null, y0)}${pastYear != null ? ' · from your record' : ''}`} prevLabel="Previous year" nextLabel="Next year" onPrev={() => toYear(-1)} onNext={() => toYear(1)} />
+          </div>
+        </div>
+      );
     const next = zones.find((z) => z !== area && !checked.has(z));
     return (
       <Sheet map={map} landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}>
@@ -739,7 +760,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
             picked={pending[area] || {}} onUpdate={updatePlan}
             onRemove={() => setRemoving(area)} />
         ) : (
-          <PlanView plan={plan} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={pickArea}
+          <PlanView plan={plan} record={record} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={pickArea}
             crops={catalogue.data?.crops} changing={revise.isPending} onCrop={changeCrop} pending={pending} onUpdate={updatePlan}
             acceptLabel={forLand ? 'Scan the member\'s QR to accept' : undefined} />
         )}
@@ -776,20 +797,31 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
     };
     return (
-      <Sheet map={map} landName={name} title="Before you accept your crop plan" onBack={back('plan')} scroll>
+      <Sheet map={map} landName={name} onBack={back('plan')} scroll full>
+        {/* 12 Nov (Carst): the screen answers the money question. The big number is what she repays (sales are an
+            estimate); one chart holds the year; the notices made way for the plan's basis, shortened. */}
+        {(() => {
+          const due = repayment(plan);
+          const mon = (m) => m && new Date(`${m}-01`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 2, marginTop: 4 }}>
+              <span style={{ fontSize: 14, color: C.muted }}>You repay</span>
+              <span style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.2 }}>{inr(due.total)}</span>
+              {due.parts > 0 && (
+                <span style={{ fontSize: 14, color: C.muted }}>
+                  {due.parts === 1 ? `in ${mon(due.first)}` : `in ${due.parts} parts, ${mon(due.first)} to ${mon(due.last)}`}, after your harvests
+                </span>
+              )}
+            </div>
+          );
+        })()}
         <MoneyChart plan={plan} />
-        {/* What the plan means for her (21 Oct): the node's consequences, code-computed; Claude's retelling above them. */}
-        {plan.plan.consequences?.length > 0 && (
-          <>
-            <h2 style={{ fontSize: 14, fontWeight: 700, margin: '16px 0 0' }}>What this plan means for you</h2>
-            {plan.plan.explain?.means && <p style={{ ...muted, margin: '4px 0 0' }}>{plan.plan.explain.means}</p>}
-            {plan.plan.consequences.map((c) => (
-              <Notice key={c.kind + c.text} kind={c.severity === 'warn' ? 'warn' : 'info'} title={c.title}>{c.text}</Notice>
-            ))}
-          </>
-        )}
-        <Notice title="Estimates, not guarantees">Yield, sales and cash flow are estimated from your field record and can contain errors. Vouchers and cash depend on available funds: Nila and your union cannot guarantee them.</Notice>
-        <Notice kind="info" title="Amounts can be changed">You can change your cash and voucher amounts together with your union leaders.</Notice>
+        {/* Only what the chart does not show: water, crops outside the list, bare soil, sales after this year. */}
+        {(plan.plan.consequences || []).filter((c) => ['water_not_confirmed', 'off_catalogue', 'bare_soil', 'harvest_after_year'].includes(c.kind)).map((c) => (
+          <Notice key={c.kind + c.text} kind="warn" title={c.title}>{c.text}</Notice>
+        ))}
+        <BasisList basis={plan.plan.basis} />
+        <p style={{ ...muted, margin: '14px 0 0' }}>Yields and prices are estimates. Cash and vouchers depend on the funds available; you can change them with your union leaders.</p>
         <CheckRow on={read} onClick={() => setRead((r) => !r)} style={{ marginTop: 14 }}>I have read these conditions</CheckRow>
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <button type="button" disabled={!read || accept.isPending} aria-disabled={!read} onClick={go} style={{
