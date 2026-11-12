@@ -8,6 +8,7 @@ import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT } from '../shell/tokens';
+import { KV } from '../loan/AssetParts';
 import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanClient, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { CheckRow, Choice, Notice, Primary, Sheet, Steps, inr, muted } from './ui';
 import { Sheet as BaseSheet } from './ui';
@@ -497,7 +498,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const sum = summarize(record);
     // First what grows now (12 Nov): every area the satellite could not identify needs its crop before the plan.
     const now = growingNow(record, catalogue.data?.crops);
-    const cropList = sortedCrops(catalogue.data?.crops || []);
+    // Barren (12 Nov): nothing grows there now, so the plan may use the area at once.
+    const cropList = [...sortedCrops(catalogue.data?.crops || []), { key: 'barren', name: 'Barren', colour: '#5B6472' }];
     const toSet = Object.keys(now).filter((z) => now[z].unknown && !growing[z]);
     // An empty area can take a crop too (12 Nov): she may have just sown it, which no image shows yet. Optional there;
     // an unidentified area must be set. A crop the satellite named is not asked again.
@@ -509,18 +511,24 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       return [z, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : l];
     }));
     const settable = (z) => !!z && (!now[z] || !!now[z].unknown);
+    const growingCount = zoneIds.filter((z) => (growing[z] ? growing[z] !== 'barren' : !!now[z])).length;
+    // Option A (12 Nov, as G2's top block): the record's facts as rows, a line, then the button.
     return (
       <Sheet map={<AreaMap record={record} labels={nowLabels} selected={growArea} onSelect={(z) => setGrowArea(settable(z) ? z : null)} />}
         landName={name} title={forLand ? 'Field record' : 'Your field record'}>
-        {sum.from && <p style={{ ...muted, textAlign: 'center', margin: 0 }}>{sum.from} to {sum.to}</p>}
-        <p style={{ ...muted, textAlign: 'center' }}>{sum.cultivations} cultivations on {sum.areas} areas</p>
-        {growArea && settable(growArea) ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 14, fontWeight: 700 }}>What grows on {nowLabels[growArea].text} now?</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {sum.from && <KV k="Period" v={`${sum.from} – ${sum.to}`} />}
+          <KV k="Cultivations" v={sum.cultivations} />
+          <KV k="Areas" v={`${sum.areas}${growingCount ? ` · ${growingCount} growing` : ''}`} />
+        </div>
+        <hr style={{ height: 1, background: C.raised, border: 0, margin: '16px 0 0' }} />
+        {growArea && settable(growArea) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0 8px' }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>What grows on {nowLabels[growArea]?.text || nameOf(growArea)} now?</span>
             <CropSelect crops={cropList} current={growing[growArea]}
               onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
           </div>
-        ) : null}
+        )}
         <Primary disabled={toSet.length > 0} onClick={() => setStep('intro')}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
         {/* Under the button (12 Nov, option B): why it waits. */}
         {!growArea && toSet.length > 0 && (
