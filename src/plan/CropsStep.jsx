@@ -110,7 +110,17 @@ export default function CropsStep({ map, name, onBack, record, catalogue = [], g
             style={{ position: 'absolute', left: 14, top: 13, pointerEvents: 'none' }}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
           <input ref={input} id="crop-search" type="search" aria-label="Add a crop" placeholder="Add a crop" autoComplete="off" value={q}
             onChange={(e) => setQ(e.target.value)}
-            style={{ height: 44, border: 0, borderRadius: 12, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 16, padding: '0 14px 0 42px', boxSizing: 'border-box', width: '100%' }} />
+            style={{ height: 44, border: 0, borderRadius: 12, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 16, padding: '0 44px 0 42px', boxSizing: 'border-box', width: '100%' }} />
+          {/* The app's own clear button (12 Nov): the + sign turned 45° in the accent, not the browser's blue ×. */}
+          <style>{'#crop-search::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none;display:none}'}</style>
+          {q && (
+            <button type="button" aria-label="Clear" onClick={() => { setQ(''); input.current?.focus(); }}
+              style={{ position: 'absolute', right: 4, top: 0, width: 44, height: 44, border: 0, background: 'transparent', padding: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                style={{ transform: 'rotate(45deg)' }}><path d="M12 5v14M5 12h14" /></svg>
+            </button>
+          )}
         </div>
         {hits.length > 0 && (
           <div role="listbox" aria-label="Crops" style={{ display: 'flex', flexDirection: 'column', background: C.raised, borderRadius: 12, padding: '4px 0' }}>
