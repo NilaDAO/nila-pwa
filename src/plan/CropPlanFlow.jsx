@@ -562,7 +562,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     );
   }
   if (at === 'crops') {
-    return <CropsStep map={map} name={name} onBack={back('intro')} record={record} catalogue={catalogue.data?.crops || []}
+    return <CropsStep map={map} name={name} onBack={back('intro')} record={record} catalogue={catalogue.data?.crops || []} growing={growing}
       crops={crops} setCrops={setCrops} onContinue={() => setStep('role')} />;
   }
   if (at === 'role') {

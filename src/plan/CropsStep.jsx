@@ -38,7 +38,7 @@ function Row({ name, colour, sub, on, onClick }) {
 }
 
 /** crops / setCrops: the ticked catalogue keys (a Set), kept by the flow for the intake. */
-export default function CropsStep({ map, name, onBack, record, catalogue = [], crops, setCrops, onContinue }) {
+export default function CropsStep({ map, name, onBack, record, catalogue = [], growing = {}, crops, setCrops, onContinue }) {
   // Her record's crops, one row per catalogue crop, with the areas it was grown in.
   const fromRecord = useMemo(() => {
     const order = areasOf(record).map((z) => z.zone_id);
@@ -51,8 +51,17 @@ export default function CropsStep({ map, name, onBack, record, catalogue = [], c
       (c.zone_ids || [c.zone_id]).forEach((z) => { const n = order.indexOf(z) + 1; if (n) areas.add(n); });
       by.set(key, areas);
     });
+    // The crops she set as growing now (12 Nov) join the list on their areas; one row per crop (no doubles).
+    Object.entries(growing).forEach(([z, k]) => {
+      const key = toKey(k, catalogue);
+      if (!key) return;
+      const areas = by.get(key) || new Set();
+      const n = order.indexOf(z) + 1;
+      if (n) areas.add(n);
+      by.set(key, areas);
+    });
     return [...by].map(([key, areas]) => ({ key, areas: [...areas].sort((a, b) => a - b) }));
-  }, [record, catalogue]);
+  }, [record, catalogue, growing]);
   const recordKeys = useMemo(() => new Set(fromRecord.map((r) => r.key)), [fromRecord]);
   // Added by her: crops ticked before (coming back to CP4) that are not from the record, then each one she adds.
   const [added, setAdded] = useState(() => [...crops].filter((k) => !recordKeys.has(k)));
@@ -64,6 +73,11 @@ export default function CropsStep({ map, name, onBack, record, catalogue = [], c
     ticked.current = true;
     setCrops(new Set(fromRecord.map((r) => r.key)));
   }, [fromRecord, setCrops]);
+  // A crop she set as growing now is ticked too, also one set after she was here before.
+  useEffect(() => {
+    const keys = Object.values(growing).map((k) => toKey(k, catalogue)).filter(Boolean);
+    if (keys.length) setCrops((x) => (keys.every((k) => x.has(k)) ? x : new Set([...x, ...keys])));
+  }, [growing, catalogue, setCrops]);
 
   const byKey = Object.fromEntries(catalogue.map((c) => [c.key, c]));
   const toggle = (key) => setCrops((x) => { const n = new Set(x); n.has(key) ? n.delete(key) : n.add(key); return n; });
