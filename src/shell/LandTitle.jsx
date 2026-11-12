@@ -192,7 +192,7 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
       {landId == null ? (leader && (
         <button type="button" onClick={() => { window.location.hash = openJob ? `#/tasks/border/${openJob.id}` : '#/crop/register'; }}
           style={{ ...btn, background: C.accent, color: C.ink, cursor: 'pointer' }}>
-          {openJob ? (openJob.status === 'ready' ? 'Check borders and mint' : 'See my fields') : 'Mint a new land title'}
+          Mint land title
         </button>
       )) : (
         <button type="button" onClick={() => setAsk(true)}

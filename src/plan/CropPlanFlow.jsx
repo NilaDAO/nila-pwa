@@ -404,9 +404,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {(titles.isError || stellarTitles.isError) && <p style={{ ...muted, color: C.coral }}>Your land title could not be loaded.</p>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
           {openJob
-            ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>{openJob.status === 'ready' ? 'Check borders and mint' : 'See my fields'}</Primary>
+            ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>Mint land title</Primary>
             : helped ? <Primary onClick={() => setTitleQr(true)}>Show your QR</Primary>
-              : <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
+              : <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint land title</Primary>}
         </div>
       </Sheet>
     );
