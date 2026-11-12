@@ -36,11 +36,16 @@ export function InfoButton({ label, onClick }) {
 }
 
 const h = { fontSize: 14, fontWeight: 700, margin: 0 };
-const Tick = ({ on }) => (
-  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={on ? '#4ADE80' : '#94A3B8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
-    {on ? <path d="M20 6 9 17l-5-5" /> : <><circle cx="12" cy="12" r="10" /><path d="M8 12h8" /></>}
-  </svg>
-);
+// One mark in one circle (12 Nov): green check = used, grey dash = not used, amber "!" = used with a warning.
+const Tick = ({ on, warn }) => {
+  const col = warn ? '#E5A93A' : on ? '#4ADE80' : '#94A3B8';
+  return (
+    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="10" />
+      {warn ? <><path d="M12 7v6" /><path d="M12 17h.01" /></> : on ? <path d="m7.5 12.5 3 3 6-6.5" /> : <path d="M8 12h8" />}
+    </svg>
+  );
+};
 
 /** CP9 "What this plan is based on": the node's plan.basis, by code (no LLM). */
 export function BasisDrawer({ basis, onClose }) {
@@ -93,7 +98,7 @@ export function BasisList({ basis }) {
   const rec = basis.record_problems || [];
   const acc = acct.items || [];
   const items = [
-    ...basis.inputs.map((i) => ({ on: i.used && !i.warn, title: i.name,
+    ...basis.inputs.map((i) => ({ on: i.used && !i.warn, warn: !!i.warn, title: i.name,
       text: `${i.used ? 'Used' : 'Not used'}: ${i.detail}${i.used && i.source && i.source !== '—' ? ` (${i.source})` : ''}` })),
     { on: !!basis.vouchers?.used, title: 'Machine vouchers', text: `${basis.vouchers?.used ? 'Used' : 'Not used'}: ${basis.vouchers?.why}.` },
     { on: !rec.length, title: 'Problems in your field record', text: rec.length ? rec.join(' ') : 'None found in your record.' },
@@ -102,7 +107,7 @@ export function BasisList({ basis }) {
   ];
   return (
     <section style={{ display: 'flex', flexDirection: 'column' }}>
-      <h2 style={{ fontSize: 14, fontWeight: 700, margin: '16px 0 4px' }}>What this plan is based on</h2>
+      <h2 style={{ fontSize: 14, fontWeight: 700, margin: '28px 0 4px' }}>What this plan is based on</h2>
       {items.map((it) => {
         const isOpen = open === it.title;
         return (
@@ -110,7 +115,7 @@ export function BasisList({ basis }) {
             <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : it.title)}
               style={{ width: '100%', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, border: 0, padding: 0, background: 'transparent',
                 color: C.text, fontFamily: FONT, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
-              <Tick on={it.on} />
+              <Tick on={it.on} warn={it.warn} />
               <span style={{ flexGrow: 1 }}>{it.title}</span>
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                 style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}><path d="m6 9 6 6 6-6" /></svg>

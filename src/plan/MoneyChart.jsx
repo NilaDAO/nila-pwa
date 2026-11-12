@@ -136,7 +136,7 @@ export default function MoneyChart({ plan }) {
   const sq = (bg) => <span style={{ width: 10, height: 10, borderRadius: 2, background: bg, flexShrink: 0 }} />;
 
   return (
-    <figure style={{ margin: '12px 0 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <figure style={{ margin: '24px 0 8px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <figcaption style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>Your money through the year</figcaption>
       <svg role="img" aria-label={`Money left each month with the crop plan. It is lowest at ${sg(r100(min))} in ${monthName(s.months[iMin])} and ends at ${sg(r100(end))}.`}
         width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible', fontFamily: FONT }}>
@@ -170,7 +170,7 @@ export default function MoneyChart({ plan }) {
         ))}
         {s.months.map((m, i) => <rect key={`h${m}`} x={cx(i) - 12} y={0} width={24} height={Y1} fill="transparent"><title>{tip(i)}</title></rect>)}
       </svg>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', fontSize: 12, lineHeight: 1.4, color: C.muted }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', marginTop: 8, fontSize: 12, lineHeight: 1.4, color: C.muted }}>
         {key(<span style={{ width: 14, height: 0, borderTop: `2px solid ${C.text}` }} />, 'Money left')}
         {key(sq(`repeating-linear-gradient(45deg, ${C.accent} 0 1.5px, ${C.raised} 1.5px 3px)`), 'Crop share received')}
         {crops.map(([name, colour]) => key(sq(colour || C.muted), `${name} sold`))}
