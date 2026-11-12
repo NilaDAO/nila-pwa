@@ -2,7 +2,7 @@
 // and burning the title (2 Nov: POST /stellar/titles/burn, the holder; 4 Nov, G4: a Polygon title goes to 0x…dEaD first). DESIGN GAPs (no hook yet, so not shown or not
 // active): marking a well or bore (A5a, useWaterSources / useSaveWaterSources), farm improvements (useImprovements,
 // useImprovementInterest), the trees row (useTreeCheck, TreeMap).
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ethers } from 'ethers';
 import { useProvider } from '../hooks/useWallet.ts';
@@ -19,7 +19,7 @@ import { areaM2, tapRule } from '../plan/mapTap';
 import { Sheet } from '../plan/ui';
 import { Loading } from '../register/Boot';
 import { IdentityRow } from '../leader/LeaderSettings';
-import { useBorderClient, useMyBorderJob } from '../border/hooks';
+import { titlePending, useBorderClient, useMyBorderJob } from '../border/hooks';
 import { C, R } from './tokens';
 
 const LAND_TITLE = process.env.REACT_APP_LAND_TITLE_MAIN;
@@ -109,6 +109,14 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
   const myJob = useMyBorderJob();
   // Only with a balance of 0 read on both chains (Polygon and Stellar): never while a read is loading or failed.
   const noTitle = titles.isSuccess && stellarTitles.isSuccess && count === 0;
+  // Just minted (12 Nov): a pending state, not "No land title yet" with the mint button; her titles are read again
+  // every 5 s until it shows.
+  const pending = titlePending(myJob.data, noTitle);
+  useEffect(() => {
+    if (!pending) return undefined;
+    const t = setInterval(() => { titles.refetch(); stellarTitles.refetch(); }, 5000);
+    return () => clearInterval(t);
+  }, [pending]); // eslint-disable-line react-hooks/exhaustive-deps
   const openJob = myJob.data && myJob.data.status !== 'failed' && myJob.data.status !== 'minted' ? myJob.data : null;
   const onTap = tapRule(picked, { open: setPicked, back: () => setPicked(null) });
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
@@ -160,7 +168,7 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
         <span style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>Land title</span>
-          <span style={{ color: C.muted }}>{landId != null ? [farm, `id ${landId}`, `on ${onPolygon ? 'Polygon' : 'Stellar'}`].filter(Boolean).join(' · ') : 'No land title yet'}</span>
+          <span style={{ color: C.muted }}>{landId != null ? [farm, `id ${landId}`, `on ${onPolygon ? 'Polygon' : 'Stellar'}`].filter(Boolean).join(' · ') : pending ? 'Being minted' : 'No land title yet'}</span>
         </span>
         <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>{count}</span>
@@ -191,7 +199,13 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
       {/* A5 Burn my land title (R68, executive decision 2 Nov; Polygon titles too since 4 Nov, G4: sent to 0x…dEaD); the
           node checks no crop share and no investment. Membership ends; a leader stays a leader (roles). Without a title a
           leader gets the mint button instead (12 Nov); a member's leader mints hers (3 Nov), so she sees neither. */}
-      {landId == null ? (leader && noTitle && (
+      {landId == null ? (pending ? (
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, lineHeight: 1.5, color: C.muted }}>
+          <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite', flexShrink: 0 }} />
+            <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
+          Minting your land title. It shows here in a minute or two.
+        </div>
+      ) : leader && noTitle && (
         <button type="button" onClick={() => { window.location.hash = openJob ? `#/tasks/border/${openJob.id}` : '#/crop/register'; }}
           style={{ ...btn, background: C.accent, color: C.ink, cursor: 'pointer' }}>
           Mint land title
