@@ -201,6 +201,21 @@ const sinceOf = (d) => (/^\d{4}-\d{2}/.test(d || '') ? `since ${MONTH[Number(d.s
 // crop the catalogue lists in its colour, another named crop in a neutral green, an unidentified one in grey.
 const GROWING = '#7BA05B';
 const UNKNOWN = '#8A94A6';
+// Barren (12 Nov): nothing grows there now, so the plan may use the area at once.
+const BARREN = { key: 'barren', name: 'Barren', colour: '#5B6472' };
+/** The map before a plan: what grows now (growingNow), with the crops she set herself (12 Nov) on top, on every screen
+ *  until the plan is made. */
+function nowLabelsOf(record, crops = [], growing = {}) {
+  const now = growingNow(record, crops);
+  const zones = areasOf(record);
+  const list = [...crops, BARREN];
+  return Object.fromEntries(zones.filter((z) => now[z.zone_id] || growing[z.zone_id]).map((z, i) => {
+    const c = growing[z.zone_id] && list.find((x) => x.key === growing[z.zone_id]);
+    const l = now[z.zone_id] || { text: z.name || `Area ${zones.indexOf(z) + 1}` };
+    return [z.zone_id, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : l];
+  }));
+}
+
 function growingNow(record, crops = []) {
   const zones = areasOf(record);
   const nameOf = (z) => zones.find((x) => x.zone_id === z)?.name || `Area ${zones.findIndex((x) => x.zone_id === z) + 1}`;
@@ -337,7 +352,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   // The map is the list (CP10): each area's chip shows what grows there in the season shown, or just "Area n".
   const labels = useMemo(() => {
     const ss = plan?.plan?.seasons;
-    if (!ss?.length) return growingNow(record, catalogue.data?.crops);
+    if (!ss?.length) return nowLabelsOf(record, catalogue.data?.crops, growing);
     // Areas she left out (the step before the plan, or CP10's bin; 5 Nov) are not on the plan's map.
     const gone = Object.entries(plan.plan.left_out_reasons || {}).filter(([, why]) => why === 'removed by her')
       .map(([z]) => [z, { gone: true }]);
@@ -363,7 +378,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaNo, areaName, pending, catalogue.data, record]);
+  }, [plan, season, checked, areaNo, areaName, pending, catalogue.data, record, growing]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
@@ -499,17 +514,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // First what grows now (12 Nov): every area the satellite could not identify needs its crop before the plan.
     const now = growingNow(record, catalogue.data?.crops);
     // Barren (12 Nov): nothing grows there now, so the plan may use the area at once.
-    const cropList = [...sortedCrops(catalogue.data?.crops || []), { key: 'barren', name: 'Barren', colour: '#5B6472' }];
+    const cropList = [...sortedCrops(catalogue.data?.crops || []), BARREN];
     const toSet = Object.keys(now).filter((z) => now[z].unknown && !growing[z]);
     // An empty area can take a crop too (12 Nov): she may have just sown it, which no image shows yet. Optional there;
     // an unidentified area must be set. A crop the satellite named is not asked again.
     const zoneIds = areasOf(record).map((z) => z.zone_id);
     const nameOf = (z) => areasOf(record).find((x) => x.zone_id === z)?.name || `Area ${zoneIds.indexOf(z) + 1}`;
-    const nowLabels = Object.fromEntries(zoneIds.filter((z) => now[z] || growing[z]).map((z) => {
-      const c = growing[z] && cropList.find((x) => x.key === growing[z]);
-      const l = now[z] || { text: nameOf(z) };
-      return [z, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : l];
-    }));
+    const nowLabels = nowLabelsOf(record, catalogue.data?.crops, growing);
     const settable = (z) => !!z && (!now[z] || !!now[z].unknown);
     const growingCount = zoneIds.filter((z) => (growing[z] ? growing[z] !== 'barren' : !!now[z])).length;
     // Option A (12 Nov, as G2's top block): the record's facts as rows, a line, then the button.
