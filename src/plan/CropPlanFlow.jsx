@@ -499,11 +499,16 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const now = growingNow(record, catalogue.data?.crops);
     const cropList = sortedCrops(catalogue.data?.crops || []);
     const toSet = Object.keys(now).filter((z) => now[z].unknown && !growing[z]);
-    const nowLabels = Object.fromEntries(Object.entries(now).map(([z, l]) => {
+    // An empty area can take a crop too (12 Nov): she may have just sown it, which no image shows yet. Optional there;
+    // an unidentified area must be set. A crop the satellite named is not asked again.
+    const zoneIds = areasOf(record).map((z) => z.zone_id);
+    const nameOf = (z) => areasOf(record).find((x) => x.zone_id === z)?.name || `Area ${zoneIds.indexOf(z) + 1}`;
+    const nowLabels = Object.fromEntries(zoneIds.filter((z) => now[z] || growing[z]).map((z) => {
       const c = growing[z] && cropList.find((x) => x.key === growing[z]);
+      const l = now[z] || { text: nameOf(z) };
       return [z, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : l];
     }));
-    const settable = (z) => !!now[z]?.unknown;
+    const settable = (z) => !!z && (!now[z] || !!now[z].unknown);
     return (
       <Sheet map={<AreaMap record={record} labels={nowLabels} selected={growArea} onSelect={(z) => setGrowArea(settable(z) ? z : null)} />}
         landName={name} title={forLand ? 'Field record' : 'Your field record'}>
