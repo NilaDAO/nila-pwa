@@ -17,6 +17,7 @@ import { usePendingApprovals, usePlanClient } from '../plan/hooks';
 import { C, FONT, R } from '../shell/tokens';
 import { ChevronIcon, FileIcon, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
+import { Steps } from '../shell/MessageSlider';   // the numbered steps of the Assets slider cards (13 Nov)
 import AreaMap from '../plan/AreaMap';
 import { unionCentre } from './unionMap';
 import { areaM2 } from '../plan/mapTap';
@@ -382,9 +383,7 @@ function JoinSteps({ m, onScan }) {
         <button type="button" aria-pressed={phone === 'keypad'} style={chip(phone === 'keypad')} onClick={() => setPhone('keypad')}>Keypad phone</button>
       </div>
       {phone && (
-        <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {steps.map((t) => <li key={t}>{t}</li>)}
-        </ol>
+        <Steps items={steps} />
       )}
       {phone === 'keypad' && <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setMoving(true)}>Move</button>}
       {phone && <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }} onClick={onScan}>Scan her QR</button>}
