@@ -189,7 +189,7 @@ export default function MoneyChart({ plan }) {
         return m.set(st.name, x);
       }, new Map()).values()].map((x) => (
         <p key={x.name} style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: C.muted }}>
-          {x.name} already in your field: you sell about {rs(r100(x.v))} around {monthName(ym(x.month))}. Not part of this plan, so not in the chart.
+          {x.name} already in your field: you sell about {rs(r100(x.v))} around {monthName(ym(x.month))}.
         </p>
       ))}
     </figure>
