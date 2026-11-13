@@ -42,7 +42,7 @@ export default function History({ onBack }) {
       header={{ title: 'History', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}>
       {h.isLoading && <p style={{ color: C.muted, padding: '0 14px' }}>…</p>}
       {h.isError && <p style={{ color: C.coral, padding: '0 14px' }}>Your history could not be read. Try again.</p>}
-      {h.isSuccess && !groups.length && <p style={{ color: C.muted, padding: '0 14px' }}>Nothing yet. Your payments and crop shares appear here.</p>}
+      {h.isSuccess && !groups.length && <p style={{ color: C.muted, padding: '0 14px' }}>Nothing yet. Your payments and crop agreements appear here.</p>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         {groups.map(([g, rows]) => {
           const recent = g === 'Today' || g === 'Yesterday';

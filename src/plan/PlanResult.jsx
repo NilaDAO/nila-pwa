@@ -328,7 +328,7 @@ export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, o
       {covers.map((it) => {
         const c = it.cover;
         const long = c.kind === 'mulch' ? 'The last crop\'s residue stays on the soil through the dry months, so it does not erode.'
-          : `Sown so it stands through the driest weeks and is ploughed in before the next crop, to rebuild the soil.${c.finance ? ` It is its own crop share (${inr(c.finance.cash + c.finance.voucher_value)}: seed and machine work), repaid with the next crop.` : c.unfinanced_reason ? ` Not in the loan: ${c.unfinanced_reason}.` : ''}${c.risks?.includes('water source not confirmed') ? ' Needs some water: your water source is not confirmed.' : ''}`;
+          : `Sown so it stands through the driest weeks and is ploughed in before the next crop, to rebuild the soil.${c.finance ? ` It is its own crop agreement (${inr(c.finance.cash + c.finance.voucher_value)}: seed and machine work), repaid with the next crop.` : c.unfinanced_reason ? ` Not in the loan: ${c.unfinanced_reason}.` : ''}${c.risks?.includes('water source not confirmed') ? ' Needs some water: your water source is not confirmed.' : ''}`;
         return (
           <div key={it.key} style={{ marginTop: 8 }}>
             <button type="button" onClick={() => setWhy(why === it.key ? null : it.key)} aria-expanded={why === it.key}

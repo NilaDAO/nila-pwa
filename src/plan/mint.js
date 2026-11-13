@@ -1,9 +1,9 @@
-// L12 → crop shares (executive decision 21 Oct, replaces N1's "she mints"): when a leader approves her plan, the
+// L12 → crop agreements (executive decision 21 Oct, replaces N1's "she mints"): when a leader approves her plan, the
 // union mints every season's FoodToken on Polygon with the LEADER's key (FoodToken P2 mintForBatchMemberByLeader);
 // the tokens go to her wallet (the land title's holder) and the attester copies them to Stellar (F2). Steps, each
 // safe to repeat: the node tops up the leader's POL (once per plan) → mintForBatchMemberByLeader with exactly the
 // node's arguments (GET /plan/{id}/mint, which names the minting union), skipping tokens she already holds.
-// `check` (her CP12 too) reads which of her crop shares are made: attested on Stellar first (the attester copies only
+// `check` (her CP12 too) reads which of her crop agreements are made: attested on Stellar first (the attester copies only
 // minted FoodTokens; one quick read each, 25 Oct), Polygon balances only for the rest.
 import { useCallback, useRef, useState } from 'react';
 import { ethers } from 'ethers';
@@ -46,7 +46,7 @@ const P2 = [
   'error NotLeaderOfBatch()',
 ];
 const ABI = [...foodTokenAbi, ...P2];
-REASON.NotLeaderOfBatch = 'Your union may not make crop shares in this crop\'s batch yet. Ask Nila.';
+REASON.NotLeaderOfBatch = 'Your union may not make crop agreements in this crop\'s batch yet. Ask Nila.';
 REASON.NotAuthorized = 'Your wallet is not a leader of this union on Polygon. Ask Nila.';
 const ftIface = new ethers.Interface(ABI);
 export function reasonOf(e) {
@@ -131,7 +131,7 @@ export function useMintCropShares() {
     }
   }, [api, provider, send, holderOf]);
 
-  /** Her CP12 (and the leader's L12 on reopening): which of her crop shares are made (on-chain balances). */
+  /** Her CP12 (and the leader's L12 on reopening): which of her crop agreements are made (on-chain balances). */
   const check = useCallback(async (planId) => {
     try {
       const ft = new ethers.Contract(FOODTOKEN, ABI, provider);

@@ -54,7 +54,7 @@ export function tasksOf(plan, areaNo, areaName) {
     if (due && s.repay) out.push({ date: due, when: 'after harvest', text: `Repay ${inr(s.repay)}`, area: `21 days after your harvest · ${SLOT[s.slot] || ''} finance`.trim() });
     for (const t of out.slice(at)) t.season = si;
   }
-  // Receive cash + vouchers: one per crop share, at its planned sowing (from_date), in the season it starts in; it can be
+  // Receive cash + vouchers: one per crop agreement, at its planned sowing (from_date), in the season it starts in; it can be
   // used from now until its last draw date (25 Oct), shown with it.
   const lastDayText = (d) => (d ? `use it by ${new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : '');
   const ss = plan.seasons || [];
@@ -109,7 +109,7 @@ function Group({ name, items, now }) {
   );
 }
 
-/** shares: her crop shares as A1 reads them (useMyShares): a share she can collect now (ready) is a to-do whatever its
+/** shares: her crop agreements as A1 reads them (useMyShares): a share she can collect now (ready) is a to-do whatever its
  *  month; a drawn one is done and not listed. assist: a shared phone, where the leader extends the plan.
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */

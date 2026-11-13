@@ -2,11 +2,11 @@
 // version: money comes at once, not as a build-up): one chart for the whole plan year. Seasons as shaded
 // bands with their names; up at sowing the cash she gets (hatched yellow); at harvest the sale in the crop's
 // colour, the part repaid from it hatched over its top; inputs (grey) below zero; what she owes as one white line.
-// The scale follows the crop share, not the sales (12 Nov, option B): a sale taller than the chart is cut at its top
+// The scale follows the crop agreement, not the sales (12 Nov, option B): a sale taller than the chart is cut at its top
 // with its amount written above it. No running "money left" line: a year of estimated sales added up looked unreal.
 //
 // Every series is a direct sum of the plan's rows (no new numbers): sales = the row's value in its harvest month (and
-// 12 Nov: not the crop already in the field, named on a line under the chart); crop share = its cash and voucher value in its
+// 12 Nov: not the crop already in the field, named on a line under the chart); crop agreement = its cash and voucher value in its
 // sowing month; inputs = seed, cash inputs and hand or hired work at sowing, machine work in the month it is used;
 // repayment = its repay in its harvest month (she repays from that sale; the due date is 21 days after).
 import { useMemo } from 'react';
@@ -27,7 +27,7 @@ function niceStep(range) {
   return [1, 2, 5, 10].map((m) => m * p).find((s) => s >= raw) || 10 * p;
 }
 
-/** All the plan's rows that carry a crop share: the seasons' rows and the green manures. */
+/** All the plan's rows that carry a crop agreement: the seasons' rows and the green manures. */
 const financedRows = (p) => [...(p.seasons || []).flatMap((s) => s.rows), ...(p.soil_cover || []).filter((c) => c.finance)];
 
 /** What she gets (cash and machine vouchers), the interest on it, and when she repays (the headline). */
@@ -69,7 +69,7 @@ export function series(plan) {
   }
   // The crop already in the field (plan.standing_sales) is not in the chart (12 Nov): its costs fell before the plan,
   // so its sale alone would read as profit. It is named on one line under the chart.
-  // What she owes (12 Nov, option B): the crop share received, less what is paid back of it (interest apart).
+  // What she owes (12 Nov, option B): the crop agreement received, less what is paid back of it (interest apart).
   let o = 0;
   const owed = months.map((_, i) => { o = Math.max(0, o + take[i] - principal[i]); return o; });
   return { months, sales, take, inputs, repay, owed };
@@ -84,7 +84,7 @@ export default function MoneyChart({ plan }) {
   if (!n) return null;
   const sold = s.sales.map((x) => x.reduce((t, c) => t + c.v, 0));
   const fromSale = s.months.map((_, i) => Math.min(s.repay[i], sold[i]));
-  // The scale: the crop share, what she owes and what she repays; sales are cut at the top.
+  // The scale: the crop agreement, what she owes and what she repays; sales are cut at the top.
   const hi = Math.max(1000, ...s.take, ...s.owed, ...s.repay) * 1.25;
   const lo = Math.min(0, ...s.months.map((_, i) => -(s.inputs[i] + s.repay[i] - fromSale[i])));
   const step = niceStep(hi - lo);

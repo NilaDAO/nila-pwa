@@ -1,5 +1,5 @@
 // Cash ahead (25 Oct, Cash tab): the next 8 weeks of cash at the office, from the members list kept on the phone
-// (no extra calls). Taken: every unused crop share in the week its window opens or its planned sowing (whichever is
+// (no extra calls). Taken: every unused crop agreement in the week its window opens or its planned sowing (whichever is
 // later, never before this week), at its attested cash part. Repaid: every open loan in the week of its crop's
 // harvest (an overdue one this week), the cash part left. Each week: the office's cash after it, and what the LPs
 // are needed for: bring the shortfall, or collect what goes above the treasury. Members may not all take up their
@@ -62,7 +62,7 @@ export default function CashAhead({ api, cash, style, children }) {
     <section style={{ ...style, gap: 12 }} aria-label="Cash ahead">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Cash ahead · 8 weeks</h2>
-        <Segmented width="hug" label="Take up" value={uptake} onChange={setUptake} options={[['all', 'All take up'], ['half', 'Half']]} />
+        <Segmented width="hug" label="Cash taken" value={uptake} onChange={setUptake} options={[['all', 'All'], ['half', 'Half']]} />
       </div>
       <svg role="img" aria-label="Cash taken and repaid per week, and the cash at the office after it" viewBox={`0 0 ${WEEKS * gap} ${H + 18}`} style={{ width: '100%', height: 'auto' }}>
         <line x1="0" x2={WEEKS * gap} y1={y(cash.treasury)} y2={y(cash.treasury)} stroke={C.muted} strokeDasharray="4 4" strokeWidth="1" />
@@ -80,7 +80,7 @@ export default function CashAhead({ api, cash, style, children }) {
       </svg>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: C.muted }}>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.accent, marginRight: 6 }} />Repaid (harvests)</span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.coral, marginRight: 6 }} />Taken (crop shares)</span>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.coral, marginRight: 6 }} />Taken (crop agreements)</span>
         <span>— Cash at the office · ┄ treasury</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14 }}>

@@ -1,7 +1,7 @@
 // A8 machinery voucher, A8a its code, A8b an expired code (boards MemberAssetTractor, MemberAssetTractorScrolled,
 // MemberAssetTractorExpired). Decided 17 Oct (LOAN_RULES §5 "Machinery vouchers (P6)"), any machine of her union;
 // since 27 Oct in tractor ACRES (units on-chain: centi tractor acres; an acre of a machine uses its price an acre on
-// the share's crop ÷ the tractor's). She picks the job, nothing typed (executive decision 27 Oct): the crop share and
+// the share's crop ÷ the tractor's). She picks the job, nothing typed (executive decision 27 Oct): the crop agreement and
 // the machine; the acres are the share's area (from its token id), or what is left of the voucher. The QR is her
 // signed authorization of machinery.claim for (union, token, up to N units), one use (Soroban nonce), ~48 h (its
 // expiry ledger); nothing goes on-chain until the owner scans it and claims (and may lower the acres for a part done).
@@ -53,7 +53,7 @@ export default function Machinery({ onBack }) {
   const rates = useRates();
   const [type, setType] = useState();
   const [picking, setPicking] = useState(false);
-  const [pick, setPick] = useState();          // the crop share (voucher token) the job is for
+  const [pick, setPick] = useState();          // the crop agreement (voucher token) the job is for
   const [code, setCode] = useState(load);
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,12 +69,12 @@ export default function Machinery({ onBack }) {
   const kinds = new Set((machines.data || []).map((m) => m.machine_type));
   const avail = (rates.data || []).filter((r) => kinds.has(r.type));
   const rate = avail.find((r) => r.type === type) || avail[0];
-  // The job (27 Oct): her crop share (a voucher with units left) and its area; the price for its crop if the union
+  // The job (27 Oct): her crop agreement (a voucher with units left) and its area; the price for its crop if the union
   // set one; the acres are the area, or what the voucher still pays for.
   const shares = useMyShares().data || [];
   const nameOf = (token) => {
     const x = shares.find((y) => tokenHex(y.token_id).replace(/^0x/, '').toLowerCase().padStart(64, '0') === token);
-    return x ? `${(x.crop || '').replace(/_/g, ' ')} · Area ${x.area}` : 'Crop share';
+    return x ? `${(x.crop || '').replace(/_/g, ' ')} · Area ${x.area}` : 'Crop agreement';
   };
   const withLeft = list.filter((v) => v.left > 0);
   const v = withLeft.find((x) => x.token === pick) || withLeft[0];
@@ -117,7 +117,7 @@ export default function Machinery({ onBack }) {
   const label = { fontSize: 14, fontWeight: 700, lineHeight: 1.5 };
   // Board A8 (MemberAssetTractor), full page (23 Oct): no "Receive" (vouchers are not sent).
   return (
-    <Page title="Machinery" onBack={onBack} note={online ? 'Pays for machine work on your crop share. It is used when the owner scans.' : 'You are offline. Making a code needs internet.'}>
+    <Page title="Machinery" onBack={onBack} note={online ? 'Pays for machine work on your crop agreement. It is used when the owner scans.' : 'You are offline. Making a code needs internet.'}>
       <Card label="Machinery" style={{ gap: 12 }}>
         <span style={{ alignSelf: 'center', width: 72, height: 72, borderRadius: R.round, background: C.coral, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{tractor}</span>
         <CardTitle right={<span style={{ fontSize: 16, fontWeight: 700 }}>{vouchers.isLoading ? '…' : `${ta(balance)} ac`}</span>}>Machinery</CardTitle>
@@ -153,7 +153,7 @@ export default function Machinery({ onBack }) {
         <Card label="Spend" style={{ gap: 12 }}>
           {withLeft.length > 1 && (
             <>
-              <span style={label}>Crop share</span>
+              <span style={label}>Crop agreement</span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {withLeft.map((x) => (
                   <button key={x.token} type="button" onClick={() => setPick(x.token)} style={{ ...field, padding: '0 14px', cursor: 'pointer', fontWeight: 700,
@@ -189,14 +189,14 @@ export default function Machinery({ onBack }) {
         </Card>
       )}
       {balance > 0 && !assisted() && <HandBack member={s?.stellarAddress} />}
-      {!vouchers.isLoading && balance === 0 && !open && <Card label="No machine work"><span style={{ color: C.muted, fontSize: 14 }}>No machine vouchers yet. They come with a crop share.</span></Card>}
+      {!vouchers.isLoading && balance === 0 && !open && <Card label="No machine work"><span style={{ color: C.muted, fontSize: 14 }}>No machine vouchers yet. They come with a crop agreement.</span></Card>}
     </Page>
   );
 }
 
 /** Hand back acres (executive decision 26 Oct; in acres and a leader task for assist and keypad members, 4 Nov, G7):
- *  unused acres of a crop share's voucher whose value she still owes come off her debt at 95% of their value; 5% is
- *  owed to the union treasury (fund_core.return_voucher, `units` = centi tractor acres). She picks the crop share and
+ *  unused acres of a crop agreement's voucher whose value she still owes come off her debt at 95% of their value; 5% is
+ *  owed to the union treasury (fund_core.return_voucher, `units` = centi tractor acres). She picks the crop agreement and
  *  the machine and the acres on that machine; capped by what is left unused and by what she still owes (the
  *  contract's rule: with nothing owed the acres simply stay hers). Self mode: on her own phone (A8). Assist and
  *  keypad: the leader's Tasks → Hand back acres, `session` = her account. DESIGN GAP: no board. */
@@ -237,7 +237,7 @@ export function HandBack({ member, session, onDone }) {
   const nameOf = (token) => {
     const x = myShares.find((y) => tokenHex(y.token_id).replace(/^0x/, '').toLowerCase().padStart(64, '0') === token);
     const a = shareOfToken(token).centiAcres / 100;
-    return x ? `${(x.crop || '').replace(/_/g, ' ')} · Area ${x.area}` : `Crop share · ${acresText(a)}`;
+    return x ? `${(x.crop || '').replace(/_/g, ' ')} · Area ${x.area}` : `Crop agreement · ${acresText(a)}`;
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onDone?.(); }} onRetry={() => tx.retry()} />;
   if (vouchers.isLoading || books.isLoading) return session ? <span style={{ color: C.muted, fontSize: 14 }}>…</span> : null;
@@ -265,7 +265,7 @@ export function HandBack({ member, session, onDone }) {
       <span style={{ color: C.muted, fontSize: 14 }}>Machine acres {session ? 'the member' : 'you'} will not use come off what {you}. 5% of their value goes to the union.</span>
       {open.length > 1 && (
         <>
-          <span style={label}>Crop share</span>
+          <span style={label}>Crop agreement</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {open.map((x) => <button key={x.token} type="button" onClick={() => setPick(x.token)} style={chip(x.token === v.token)}>{nameOf(x.token)}</button>)}
           </div>
@@ -315,7 +315,7 @@ function Code({ c, left, live, used, rate, onBack, onRemove }) {
   }
   return (
     <Page title={name} onBack={onBack}><Card label={name} style={{ gap: 12 }}>
-      {/* As big as the screen allows (shared BigQr, as her crop share QR): the QR spans the screen's width in the
+      {/* As big as the screen allows (shared BigQr, as her crop agreement QR): the QR spans the screen's width in the
           white circle, clipped at the screen's sides. */}
       <BigQr img={img} alt="Your voucher code" caption="Show this to the machine owner" below={300} />
       <KV k="Valid until" v={`${when(c.until)} · ${hoursLeft(c.until)} h left`} />

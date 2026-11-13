@@ -2,7 +2,7 @@
 // newest first, de-duplicated by transaction hash. Three sources (22 Oct):
 //  1. Horizon: her account's operations (her own calls, sent by her own account or, before 4 Nov, fee-bumped by the node), the nIN / USDC each moved.
 //  2. Soroban RPC getEvents on the Nila contracts: what others did for her (node-sponsored calls, her title on Stellar,
-//     crop shares attested, vouchers, cash counted, cash-outs paid), matched on her address, her crop-share token ids
+//     crop agreements attested, vouchers, cash counted, cash-outs paid), matched on her address, her crop-share token ids
 //     and her title ids. RPC keeps about 7 days of events, so older rows come from Horizon only (an indexer would
 //     keep them all).
 //  3. Polygon logs (eth_getLogs on the app's RPC, no Etherscan key): FoodToken TransferSingle / TransferBatch and
@@ -20,7 +20,7 @@ const n = (v) => Number(v);
 
 // Contract calls in words (her side). Amounts come from the operation's asset balance changes.
 const CALLS = {
-  draw_loan: ['Crop share taken', 'From your union'],
+  draw_loan: ['Crop agreement taken', 'From your union'],
   repay_loan: ['Loan repaid', 'Cash at union office'],
   cash_scan_mint: ['Cash at union office', 'Recorded by your leader'],
   // Before 30 Oct; since then request_unbond, and fund_core's claim (below, by contract).
@@ -127,7 +127,7 @@ async function polygonRows(evm, chainId) {
   }
   for (const t of sft) {
     const inn = t.to.toLowerCase() === me;
-    rows.push({ id: `p1155-${t.hash}-${t.tokenID}`, at: Number(t.timeStamp), title: inn ? 'Crop share made' : 'Crop share moved', sub: 'FoodToken', amount: `${inn ? '+' : '−'}${t.tokenValue}`, chain: 'polygon', hash: t.hash });
+    rows.push({ id: `p1155-${t.hash}-${t.tokenID}`, at: Number(t.timeStamp), title: inn ? 'Crop agreement made' : 'Crop agreement moved', sub: 'FoodToken', amount: `${inn ? '+' : '−'}${t.tokenValue}`, chain: 'polygon', hash: t.hash });
   }
   return { rows, note: null };
 }
@@ -176,7 +176,7 @@ async function nilaEvents(cfg) {
 const nin = (v) => (Number(v) / U).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const PURPOSE = ['Invested in your union', 'Loan repaid', 'Recovery paid', 'Treasury deposit'];
 
-/** Her rows among the Nila events: her address in a topic or the data, or her crop shares / titles. */
+/** Her rows among the Nila events: her address in a topic or the data, or her crop agreements / titles. */
 function eventRows(events, me, shareLabel) {
   const mine = new Set([me]);
   const titles = new Set();
@@ -192,10 +192,10 @@ function eventRows(events, me, shareLabel) {
       // The first time her title is set (a later set of the same title, e.g. a new record, is not a new title).
       case 'title_set': if (has(e.v.holder) && !shown.has(String(e.topics[1]))) { shown.add(String(e.topics[1])); row('Land title on Stellar', `id ${e.topics[1]}`, '+1'); } break;
       case 'title_burned': if (has(e.v.holder) || titles.has(String(e.topics[1]))) row('Land title burned', `id ${e.topics[1]}`, '−1'); break;
-      case 'food_token_attested': if (has(e.v.member) || share) row(share ? `Crop share ready · ${share}` : 'Crop share ready', 'From your union', `₹${nin(e.v.amount)}`); break;
-      case 'loan_drawn': if (has(e.v.borrower) || share) row(share ? `Crop share taken · ${share}` : 'Crop share taken', 'Cash at union office', `+₹${nin(e.v.cash)}`); break;
+      case 'food_token_attested': if (has(e.v.member) || share) row(share ? `Crop agreement ready · ${share}` : 'Crop agreement ready', 'From your union', `₹${nin(e.v.amount)}`); break;
+      case 'loan_drawn': if (has(e.v.borrower) || share) row(share ? `Cash received · ${share}` : 'Cash received', 'Cash at union office', `+₹${nin(e.v.cash)}`); break;
       case 'loan_repaid': if (share) row(`Loan repaid · ${share}`, 'Cash at union office', `−₹${nin(BigInt(e.v.principal_paid || 0) + BigInt(e.v.interest_paid || 0))}`); break;
-      case 'loan_overdue': if (share) row(`Repayment overdue · ${share}`, 'Your crop share', ''); break;
+      case 'loan_overdue': if (share) row(`Repayment overdue · ${share}`, 'Your crop agreement', ''); break;
       // Vouchers in centi tractor hours, hours worked in hundredths of an hour (23 Oct).
       case 'voucher_granted': if (has(e.v.member) || share) row('Machinery voucher', 'From your union', `+${(Number(e.v.units ?? e.v.hours) / 100).toFixed(1)} tractor ac`); break;
       case 'voucher_claimed':
@@ -269,7 +269,7 @@ async function polygonLogRows(evm, shareLabel) {
     pairs.forEach(([id, value], i) => {
       const label = shareLabel(tokenHex(id.toString()));
       // A FoodToken's units are the expected harvest in kg.
-      rows.push({ id: `pl-${l.transactionHash}-${l.index}-${i}`, at: times[l.blockNumber], title: `${inn ? 'Crop share made' : 'Crop share moved'}${label ? ` · ${label}` : ''}`,
+      rows.push({ id: `pl-${l.transactionHash}-${l.index}-${i}`, at: times[l.blockNumber], title: `${inn ? 'Crop agreement made' : 'Crop agreement moved'}${label ? ` · ${label}` : ''}`,
         sub: inn ? 'Minted by your union' : 'Polygon', amount: `${inn ? '+' : '−'}${Number(value).toLocaleString('en-IN')} kg`, chain: 'polygon', hash: l.transactionHash });
     });
   }
@@ -280,7 +280,7 @@ async function polygonLogRows(evm, shareLabel) {
 export function useHistory(stellarAddress, evmAddress, senderAddress) {
   const { data: cfg } = useStellarConfig();
   const shares = useMyShares();
-  // Her crop shares by token id (64 hex): "Sesame Area 1", put in the row's title (Today rows show only the time).
+  // Her crop agreements by token id (64 hex): "Sesame Area 1", put in the row's title (Today rows show only the time).
   const labels = {};
   for (const x of shares.data || []) labels[tokenHex(x.token_id)] = `${(x.crop || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())} Area ${x.area}`;
   const shareLabel = (hex) => labels[String(hex).replace(/^0x/, '').toLowerCase().padStart(64, '0')] || '';
@@ -296,7 +296,7 @@ export function useHistory(stellarAddress, evmAddress, senderAddress) {
         polygonLogRows(evmAddress, shareLabel).catch(() => []),
       ]);
       // De-duplicated by transaction: a call of her own is her Horizon row; the events of other transactions are added
-      // (one transaction can carry several of hers, e.g. crop shares attested together).
+      // (one transaction can carry several of hers, e.g. crop agreements attested together).
       const byHash = new Set(st.map((r) => r.hash).filter(Boolean));
       const evRows = eventRows(ev, stellarAddress, shareLabel).filter((r) => !byHash.has(r.hash));
       const pgHashes = new Set(pg.rows.map((r) => r.hash));

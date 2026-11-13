@@ -66,7 +66,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
   const seasons = p.seasons || [];
   // What a season costs is what Nila finances (12 Nov: no ₹10,000 cap anywhere): cash plus machine vouchers.
   const cost = (f) => f.cash + f.voucher_value;
-  // A green manure is its own crop share (4 Nov): seed in cash, machine vouchers, repaid with the next crop.
+  // A green manure is its own crop agreement (4 Nov): seed in cash, machine vouchers, repaid with the next crop.
   const gm = (p.soil_cover || []).filter((c) => c.finance);
   const total = [...seasons, { rows: gm }].reduce((a, s) => {
     const sum = s.rows.reduce((b, r) => ({ cash: b.cash + cost(r.finance), financed: b.financed + r.finance.cash + r.finance.voucher_value, interest: b.interest + r.finance.interest }), { cash: 0, financed: 0, interest: 0 });
@@ -193,7 +193,7 @@ function AssistPlan({ map, name, waiting }) {
   if (qr) return <HelpQr onBack={() => setQr(false)} note="Show this to your union leader. Your leader makes your crop plan with you and reads it to you." />;
   return (
     <Sheet map={map} landName={name} title={waiting ? 'Your crop plan is with your leader' : 'Your crop plan'}>
-      <p style={muted}>{waiting ? 'Your leader checks it and approves it. Your crop shares come after that.'
+      <p style={muted}>{waiting ? 'Your leader checks it and approves it. Your crop agreements come after that.'
         : 'Your union leader makes your crop plan with you at the union office. At the end you show your QR to accept it.'}</p>
       {!waiting && <Primary onClick={() => setQr(true)}>Show your QR</Primary>}
     </Sheet>
@@ -277,11 +277,11 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const mint = useMintCropShares();
   const approve = useApprovePlan();
   // Assist mode (26 Oct): the leader made the plan, so the member's scan at CP11 is the whole consent: accept, approve
-  // and make the crop shares in one go (no separate L12). The leader's own plan likewise (29 Oct): the leader's "I accept"
-  // approves it and makes the crop shares. A self-mode member's own plan still waits for a leader (L12).
+  // and make the crop agreements in one go (no separate L12). The leader's own plan likewise (29 Oct): the leader's "I accept"
+  // approves it and makes the crop agreements. A self-mode member's own plan still waits for a leader (L12).
   const [making, setMaking] = useState(false);
   const [makeError, setMakeError] = useState();
-  // The N sequence shows from the scan (or "I accept") on, through accept and approve to the last crop share (29 Oct:
+  // The N sequence shows from the scan (or "I accept") on, through accept and approve to the last crop agreement (29 Oct:
   // it showed only from the mint, so the plan flashed back in between).
   const makeMine = async () => {
     setError(undefined); setMakeError(undefined); setMaking(true);
@@ -305,11 +305,11 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     setError();
     try { await discard.mutateAsync(current.data.id); setCrops(new Set()); setRole(); setCows(); setMonths([]); setFarmCash(''); setJobId(); setStep(null); } catch (e) { setError(e.message); }
   };
-  // An approved plan whose crop shares are already on her wallet opens on "made", not on "Make".
+  // An approved plan whose crop agreements are already on her wallet opens on "made", not on "Make".
   const approvedId = current.data?.approval?.decision === 'approve' ? current.data.id : undefined;
   const checkMinted = mint.check;
   const checkedFor = useRef();
-  useEffect(() => {   // per approved plan: check now, then every 15 s until her crop shares are made (the union mints them)
+  useEffect(() => {   // per approved plan: check now, then every 15 s until her crop agreements are made (the union mints them)
     if (!approvedId || making) return undefined;
     if (checkedFor.current !== approvedId) { checkedFor.current = approvedId; checkMinted(approvedId); }
     if (mint.status === 'done' || mint.status === 'partial') return undefined;
@@ -348,7 +348,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); setPastYear(null); setTicks(new Set()); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Approved: the chain as one plan (its seasons and shares, 25 Oct); a waiting extension shows as itself.
   const plan = current.data?.approval?.decision === 'approve' ? mergedPlan(chainQ.data, current.data) : current.data;
-  const myShares = useMyShares();   // CP13: a crop share she can collect now is a to-do
+  const myShares = useMyShares();   // CP13: a crop agreement she can collect now is a to-do
   // CP13 opens on the season she is in today (CP10 on the first).
   const approved = plan?.approval?.decision === 'approve';
   useEffect(() => { if (approved) setSeason(currentSeason(plan.plan.seasons || [])); }, [planId, approved]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -396,7 +396,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
-  // CP13 (map-central trial, 21 Oct): a tap on an area opens its crop share in the season shown (A4/A4a).
+  // CP13 (map-central trial, 21 Oct): a tap on an area opens its crop agreement in the season shown (A4/A4a).
   // A share whose sowing is over a year ahead is made later (the node defers it, 25 Oct): it does not hold the plan up.
   const deferredOnly = mint.status === 'partial' && (mint.refused || []).length > 0
     && mint.refused.every((r) => /more than a year ahead|made later/i.test(r.error || ''));
@@ -429,9 +429,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   if (making) {
     const seq = makeError ? 'failed' : { busy: 'pending', done: 'success', failed: 'failed', partial: 'failed' }[mint.status] || 'pending';
     if (seq !== 'success') when.current = new Date();
-    const tx = { status: seq, label: 'Making the crop shares', when: when.current,
-      rows: [['Crop shares', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Member', forLand?.label || `Land ${landId}`]],
-      reason: makeError || (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
+    const tx = { status: seq, label: 'Making the crop agreements', when: when.current,
+      rows: [['Crop agreements', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Member', forLand?.label || `Land ${landId}`]],
+      reason: makeError || (mint.refused || []).map((r) => `${r.crop || 'Crop agreement'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
     return <TxScreens tx={tx} network="Polygon" onClose={() => { window.location.hash = '#/members'; }}
       onRetry={() => (makeError ? makeMine() : mint.run(plan.id))} />;
   }
@@ -800,7 +800,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       // Locally, paying only the interest and keeping the principal is common; Nila does not work that way (12 Nov).
       ['repay', `I pay back all ${inr(owe.total)}, not only the interest.`],
       owe.parts > 0 && ['when', `I pay after each harvest, all by ${lastMon}.`],
-      ['change', <>I understand all numbers are subject to change.<span style={{ display: 'block', fontWeight: 400, color: C.muted }}>When you take up the work, your union can change the cash and voucher amounts.</span></>],
+      ['change', <>I understand all numbers are subject to change.<span style={{ display: 'block', fontWeight: 400, color: C.muted }}>When you get the cash, your union can change the amounts.</span></>],
     ].filter(Boolean);
     const read = checks.every(([key]) => ticks.has(key));
     const tick = (key) => setTicks((t) => { const n = new Set(t); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -813,7 +813,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           const mon = (m) => m && new Date(`${m}-01`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
           // The field record's segment rows (12 Nov): what she gets, the interest, when she repays; then a line.
           return (
-            <Section title="Crop share" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
+            <Section title="Crop agreement" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
               <KV k="You get" v={inr(due.get)} />
               <KV k="Interest" v={inr(due.interest)} />
               {due.parts > 0 && <KV k="You repay" v={due.parts === 1 ? mon(due.first) : `${due.parts} parts, ${mon(due.first)} – ${mon(due.last)}`} />}
@@ -848,7 +848,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     );
   }
   if (ap?.decision === 'approve') {
-    // The union mints her crop shares at the approval (executive decision 21 Oct): her app only waits for them.
+    // The union mints her crop agreements at the approval (executive decision 21 Oct): her app only waits for them.
     if (mint.status === 'done' || deferredOnly) {
       // CP13's season bar (board CropPlanActive): it opens on the season she is in; the map's chips follow it.
       const ss = plan.plan.seasons || [];
@@ -872,39 +872,39 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     }
     if (mint.status === 'partial') {
       return (
-        <Sheet map={map} landName={name} title="Your crop shares are made">
-          <p style={muted}>{mint.done} of {mint.total} crop shares made.</p>
-          {mint.refused?.map((r) => <p key={r.share || r.token_id} style={muted}>{r.crop || 'Crop share'}: {r.error}</p>)}
+        <Sheet map={map} landName={name} title="Your crop agreements are made">
+          <p style={muted}>{mint.done} of {mint.total} crop agreements made.</p>
+          {mint.refused?.map((r) => <p key={r.share || r.token_id} style={muted}>{r.crop || 'Crop agreement'}: {r.error}</p>)}
           <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 14 }}>See my plan</button>
         </Sheet>
       );
     }
-    // DESIGN GAP: no board for "your union is making your crop shares"; CP12's waiting layout is used.
+    // DESIGN GAP: no board for "your union is making your crop agreements"; CP12's waiting layout is used.
     return (
       <Sheet map={map} landName={name} title="Your plan is approved">
-        <Bouncing top={24} bottom={24} label="Your union is making your crop shares" />
-        <p style={{ ...muted, textAlign: 'center' }}>Your crop shares are being made by your union.{mint.total ? ` ${mint.done || 0} of ${mint.total} made.` : ''}</p>
+        <Bouncing top={24} bottom={24} label="Your union is making your crop agreements" />
+        <p style={{ ...muted, textAlign: 'center' }}>Your crop agreements are being made by your union.{mint.total ? ` ${mint.done || 0} of ${mint.total} made.` : ''}</p>
         <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 14 }}>See my plan</button>
       </Sheet>
     );
   }
   if (forLand) {
-    // A member's plan accepted before the one-go rule (26 Oct): approve it and make the crop shares here.
+    // A member's plan accepted before the one-go rule (26 Oct): approve it and make the crop agreements here.
     return (
       <Sheet map={map} landName={name} title="Plan accepted">
-        <p style={muted}>{forLand.label || 'The member'} accepted the plan. Approve it to make the crop shares.</p>
+        <p style={muted}>{forLand.label || 'The member'} accepted the plan. Approve it to make the crop agreements.</p>
         {error && <p style={{ color: C.coral }}>{error}</p>}
-        <Primary disabled={!plan?.id} onClick={makeMine}>Approve and make the crop shares</Primary>
+        <Primary disabled={!plan?.id} onClick={makeMine}>Approve and make the crop agreements</Primary>
       </Sheet>
     );
   }
   if (self) {
-    // The leader's own plan accepted before the one-go rule (29 Oct): approve it and make the crop shares here.
+    // The leader's own plan accepted before the one-go rule (29 Oct): approve it and make the crop agreements here.
     return (
       <Sheet map={map} landName={name} title="Plan accepted">
-        <p style={muted}>You accepted your plan. Approve it to make your crop shares.</p>
+        <p style={muted}>You accepted your plan. Approve it to make your crop agreements.</p>
         {error && <p style={{ color: C.coral }}>{error}</p>}
-        <Primary disabled={!plan?.id} onClick={makeMine}>Approve and make the crop shares</Primary>
+        <Primary disabled={!plan?.id} onClick={makeMine}>Approve and make the crop agreements</Primary>
         <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 10, fontSize: 14, fontFamily: 'inherit' }}>See the plan</button>
       </Sheet>
     );

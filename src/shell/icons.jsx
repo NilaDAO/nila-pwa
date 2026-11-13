@@ -96,7 +96,7 @@ const tractor = <path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2
 export const MachineryTile = tile('#E69283', glyph(tractor));    // machinery voucher
 export const MyMachineTile = tile('#D4A634', glyph(tractor));    // your machine (owner)
 export const SeedTile = tile('#E69283', glyph(<path d="M12 3c3 3 4 7 0 11c-4-4-3-8 0-11zM12 14v7M8 21h8" />));
-// A crop share: a coin in the crop's colour.
+// A crop agreement: a coin in the crop's colour.
 export const ShareTile = ({ colour = '#D4CF5A' }) => tile(colour, glyph(<path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M12 7v10M9 9.5h6" />))();
 // Slider message icons: repay (rupee on coral), invest and withdrawal (the mark on amber).
 export const RepayTile = tile('#E69283', glyph(<path d="M6 3h12M6 8h12M6 13l8.5 8M6 13h3a5 5 0 0 0 0-10" />, { size: 16, width: 2.4 }));

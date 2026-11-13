@@ -110,8 +110,8 @@ function TasksView({ leader, go }) {
   );
 }
 
-// DEVIATION (executive decision 21 Oct, map-central trial): the land title and her crop shares open in the Assets card
-// over the map, with a ‹ asset › bar on top that steps land title → crop shares by season and area (a swipe on the card
+// DEVIATION (executive decision 21 Oct, map-central trial): the land title and her crop agreements open in the Assets card
+// over the map, with a ‹ asset › bar on top that steps land title → crop agreements by season and area (a swipe on the card
 // does the same). The hash still says which (#/land, #/cropshare/<id>): the phone's back button and links work, and a
 // step replaces the entry, so back returns to the list rather than through every step.
 function AssetStep({ view, children }) {
@@ -243,7 +243,7 @@ export default function Shell({ leader }) {
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
   else if (view === 'machine') body = <MyMachine key={readArg()} pick={Number(readArg()) || undefined} onBack={() => go('assets')} />;
   else if (view === 'share') body = <TakeUp key={readArg()} token={readArg()} leader={leader} onBack={() => go(`cropshare/${readArg()}`)} />;
-  // A4 / A4a: her crop share, from its A1 row.
+  // A4 / A4a: her crop agreement, from its A1 row.
   else if (view === 'cropshare') {
     body = <AssetStep view={view}>{(p) => <CropShare key={readArg()} token={readArg()} onBack={() => go('assets')} onTakeUp={(t) => go(`share/${t}`)} {...p} />}</AssetStep>;
   }
@@ -255,7 +255,7 @@ export default function Shell({ leader }) {
   else if (view === 'harvests' && leader) body = readArg() ? <HarvestGroup key={readArg()} id={readArg()} go={go} /> : <HarvestList go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
 
-  // No tab is active on task, settings, history and wallet screens; a crop share (A4/A4a, and taking it up) belongs to
+  // No tab is active on task, settings, history and wallet screens; a crop agreement (A4/A4a, and taking it up) belongs to
   // the Crop plan tab (21 Oct).
   // nIN and nIN invested (A7, A3) are Assets screens (boards MemberAssetNin, StNinWithdraw).
   const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' || view === 'usdc' || view === 'lpcode' ? 'assets' : view;

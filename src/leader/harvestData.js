@@ -1,4 +1,4 @@
-// Harvests (H1, H2; 25 Oct): the union's crop shares by crop and harvest, from the members list kept on the phone, and
+// Harvests (H1, H2; 25 Oct): the union's crop agreements by crop and harvest, from the members list kept on the phone, and
 // each crop's local price, which a leader sets on Stellar (crop_calendar.set_price(leader, union, family, paise per kg),
 // sponsored by the node; executive decision 26 Oct: per union, on-chain, set by the leaders now and then). Not on the
 // Polygon batch: the standing batches belong to no union, so a leader cannot set their price, and a price there would
@@ -60,7 +60,7 @@ const half = (d) => (d.getUTCDate() <= 10 ? 0 : d.getUTCDate() <= 20 ? 1 : 2);
 // early / mid / late (25 Oct): "Harvest start of May 2027" read as a date ("starts on May 27").
 const PART = ['early', 'mid', 'late'];
 
-/** The union's crop shares by crop, then by harvest (start, mid or end of a month): the H1 rows and an H2 group. */
+/** The union's crop agreements by crop, then by harvest (start, mid or end of a month): the H1 rows and an H2 group. */
 export function harvestGroups(members, shares, now = Date.now() / 1000) {
   const label = Object.fromEntries((members || []).map((m) => [m.address, m]));
   const crops = {};

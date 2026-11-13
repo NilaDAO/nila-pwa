@@ -1,4 +1,4 @@
-// A4 / A4a · her crop share (boards MemberCropShare, MemberCropShareInactive; notes a4-spec). A map board: the share's
+// A4 / A4a · her crop agreement (boards MemberCropShare, MemberCropShareInactive; notes a4-spec). A map board: the share's
 // area filled in the crop's colour and labelled with the crop, the other areas plain; the sheet shows the crop, area,
 // expected harvest and value, status and timing (the same numbers as her A1 row).
 //  - A4a, not active yet (no loan drawn on it): what she collects (cash and machine hours, total) and when and where.
@@ -90,8 +90,8 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   if ((!x && (shares.isLoading || !shares.data)) || (x && !record && !field.error)) return <Loading />;
   if (!x) {
     return (
-      <Sheet title="Your crop share" onBack={onBack}>
-        <p style={{ ...muted, textAlign: 'center' }}>This crop share is not in your plan.</p>
+      <Sheet title="Your crop agreement" onBack={onBack}>
+        <p style={{ ...muted, textAlign: 'center' }}>This crop agreement is not in your plan.</p>
       </Sheet>
     );
   }
@@ -122,7 +122,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
       <span style={{ display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{name}</span>
-        <span style={{ ...muted, lineHeight: 1.5 }}>Crop share · Area {x.area}</span>
+        <span style={{ ...muted, lineHeight: 1.5 }}>Crop agreement · Area {x.area}</span>
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{r.kg ? amount(r.kg) : '—'}</span>

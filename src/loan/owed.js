@@ -1,4 +1,4 @@
-// What a crop share owes today (executive decision 26 Oct): the cash part and the voucher's value, both lent at the
+// What a crop agreement owes today (executive decision 26 Oct): the cash part and the voucher's value, both lent at the
 // draw, each with simple interest at the loan's rate since its last accrual, plus the union treasury's 5% of handed-back
 // voucher hours. In nIN units (7 decimals), as fund_core keeps them; `vb` is fund_core.voucher_book (null: no voucher).
 const YEAR = 365n * 86_400n;

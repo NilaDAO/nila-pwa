@@ -1,6 +1,6 @@
 // A1's message slider (board MemberAssets-ley3, notes page-member "Messages slider"): the dots on top, the cards
 // swipe sideways and snap, one card per message, only the cards that apply, in priority order:
-// repay your crop share > invest (until 600) > withdrawal on its way.
+// repay your crop agreement > invest (until 600) > withdrawal on its way.
 import { useRef, useState } from 'react';
 import { C, FONT, R, SHADOW } from './tokens';
 import { MarkTile, RepayTile } from './icons';
@@ -11,7 +11,7 @@ export const head = { fontSize: 16, fontWeight: 700, lineHeight: 1.3 };
 export const big = { fontSize: 32, fontWeight: 700, lineHeight: 1.2 };
 export const small = { fontSize: 14, lineHeight: 1.5 };
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
-const MINIMUM = 600;   // notes page-member "Invest rule": at least 600 before crop share cash is paid out
+const MINIMUM = 600;   // notes page-member "Invest rule": at least 600 before crop agreement cash is paid out
 
 export function Bar({ pct, label, color = C.accent }) {
   return (
@@ -44,7 +44,7 @@ const qrBtn = { height: 40, borderRadius: 12, border: 0, background: C.accent, c
   fontSize: 14, cursor: 'pointer', alignSelf: 'flex-start', padding: '0 16px' };
 
 /** The member's cards. position: fund_core.position (7 decimals) or undefined; loans: the drawn, open loans;
- *  onRepayQr(token): that crop share's QR for the leader's Repay scan (24 Oct). */
+ *  onRepayQr(token): that crop agreement's QR for the leader's Repay scan (24 Oct). */
 export function memberSlides({ position, positionKnown, loans = [], now = Date.now() / 1000, onRepayQr, index, onWithdrawal, leader = false }) {
   const out = [];
   for (const l of loans) {
