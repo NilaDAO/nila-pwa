@@ -880,8 +880,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       );
     }
     // DESIGN GAP: no board for "your union is making your crop agreements"; CP12's waiting layout is used.
+    // No "Your plan is approved" title (13 Nov): her acceptance is the step, there is no separate approval to report.
     return (
-      <Sheet map={map} landName={name} title="Your plan is approved">
+      <Sheet map={map} landName={name}>
         <Bouncing top={24} bottom={24} label="Your union is making your crop agreements" />
         <p style={{ ...muted, textAlign: 'center' }}>Your crop agreements are being made by your union.{mint.total ? ` ${mint.done || 0} of ${mint.total} made.` : ''}</p>
         <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 14 }}>See my plan</button>
