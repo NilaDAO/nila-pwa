@@ -60,11 +60,12 @@ const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, gestureHandl
 function chip({ text, sub, acc, soil }, on, faded, clickable) {
   const el = document.createElement('div');
   // A soil cover's chip (21 Oct) has a dashed green border, so it never reads as a crop for sale.
-  Object.assign(el.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 10px', borderRadius: '12px',
+  // 13 Nov: a size smaller (12/11 px, tighter padding), so the labels cover less of the land.
+  Object.assign(el.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2px 8px', borderRadius: '10px',
     background: on ? '#D4CF5A' : 'rgba(18,18,18,0.85)', color: on ? '#121212' : '#F1F5F9', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap',
     border: on ? '0' : soil ? '1.5px dashed #7FB069' : '0', opacity: faded ? '0.3' : '1', cursor: clickable ? 'pointer' : 'default', transform: 'translateY(50%)' });
   const a = document.createElement('span');
-  Object.assign(a.style, { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', lineHeight: '1.5', fontWeight: '700' });
+  Object.assign(a.style, { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', lineHeight: '1.4', fontWeight: '700' });
   if (acc) {
     a.insertAdjacentHTML('beforeend', `<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${on ? '#121212' : '#D4CF5A'}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>`);
   }
@@ -72,7 +73,7 @@ function chip({ text, sub, acc, soil }, on, faded, clickable) {
   el.appendChild(a);
   if (sub) {
     const b = document.createElement('span');
-    Object.assign(b.style, { fontSize: '12px', lineHeight: '16px' });
+    Object.assign(b.style, { fontSize: '11px', lineHeight: '14px' });
     b.textContent = sub;
     el.appendChild(b);
   }
@@ -112,9 +113,15 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       rings.forEach((ring) => {
         const path = ring.map(([lng, lat]) => ({ lat, lng }));
         path.forEach((q) => { bounds.extend(q); sx += q.lng; sy += q.lat; k += 1; });
-        const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1),
+        // lab.outline (13 Nov, the union map): the line in its colour, almost no fill.
+        const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
-          strokeColor: colour, strokeOpacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
+          strokeColor: colour, strokeOpacity: lab.dashed ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
+        // lab.dashed (13 Nov, the members map): a property's outline as a dashed line.
+        if (lab.dashed) {
+          drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
+            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? 0.3 : 1, strokeColor: colour, strokeWeight: 2, scale: 3 }, offset: '0', repeat: '10px' }] }));
+        }
         if (pick) poly.addListener('click', pick(z.zone_id));
         drawn.current.push(poly);
       });
@@ -175,7 +182,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
       if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const faded = !!selected && selected !== z.zone_id;
       const colour = lab.colour || '#ffffff';
-      const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, opacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
+      const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, ...(lab.dashed ? { dashArray: '6 4', weight: 2 } : {}), opacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
       layer.addTo(group);
       if (onSelect) layer.on('click', () => onSelect(selected === z.zone_id ? null : z.zone_id));
       if (!lab.hide && !chipsOff) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
@@ -187,7 +194,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
   }, [ready, record, labels, selected, onSelect, center, chipsOff]);
   return (
     <>
-      <style>{`.nila-area-label{background:${C.ink};color:${C.text};border:0;border-radius:9999px;padding:4px 10px;font:700 12px Inter,system-ui,sans-serif;box-shadow:none;text-align:center}.nila-area-label:before{display:none}`}</style>
+      <style>{`.nila-area-label{background:${C.ink};color:${C.text};border:0;border-radius:9999px;padding:2px 8px;font:700 11px Inter,system-ui,sans-serif;box-shadow:none;text-align:center}.nila-area-label:before{display:none}`}</style>
       <div ref={box} style={{ height, width: '100%', background: '#25361f' }} aria-label="Map of your areas" />
     </>
   );
