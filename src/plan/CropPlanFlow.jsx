@@ -410,7 +410,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   // A share whose sowing is over a year ahead is made later (the node defers it, 25 Oct): it does not hold the plan up.
   const deferredOnly = mint.status === 'partial' && (mint.refused || []).length > 0
     && mint.refused.every((r) => /more than a year ahead|made later/i.test(r.error || ''));
-  const active = approved && (mint.status === 'done' || deferredOnly);
+  const active = approved && (mint.status === 'done' || mint.status === 'partial');
   const openShare = useCallback((z) => {
     const ss = plan?.plan?.seasons || [];
     const x = z && shareOn(myShares.data, ss, Math.min(season, ss.length - 1), z);
@@ -859,7 +859,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   }
   if (ap?.decision === 'approve') {
     // The union mints her crop agreements at the approval (executive decision 21 Oct): her app only waits for them.
-    if (mint.status === 'done' || deferredOnly) {
+    // 13 Nov: some made is enough to open the plan (no "N of M made" screen); the rest are made when their field is
+    // free (an earlier crop's token still holds it) or their season comes.
+    if (mint.status === 'done' || mint.status === 'partial' || deferredOnly) {
       // CP13's season bar (board CropPlanActive): it opens on the season she is in; the map's chips follow it.
       const ss = plan.plan.seasons || [];
       const shown = Math.min(season, Math.max(0, ss.length - 1));
@@ -877,15 +879,6 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
                 setAfterMake('why'); setJobId(r.job_id); setStep('making');
               } catch (e) { setError(e.message); }
             }} />
-        </Sheet>
-      );
-    }
-    if (mint.status === 'partial') {
-      return (
-        <Sheet map={map} landName={name} title="Your crop agreements are made">
-          <p style={muted}>{mint.done} of {mint.total} crop agreements made.</p>
-          {mint.refused?.map((r) => <p key={r.share || r.token_id} style={muted}>{r.crop || 'Crop agreement'}: {r.error}</p>)}
-          <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 14 }}>See my plan</button>
         </Sheet>
       );
     }
