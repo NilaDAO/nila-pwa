@@ -1,6 +1,5 @@
 import { SignUpCommand, ConfirmSignUpCommand,UpdateUserAttributesCommand,RespondToAuthChallengeCommand,GetUserCommand,ForgotPasswordCommand,ConfirmForgotPasswordCommand,InitiateAuthCommand,AdminUpdateUserAttributesCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
-import { DEMO_STATIC } from './demoMode';
 
 const ClientId = process.env.REACT_APP_COGNITO_CLIENTID
 
@@ -8,7 +7,9 @@ const ClientId = process.env.REACT_APP_COGNITO_CLIENTID
 // stand-in is reached outside the app (nila-integrations scripts/demo/serve.mjs redirects the Cognito calls).
 
 // Initialize AWS Cognito
-const client = new CognitoIdentityProviderClient(DEMO_STATIC ? {
+// The flag compared right here (13 Nov): an imported constant was not always folded, and the demo endpoint stayed in
+// some real builds (the release check refused them).
+const client = new CognitoIdentityProviderClient(process.env.REACT_APP_DEMO_STATIC === '1' ? {
     region: 'ap-south-1',
     endpoint: `${window.location.origin}/__demo/cognito`,
     credentials: { accessKeyId: 'demo', secretAccessKey: 'demo' },
