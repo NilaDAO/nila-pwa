@@ -76,9 +76,9 @@ export function useLeaderMap(filter = 'members', fitBottom = 170, on = true) {
       const outline = () => m.places.forEach((p, i) => add(`${m.key}#p${i}`, p.geometry, i ? { hide: true } : { text: m.label }));
       if (!areas.length && !m.places.length) continue;
       if (filter === 'members') {
-        // Every property, its outline and her name.
-        if (areas.length) areas.forEach((z, i) => add(`${m.key}#${z.zone_id}`, z.geometry, i ? { hide: true } : { text: m.label }));
-        else outline();
+        // Every property as its outline (the title's), dashed white, with her name — not its record areas.
+        m.places.forEach((p, i) => add(`${m.key}#p${i}`, p.geometry, { ...(i ? { hide: true } : { text: m.label }), colour: '#ffffff', outline: true, dashed: true }));
+        if (!m.places.length) areas.forEach((z, i) => add(`${m.key}#${z.zone_id}`, z.geometry, { ...(i ? { hide: true } : { text: m.label }), colour: '#ffffff', outline: true, dashed: true }));
         count += 1;
       } else if (filter === 'assets') {
         // Every area as an outline; an area with a crop agreement ready to use in accent, named by its crop.
