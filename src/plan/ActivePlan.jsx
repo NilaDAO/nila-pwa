@@ -6,6 +6,7 @@
 // As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month; the
 // season bar on top of the card steps through the seasons (the map's chips follow, CropPlanFlow). 13 Nov: no title and
 // no "Your plan" rows (the crop bars above the card's list show the plan); the plan's date is a muted line at the end.
+import { useState } from 'react';
 import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
@@ -88,14 +89,20 @@ function Row({ t, now }) {
   );
 }
 
-function Group({ name, items, now }) {
+function Group({ name, items, now, first }) {
+  const [n, setN] = useState(first || items.length);
   if (!items.length) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
       <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>{name}</span>
       <div role="list" aria-label={name} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.map((t) => <Row key={t.date + t.text + t.area} t={t} now={now} />)}
+        {items.slice(0, n).map((t) => <Row key={t.date + t.text + t.area} t={t} now={now} />)}
       </div>
+      {/* 13 Nov: the whole property's list, a few at a time. */}
+      {n < items.length && (
+        <button type="button" onClick={() => setN(n + 5)} style={{ alignSelf: 'flex-start', border: 0, background: 'transparent', padding: 0,
+          color: C.accent, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Show more ({items.length - n})</button>
+      )}
     </div>
   );
 }
@@ -105,12 +112,11 @@ function Group({ name, items, now }) {
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
 export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart, chartTitle = "This year's plan", past = false }) {
-  const seasons = plan.plan.seasons || [];
   const now = today.toISOString().slice(0, 10);
-  const idx = currentSeason(seasons, today);
-  const shown = Math.min(season ?? idx, Math.max(0, seasons.length - 1));
   const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
-  const all = tasksOf(plan.plan, areaNo, areaName).filter((t) => t.season === shown && !(t.share && byKey[t.share]?.drawn));
+  // One list for the whole property (13 Nov): every season's tasks in date order, not only the season on the bar.
+  const all = tasksOf(plan.plan, areaNo, areaName).filter((t) => !(t.share && byKey[t.share]?.drawn))
+    .sort((a, b) => a.date.localeCompare(b.date));
   const ready = (t) => !!(t.share && byKey[t.share]?.ready);
   const thisMonth = all.filter((t) => ready(t) || (t.date.slice(0, 7) === now.slice(0, 7) && !(t.share && byKey[t.share] && !ready(t))));
   const later = all.filter((t) => !thisMonth.includes(t) && t.date.slice(0, 7) > now.slice(0, 7));
@@ -119,7 +125,7 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, ass
   return (
     <>
       {!past && <Group name="To do now" items={thisMonth} now />}
-      {!past && <Group name="Coming up" items={later} />}
+      {!past && <Group name="Coming up" items={later} first={4} />}
       {/* 13 Nov: the whole plan as crop bars, below the tasks, under its own title. */}
       {chart && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16, borderTop: `1px solid ${C.raised}`, paddingTop: 16 }}>
