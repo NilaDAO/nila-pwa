@@ -31,7 +31,7 @@ import { keypadClient } from '../keypad/api';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
 import { overRoom, useDeskRoom } from '../loan/deskRoom';
-import { Stepper } from '../loan/AssetParts';
+import { AssetScreen, Card, QrCircle, Secondary, Stepper } from '../loan/AssetParts';
 import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
 import { PersonalName } from '../union/UnionCards';
@@ -132,6 +132,7 @@ export default function MemberStatus({ id, go }) {
   const [noPhotos, setNoPhotos] = useState(false);
   const [bring, setBring] = useState(0);     // Invest (7 Nov): Bring cash to the office, the amount she invests
   const [scanning, setScanning] = useState(false);
+  const [syncing, setSyncing] = useState(false);   // Sync with phone: its own QR screen (13 Nov)
   const [helpError, setHelpError] = useState();
   const helpUntil = useSessionUntil(m?.address);
   const labels = useMemo(() => {
@@ -180,6 +181,8 @@ export default function MemberStatus({ id, go }) {
   // Help (A2, 26 Oct): the member's help QR starts a 5-minute session in which this leader acts for the member.
   // No generic Help button (26 Oct): an action that needs the member's consent asks for the member's QR itself, then
   // goes on (withdraw, pay out); one scan covers 5 minutes of them.
+  // Sync with phone (13 Nov; was an inline white card): a full QR screen like the app's other QRs.
+  if (syncing) return <LiteDataQr m={m} inv={inv} onClose={() => setSyncing(false)} />;
   if (scanning) {
     return <StartHelp member={m.address} label={`${scanning.what} · ${m.label}`} onBack={() => setScanning(false)}
       onStarted={() => { const then = scanning.then; setScanning(false); then(); }} />;
@@ -354,7 +357,7 @@ export default function MemberStatus({ id, go }) {
           {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
         </Section>
       )}
-      <Account m={m} inv={inv} go={go} />
+      <Account m={m} inv={inv} go={go} onSync={() => setSyncing(true)} />
       </div>
     </MapCard>
   );
@@ -401,8 +404,8 @@ const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, background: C
 /** G2 ends with "Account" (Carst 4 Nov): one row of Recover and Move (secondary buttons sharing the row) and a square
  *  delete button, each opening the same confirm card as before, then her record. Recover is disabled while a recovery
  *  waits out the union's wait or the app must finish it (its status under her name says which). */
-function Account({ m, inv, go }) {
-  const [card, setCard] = useState();       // 'recover' | 'keypad' | 'remove' | 'delete' | 'data' | 'record'
+function Account({ m, inv, go, onSync }) {
+  const [card, setCard] = useState();       // 'recover' | 'keypad' | 'remove' | 'delete' | 'record'
   const rcv = useRecovery(m.address);
   const titleId = m.titleId || [...(m.lands || [])][0];
   const p = inv.data;
@@ -424,7 +427,7 @@ function Account({ m, inv, go }) {
           {rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
           {move && <button type="button" style={btn()} onClick={() => setCard('keypad')}>Move</button>}
           {/* "Sync with phone" (13 Nov; was "Her data as QR"): what it does for her, not how. */}
-          {lite && <button type="button" style={btn()} onClick={() => setCard(card === 'data' ? undefined : 'data')}>Sync with phone</button>}
+          {lite && <button type="button" style={btn()} onClick={onSync}>Sync with phone</button>}
           {/* Her record as a square button before the bin (13 Nov; was a "Record" row): the hash is for checking, not
               reading, so it opens in a card with Copy. Disabled without a record. */}
           <button type="button" aria-label="Field record" disabled={!m.recordHash} onClick={() => setCard('record')}
@@ -441,7 +444,6 @@ function Account({ m, inv, go }) {
       )}
       {card === 'record' && <RecordCard hash={m.recordHash} onClose={close} />}
       {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
-      {card === 'data' && <LiteDataQr m={m} inv={inv} onClose={close} />}
       {card === 'keypad' && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={close} />}
       {card === 'remove' && <RemoveMember m={m} why={why} titleId={titleId} go={go} onClose={close} />}
       {card === 'delete' && <DeleteMember m={m} go={go} onClose={close} />}
@@ -478,14 +480,17 @@ function LiteDataQr({ m, inv, onClose }) {
     const b64 = btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     return `NILA:D:${b64}`;
   }, [m.address, owed, invested, JSON.stringify(loans)]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { QRCode.toDataURL(text, { margin: 2, errorCorrectionLevel: 'L', width: 320 }).then(setImg).catch(() => setImg(null)); }, [text]);
+  useEffect(() => { QRCode.toDataURL(text, { margin: 2, errorCorrectionLevel: 'L', width: 400 }).then(setImg).catch(() => setImg(undefined)); }, [text]);
+  // Laid out as DeskQr (13 Nov): the QR in the white circle in its card, the lines under it, Close at the bottom.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 12, padding: 16 }}>
-      {img ? <img src={img} alt="Sync with phone: QR for Nila lite" style={{ width: 260, height: 260 }} /> : <span style={{ color: C.ink }}>Making the QR…</span>}
-      <span style={{ color: C.ink, fontSize: 14, textAlign: 'center' }}>On her phone: Nila lite → Update from your leader → scan this.</span>
-      <span style={{ color: '#475569', fontSize: 13 }}>Owed {inr(owed)} · invested {inr(invested)}</span>
-      <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={onClose}>Close</button>
-    </div>
+    <AssetScreen title="Sync with phone" onBack={onClose}>
+      <Card label="Sync with phone">
+        <QrCircle img={img} alt="Sync with phone: QR for Nila lite" />
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center' }}>On her phone: Nila lite → Update from your leader → scan this.</p>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center', color: C.muted }}>Owed {inr(owed)} · invested {inr(invested)}</p>
+        <Secondary onClick={onClose}>Close</Secondary>
+      </Card>
+    </AssetScreen>
   );
 }
 
