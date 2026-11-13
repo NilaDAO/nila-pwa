@@ -27,11 +27,28 @@ export function useBorderJobs(enabled = true) {
   return useQuery({ queryKey: qkBorder.jobs(), enabled: !!api && enabled, queryFn: () => api.jobs(), refetchInterval: 30_000 });
 }
 
+/** The soil the leader accepted per field (13 Nov): job id → { field n: 1–5 }, for this session. A field the node
+ *  returns with no soil (a node from before soil on accept, or a reply that dropped it) keeps the one picked on L3, so
+ *  its fill stays on the map after Accept. */
+const SOIL_KEY = 'nila.border.soils';
+const soilsPicked = (() => { try { return JSON.parse(sessionStorage.getItem(SOIL_KEY) || '{}'); } catch (e) { return {}; } })();
+function keepSoil(jid, n, soil) {
+  if (!jid || !n || !soil) return;
+  soilsPicked[jid] = { ...(soilsPicked[jid] || {}), [n]: soil };
+  try { sessionStorage.setItem(SOIL_KEY, JSON.stringify(soilsPicked)); } catch (e) { /* private mode: memory only */ }
+}
+/** The job with each field's soil: the node's, else the one accepted here (13 Nov). */
+export function withSoils(job) {
+  const mine = job?.id && soilsPicked[job.id];
+  if (!mine || !Array.isArray(job.fields)) return job;
+  return { ...job, fields: job.fields.map((f) => (!f.soil && mine[f.n] ? { ...f, soil: mine[f.n] } : f)) };
+}
+
 /** L2a–L4: one job, polled while it draws or mints. */
 export function useBorderJob(id) {
   const api = useBorderClient();
   return useQuery({ queryKey: qkBorder.job(id), enabled: !!api && !!id, queryFn: () => api.job(id),
-    refetchInterval: (q) => poll(q.state.data) });
+    refetchInterval: (q) => poll(q.state.data), select: withSoils });
 }
 
 /** R14: her own latest job, or null. */
@@ -74,7 +91,9 @@ export function useSendFieldPoints() {
 
 /** L3: accept a shape (locks the field) or None fit (redraw); no preview call (4 Nov). */
 export function useBorderDecision(id) {
-  const accept = useJobWrite(id, (a, { field, shape, soil }) => a.accept(id, field, shape, soil));
+  // 13 Nov: the soil is kept with the accepted field here too (withSoils), so its fill stays after Accept.
+  const accept = useJobWrite(id, (a, { field, shape, soil }) => a.accept(id, field, shape, soil)
+    .then((job) => { keepSoil(id, field, soil); return job; }));
   const noneFit = useJobWrite(id, (a, { field }) => a.noneFit(id, field));
   const retry = useJobWrite(id, (a, { field }) => a.retry(id, field));
   const remove = useJobWrite(id, (a, { field }) => a.remove(id, field));   // delete the field and its point (1 Nov)

@@ -9,10 +9,13 @@ import { useLeaflet } from '../plan/AreaMap';
 import { C } from '../shell/tokens';
 import { shapeFor } from './api';
 
-const pinHtml = (n, on) => {
+// The field's number on its soil's colour once a soil is chosen (13 Nov); dark figures on the light sandy soil.
+export const soilInk = (c) => (c === '#D9C38A' ? C.ink : C.text);
+const pinHtml = (n, on, soil) => {
   const el = document.createElement('span');
   el.textContent = String(n);
-  el.style.cssText = `width:24px;height:24px;border-radius:9999px;display:flex;align-items:center;justify-content:center;font:700 14px Inter,system-ui,sans-serif;background:${on ? C.accent : C.raised};color:${on ? C.ink : C.text}`;
+  const bg = on ? C.accent : soil || C.raised;
+  el.style.cssText = `width:24px;height:24px;border-radius:9999px;display:flex;align-items:center;justify-content:center;font:700 14px Inter,system-ui,sans-serif;background:${bg};color:${on ? C.ink : soil ? soilInk(soil) : C.text}`;
   return el;
 };
 
@@ -70,7 +73,7 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
       if (p) {
         const pinOn = on || (drawing && f.state === 'drawing');
         if (g.marker?.AdvancedMarkerElement) {
-          const mk = new g.marker.AdvancedMarkerElement({ map: m, position: { lat: p.lat, lng: p.lng }, content: pinHtml(f.n, pinOn), gmpClickable: !!onField });
+          const mk = new g.marker.AdvancedMarkerElement({ map: m, position: { lat: p.lat, lng: p.lng }, content: pinHtml(f.n, pinOn, SOIL_COLOUR[soils[f.n] || f.soil]), gmpClickable: !!onField });
           if (onField) mk.addListener('click', () => onField(f.n));
           drawn.current.push(mk);
         }
@@ -154,7 +157,7 @@ function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawi
       const p = f.moved || f.point;
       if (p) {
         const pinOn = on || (drawing && f.state === 'drawing');
-        const mk = L.marker([p.lat, p.lng], { icon: L.divIcon({ html: pinHtml(f.n, pinOn), className: '', iconSize: [24, 24] }), keyboard: false });
+        const mk = L.marker([p.lat, p.lng], { icon: L.divIcon({ html: pinHtml(f.n, pinOn, SOIL_COLOUR[soils[f.n] || f.soil]), className: '', iconSize: [24, 24] }), keyboard: false });
         if (onField) mk.on('click', () => onField(f.n));
         mk.addTo(g);
         if (on && !shape) focus.push(L.latLngBounds([p.lat, p.lng], [p.lat, p.lng]).pad(0.002));

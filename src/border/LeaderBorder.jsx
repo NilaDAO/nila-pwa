@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
 import { acres, shapeFor } from './api';
-import BorderMap, { SOIL_COLOUR, ShapeThumb } from './BorderMap';
+import BorderMap, { SOIL_COLOUR, ShapeThumb, soilInk } from './BorderMap';
 import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
@@ -72,11 +72,15 @@ function SoilPick({ value, onPick }) {
 }
 
 function FieldRow({ f, sub, right, onClick }) {
+  // A field with its soil chosen (13 Nov): the whole row in the soil's colour, its number on the dark circle.
+  const soil = SOIL_COLOUR[f.soil];
+  const ink = soil ? soilInk(soil) : C.text;
+  const quiet = soil ? { color: ink, opacity: 0.8 } : { color: C.muted };
   return (
-    <button type="button" onClick={onClick} disabled={!onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: C.raised, border: 0, borderRadius: 12, padding: '12px 16px', color: C.text, fontFamily: FONT, fontSize: 14 }}>
-      <span style={{ width: 24, height: 24, borderRadius: R.round, background: C.ink, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{f.n}</span>
-      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={{ color: C.muted }}>{sub}</span>}</span>
-      {right && <span style={{ color: C.muted }}>{right}</span>}
+    <button type="button" onClick={onClick} disabled={!onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: soil || C.raised, border: 0, borderRadius: 12, padding: '12px 16px', color: ink, fontFamily: FONT, fontSize: 14 }}>
+      <span style={{ width: 24, height: 24, borderRadius: R.round, background: C.ink, color: C.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{f.n}</span>
+      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={quiet}>{sub}</span>}</span>
+      {right && <span style={quiet}>{right}</span>}
     </button>
   );
 }
@@ -287,6 +291,8 @@ function Done({ job, onField, onBack, onAdd }) {
   const [plotId, setPlotId] = useState();
   const plot = (job.plots || []).find((p) => p.id === plotId);
   const ok = job.fields.filter((f) => f.state === 'accepted');
+  // 13 Nov: the soils shown on the map go with the mint, so the title has them even if the node lost one.
+  const soils = Object.fromEntries(ok.filter((f) => f.soil).map((f) => [String(f.n), f.soil]));
   const total = ok.reduce((a, f) => a + (shapeFor(f, job.plan)?.acres || 0), 0);
   // A failed mint, or an error the beat recorded while it retries, shows even while the job is still 'minting'.
   const st = job.status === 'minted' || job.mint?.status === 'minted' ? 'minted'
@@ -306,7 +312,7 @@ function Done({ job, onField, onBack, onAdd }) {
       reason: mint.error?.message || job.mint?.error || 'The mint failed.',
     };
     return <TxScreens tx={tx} network="Polygon" onClose={() => { setClosed(true); if (st === 'minted') onBack(); }}
-      onRetry={() => { mint.reset(); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), tenant }); }} />;
+      onRetry={() => { mint.reset(); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }} />;
   }
   return (
     <Frame name={memberName(job)} onBack={onBack}
@@ -355,7 +361,7 @@ function Done({ job, onField, onBack, onAdd }) {
       )}
       {!st && (job.polygon
         ? <button type="button" disabled={mint.isPending || joined.needed || !ok.length || (!job.farm && !farm.trim()) } style={{ ...btn(true), flex: 'none' }}
-          onClick={() => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), tenant }); }}>Mint land title</button>
+          onClick={() => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }}>Mint land title</button>
         : <button type="button" disabled style={{ ...btn(false), flex: 'none', color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: R.round, border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite' }} />
           <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
