@@ -17,6 +17,7 @@ import { C, FONT, R } from '../shell/tokens';
 import { ChevronIcon, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
 import AreaMap from '../plan/AreaMap';
+import { unionCentre } from './unionMap';
 import { areaM2 } from '../plan/mapTap';
 import { areasOf } from '../plan/record';
 import { rowsInSeason } from '../plan/PlanResult';
@@ -25,6 +26,7 @@ import { SkeletonRows } from '../shell/Skeleton';
 import { inr } from '../plan/ui';
 import { markJoined, useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
 import { useNilaSigner } from '../wallet/signer';
+import { keypadClient } from '../keypad/api';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
 import { overRoom, useDeskRoom } from '../loan/deskRoom';
@@ -214,7 +216,9 @@ export default function MemberStatus({ id, go }) {
   // Map taps (24 Oct rule): her property again → back to the list (only her property is on G2's map).
   // No record yet: the title's fields, as the Assets map (28 Oct).
   const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} />
-    : fields.length ? <AreaMap record={{ zones: fields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry })) }} onSelect={() => go('members')} /> : <span />;
+    : fields.length ? <AreaMap record={{ zones: fields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry })) }} onSelect={() => go('members')} />
+      // No land (13 Nov: e.g. her title removed): the union's land, as the crop plan's no-title map.
+      : <AreaMap record={null} center={unionCentre(members.data)} />;
   const myLands = new Set([m.titleId, ...(m.lands || [])].filter((x) => x != null).map(String));
   const waiting = (pendingPlans.data?.plans || []).find((p) => myLands.has(String(p.land_id)));
   const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>;
@@ -244,6 +248,11 @@ export default function MemberStatus({ id, go }) {
           </Section>
         )}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
+        {/* A keypad member without a land title (13 Nov: e.g. hers was removed): the leader takes her points again. */}
+        {!m.titleId && !m.lands?.length && m.keypadId && (
+          <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
+            onClick={() => go(`tasks/member/${m.keypadId}/points`)}>Make a new land title</button>
+        )}
       </div>
       {waiting && (
         // Her plan waits for a leader's approval (L12): here as in the task list, also for a self-mode member (5 Nov).
@@ -398,16 +407,18 @@ function Account({ m, inv, go }) {
       : investment > 0 ? 'The member has an investment: pay it out first.' : null;
   const recoverOk = rcv.r !== 'pending' && rcv.r !== 'needed';
   const move = rcv.applies && !rcv.keypad && /^C/.test(m.address || '');
-  if (!rcv.applies && !titleId && !m.recordHash) return null;
+  // No land title but a keypad row (13 Nov: e.g. hers was removed): the bin deletes her for good.
+  const gone = !titleId && !!m.keypadId;
+  if (!rcv.applies && !titleId && !m.recordHash && !gone) return null;
   const close = () => setCard();
   return (
     <Section title="Account">
-      {(rcv.applies || titleId) && (
+      {(rcv.applies || titleId || gone) && (
         <div style={{ display: 'flex', gap: 8 }}>
           {rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
           {move && <button type="button" style={btn()} onClick={() => setCard('keypad')}>Move</button>}
-          {titleId && (
-            <button type="button" aria-label="Remove member" onClick={() => setCard('remove')}
+          {(titleId || gone) && (
+            <button type="button" aria-label={gone ? 'Delete member' : 'Remove member'} onClick={() => setCard(gone ? 'delete' : 'remove')}
               style={{ ...btn(), flex: 'none', width: 44, marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <TrashIcon color={C.coral} />
             </button>
@@ -419,6 +430,7 @@ function Account({ m, inv, go }) {
       {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
       {card === 'keypad' && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={close} />}
       {card === 'remove' && <RemoveMember m={m} why={why} titleId={titleId} go={go} onClose={close} />}
+      {card === 'delete' && <DeleteMember m={m} go={go} onClose={close} />}
     </Section>
   );
 }
@@ -472,6 +484,23 @@ function MoveToKeypad({ address, name, phone, onClose }) {
 /** G2 Remove member (executive decision 28 Oct; the look of Settings → Reset account): the node burns the member's land
  *  title on Stellar, which ends the membership. Only with no crop agreement and no investment; nIN, USDC and vouchers stay
  *  in the member's wallet. The confirm says what it does, or why it cannot be done now (`why`). */
+/** A member without a land title deleted for good (13 Nov): her row and links on the node; her account stays on-chain. */
+function DeleteMember({ m, go, onClose }) {
+  const s = useNilaSigner();
+  const qc = useQueryClient();
+  const del = useMutation({
+    mutationFn: () => keypadClient(s).remove(m.keypadId),
+    onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
+  });
+  return (
+    <ConfirmCard title="Delete member" ok={del.isPending ? 'Deleting…' : 'Delete'} okStyle={{ background: C.coral }} okDisabled={del.isPending}
+      onCancel={onClose} onOk={() => del.mutate()}
+      warn={`Delete ${m.label} from the union's list for good? This cannot be undone. The number can be added again as a new member.`}>
+      {del.error && <Text style={{ color: C.coral }}>{del.error.message}</Text>}
+    </ConfirmCard>
+  );
+}
+
 function RemoveMember({ m, why, titleId, go, onClose }) {
   const api = usePlanClient();
   const qc = useQueryClient();

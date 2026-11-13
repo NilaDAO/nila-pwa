@@ -169,6 +169,7 @@ export function useUnionMembers(api) {
       ]);
       for (const k of keypad) {
         const m = get(k.device && k.account ? k.account : `keypad:${k.id}`); m.name = m.name || k.name || ''; m.phone = k.phone || '';
+        m.keypadId = k.id;   // her keypad row: the leader takes her points again for a new title (13 Nov)
         if (!m.lands.size) m.note = k.device ? 'Keypad phone set up' : k.link?.opened ? 'Opened the app link' : 'App link sent';
       }
       // Loans: what is left and whether it is overdue, from the loan inside its crop agreement (one batched read).
