@@ -8,6 +8,7 @@
 //    its crop agreement for that season.
 import { useCallback, useMemo, useState } from 'react';
 import { LabelsCtx, StageCtx } from './stageCtx';
+import { STATUS, useStatusBar } from '../utils/metaTheme';
 import AreaMap from '../plan/AreaMap';
 import { useFieldRecord } from '../plan/record';
 import { useCropPlan } from '../plan/hooks';
@@ -37,6 +38,8 @@ export default function MapStage({ children }) {
   // Labels off (25 Oct): the outlines stay, their names and notes are hidden; kept on this phone for every map.
   const [off, setOff] = useState(() => { try { return localStorage.getItem(LABELS_KEY) === 'off'; } catch { return false; } });
   const labels = useMemo(() => ({ off, toggle: () => setOff((v) => { try { localStorage.setItem(LABELS_KEY, v ? 'on' : 'off'); } catch { /* private mode */ } return !v; }) }), [off]);
+  // The status bar in the map's green while the stage shows a map (13 Nov).
+  useStatusBar(STATUS.map, !!(props?.record || props?.center));
   const shownLabels = useMemo(() => (off && props?.labels
     ? Object.fromEntries(Object.entries(props.labels).map(([k, v]) => [k, { ...v, text: undefined, sub: undefined, hide: true }])) : props?.labels), [off, props]);
   return (
