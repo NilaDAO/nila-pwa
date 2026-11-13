@@ -382,11 +382,9 @@ function JoinSteps({ m, onScan }) {
   return (
     <section aria-label="Join the union" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, marginTop: 8,
       display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* The phone switch as Cash ahead's All | Half (13 Nov): beside the title. */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-        <Title Icon={MarkTile}>Join the union</Title>
-        <Segmented width="hug" label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad']]} />
-      </div>
+      <Title Icon={MarkTile}>Join the union</Title>
+      {/* The phone switch as Cash ahead's All | Half (13 Nov), on its own row: beside the title it wrapped the title. */}
+      <Segmented label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad phone']]} />
       <Steps items={steps} />
       {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
     </section>
