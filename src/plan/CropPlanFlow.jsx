@@ -499,7 +499,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const recordReady = !!record && areasOf(record).length > 0;
   if (!forLand && !self && assisted() && !approved && !plan && !recordReady && !field.isLoading) return <Pending map={map} error={field.error} />;
   if (!forLand && !self && assisted() && !approved) return <AssistPlan map={map} name={name} waiting={plan?.status === 'accepted'} />;
-  const at = step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');
+  // An approved plan never goes back to editing or its accept screen (13 Nov: "See my plan" opened the editing view).
+  const at = approvedId && (step === 'plan' || step === 'terms') ? 'waiting'
+    : step ?? (plan?.status === 'draft' ? 'plan' : plan?.status === 'accepted' ? 'waiting' : 'record');
   const back = (to) => () => setStep(to);
   // Crops picked for an area in a season (28 Oct, replaces Change my plan's free text) wait in `pending` (zone → slot →
   // crop key); Update crop plan sends them all as one new version, and the node re-plans around them (her change is
@@ -859,43 +861,34 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   }
   if (ap?.decision === 'approve') {
     // The union mints her crop agreements at the approval (executive decision 21 Oct): her app only waits for them.
-    // 13 Nov: some made is enough to open the plan (no "N of M made" screen); the rest are made when their field is
-    // free (an earlier crop's token still holds it) or their season comes.
-    if (mint.status === 'done' || mint.status === 'partial' || deferredOnly) {
-      // CP13's season bar (board CropPlanActive): it opens on the season she is in; the map's chips follow it.
-      const ss = plan.plan.seasons || [];
-      const shown = Math.min(season, Math.max(0, ss.length - 1));
-      const bar = ss.length > 0 && <SlideBar label={seasonLabel(ss[shown], shown)} prevLabel="Previous season" nextLabel="Next season"
-        onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
-      return (
-        <Sheet map={map} landName={name} bar={bar}>
-          <ActivePlan plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
-            canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
-            onExtend={async () => {
-              setError(undefined);
-              try {
-                const r = await extend.mutateAsync(plan.id);
-                if (r.nothing_to_add) { chainQ.refetch(); return; }
-                setAfterMake('why'); setJobId(r.job_id); setStep('making');
-              } catch (e) { setError(e.message); }
-            }} />
-        </Sheet>
-      );
-    }
-    // DESIGN GAP: no board for "your union is making your crop agreements"; CP12's waiting layout is used.
-    // No "Your plan is approved" title (13 Nov): her acceptance is the step, there is no separate approval to report.
+    // 13 Nov: an approved plan always opens on the plan itself (CP13). While its crop agreements are still being made,
+    // or when making them failed, one line above it says so — no separate "being made" or "N of M made" screen.
+    const ss = plan.plan.seasons || [];
+    const shown = Math.min(season, Math.max(0, ss.length - 1));
+    const bar = ss.length > 0 && <SlideBar label={seasonLabel(ss[shown], shown)} prevLabel="Previous season" nextLabel="Next season"
+      onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
+    const made = mint.status === 'done' || mint.status === 'partial' || deferredOnly;
     return (
-      <Sheet map={map} landName={name}>
-        <Bouncing top={24} bottom={24} label="Your union is making your crop agreements" />
-        <p style={{ ...muted, textAlign: 'center' }}>Your crop agreements are being made by your union.{mint.total ? ` ${mint.done || 0} of ${mint.total} made.` : ''}</p>
-        {/* 13 Nov: a failed making is said, never left as a count that does not move (it was "not enough funds"). */}
-        {mint.status === 'failed' && (self || forLand) && (
-          <>
-            <p style={{ color: C.coral, textAlign: 'center', margin: '8px 0 0' }}>Not made: {mint.error || (mint.refused || [])[0]?.error || 'try again'}</p>
-            <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>
-          </>
+      <Sheet map={map} landName={name} bar={bar}>
+        {!made && mint.status !== 'failed' && (
+          <p role="status" style={{ ...muted, margin: '0 0 12px' }}>Your crop agreements are being made{mint.total ? `: ${mint.done || 0} of ${mint.total}` : ''}.</p>
         )}
-        <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 14 }}>See my plan</button>
+        {mint.status === 'failed' && (self || forLand) && (
+          <div style={{ margin: '0 0 12px' }}>
+            <p style={{ color: C.coral, margin: 0 }}>Not made: {mint.error || (mint.refused || [])[0]?.error || 'try again'}</p>
+            <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>
+          </div>
+        )}
+        <ActivePlan plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
+          canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
+          onExtend={async () => {
+            setError(undefined);
+            try {
+              const r = await extend.mutateAsync(plan.id);
+              if (r.nothing_to_add) { chainQ.refetch(); return; }
+              setAfterMake('why'); setJobId(r.job_id); setStep('making');
+            } catch (e) { setError(e.message); }
+          }} />
       </Sheet>
     );
   }
