@@ -27,6 +27,7 @@ import { HarvestGroup, HarvestList } from '../leader/Harvests';
 import MapCard from './MapCard';
 import { SlideBar } from '../plan/PlanResult';
 import CropShare from '../loan/CropShare';
+import CropArea from '../loan/CropArea';
 import IdCheck from '../anchor/IdCheck';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
@@ -53,6 +54,8 @@ import { useUnionMembers } from '../leader/unionMembers';
 
 const readTab = () => (window.location.hash.match(/^#\/(\w+)/) || [])[1];
 const readArg = () => (window.location.hash.match(/^#\/\w+\/(\w+)/) || [])[1];
+// #/croparea/<zone>[/<plan year>] (13 Nov): a zone id is not always a word, so it is URI-encoded.
+const readArea = () => { const m = window.location.hash.match(/^#\/croparea\/([^/]+)(?:\/(\d{4}))?/); return m ? { zone: decodeURIComponent(m[1]), year: m[2] ? Number(m[2]) : undefined } : {}; };
 
 // Screens built in later steps (P4 crop plan, P5 scan and loans, leader screens). DESIGN GAP: interim.
 function Later({ title, step }) {
@@ -73,8 +76,12 @@ const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-
 /** A member's crop plan, made by the leader with the member (assist mode, 26 Oct): #/memberplan/<route>. */
 function MemberPlan({ route }) {
   const api = usePlanClient();
+  const s = useNilaSigner();
   const m = (useUnionMembers(api).data || []).find((x) => x.route === route);
   if (!m) return <BootLoading />;
+  // The leader's own land, opened from the member list (12 Nov): their own plan, accepted by themselves, no member QR.
+  const mine = (s?.stellarAddress && m.address === s.stellarAddress) || (s?.evmAddress && m.polygon && m.polygon.toLowerCase() === s.evmAddress.toLowerCase());
+  if (mine) return <CropPlanFlow self />;
   // Close (a notice that cannot be finished now): back where the leader came from (Tasks or the member's G2).
   const onClose = () => { if (window.history.length > 1) window.history.back(); else window.location.hash = '#/tasks'; };
   return <CropPlanFlow forLand={{ landId: Number(m.titleId || m.lands[0]), recordHash: m.recordHash, evm: m.polygon, account: m.address, label: m.label, onClose }} />;
@@ -106,15 +113,15 @@ function TasksView({ leader, go }) {
   );
 }
 
-// DEVIATION (executive decision 21 Oct, map-central trial): the land title and her crop shares open in the Assets card
-// over the map, with a ‹ asset › bar on top that steps land title → crop shares by season and area (a swipe on the card
+// DEVIATION (executive decision 21 Oct, map-central trial): the land title and her crop agreements open in the Assets card
+// over the map, with a ‹ asset › bar on top that steps land title → crop agreements by season and area (a swipe on the card
 // does the same). The hash still says which (#/land, #/cropshare/<id>): the phone's back button and links work, and a
 // step replaces the entry, so back returns to the list rather than through every step.
 function AssetStep({ view, children }) {
   const shares = useMyShares().data;
   const items = useMemo(() => [{ key: 'land', label: 'Land title' },
     ...[...(shares || [])].sort((a, b) => String(a.share?.from_date || '').localeCompare(String(b.share?.from_date || '')) || a.area - b.area)
-      .map((x) => ({ key: `cropshare/${x.token_id}`, label: `${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area}` }))], [shares]);
+      .map((x) => ({ key: `cropshare/${x.token_id}`, label: `${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · ${x.area}` }))], [shares]);
   const cur = view === 'land' ? 'land' : `cropshare/${readArg()}`;
   const i = items.findIndex((it) => it.key === cur);
   const step = (d) => { if (i < 0) return; window.location.replace(`#/${items[(i + d + items.length) % items.length].key}`); };
@@ -138,7 +145,9 @@ function TitleWait({ titleCount, s }) {
       evm: !!s?.evmAddress, stellarAddress: !!s?.stellarAddress,
     });
   }, [late]); // eslint-disable-line react-hooks/exhaustive-deps
-  return late ? <RegFrame><p style={{ margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>Check your internet and open the app again.</p></RegFrame>
+  // Names the step that stalled (8 Nov), as the console line above.
+  const what = titleCount.stellar === undefined ? 'your land title' : 'your land title on Polygon';
+  return late ? <RegFrame><p style={{ margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>Still waiting for: {what}. Check your internet and open the app again.</p></RegFrame>
     : <BootLoading />;
 }
 
@@ -229,7 +238,7 @@ export default function Shell({ leader }) {
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} leader={leader} />;
   else if (view === 'usdc') body = <UsdcAsset leader={leader} onBack={() => go('assets')} />;
   else if (view === 'lpcode') body = <LpCodeScreen key={readArg()} id={readArg()} onBack={() => go('assets')} />;
-  else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
+  else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} leader={leader} {...p} />}</AssetStep>;
   else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go(`cash/invest/${s?.stellarAddress}`)} />;
   // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.
   // nIN for a leader, or a member whose identity the anchor checked (K1, 24 Oct); A7 then collects it in cash.
@@ -237,9 +246,14 @@ export default function Shell({ leader }) {
   else if (view === 'machinery') body = <Machinery onBack={() => go('assets')} />;
   else if (view === 'machine') body = <MyMachine key={readArg()} pick={Number(readArg()) || undefined} onBack={() => go('assets')} />;
   else if (view === 'share') body = <TakeUp key={readArg()} token={readArg()} leader={leader} onBack={() => go(`cropshare/${readArg()}`)} />;
-  // A4 / A4a: her crop share, from its A1 row.
+  // A4 / A4a: her crop agreement, from its A1 row.
   else if (view === 'cropshare') {
     body = <AssetStep view={view}>{(p) => <CropShare key={readArg()} token={readArg()} onBack={() => go('assets')} onTakeUp={(t) => go(`share/${t}`)} {...p} />}</AssetStep>;
+  }
+  // One page per area (13 Nov): from the approved plan's map and crop bars; back returns to the plan.
+  else if (view === 'croparea') {
+    const { zone, year } = readArea();
+    body = <CropArea key={window.location.hash} zone={zone} year={year} onBack={() => go('crop')} onTakeUp={(t) => go(`share/${t}`)} />;
   }
   // A2 Tasks: the other task rows come in a later step.
   else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
@@ -249,10 +263,10 @@ export default function Shell({ leader }) {
   else if (view === 'harvests' && leader) body = readArg() ? <HarvestGroup key={readArg()} id={readArg()} go={go} /> : <HarvestList go={go} />;
   else body = <Later title={view[0].toUpperCase() + view.slice(1)} step="a later step" />;
 
-  // No tab is active on task, settings, history and wallet screens; a crop share (A4/A4a, and taking it up) belongs to
+  // No tab is active on task, settings, history and wallet screens; a crop agreement (A4/A4a, and taking it up) belongs to
   // the Crop plan tab (21 Oct).
   // nIN and nIN invested (A7, A3) are Assets screens (boards MemberAssetNin, StNinWithdraw).
-  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' || view === 'usdc' || view === 'lpcode' ? 'assets' : view;
+  const tabOf = view === 'cropshare' || view === 'croparea' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' || view === 'usdc' || view === 'lpcode' ? 'assets' : view;
   const active = tabs.some(([id]) => id === tabOf) ? tabOf : undefined;
   return (
     // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.

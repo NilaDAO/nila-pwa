@@ -14,13 +14,20 @@ const TITLE_ABI = ['function getCommitment(uint256) view returns (bytes32)',
   'function getRecordHash(uint256) returns (bytes32)'];
 const ZERO = `0x${'0'.repeat(64)}`;
 
+// A moved member's title (8 Nov) carries her Polygon record hash, which the mainnet node no longer keeps (404):
+// then the same bytes from IPFS (Pinata pins each record by that hash), checked against the hash the same way.
 export async function fromNode(hash) {
-  const r = await fetch(`${API}/gis/record-by-hash/${hash}`);
-  if (!r.ok) throw new Error(`record ${r.status}`);
-  const bytes = new Uint8Array(await r.arrayBuffer());
-  const sha = `0x${Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
-  if (sha !== hash.toLowerCase()) throw new Error('record does not match its hash');
-  return JSON.parse(new TextDecoder().decode(bytes));
+  const h = `0x${String(hash).toLowerCase().replace(/^0x/, '')}`;
+  try {
+    const r = await fetch(`${API}/gis/record-by-hash/${h}`);
+    if (!r.ok) throw new Error(`record ${r.status}`);
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    const sha = `0x${Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
+    if (sha !== h) throw new Error('record does not match its hash');
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) {
+    return fetchRecordFromIPFS(h).catch(() => { throw e; });
+  }
 }
 
 // Field records kept on the leader's phone (map-centred lane, 23 Oct): a record never changes for its hash, so each

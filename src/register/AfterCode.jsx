@@ -42,7 +42,7 @@ export default function AfterCode({ onNew, onExisting }) {
     return (
       <RegFrame>
         <p style={{ margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>
-          {s?.error ? `${s.error} ` : ''}Check your internet and open the app again.
+          {s?.error ? `${s.error} ` : ''}Still waiting for: signing in. Check your internet and open the app again.
         </p>
       </RegFrame>
     );

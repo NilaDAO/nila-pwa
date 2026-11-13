@@ -1,5 +1,5 @@
 // L1 — the leader's Tasks tab (board LeaderBorders) and L5 — "Who is it for?" (board LeaderPickMember). P10c.
-// "To do": the union's tasks the contracts and the node give today (plans to approve, crop share requests, cash to
+// "To do": the union's tasks the contracts and the node give today (plans to approve, crop agreement requests, cash to
 // settle, LPs who arrived, paybacks coming and overdue), with a search. "Start a task": the board's groups, each
 // row opening the flow that exists. DESIGN GAPs: no member names (land and short address); not built yet and left
 // out of the list: Make a crop plan with a member, Change her crop plan, Get cash and
@@ -8,7 +8,8 @@
 // (L1 "Check field borders" → L2a–L4) from the node's border jobs (O16). P8: Add a member (L14, O17).
 import { useState } from 'react';
 import { usePlanClient } from '../plan/hooks';
-import { useLpStatus } from '../anchor/hooks';
+import { LpOwnRows } from '../anchor/LpOffers';
+import { useNilaSigner } from '../wallet/signer';
 import { useUnionOffers } from '../anchor/hooks';
 import { useBorderJobs } from '../border/hooks';
 import { useKeypadMembers } from '../keypad/hooks';
@@ -41,7 +42,7 @@ export function PickMember({ title, onPick, onBack, onScan }) {
         {(members.data || []).map((m, i) => (
           <ListRow key={m.address} first={i === 0} icon={PinIcon} title={m.lands.length ? `Land ${m.lands.join(', ')}` : 'Member'} sub={short(m.address)} onClick={() => onPick(m.address)} />
         ))}
-        {members.isSuccess && !members.data.length && <li style={{ color: C.muted, padding: '12px 0' }}>No members with a crop plan or a crop share yet.</li>}
+        {members.isSuccess && !members.data.length && <li style={{ color: C.muted, padding: '12px 0' }}>No members with a crop plan or a crop agreement yet.</li>}
         {onScan && <ListRow first={!members.data?.length} icon={PayOutIcon} title="Scan a wallet QR" sub="A member not in the list" onClick={onScan} />}
       </ListSection>
     </div>
@@ -72,7 +73,7 @@ export function PlanFor({ go }) {
 }
 
 /** Tasks → Hand back acres (executive decision 4 Nov, G7): for an assist or keypad member, the leader scans the
- *  member's help QR (a 5-minute session on the member's account), then picks the crop share, the machine and the
+ *  member's help QR (a 5-minute session on the member's account), then picks the crop agreement, the machine and the
  *  acres; fund_core.return_voucher in the session. A self-mode member does it on their own phone (A8). */
 export function HandBackFor({ go }) {
   const [member, setMember] = useState();
@@ -105,7 +106,7 @@ const START = [
     ['Make a crop plan', 'Scan the member\'s QR', 'tasks/planfor', CropIcon]]],
   // One scan for her (executive decision 24 Oct): the QR says which kind, the chain picks invest, withdraw, use or
   // repay. Her G2 in Members stays a second way in.
-  ['Cash', [['Scan a member QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
+  ['Cash', [['Scan a member QR', 'Invest, use a crop agreement, repay or pay out', 'cash/scan', PayOutIcon],
     ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
   ['Vouchers', [['Register a machine', 'The owner\'s machine, photos and price', 'cash/machine', TractorIcon],
     ['Give back vouchers', 'Return unused vouchers', 'tasks/handback', TractorIcon]]],
@@ -113,7 +114,7 @@ const START = [
 
 // To do icons by task kind (board LeaderBorders): accent for a new item to act on, coral for an overdue one.
 const KIND = { approve: [CropIcon, 'new'], share: [RupeeIcon, 'new'], collect: [RepayIcon], payback: [CalendarIcon],
-  settle: [BanknoteIcon], lp: [BanknoteIcon], border: [PinIcon] };
+  settle: [BanknoteIcon], lp: [BanknoteIcon], border: [PinIcon], join: [UserPlusIcon] };
 
 export default function LeaderTasks({ go }) {
   const api = usePlanClient();
@@ -122,7 +123,9 @@ export default function LeaderTasks({ go }) {
   const offers = useUnionOffers().data || [];
   const borders = useBorderJobs().data || [];
   const keypads = useKeypadMembers().data || [];
-  const lp = useLpStatus().data;
+  const me = useNilaSigner()?.stellarAddress;
+  const lpMine = offers.some((o) => o.state === 1 && o.lp === me);
+  const members = useUnionMembers(api);
   const ownReady = (useMyShares().data || []).some((x) => x.ready);
   const [q, setQ] = useState('');
   const now = Date.now() / 1000;
@@ -142,6 +145,13 @@ export default function LeaderTasks({ go }) {
   // with or without the member's phone set up.
   for (const m of keypads.filter((x) => x.phone_type === 'keypad' && !x.job)) {
     items.unshift({ key: `border-pts-${m.id}`, title: 'Take field points', who: m.name, to: `tasks/member/${m.id}/points`, ready: true });
+  }
+  // Moved members whose account does not name the union yet (7 Nov): one row; one member opens her G2, more the list.
+  const notJoined = (members.data || []).filter((m) => m.joined === false);
+  if (notJoined.length) {
+    items.push({ key: 'join', title: notJoined.length === 1 ? 'Moved member to join' : `Moved members to join: ${notJoined.length}`,
+      who: notJoined.length === 1 ? `${notJoined[0].label} · scan her help QR` : 'Scan each one\'s help QR on her G2',
+      to: notJoined.length === 1 ? `members/${notJoined[0].route}` : 'members' });
   }
   const shown = items.filter((t) => !q || `${t.title} ${t.who}`.toLowerCase().includes(q.toLowerCase()));
   const row = (t, i) => {
@@ -166,8 +176,9 @@ export default function LeaderTasks({ go }) {
           task is the LP's cash offers; her crop plan and shares are on the Crop plan and Assets tabs. */}
       <ListSection title="Your own">
         <ReadyShareRows go={go} />
-        {lp?.lp && lp?.trustline && <ListRow first={!ownReady} icon={BanknoteIcon} title="Cash offers" sub="As an LP" onClick={() => go('offers')} />}
-        {!ownReady && !(lp?.lp && lp?.trustline) && <li style={{ color: C.muted, padding: '12px 0' }}>Nothing of your own to do.</li>}
+        {/* As an LP (8 Nov): her accepted offer's code, for another leader to scan (the offers are cards on A1). */}
+        <LpOwnRows go={go} first={!ownReady} sub="Show your code to another leader" />
+        {!ownReady && !lpMine && <li style={{ color: C.muted, padding: '12px 0' }}>Nothing of your own to do.</li>}
       </ListSection>
       <h2 style={{ margin: '8px 0 -8px 14px', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Start a task</h2>
       {START.map(([group, rows]) => (

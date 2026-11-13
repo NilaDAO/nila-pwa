@@ -1,9 +1,9 @@
-// L12 → crop shares (executive decision 21 Oct, replaces N1's "she mints"): when a leader approves her plan, the
+// L12 → crop agreements (executive decision 21 Oct, replaces N1's "she mints"): when a leader approves her plan, the
 // union mints every season's FoodToken on Polygon with the LEADER's key (FoodToken P2 mintForBatchMemberByLeader);
 // the tokens go to her wallet (the land title's holder) and the attester copies them to Stellar (F2). Steps, each
 // safe to repeat: the node tops up the leader's POL (once per plan) → mintForBatchMemberByLeader with exactly the
 // node's arguments (GET /plan/{id}/mint, which names the minting union), skipping tokens she already holds.
-// `check` (her CP12 too) reads which of her crop shares are made: attested on Stellar first (the attester copies only
+// `check` (her CP12 too) reads which of her crop agreements are made: attested on Stellar first (the attester copies only
 // minted FoodTokens; one quick read each, 25 Oct), Polygon balances only for the rest.
 import { useCallback, useRef, useState } from 'react';
 import { ethers } from 'ethers';
@@ -39,6 +39,8 @@ const NODE = [
   [/more than a year ahead/, REASON.SosTooFar],
   [/no Polygon crop code/, 'This crop is not registered yet. Ask your union leader.'],
   [/no open batch/, 'This crop\'s batch is not open yet. Ask your union leader.'],
+  // 13 Nov: the leader's wallet without POL (its top-up refused): the reason the mints failed, said plainly.
+  [/insufficient funds|enough funds/i, 'Your leader wallet has no POL to make them. Try again in a minute; ask Nila if it stays.'],
 ];
 // FoodToken P2 (nila-evm t1/contracts/P2-leader-mint) on top of the P1 ABI.
 const P2 = [
@@ -46,7 +48,7 @@ const P2 = [
   'error NotLeaderOfBatch()',
 ];
 const ABI = [...foodTokenAbi, ...P2];
-REASON.NotLeaderOfBatch = 'Your union may not make crop shares in this crop\'s batch yet. Ask Nila.';
+REASON.NotLeaderOfBatch = 'Your union may not make crop agreements in this crop\'s batch yet. Ask Nila.';
 REASON.NotAuthorized = 'Your wallet is not a leader of this union on Polygon. Ask Nila.';
 const ftIface = new ethers.Interface(ABI);
 export function reasonOf(e) {
@@ -90,11 +92,21 @@ export function useMintCropShares() {
     return lt.ownerOf(landId);
   }, [provider]);
 
-  /** The leader's app, right after Approve on L12. */
+  /** The leader's app, right after Approve on L12 — and again when it reopens a plan whose mint was cut off (a reload,
+   *  13 Nov): every step is safe to repeat, and a token she already holds is skipped. */
   const run = useCallback(async (planId) => {
     nonceRef.current = null;
     setState({ status: 'busy', done: 0 });
     try {
+      // A mint sent just before a reload may still be on its way: wait until this key has nothing pending (≤ 30 s), so
+      // its token counts as held below instead of being sent twice.
+      if (s?.evmAddress && process.env.REACT_APP_DEMO_STATIC !== '1') {
+        for (let i = 0; i < 15; i++) {
+          const [mined, sent] = await Promise.all([provider.getTransactionCount(s.evmAddress, 'latest'), provider.getTransactionCount(s.evmAddress, 'pending')]);
+          if (mined >= sent) break;
+          await sleep(2000);
+        }
+      }
       const ft = new ethers.Contract(FOODTOKEN, ABI, provider);
       const { mints, union, land_id: landId } = await api.mintList(planId);
       const ready = mints.filter((m) => m.args);
@@ -129,9 +141,9 @@ export function useMintCropShares() {
       console.error('[mint]', e);
       setState({ status: 'failed', error: reasonOf(e) });
     }
-  }, [api, provider, send, holderOf]);
+  }, [api, provider, send, holderOf, s]);
 
-  /** Her CP12 (and the leader's L12 on reopening): which of her crop shares are made (on-chain balances). */
+  /** Her CP12 (and the leader's L12 on reopening): which of her crop agreements are made (on-chain balances). */
   const check = useCallback(async (planId) => {
     try {
       const ft = new ethers.Contract(FOODTOKEN, ABI, provider);

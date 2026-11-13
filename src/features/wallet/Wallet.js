@@ -63,7 +63,7 @@ import { StaticCards } from '../maps/FieldView/staticCards';
 import FieldReg_cards from '../maps/FieldRegistration/fieldRegCards';
 import Header from './Header';
 import TaskMessage from "./tasks";
-import Settings from './Settings';
+import Settings from './settings';
 import Forms from '../../components/Forms/forms';
 import Donate from '../../components/Forms/Donate';
 import Tabs from './tabs';

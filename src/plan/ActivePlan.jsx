@@ -4,14 +4,14 @@
 // "Done · n" group (no activity-done store yet, design Q26), no mismatch card (no crop-seen check yet,
 // open-cp/3-4), no farm improvements (not in the record or plan), no "Sell" steps (not in the plan).
 // As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month; the
-// season bar on top of the card steps through the seasons (the map's chips follow, CropPlanFlow); the card title is
-// "Your plan · <approval date>" in the season she is in, "<months> season" in the others.
+// year bar on top of the card steps plan years; season chips above the tasks filter them (CropPlanFlow, 13 Nov). No title and
+// no "Your plan" rows (the crop bars above the card's list show the plan); the plan's date is a muted line at the end.
+import { useState } from 'react';
 import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' }).replace('Sept', 'Sep');
-const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).replace('Sept', 'Sep');
 // Machine jobs as the board words them ("Weed maize"); the catalogue's `for` text otherwise.
 const VERB = [[/weeding/i, 'Weed'], [/spraying|spray/i, 'Spray'], [/harvest/i, 'Harvest'], [/cutting|cut/i, 'Cut']];
 // The board's row icons (lucide paths, gold #D4A634).
@@ -36,12 +36,12 @@ export function currentSeason(seasons, today = new Date()) {
 const job = (m, name) => { const v = VERB.find(([re]) => re.test(m.for)); return v ? `${v[1]} ${name}` : `${m.for.charAt(0).toUpperCase()}${m.for.slice(1)} · ${name}`; };
 const kg = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')} t` : `${Math.round(n).toLocaleString('en-IN')} kg`);
 
-export function tasksOf(plan, areaNo) {
+export function tasksOf(plan, areaNo, areaName) {
   const out = [];
   for (const [si, s] of (plan.seasons || []).entries()) {
     const at = out.length;
     for (const r of s.rows) {
-      const area = typeof areaNo(r.zone) === 'number' ? areaLabel(r, areaNo) : '';
+      const area = typeof areaNo(r.zone) === 'number' ? areaLabel(r, areaNo, areaName) : '';
       if (r.sow && !r.continues) out.push({ date: r.sow, text: `Plant ${r.name}`, area });
       for (const m of Object.values(r.finance?.machines || {})) {
         if (m.when && m.for && !/sowing|land preparation/.test(m.for)) out.push({ date: m.when, text: job(m, r.name), area });
@@ -54,7 +54,7 @@ export function tasksOf(plan, areaNo) {
     if (due && s.repay) out.push({ date: due, when: 'after harvest', text: `Repay ${inr(s.repay)}`, area: `21 days after your harvest · ${SLOT[s.slot] || ''} finance`.trim() });
     for (const t of out.slice(at)) t.season = si;
   }
-  // Receive cash + vouchers: one per crop share, at its planned sowing (from_date), in the season it starts in; it can be
+  // Receive cash + vouchers: one per crop agreement, at its planned sowing (from_date), in the season it starts in; it can be
   // used from now until its last draw date (25 Oct), shown with it.
   const lastDayText = (d) => (d ? `use it by ${new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : '');
   const ss = plan.seasons || [];
@@ -63,7 +63,7 @@ export function tasksOf(plan, areaNo) {
     if (!sh.from_date || (!sh.loan_amount && !work)) continue;
     const si = Math.max(0, ss.reduce((k, s, i) => (s.start <= sh.from_date ? i : k), 0));
     out.push({ date: sh.from_date, text: work ? 'Receive cash + vouchers' : 'Receive cash', share: sh.key, season: si,
-      area: [typeof areaNo(sh.zone) === 'number' ? areaLabel(sh, areaNo) : '', sh.loan_amount ? inr(sh.loan_amount) : '', work ? `${Math.round(work * 100) / 100} ac of machine work` : '', lastDayText(sh.final_date), 'union office'].filter(Boolean).join(' · ') });
+      area: [typeof areaNo(sh.zone) === 'number' ? areaLabel(sh, areaNo, areaName) : '', sh.loan_amount ? inr(sh.loan_amount) : '', work ? `${Math.round(work * 100) / 100} ac of machine work` : '', lastDayText(sh.final_date), 'union office'].filter(Boolean).join(' · ') });
   }
   // Same month: she receives the cash before she plants.
   return out.sort((a, b) => a.date.slice(0, 7).localeCompare(b.date.slice(0, 7)) || (!!b.share - !!a.share) || a.date.localeCompare(b.date));
@@ -89,67 +89,70 @@ function Row({ t, now }) {
   );
 }
 
-function KV({ k, v }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
-      <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, textAlign: 'right', color: C.text }}>{v}</span>
-    </div>
-  );
-}
-
-function Group({ name, items, now }) {
+function Group({ name, items, now, first }) {
+  const [n, setN] = useState(first || items.length);
   if (!items.length) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
       <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>{name}</span>
       <div role="list" aria-label={name} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.map((t) => <Row key={t.date + t.text + t.area} t={t} now={now} />)}
+        {items.slice(0, n).map((t) => <Row key={t.date + t.text + t.area} t={t} now={now} />)}
       </div>
+      {/* 13 Nov: the whole property's list, a few at a time. */}
+      {n < items.length && (
+        <button type="button" onClick={() => setN(n + 5)} style={{ alignSelf: 'flex-start', border: 0, background: 'transparent', padding: 0,
+          color: C.accent, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Show more ({items.length - n})</button>
+      )}
     </div>
   );
 }
 
-/** shares: her crop shares as A1 reads them (useMyShares): a share she can collect now (ready) is a to-do whatever its
+/** shares: her crop agreements as A1 reads them (useMyShares): a share she can collect now (ready) is a to-do whatever its
  *  month; a drawn one is done and not listed. assist: a shared phone, where the leader extends the plan.
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
-export default function ActivePlan({ plan, areaNo, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError }) {
-  const seasons = plan.plan.seasons || [];
+export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart, chartTitle = "This year's plan", past = false, seasons, filter }) {
   const now = today.toISOString().slice(0, 10);
-  const idx = currentSeason(seasons, today);
-  const shown = Math.min(season ?? idx, Math.max(0, seasons.length - 1));
-  const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance?.due)).filter(Boolean).sort().pop();
   const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
-  const all = tasksOf(plan.plan, areaNo).filter((t) => t.season === shown && !(t.share && byKey[t.share]?.drawn));
+  // One list for the whole property (13 Nov): every season's tasks in date order, not only the season on the bar.
+  // 13 Nov: seasons = the season indices whose chip is on (filter: the chips); only their tasks are listed.
+  const all = tasksOf(plan.plan, areaNo, areaName).filter((t) => !(t.share && byKey[t.share]?.drawn))
+    .filter((t) => !seasons || seasons.has(t.season))
+    .sort((a, b) => a.date.localeCompare(b.date));
   const ready = (t) => !!(t.share && byKey[t.share]?.ready);
   const thisMonth = all.filter((t) => ready(t) || (t.date.slice(0, 7) === now.slice(0, 7) && !(t.share && byKey[t.share] && !ready(t))));
   const later = all.filter((t) => !thisMonth.includes(t) && t.date.slice(0, 7) > now.slice(0, 7));
   const approvedAt = plan.approval?.ts ? new Date(plan.approval.ts * 1000) : null;
-  const title = shown === idx && approvedAt
-    ? `Your plan · ${approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
-    : `${SLOT[seasons[shown]?.slot] || 'This'} season`;
+  const madeOn = approvedAt && approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return (
     <>
-      <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, textAlign: 'center', padding: '8px 0' }}>{title}</div>
-      <Group name="To do now" items={thisMonth} now />
-      <Group name="Coming up" items={later} />
-      {/* Your plan (board CropPlanActive): a group like the others — Plan year and Now as rows, then the secondary button. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>Your plan</span>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {seasons[0] && lastDue && <KV k="Planned" v={`${monthYear(seasons[0].start)} to ${monthYear(lastDue)}`} />}
-          <KV k="Now" v={`Season ${idx + 1} of ${seasons.length}${idx === seasons.length - 1 ? ' · last season' : ''}`} />
+      {!past && filter}
+      {!past && <Group name="To do now" items={thisMonth} now />}
+      {!past && <Group name="Coming up" items={later} first={4} />}
+      {/* 13 Nov: the whole plan as crop bars, below the tasks, under its own title. */}
+      {chart && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16, borderTop: `1px solid ${C.raised}`, paddingTop: 16 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>{chartTitle}</span>
+          {chart}
+          {/* 13 Nov: the plan's date right under its bars. */}
+          {madeOn && !past && <span style={{ fontSize: 13, color: C.muted }}>Plan made {madeOn}</span>}
         </div>
-        {/* Always one year ahead: the three cycles after this one (25 Oct). The seasons planned stay as they are. */}
+      )}
+      {/* 13 Nov: the "Your plan" rows are gone (the crop bars above show the plan); the extend button stays, disabled. */}
+      {/* Always one year ahead: the three cycles after this one (25 Oct). The seasons planned stay as they are. */}
+      {!past && <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
         {!canExtend.length
           ? <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>Your plan covers the next three seasons.</span>
           : assist
             ? <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>Ask your leader to extend your plan.</span>
-            : <button type="button" onClick={onExtend} disabled={extending} style={{ height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer', opacity: extending ? 0.5 : 1 }}>
+            // Disabled for now (13 Nov, executive decision): shown, not tappable.
+            : <button type="button" disabled aria-disabled="true" style={{ height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'default', opacity: 0.5 }}>
               {extending ? 'Planning…' : `Extend my plan · ${canExtend.length} season${canExtend.length > 1 ? 's' : ''}`}
             </button>}
         {extendError && <span style={{ fontSize: 14, color: C.coral }}>{extendError}</span>}
-      </div>
+      </div>}
+      {/* 13 Nov: the plan's date as a small muted line, under the bars when they show, else at the bottom. */}
+      {madeOn && !chart && <p style={{ margin: '16px 0 0', fontSize: 13, color: C.muted, textAlign: 'center' }}>Plan made {madeOn}</p>}
     </>
   );
 }

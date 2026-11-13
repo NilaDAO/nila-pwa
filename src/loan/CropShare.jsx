@@ -1,4 +1,4 @@
-// A4 / A4a · her crop share (boards MemberCropShare, MemberCropShareInactive; notes a4-spec). A map board: the share's
+// A4 / A4a · her crop agreement (boards MemberCropShare, MemberCropShareInactive; notes a4-spec). A map board: the share's
 // area filled in the crop's colour and labelled with the crop, the other areas plain; the sheet shows the crop, area,
 // expected harvest and value, status and timing (the same numbers as her A1 row).
 //  - A4a, not active yet (no loan drawn on it): what she collects (cash and machine hours, total) and when and where.
@@ -25,8 +25,9 @@ import { BanknoteIcon, TractorIcon } from '../shell/icons';
 import { amount, assisted, rowOf, useMyLand, useMyShares } from './MyShares';
 import AddHours from './AddHours';
 import { tapRule } from '../plan/mapTap';
-import { shareOn } from '../shell/MapStage';
+import { areaHash, shareOn } from '../shell/MapStage';
 import { currentSeason } from '../plan/ActivePlan';
+import { PlanChart, planYear } from '../plan/PlanResult';
 
 const FLAG_OVERDUE = 1;
 const FLAG_DEFAULTED = 2;
@@ -59,7 +60,7 @@ const CameraIcon = () => ico(<><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0
 const CheckIcon = () => ico(<path d="M20 6 9 17l-5-5" />);
 const DropIcon = () => ico(<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z" />);
 
-function statusOf(x) {
+export function statusOf(x) {
   if (!x.ft) return 'Not attested yet';
   const f = Number(x.ft.loan?.flags ?? 0);
   // Unused past its last draw date (25 Oct): the cycle is over; shown as a state, not an error.
@@ -71,6 +72,23 @@ function statusOf(x) {
   if (f & FLAG_OVERDUE) return 'Overdue';
   return 'Financed';
 }
+
+/** What she collects on a not-drawn agreement (13 Nov: shared with the area page, CropArea): the attested cash part
+ *  (the plan's before the attestation), machine hours (voucher units, centi tractor hours) and the vouchers' value. */
+export function collectOf(x) {
+  const r = rowOf(x) || {};
+  const cash = x.ft ? num(x.ft.amount) : Number(x.share.loan_amount || 0);
+  const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.acres_work ?? x.share.hours ?? 0);   // tractor acres (27 Oct)
+  return { cash, hours, vouchers: Number(r.finance?.voucher_value || 0) };
+}
+
+/** Its window (25 Oct): ready from a week before its sowing window, used by its last sowing day; over = lapsed or late. */
+export function windowOf(x) {
+  const until = x.final ? new Date(x.final * 1000) : x.share.final_date ? new Date(x.share.final_date) : null;
+  const opens = x.opens ? new Date(x.opens * 1000) : x.share.open_date ? new Date(x.share.open_date) : null;
+  return { until, opens, over: x.lapsed || x.late };
+}
+export const dayOf = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
 /** bar / onSwipe (map-central trial): the ‹ asset › bar on top of the card, and a swipe on the card that steps it. */
 export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
@@ -90,8 +108,8 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   if ((!x && (shares.isLoading || !shares.data)) || (x && !record && !field.error)) return <Loading />;
   if (!x) {
     return (
-      <Sheet title="Your crop share" onBack={onBack}>
-        <p style={{ ...muted, textAlign: 'center' }}>This crop share is not in your plan.</p>
+      <Sheet title="Your crop agreement" onBack={onBack}>
+        <p style={{ ...muted, textAlign: 'center' }}>This crop agreement is not in your plan.</p>
       </Sheet>
     );
   }
@@ -113,16 +131,30 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
       const seasons = x.plan?.plan?.seasons || [];
       const y = (shares.data || []).find((s) => on(s) && s.share?.from_date === x.share.from_date)
         || (seasons.length ? shareOn(shares.data, seasons, currentSeason(seasons), z) : undefined);
-      if (y) window.location.hash = `#/cropshare/${y.token_id}`;
+      // No agreement there (standing crop or soil cover only, 13 Nov): that area's page.
+      window.location.hash = y ? `#/cropshare/${y.token_id}` : areaHash(z, planYear(x.share.from_date));
     },
   });
-  const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 ? x.zone : null} onSelect={onTap}
+  // One area picked (outlined, the others dimmed) only for a single-area agreement (13 Nov): a merged one picked only
+  // its first area, so its other field looked faded and outside the agreement.
+  const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 && own.length === 1 ? x.zone : null} onSelect={onTap}
     fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
+  // The plan's bars (13 Nov), this agreement's rows in full and the others faded, at the bottom of the card (below Total);
+  // a row opens that area's page (one page per area, 13 Nov).
+  const planOrder = areasOf(record).map((z) => z.zone_id).filter((z) => x.plan?.plan?.proposal?.[z]);
+  const nameOf = (z) => areasOf(record).find((y) => y.zone_id === z)?.name || `Area ${areasOf(record).findIndex((y) => y.zone_id === z) + 1}`;
+  const bars = x.plan?.plan && planOrder.length > 0 && (
+    <div style={{ margin: '16px 0 0' }}>
+      <PlanChart plan={x.plan} record={record} zones={planOrder} areaName={nameOf} checked={new Set()} focus={own}
+        y0={planYear(x.share.from_date)} onArea={(z) => { window.location.hash = areaHash(z, planYear(x.share.from_date)); }} />
+    </div>
+  );
   const head = (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
       <span style={{ display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{name}</span>
-        <span style={{ ...muted, lineHeight: 1.5 }}>Crop share · Area {x.area}</span>
+        {/* 13 Nov: the fields are in the bar above; this line says what the numbers on the right are. */}
+        <span style={{ ...muted, lineHeight: 1.5 }}>{x.share.green_manure ? 'Green manure' : fodder ? 'Fodder' : 'Estimated sales'}</span>
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{r.kg ? amount(r.kg) : '—'}</span>
@@ -132,16 +164,10 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   );
 
   if (!x.drawn) {
-    // A4a: not active yet. Cash is the attested cash part (the plan's, before the attestation); machine hours at the plan's rate.
-    const cash = x.ft ? num(x.ft.amount) : Number(x.share.loan_amount || 0);
-    // Attested hours are voucher units (centi tractor hours, 23 Oct); before the attestation, the plan's machine hours.
-    const hours = x.ft ? Number(x.ft.hours) / 100 : Number(x.share.acres_work ?? x.share.hours ?? 0);   // tractor acres (27 Oct)
-    const vouchers = Number(r.finance?.voucher_value || 0);
-    // Its window (25 Oct): ready from a week before its sowing window, used by its last sowing day.
-    const until = x.final ? new Date(x.final * 1000) : x.share.final_date ? new Date(x.share.final_date) : null;
-    const opens = x.opens ? new Date(x.opens * 1000) : x.share.open_date ? new Date(x.share.open_date) : null;
-    const over = x.lapsed || x.late;
-    const day = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    // A4a: not active yet: what she collects and its window (collectOf, windowOf).
+    const { cash, hours, vouchers } = collectOf(x);
+    const { until, opens, over } = windowOf(x);
+    const day = dayOf;
     return (
       <Sheet map={map} onBack={onBack} bar={bar} onSwipe={onSwipe}>
         {head}
@@ -169,6 +195,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
         {/* Ready: her scan of the leader's QR (assisted: the leader taps it on her phone), or a leader's own take-up. */}
         {x.ready && <Primary onClick={() => onTakeUp(x.token_id)}>Get cash and vouchers</Primary>}
         {over && <p style={{ ...muted, textAlign: 'center' }}>Too late for this cycle. Its fields are freed for a new plan.</p>}
+        {bars}
       </Sheet>
     );
   }
@@ -179,7 +206,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   // One QR at the office (executive decision 26 Oct): the help QR; the leader counts the cash and records the repayment.
   // More machine hours (27 Oct, self mode): until its last draw date, while the loan is open and not overdue.
   const canAdd = open && !(Number(l.flags ?? 0) & FLAG_OVERDUE) && !assisted() && (!x.final || Date.now() / 1000 <= x.final);
-  if (adding && canAdd) return <AddHours token={x.token_id} name={`${name} · Area ${x.area}`} map={map} onBack={() => setAdding(false)} />;
+  if (adding && canAdd) return <AddHours token={x.token_id} name={`${name} · ${x.area}`} map={map} onBack={() => setAdding(false)} />;
   // G9 (4 Nov): repaying needs no signature from her: her account QR in self mode, the help QR in assist mode.
   if (repayQr) return <WalletQr onBack={() => setRepayQr(false)} note="Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment." />;
   // What is left: the cash part and the voucher's value, with interest (26 Oct: the voucher is debt from the draw).
@@ -211,6 +238,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
         {sugarcane && <button type="button" disabled style={noteBtn}><DropIcon />Sugar reading</button>}
         <button type="button" disabled style={noteBtn}><CheckIcon />Harvest done</button>
       </div>
+      {bars}
     </Sheet>
   );
 }

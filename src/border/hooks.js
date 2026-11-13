@@ -35,6 +35,12 @@ export function useBorderJob(id) {
 }
 
 /** R14: her own latest job, or null. */
+/** A land title minted and not read on the chains yet (12 Nov): her border job is minting, or was minted in the last
+ *  10 minutes while her titles still read none (the node writes the title; the app's reads catch up). An older minted
+ *  job with no title is a title she has burned since. */
+export const titlePending = (job, none) => !!none && !!job
+  && (job.status === 'minting' || (job.status === 'minted' && Date.now() / 1000 - Number(job.updated || 0) < 600));
+
 export function useMyBorderJob() {
   const s = useNilaSigner();
   const api = useBorderClient();
@@ -68,12 +74,12 @@ export function useSendFieldPoints() {
 
 /** L3: accept a shape (locks the field) or None fit (redraw); no preview call (4 Nov). */
 export function useBorderDecision(id) {
-  const accept = useJobWrite(id, (a, { field, shape }) => a.accept(id, field, shape));
+  const accept = useJobWrite(id, (a, { field, shape, soil }) => a.accept(id, field, shape, soil));
   const noneFit = useJobWrite(id, (a, { field }) => a.noneFit(id, field));
   const retry = useJobWrite(id, (a, { field }) => a.retry(id, field));
   const remove = useJobWrite(id, (a, { field }) => a.remove(id, field));   // delete the field and its point (1 Nov)
   // 28 Oct: the proposed plan at once (L2), and a neighbour plot added to a field or made a field of its own.
-  const acceptPlan = useJobWrite(id, (a) => a.acceptPlan(id));
+  const acceptPlan = useJobWrite(id, (a, { soil } = {}) => a.acceptPlan(id, soil));
   const addPlot = useJobWrite(id, (a, { field, plot }) => a.addPlot(id, field, plot));
   const newField = useJobWrite(id, (a, { plot }) => a.newField(id, plot));
   return { accept, noneFit, retry, remove, acceptPlan, addPlot, newField };
@@ -81,5 +87,5 @@ export function useBorderDecision(id) {
 
 /** L4: the leader asks the node to mint her land title (signed by the node's title key). */
 export function useMintLandTitle(id) {
-  return useJobWrite(id, (a, { farm } = {}) => a.mint(id, farm));
+  return useJobWrite(id, (a, { farm, soils, tenant } = {}) => a.mint(id, farm, soils, tenant));
 }

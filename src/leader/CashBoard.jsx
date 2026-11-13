@@ -10,10 +10,12 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
-import { sv } from '../stellar/soroban';
+import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePlanClient } from '../plan/hooks';
-import { useBringRoom, useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
+import { useBringRoom, useLpStatus, useOfferQuote, useUnionOffers, usdcOf } from '../anchor/hooks';
+import { useFxRate } from '../shell/UsdcAsset';
+import { useQuery } from '@tanstack/react-query';
 import { usePost } from '../anchor/LeaderLp';
 import { BRING, COLLECT } from '../anchor/sep';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
@@ -92,7 +94,7 @@ function Chip({ book, api, onFound }) {
   const [gapInStore, setGapInStore] = useState(false);
   const spin = <style>{'@keyframes chk-spin{to{transform:rotate(360deg)}}'}</style>;
   // The share list is a part of C1 that loads after the screen: the chip spins, never S1 inside the card (22 Oct).
-  if (!book) return <div role="status" style={chipS}>{spin}{BUSY}<span style={{ color: C.muted }}>Checking the share list…</span></div>;
+  if (!book) return <div role="status" style={chipS}>{spin}{BUSY}<span style={{ color: C.muted }}>Checking the agreement list…</span></div>;
   const [win, label] = SEARCH_WINDOWS[Math.min(step, SEARCH_WINDOWS.length - 1)];
   const off = book.gap > 0;
   const done = off && (step >= SEARCH_WINDOWS.length || gapInStore);
@@ -106,7 +108,7 @@ function Chip({ book, api, onFound }) {
         if (r.store_gap) setGapInStore(true);
         const after = (await onFound()).data?.loans.length ?? before;
         const n = Math.max(0, after - before);
-        setNote(`Searched ${label} · ${n ? `${n} share${n > 1 ? 's' : ''} added` : 'nothing new'}`);
+        setNote(`Searched ${label} · ${n ? `${n} agreement${n > 1 ? 's' : ''} added` : 'nothing new'}`);
         setStep((x) => x + 1);
       }
     } catch (e) { setNote(e.message); }
@@ -135,8 +137,9 @@ function Chip({ book, api, onFound }) {
   );
 }
 
-/** C3: Deposit her own nIN into the treasury or Withdraw to her wallet (C10; the node sponsors both). nIN only
- *  (executive decision 22 Oct): a leader with USDC swaps it to nIN on A9 first; counted cash never goes in. */
+/** C3: Deposit her own nIN into the treasury or Withdraw to her wallet (C10). Deposit also takes her USDC (7 Nov):
+ *  fx_pool.deposit_usdc_treasury keeps the USDC as the treasury's backing and books USDC × today's fix in nIN, at most
+ *  max_scan (₹10,000) a call. Counted cash never goes in. */
 const arrow = (d) => <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
 
 function Adjust({ cash, dir, onClose }) {
@@ -145,12 +148,28 @@ function Adjust({ cash, dir, onClose }) {
   const tx = useSorobanTx();
   const [rainy, setRainy] = useState(false);
   const [amount, setAmount] = useState(0);
+  const [coin, setCoin] = useState('nin');   // deposit: 'nin' or 'usdc' (7 Nov)
+  const lp = useLpStatus().data;
+  const rate = useFxRate().data;
+  const maxScan = useQuery({ queryKey: ['stellar', 'maxScan'], enabled: !!cfg && dir === 'deposit',
+    queryFn: () => readContract(cfg, 'fx_pool', 'max_scan', []) });
   const mine = Math.floor(s?.stellarAccount?.nin?.balance ?? 0);
+  const myUsdc = Math.floor(lp?.free ?? 0);
+  const usdc = dir === 'deposit' && coin === 'usdc';
+  const usdcCap = maxScan.data != null && rate ? Math.floor(Number(BigInt(maxScan.data) / U) / rate) : 0;
   const fromRainy = dir === 'withdraw' && rainy;
-  const max = dir === 'deposit' ? mine : fromRainy ? Math.floor(cash.rainy) : Math.floor(cash.free);
+  const max = usdc ? Math.min(myUsdc, usdcCap) : dir === 'deposit' ? mine : fromRainy ? Math.floor(cash.rainy) : Math.floor(cash.free);
   const a = Math.min(amount, max);
+  const inrOf = (x) => (usdc ? Math.floor(x * (rate || 0)) : x);
   if (tx.status !== 'idle') return <Over><TxScreens tx={tx} onClose={() => { tx.reset(); onClose(); }} onRetry={() => tx.retry()} /></Over>;
-  const go = () => tx.run({
+  const goUsdc = () => tx.run({
+    label: `Deposit ${a} USDC`,
+    rows: [['Amount', `${a} USDC`], ['Into the treasury about', inr(inrOf(a))], ['Union treasury after about', inr(cash.treasury + inrOf(a))]],
+    contractName: 'fx_pool', fn: 'deposit_usdc_treasury',
+    args: [sv.address(s.stellarAddress), sv.address(cfg.union), sv.i128(BigInt(a) * U)],
+    invalidate: [['stellar', 'unionCash'], ['stellar', 'account'], ['stellar', 'lp']],
+  });
+  const go = () => usdc ? goUsdc() : tx.run({
     label: dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`,
     rows: [['Amount', inr(a)], fromRainy ? ['Rainy day fund after', inr(cash.rainy - a)] : ['Union treasury after', inr(cash.treasury + (dir === 'deposit' ? a : -a))]],
     contractName: 'fund_core', fn: dir === 'deposit' ? 'leader_deposit_treasury' : 'withdraw_union_treasury',
@@ -163,18 +182,30 @@ function Adjust({ cash, dir, onClose }) {
     <>
       <div style={divider} />
       <span style={{ color: C.muted }}>{dir === 'deposit' ? 'Deposit into the fund' : 'Withdraw from the fund'}</span>
+      {dir === 'deposit' && (
+        <Segmented label="Deposit nIN or USDC" value={coin} onChange={(v) => { setCoin(v); setAmount(0); }}
+          options={[['nin', 'nIN'], ['usdc', 'USDC']]} />
+      )}
+      {usdc && !rate && <span style={{ color: C.coral }}>No price today: a USDC deposit waits for the day's rate.</span>}
+      {usdc && rate && <span style={{ color: C.muted }}>₹{rate.toFixed(2)} per USDC · at most {usdcCap} USDC a deposit</span>}
       {dir === 'withdraw' && (
         <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <input type="checkbox" checked={rainy} onChange={(e) => setRainy(e.target.checked)} aria-label="From the rainy day fund" />
           From the rainy day fund ({inr(cash.rainy)})
         </label>
       )}
-      <Stepper value={a} set={setAmount} max={max} />
+      {usdc ? <Stepper value={a} set={setAmount} max={max} step={10} label="Amount in USDC" unit="USDC" /> : <Stepper value={a} set={setAmount} max={max} />}
       <div style={rows}>
-        {fromRainy ? <Row k="Rainy day fund after" v={inr(cash.rainy - a)} /> : <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />}
-        <Row k="Your nIN after" v={`${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />
+        {usdc ? (
+          <>
+            <Row k="Union treasury after about" v={inr(cash.treasury + inrOf(a))} />
+            <Row k="Your USDC after" v={`${(myUsdc - a).toLocaleString('en-IN')} USDC`} />
+          </>
+        ) : fromRainy ? <Row k="Rainy day fund after" v={inr(cash.rainy - a)} /> : <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />}
+        {!usdc && <Row k="Your nIN after" v={`${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />}
       </div>
-      <button type="button" disabled={!a || !tx.ready} style={{ ...primary, opacity: !a || !tx.ready ? 0.5 : 1 }} onClick={go}>{dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`}</button>
+      <button type="button" disabled={!a || !tx.ready || (usdc && !rate)} style={{ ...primary, opacity: !a || !tx.ready || (usdc && !rate) ? 0.5 : 1 }} onClick={go}>
+        {usdc ? `Deposit ${a} USDC` : dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`}</button>
     </>
   );
 }
@@ -283,7 +314,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
           {/* The union's cut of open loans' interest (treasury + rainy-day fee, 1.77% on the demo union): small, so in paise. */}
           <div style={{ color: C.muted }}>+ {book ? (book.earningsPending < 10 ? `₹${book.earningsPending.toFixed(2)}` : inr(book.earningsPending)) : '…'} earnings pending</div>
           <Chip book={book} api={api} onFound={() => bookQ.refetch()} />
-          {bookQ.isError && <p style={{ color: C.coral, fontSize: 13, margin: 0 }}>The share list could not be read: {bookQ.error.message}</p>}
+          {bookQ.isError && <p style={{ color: C.coral, fontSize: 13, margin: 0 }}>The agreement list could not be read: {bookQ.error.message}</p>}
         </section>
         <section style={card} aria-label="Funds">
           {/* C3 (22 Oct): the ↓ deposit / ↑ withdraw pair is the card's control; none selected = closed, tapping the selected
@@ -313,17 +344,17 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
           <div style={rows}>
             {cash.overdue > 0 && (
               <a href="#/tasks" style={{ ...rowS, color: C.text, textDecoration: 'none', minHeight: 44, margin: '-10px 0' }}>
-                <span style={{ color: C.coral }}>{cash.overdue} share{cash.overdue > 1 ? 's' : ''} overdue</span>
+                <span style={{ color: C.coral }}>{cash.overdue} agreement{cash.overdue > 1 ? 's' : ''} overdue</span>
                 <span style={{ fontWeight: 700 }}>In Tasks ›</span>
               </a>
             )}
             <Row k="Member contributions" v={book ? inr(book.contributions) : '…'} />
-            <Row k="Cash at the office" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}% of the treasury)`} />
+            <Row k="Cash at the office" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}%)`} />
             {/* What the office may hold (fund_core.cash_room, on-chain since 31 Oct): the treasury plus the cash members
                 are due to take out again; a count above it is refused. */}
             <Row k="The office may hold" v={room ? inr(room.limit) : '…'} />
             {room && (room.withdrawals > 0 || room.shares > 0) && (
-              <span style={{ color: C.muted, fontSize: 14, marginTop: -6 }}>Treasury {inr(room.treasury)}{room.withdrawals > 0 ? ` + withdrawals waiting ${inr(room.withdrawals)}` : ''}{room.shares > 0 ? ` + crop shares within 9 weeks ${inr(room.shares)}` : ''}</span>
+              <span style={{ color: C.muted, fontSize: 14, marginTop: -6 }}>Treasury {inr(room.treasury)}{room.withdrawals > 0 ? ` + withdrawals waiting ${inr(room.withdrawals)}` : ''}{room.shares > 0 ? ` + crop agreements within 9 weeks ${inr(room.shares)}` : ''}</span>
             )}
             <Row k="Room for more cash" v={room ? inr(room.room) : '…'} accent />
           </div>

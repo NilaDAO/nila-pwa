@@ -11,7 +11,7 @@
 // this way, never with the help QR. Two more kinds, same layout with their own fields:
 //   NILA:W: collect her withdrawal, fund_core.claim_junior_cash(union, member, leader, 0), args (union, 0): all she can
 //           claim; no fields.
-//   NILA:L: use a crop share, fund_core.draw_loan(union, member, token, cash, hours), all args (require_auth): token 32,
+//   NILA:L: use a crop agreement, fund_core.draw_loan(union, member, token, cash, hours), all args (require_auth): token 32,
 //           cash 8 (stroops), hours 4 (voucher units).
 import { Address, Keypair, StrKey, hash, xdr } from '@stellar/stellar-sdk';
 import { contractId, readContract, server, sv } from '../stellar/soroban';

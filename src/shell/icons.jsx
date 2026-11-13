@@ -39,6 +39,8 @@ export const QrIcon = (p) => line(<>
   <rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" />
 </>, { size: 18, ...p });
 // A padlock (lucide 'lock'): a field only the union's leaders can read (the contact book, 2 Nov).
+// A page outline (13 Nov): G2's field-record button.
+export const FileIcon = (p) => line(<><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /><path d="M8 13h8M8 17h5" /></>, p);
 export const LockIcon = (p) => line(<><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>, p);
 export const PlusIcon = (p) => line(<><path d="M12 5v14" /><path d="M5 12h14" /></>, p);
 export const ChevronIcon = (p) => line(<path d="m9 18 6-6-6-6" />, p);
@@ -96,8 +98,12 @@ const tractor = <path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2
 export const MachineryTile = tile('#E69283', glyph(tractor));    // machinery voucher
 export const MyMachineTile = tile('#D4A634', glyph(tractor));    // your machine (owner)
 export const SeedTile = tile('#E69283', glyph(<path d="M12 3c3 3 4 7 0 11c-4-4-3-8 0-11zM12 14v7M8 21h8" />));
-// A crop share: a coin in the crop's colour.
-export const ShareTile = ({ colour = '#D4CF5A' }) => tile(colour, glyph(<path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M12 7v10M9 9.5h6" />))();
+// A crop agreement: a seedling on a tile in the crop's colour (13 Nov; was a coin with a stroke and a bar, read as a
+// cross; no inner ring).
+// A green manure's agreement (13 Nov): soil layers, three wavy lines — it is grown to feed the soil, not sold.
+export const ShareTile = ({ colour = '#D4CF5A', soil = false }) => tile(colour, glyph(soil
+  ? <path d="M3 8c3-2 6 2 9 0s6-2 9 0M3 13c3-2 6 2 9 0s6-2 9 0M3 18c3-2 6 2 9 0s6-2 9 0" />
+  : <path d="M12 20v-8M12 12c0-3.3-2.4-5.5-6-5.5c0 3.3 2.4 5.5 6 5.5M12 14c0-2.8 2-4.8 5.5-4.8c0 2.8-2 4.8-5.5 4.8" />))();
 // Slider message icons: repay (rupee on coral), invest and withdrawal (the mark on amber).
 export const RepayTile = tile('#E69283', glyph(<path d="M6 3h12M6 8h12M6 13l8.5 8M6 13h3a5 5 0 0 0 0-10" />, { size: 16, width: 2.4 }));
 export const MarkTile = tile('#D4A634', <img src="/images/reg-logo.png" alt="" style={{ width: 20, height: 20, filter: 'invert(1)' }} />);

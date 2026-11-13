@@ -1,7 +1,7 @@
 // G1 (board LeaderGrowers): the leader's Members tab, a map card. The header is A1L's (History, All tasks, Settings);
 // the card: "N members" (land title holders, 24 Oct) and "Joining · K" (onboarding), Add a member (→ L14), search with a scan button (her wallet QR, A1a → her row), and one
 // row per grower: her name and a summary (coral when a loan is overdue); a row, or her property on the map, opens G2
-// (#/members/<id>). No crop shares here (22 Oct): they belong under batches (the Harvests tab, later).
+// (#/members/<id>). No crop agreements here (22 Oct): they belong under batches (the Harvests tab, later).
 // Data: src/leader/unionMembers.js.
 import { useContactBook } from '../union/hooks';
 import { useMemo, useState } from 'react';
@@ -57,7 +57,7 @@ export default function Members({ go }) {
   const left = list.length - n;
   const onQr = (text) => {
     setScan(false);
-    // Her crop share QR (her Ready share, 23 Oct): straight to L11 with that share picked.
+    // Her crop agreement QR (her Ready share, 23 Oct): straight to L11 with that share picked.
     const share = /^nila:share:(\w+):/.exec(String(text || '').trim());
     if (share) { go(`loan/${share[1]}`); return; }
     const g = addressFromQr(text);
@@ -106,6 +106,18 @@ export default function Members({ go }) {
           </div>
         )}
         {msg && <span style={{ color: C.coral, fontWeight: 700 }}>{msg}</span>}
+        {/* Joining first (13 Nov): the members who still need the leader (link, points, a new title) come before the rest. */}
+        {joining.length > 0 && (
+          <>
+            <span style={{ color: C.muted, fontWeight: 700, paddingTop: 4 }}>Joining · {joining.length}</span>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
+              {joining.map((m, i) => (
+                <ListRow key={m.key} first={i === 0} title={m.label} sub={<span style={{ color: C.muted }}>{m.note || 'App link sent'}</span>}
+                  onClick={() => pick(m.key)} />
+              ))}
+            </ul>
+          </>
+        )}
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
           {list.slice(0, n).map((m, i) => (
             <ListRow key={m.key} first={i === 0} title={personal(m)} sub={<span style={{ color: m.loans.some((x) => x.overdue) ? C.coral : C.muted }}>{summary(m)}</span>}
@@ -119,17 +131,6 @@ export default function Members({ go }) {
           <button type="button" onClick={() => setN(n + MORE)} style={{ ...field, fontWeight: 700, cursor: 'pointer' }}>
             Show {Math.min(MORE, left)} more of {left}
           </button>
-        )}
-        {joining.length > 0 && (
-          <>
-            <span style={{ color: C.muted, fontWeight: 700, paddingTop: 4 }}>Joining · {joining.length}</span>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
-              {joining.map((m, i) => (
-                <ListRow key={m.key} first={i === 0} title={m.label} sub={<span style={{ color: C.muted }}>{m.note || 'App link sent'}</span>}
-                  onClick={() => pick(m.key)} />
-              ))}
-            </ul>
-          </>
         )}
       </section>
     </MapCard>

@@ -67,7 +67,7 @@ export default function HelpQr({ note, onBack, withPolygon = false } = {}) {
       </section>
       {error && <p style={{ color: C.coral, textAlign: 'center', margin: 0 }}>{error}</p>}
       <div aria-hidden="true" style={{ height: 120 }} />
-      <NoteBar>{over ? 'This QR has expired. Tap the circle for a new one.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop share, start or collect a withdrawal.'}</NoteBar>
+      <NoteBar>{over ? 'This QR has expired. Tap the circle for a new one.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop agreement, start or collect a withdrawal.'}</NoteBar>
     </MapCard>
   );
 }

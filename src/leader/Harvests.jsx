@@ -1,4 +1,4 @@
-// H1 (board LeaderOrders): the Harvests tab, every crop share of the union by crop and harvest, with the crop's price
+// H1 (board LeaderOrders): the Harvests tab, every crop agreement of the union by crop and harvest, with the crop's price
 // (Update: a leader sets it on Polygon, #price). H2 (board LeaderHarvestCal): one harvest group on the map, its crop
 // shares, what is harvested and late, the estimated value. From the members list kept on the phone (25 Oct).
 // H1a (board LeaderOrdersCal): the same groups as a calendar, a column per month. DEVIATIONS: no selling yet (Buyer "Not sold", no #sold / H2a; open Q2, X6, O8); the
@@ -27,7 +27,7 @@ const sub = { color: C.muted, fontSize: 14 };
 const qty = (kg, u) => `${Math.round((kg / u.per) * 10) / 10} ${u.short}`;
 const day = (t) => new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 
-/** H2's map (25 Oct): only this group's crop shares, each by the areas it grows on (from the member's field record),
+/** H2's map (25 Oct): only this group's crop agreements, each by the areas it grows on (from the member's field record),
  *  the member's name on the first; a member without a record shows the property. An AreaMap element itself, not a
  *  component around it: the map stage draws the element's own props (record, labels, chip). */
 function groupMap(group, members) {
@@ -45,7 +45,7 @@ function groupMap(group, members) {
         : { text: s.who, sub: s.harvested ? 'Harvested' : s.late ? 'Late' : undefined, colour: s.late ? C.coral : s.harvested ? C.accent : '#ffffff' };
     });
   }
-  const chip = `${group?.shares?.length || 0} crop share${group?.shares?.length === 1 ? '' : 's'}`;
+  const chip = `${group?.shares?.length || 0} crop agreement${group?.shares?.length === 1 ? '' : 's'}`;
   return <AreaMap record={zones.length ? { zones } : null} center={zones.length ? undefined : unionCentre(members)} labels={labels} fitSide={90} fitBottom={Math.round(window.innerHeight * 0.5)} chip={chip}
     onSelect={(z) => { const t = z && String(z).split('#')[0]; const x = group?.shares?.find((y) => y.token === t); if (x?.route) window.location.hash = `#/members/${x.route}`; }} />;
 }
@@ -150,7 +150,7 @@ function Calendar({ groups, go }) {
 
 /** H1: the Harvests tab. The map shows every member's property (25 Oct). */
 export function HarvestList({ go }) {
-  const { map } = useLeaderMap('members');
+  const { map } = useLeaderMap('harvests');   // 13 Nov: what grows now per area (was the members map)
   const { groups, priceOf, loading, refetch } = useHarvests();
   const [edit, setEdit] = useState();
   const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'list'; } catch { return 'list'; } });
@@ -159,8 +159,8 @@ export function HarvestList({ go }) {
   return (
     <MapCard head={<Head />} map={map} style={{ padding: '0 8px', fontFamily: FONT, color: C.text }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <section style={{ ...card, padding: '18px 22px', gap: 4, alignItems: 'center', textAlign: 'center' }} aria-label="Crop shares value">
-          <div style={{ color: C.muted }}>Crop shares value</div>
+        <section style={{ ...card, padding: '18px 22px', gap: 4, alignItems: 'center', textAlign: 'center' }} aria-label="Crop agreements value">
+          <div style={{ color: C.muted }}>Crop agreements value</div>
           <div style={{ fontSize: 32, lineHeight: 1.2, fontWeight: 700 }}>{loading ? '…' : inr(value)}</div>
           {/* Selling is not built yet (Q2, X6, O8): nothing is sold, so ₹0. */}
           <div style={{ color: C.muted }}>+ {inr(0)} sold</div>
@@ -173,7 +173,7 @@ export function HarvestList({ go }) {
           </RoundButton>
         </div>
         {loading && <section style={card}><SkeletonRows rows={4} /></section>}
-        {!loading && !groups.length && <section style={card}><span style={sub}>No crop shares with a harvest ahead.</span></section>}
+        {!loading && !groups.length && <section style={card}><span style={sub}>No crop agreements with a harvest ahead.</span></section>}
         {view === 'calendar' && <Calendar groups={groups} go={go} />}
         {view === 'list' && groups.map((c) => {
           const u = unitOf(c.crop);
@@ -202,7 +202,7 @@ export function HarvestList({ go }) {
                     borderTop: `1px solid ${C.raised}`, background: 'none', padding: '12px 0 0', color: C.text, fontFamily: FONT, textAlign: 'left', cursor: 'pointer' }}>
                     <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <span style={{ fontWeight: 700 }}>{g.label}</span>
-                      <span style={sub}>{g.shares.length} crop share{g.shares.length === 1 ? '' : 's'} · {qty(kg, u)}</span>
+                      <span style={sub}>{g.shares.length} crop agreement{g.shares.length === 1 ? '' : 's'} · {qty(kg, u)}</span>
                       {late > 0 && <span style={{ ...sub, color: C.coral }}>{late} harvest{late === 1 ? '' : 's'} late</span>}
                     </span>
                     <span style={chip}>Not sold</span>
@@ -257,7 +257,7 @@ export function HarvestGroup({ id, go }) {
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{c.name}</h2>
           <span style={{ color: C.muted }}>{first === last ? day(first) : `${day(first)} – ${day(last)}`} {new Date(last * 1000).getUTCFullYear()}</span>
         </div>
-        {kv('Crop shares', `${g.shares.length} · ${qty(kg, u)}`)}
+        {kv('Crop agreements', `${g.shares.length} · ${qty(kg, u)}`)}
         {kv('Harvested', `${done.length} of ${g.shares.length} · ${qty(done.reduce((t, s) => t + (s.kg || 0), 0), u)}`)}
         {late.length > 0 && kv('Late', `${late.length} · ${late.slice(0, 3).map((s) => s.who).join(', ')}${late.length > 3 ? '…' : ''}`, C.coral)}
         <div style={{ borderTop: `1px solid ${C.raised}` }} />
@@ -265,7 +265,7 @@ export function HarvestGroup({ id, go }) {
         {kv('Est. value', p.inrPerKg ? `${inr(kg * p.inrPerKg)} at ${inr(p.inrPerKg * u.per)} /${u.short}` : 'No price yet')}
         <div style={{ borderTop: `1px solid ${C.raised}` }} />
         <button type="button" onClick={() => setOpen((v) => !v)} style={{ display: 'flex', justifyContent: 'space-between', border: 0, background: 'none', padding: 0, color: C.text, fontFamily: FONT, fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>
-          <span>{g.shares.length} crop share{g.shares.length === 1 ? '' : 's'}</span><span aria-hidden="true">{open ? '⌃' : '⌄'}</span>
+          <span>{g.shares.length} crop agreement{g.shares.length === 1 ? '' : 's'}</span><span aria-hidden="true">{open ? '⌃' : '⌄'}</span>
         </button>
         {open && rows.map((s) => {
           const lateDays = Math.floor((now - s.planned) / DAY);

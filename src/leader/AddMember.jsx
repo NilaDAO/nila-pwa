@@ -200,7 +200,7 @@ export function KeypadPoints({ id, go }) {
   const api = useKeypadClient();
   const m = useKeypadMember(id).data;
   const key = `keypad-${id}`;
-  const send = useMutation({ mutationFn: () => api.points(id, readPoints(key).points.map(({ lat, lng, acc }) => ({ lat, lng, acc }))) });
+  const send = useMutation({ mutationFn: () => api.points(id, readPoints(key).points.map(({ lat, lng, acc, name }) => ({ lat, lng, acc, ...(name ? { name } : {}) }))) });
   const done = () => send.mutate(undefined, { onSuccess: (r) => { clearPoints(key); go(`tasks/border/${r.job}`); } });
   if (send.isPending) return <Loading />;
   if (send.error) {
@@ -276,7 +276,7 @@ export function SmartphonePoints({ go }) {
   const send = useMutation({ mutationFn: () => {
     const q = readPoints(key);
     return api.leaderPoints({ account: m.account, polygon: m.polygon, name: m.name, phone: m.phone, farm: (q.farm || '').trim(),
-      points: q.points.map(({ lat, lng, acc }) => ({ lat, lng, acc })) });
+      points: q.points.map(({ lat, lng, acc, name }) => ({ lat, lng, acc, ...(name ? { name } : {}) })) });
   } });
   const done = () => send.mutate(undefined, { onSuccess: (job) => {
     clearPoints(key);

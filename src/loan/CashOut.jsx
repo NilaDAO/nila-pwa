@@ -134,7 +134,7 @@ export default function CashOut({ onBack, kycOnly }) {
 }
 
 /** Leader: Tasks → Scan a member QR (executive decision 4 Nov): his signed nIN cash-out QR (NILA:N, deskCode.js) or,
- *  from a self-mode member (G9, 4 Nov), her signed withdrawal (NILA:W, fund_core.claim_junior_cash) or crop share
+ *  from a self-mode member (G9, 4 Nov), her signed withdrawal (NILA:W, fund_core.claim_junior_cash) or crop agreement
  *  (NILA:L, fund_core.draw_loan with her amounts),
  *  read by StartHelp, opens "Hand over ₹X to <name>"; one confirm submits fx_pool.cash_out_signed with this leader as
  *  the source (own XLM) and his signed entry for the account in the QR. A payout is booked against the office's cash
@@ -201,7 +201,7 @@ export function HandOver({ text, nameOf, onBack }) {
         <>
           <p style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', margin: '8px 0' }}>{`Hand over ${inr(got.inr)} to ${who}`}</p>
           <p style={{ ...muted, textAlign: 'center' }}>{got.kind === 'N' ? 'Their nIN, burned when you confirm' : got.kind === 'W' ? 'Their union investment withdrawal'
-            : `Their crop share${got.hours ? `, with ${ta(got.hours)} tractor acres of machine vouchers` : ''}`}</p>
+            : `Their crop agreement${got.hours ? `, with ${ta(got.hours)} tractor acres of machine vouchers` : ''}`}</p>
           {gap > 0 ? (
             <p style={{ color: C.coral, textAlign: 'center' }}>
               {`Not enough cash at the office: ${inr(gap)} short. ${cfg.anchor_url ? `Your LPs are asked to bring ${inr(gap)}; pay out once it is here.` : 'Pay out once it is here.'}`}

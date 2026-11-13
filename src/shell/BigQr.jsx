@@ -2,7 +2,7 @@
 // page under and around it: header, card padding, rows, buttons, tab bar), never clipped at its top or bottom; when it
 // is wider than the screen it runs off the sides (clipped there). The QR is inscribed in the circle (its own white
 // margin, 2 modules, is the quiet zone). `caption` sits in the circle under the QR, clear of its quiet zone. Used by
-// her crop share QR, L9 and her voucher code (A8a).
+// her crop agreement QR, L9 and her voucher code (A8a).
 import { C, R } from './tokens';
 
 export default function BigQr({ img, alt, caption, onClick, below = 290 }) {

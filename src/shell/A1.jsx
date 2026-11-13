@@ -1,6 +1,6 @@
 // A1 Assets / A1L (nila-design boards/MemberAssets-ley3; A1L = the same board with the leader flag).
 // P1 shows what has a hook today: total balance (nIN), wallet chip, land title (Polygon, her titles stay
-// there), nIN. Rows whose hooks come later (investment, vouchers, crop shares, union fund, cash) are
+// there), nIN. Rows whose hooks come later (investment, vouchers, crop agreements, union fund, cash) are
 // left out until those hooks exist (design rule 3), not drawn with made-up numbers. P6 adds Machinery (her
 // vouchers, A8) and Your machine (owner, A13). P9 adds USDC for an LP (lp-open/2: her USDC row). P10 (A1L): for a
 // leader, the cash and LP slides and the Union rows (treasury, cash). P11: a member with no land title registers
@@ -141,7 +141,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const card = stage ? { background: 'transparent', boxShadow: 'none', padding: 0, borderRadius: 0 } : {};
   // The LP offers come first in the slider (25 Oct): an LP may be on the way; then her machine, the union's cards, hers.
   // An LP's own cards (31 Oct): accept an offer on its card, then the same card shows the QR; first in the slider.
-  const mySlides = useLpSlides({ on: !leader && !!lp?.lp });
+  // A leader may be an LP too (8 Nov): any accepted LP sees the offers it can answer (another leader scans its code).
+  const mySlides = useLpSlides({ on: !!lp?.lp });
   const lpSlides = [...mySlides, ...leaderSlides.filter((el) => String(el.key).startsWith('lp-'))];
   const slides = [...lpSlides, ...leaderSlides.filter((el) => !lpSlides.includes(el)), ...memberSlides({ position: inv.data, positionKnown: !!s?.stellarAddress && (inv.isSuccess || inv.isError), loans, onRepayQr: (t) => onShare(`${t}/qr`),
     index: juniorIndex.data, onWithdrawal: onInvested, leader: !!leader })];
@@ -207,7 +208,10 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
           value={titles ?? '…'} valueSub="—" onClick={onLand} />
         {/* A member sees nIN only when she holds some: a machine owner's income, collected in cash (24 Oct). */}
-        {(leader || (lp?.idChecked && nin >= 1)) && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />}
+        {/* 13 Nov: nIN opens only after the identity check too, as USDC: a leader without it sees the row locked. */}
+        {leader && !lp?.idChecked
+          ? <Row label="nIN, identity check needed" icon={<NinTile />} title="nIN" warn="Identity check (KYC) needed" />
+          : (leader || (lp?.idChecked && nin >= 1)) && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />}
         {invested !== undefined && (
           <Row label={leader ? 'Open nIN invested' : 'Open union investment'} icon={<InvestedTile />} title={leader ? 'nIN invested' : 'Union investment'}
             sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : leader ? 'Union investment' : 'In your union'}
@@ -236,7 +240,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
             value={lp.usdc.toFixed(2)} valueSub={lp.locked ? `${lp.locked.toFixed(2)} locked` : ''} onClick={onUsdc} />
         )}
         {/* Vouchers under their own label (any voucher kind; machine work today): one row for her machine vouchers,
-            all her crop shares' work left together, in tractor acres (27 Oct); no crop named. */}
+            all her crop agreements' work left together, in tractor acres (27 Oct); no crop named. */}
         {vouchers.data?.length > 0 && (
           <>
             <span style={label}>Vouchers</span>
@@ -245,7 +249,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
               value={`${ta(vouchers.data.reduce((a, v) => a + v.left, 0))} ac`} valueSub="" onClick={onMachinery} />
           </>
         )}
-        {/* Her crop shares last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}
+        {/* Her crop agreements last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}
         <ShareRows onOpen={onShare} />
       </section>
     </>

@@ -1,0 +1,37 @@
+# Weekly release PR (Docs/RELEASE.md): main → release, with the commits it brings. Merging it is the decision to
+# publish; the upload to Amplify is scripts/release/publish.sh, run by a person (dev first, then prod).
+name: release-pr
+on:
+  schedule:
+    - cron: '0 6 * * 1'               # Mondays 06:00 UTC
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  open:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Open or update the release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch -q origin main release
+          ahead=$(git rev-list --count origin/release..origin/main)
+          if [ "$ahead" = 0 ]; then echo "release is up to date with main"; exit 0; fi
+          {
+            echo "Weekly release: $ahead commit(s) from main since the last release."
+            echo
+            echo "Merging this PR is the decision to publish. Then, on a machine with .env.production:"
+            echo '`git checkout release && git pull && scripts/release/publish.sh dev`, check it, then `publish.sh prod`.'
+            echo
+            echo "## Commits"
+            git log --no-merges --format='- %h %s' origin/release..origin/main | head -100
+          } > body.md
+          n=$(gh pr list --base release --head main --state open --json number -q '.[0].number')
+          if [ -n "$n" ]; then gh pr edit "$n" --body-file body.md; echo "updated #$n"
+          else gh pr create --base release --head main --title "Release $(date -u +%F)" --body-file body.md; fi

@@ -39,7 +39,7 @@ export function recordFields(record) {
   if (feats.length) {
     return { outline, fields: feats.map((f, i) => ({ id: `f${i}`, name: f.properties?.name || `Field ${i + 1}`, geometry: f.geometry })) };
   }
-  return { outline, fields: areasOf(record).map((z, i) => ({ id: String(z.zone_id), name: `Area ${i + 1}`, geometry: z.geometry })) };
+  return { outline, fields: areasOf(record).map((z, i) => ({ id: String(z.zone_id), name: z.name || `Area ${i + 1}`, geometry: z.geometry })) };
 }
 
 /** For AreaMap: { record, labels } with one area per field and the title's outline. */

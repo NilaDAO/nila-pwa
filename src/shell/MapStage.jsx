@@ -5,7 +5,7 @@
 //  - A Sheet with an AreaMap hands the map's props to the stage (ui.jsx) instead of drawing its own map, so CP1–CP13,
 //    A1, A4/A4a and A5 all move the same map: labels, the picked area, where the card leaves room.
 //  - useHomeMap: A1's map, her areas labelled with what grows there in the season she is in; a tap on an area opens
-//    its crop share for that season.
+//    its crop agreement for that season.
 import { useCallback, useMemo, useState } from 'react';
 import { LabelsCtx, StageCtx } from './stageCtx';
 import AreaMap from '../plan/AreaMap';
@@ -45,7 +45,7 @@ export default function MapStage({ children }) {
       {props?.record || props?.center ? (
         // Clipped: the map's tiles reach past its box and would otherwise make the page taller than the card.
         <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }} data-testid="map-stage">
-          <AreaMap {...props} labels={shownLabels} height="100%" />
+          <AreaMap {...props} labels={shownLabels} chipsOff={off} height="100%" />
           {props.chip && <Chip text={props.chip} />}
         </div>
       ) : (
@@ -75,13 +75,16 @@ export function shareOn(shares, seasons, i, zone) {
     && (x.crop === row.crop || x.crop === row.name) && (rowOf(x)?.sow === row.sow));
 }
 
+/** An area's page (13 Nov: one page per area, src/loan/CropArea): #/croparea/<zone>/<plan year>. */
+export const areaHash = (zone, y0) => `#/croparea/${encodeURIComponent(zone)}${y0 != null ? `/${y0}` : ''}`;
+
 /** Where a map looks with nothing of the member's to draw (the demo union's area; also the union map's start). */
 export const UNION_START = { lat: 11.8872, lng: 78.9659 };
 
 /** Where A1's card opens (its top, px): a strip of map above it. */
 export const homeTop = () => Math.round(window.innerHeight * 0.34);
 
-/** A1's map: { map, record } — her areas with this season's crops; a tap on an area opens its crop share. */
+/** A1's map: { map, record } — her areas with this season's crops; a tap on an area opens its crop agreement. */
 export function useHomeMap(onShare, fitBottom) {
   const land = useMyLand();
   const field = useFieldRecord(land.landId, land.evm, land.stellarTitle ? land.stellarTitle.record_hash || '' : undefined);

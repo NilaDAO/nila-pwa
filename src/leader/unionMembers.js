@@ -2,7 +2,7 @@
 // (LOAN_RULES "Membership"); there is no member list on chain, so the list is built from what the leader can read:
 //  - the union's titles on Stellar (node GET /stellar/union/titles: each checked on-chain; holder, farm, record hash),
 //  - keypad members the union added (GET /keypad/members, L14) and the open border jobs (GET /border/jobs: name, points),
-//  - the approved crop plans of lands she leads, their crop shares and each share's state on Stellar,
+//  - the approved crop plans of lands she leads, their crop agreements and each share's state on Stellar,
 //  - the node's union loan list (O15): what is left to repay and whether it is overdue.
 // The map (G1 is a map card) draws every property: her field record's areas per title, and the points of an open
 // border job (a small square each, as no shape is accepted yet).
@@ -47,10 +47,20 @@ const addTitlePlace = (m, t, tf) => {
   shapes.forEach((geometry, i) => m.places.push({ id: `land-${t.title_id}${i ? `-${i}` : ''}`, geometry }));
 };
 
+// Joined on this phone (7 Nov): the leader's scan sent her set_union; the node reads a "no" again only after 10
+// minutes, so the scan's own result hides G2's "Not joined yet" and the Tasks row at once.
+const JOINED = 'nila.joinedHere';
+export function joinedHere(address) {
+  try { return !!address && (JSON.parse(localStorage.getItem(JOINED) || '[]')).includes(address); } catch { return false; }
+}
+export function markJoined(address) {
+  try { const l = JSON.parse(localStorage.getItem(JOINED) || '[]'); if (!l.includes(address)) localStorage.setItem(JOINED, JSON.stringify([...l, address].slice(-200))); } catch { /* private */ }
+}
+
 // The list as it was last seen, kept on the phone per account and union (22 Oct): G1 shows it at once on the next open
 // and refreshes it in the background. Only the list fields are kept (no field records), so it stays small.
 const cacheKey = (acct, union) => `nila.members.${union}.${acct}`;
-const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label'];
+const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label', 'joined', 'keypadId'];
 function readKept(acct, union) {
   try { const v = JSON.parse(localStorage.getItem(cacheKey(acct, union)) || 'null'); return Array.isArray(v) ? v : undefined; } catch { return undefined; }
 }
@@ -84,7 +94,7 @@ const finish = (members) => members.map((m) => {
 }).sort((a, b) => b.loans.some((x) => x.overdue) - a.loans.some((x) => x.overdue) || a.label.localeCompare(b.label));
 
 /** G1's list (22 Oct, lean): the union's titles, keypad members, open border jobs and the loan list, with each loan's
- *  state from one batched read of its crop share (the loan sits inside it). Crop shares per member are read only on
+ *  state from one batched read of its crop agreement (the loan sits inside it). Crop agreements per member are read only on
  *  G2 (useMemberShares), so G1 waits on no mint list and no per-token read. */
 export function useUnionMembers(api) {
   const s = useNilaSigner();
@@ -96,7 +106,7 @@ export function useUnionMembers(api) {
     staleTime: 2 * 60_000, refetchInterval: 60_000,
     placeholderData: () => (cfg?.union && acct ? readKept(acct, cfg.union) : undefined),
     queryFn: async () => {
-      // The node's compact members list (map-centred lane, 23 Oct): one row per member, with its crop shares (25 Oct);
+      // The node's compact members list (map-centred lane, 23 Oct): one row per member, with its crop agreements (25 Oct);
       // the property outlines from the records kept on this phone. Until the node has it (404), the list is built
       // from the lists below. Kept on the phone with its change counter: only changed rows are fetched (25 Oct).
       const rows = await nodeRows(api, acct, cfg.union);
@@ -104,7 +114,9 @@ export function useUnionMembers(api) {
         const list = finish(await Promise.all(Object.values(rows).map(async (r) => {
           const m = { key: r.key || r.address, address: r.address || '', name: r.name || '', phone: r.phone || '', lands: new Set(), places: [], fields: [],
             note: r.note || '', job: r.job, nextHarvest: r.next_harvest || null, shareCounts: r.shares || {},
-            seq: r.seq || 0, shareList: r.share_list || [],
+            seq: r.seq || 0, shareList: r.share_list || [], keypadId: r.keypad_id || undefined,
+            // Her account names the union (7 Nov): false for a moved member until the leader scans her help QR; undefined unknown.
+            joined: r.joined === false && joinedHere(r.address) ? true : r.joined,
             loans: (r.loans || []).map((l) => ({ token: String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'), left: Number(l.left ?? l.cash ?? 0), overdue: !!l.overdue, due: Number(l.due || 0) })) };
           await Promise.all((r.titles || []).map(async (t) => {
             m.lands.add(t.title_id);
@@ -157,9 +169,10 @@ export function useUnionMembers(api) {
       ]);
       for (const k of keypad) {
         const m = get(k.device && k.account ? k.account : `keypad:${k.id}`); m.name = m.name || k.name || ''; m.phone = k.phone || '';
+        m.keypadId = k.id;   // her keypad row: the leader takes her points again for a new title (13 Nov)
         if (!m.lands.size) m.note = k.device ? 'Keypad phone set up' : k.link?.opened ? 'Opened the app link' : 'App link sent';
       }
-      // Loans: what is left and whether it is overdue, from the loan inside its crop share (one batched read).
+      // Loans: what is left and whether it is overdue, from the loan inside its crop agreement (one batched read).
       loanList.forEach((l, i) => {
         const g = fts[hexes[i]]?.loan;
         if (!g || (Number(g.flags ?? 0) & FLAG_CLOSED)) return;
@@ -173,7 +186,7 @@ export function useUnionMembers(api) {
   });
 }
 
-/** The union's crop shares per member (25 Oct): from the members list's rows (token, crop, area, season, window —
+/** The union's crop agreements per member (25 Oct): from the members list's rows (token, crop, area, season, window —
  *  no mint list per plan), with each share's state on Stellar. Chain reads are kept on this phone and read again only
  *  for members whose row changed since the last read (their counter), in batches of 100; `fresh`: one member whose
  *  shares are always read again (her G2, so a share just drawn on her own phone does not still offer Take up). */

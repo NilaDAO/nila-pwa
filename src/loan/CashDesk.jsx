@@ -1,4 +1,4 @@
-// The leader's Cash tab (P5b; boards LeaderCash C1, LeaderInvest L10, LeaderPhotoCount C6): crop share
+// The leader's Cash tab (P5b; boards LeaderCash C1, LeaderInvest L10, LeaderPhotoCount C6): crop agreement
 // request (L11), invest (her cash into her union investment) and repay (her cash against a loan). The
 // leader records the cash with fx_pool.cash_scan_mint (leader signs; the node sponsors the fee, 16 Oct).
 // The cash is counted on C6 (photo count, /inr/scan-bulk); the receipt hash (scan_hash) is sha256 of the
@@ -26,19 +26,23 @@ import { overRoom, useDeskRoom } from './deskRoom';
 import { Secondary } from './AssetParts';
 import { loanOf, owedOf } from './owed';
 import StartHelp from './StartHelp';
+import { investSplit } from './investSplit';
 
 const PURPOSE = { invest: 0, repay: 1 };
 const sha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
 
 /** Records counted cash for her (fx_pool.cash_scan_mint; the leader signs, the node pays the fee). The receipt is the
- *  stored photos of this count (one scan per receipt, ScanUsed on reuse). Returns false when no photo was stored. */
-export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys, token }) {
+ *  stored photos of this count (one scan per receipt, ScanUsed on reuse). Returns false when no photo was stored.
+ *  Invest (7 Nov): `amount` is what she invests (Bring cash to the office); the count may be more, and the leader
+ *  hands the difference back in change, shown on the result until closed. */
+export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys, token, amount }) {
   if (!s3Keys?.length) return false;
-  const amt = BigInt(Math.round(total)) * NIN;
+  const { invest, change: investChange } = purpose === 'invest' ? investSplit(total, amount) : { invest: total, change: 0 };
+  const amt = BigInt(Math.round(invest)) * NIN;
   const scanHash = await sha(`${s3Keys.join('|')}|${who}|${purpose}|${amt}`);
   // A repay counted above what is owed (24 Oct): the contract takes what is owed and burns the rest, so the leader
   // hands the difference back in cash; read fresh so the change is right to the rupee.
-  let change = 0;
+  let change = investChange;
   if (purpose === 'repay' && token) {
     const [loan, vb] = await Promise.all([
       readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(token)]).then(loanOf).catch(() => null),
@@ -50,8 +54,9 @@ export async function recordCash({ tx, leader, cfg, purpose, who, total, s3Keys,
     }
   }
   await tx.run({
-    label: purpose === 'invest' ? `Invest ${inr(total)}` : `Repay ${inr(total)}`,
-    rows: [...(change > 0 ? [['Hand back', `${inr(change)} in change`], ['Counted', inr(total)], ['Repaid', inr(total - change)]] : [['Amount', inr(total)]]),
+    label: purpose === 'invest' ? `Invest ${inr(invest)}` : `Repay ${inr(total)}`,
+    rows: [...(change > 0 ? [['Hand back', `${inr(change)} in change`], ['Counted', inr(total)], [purpose === 'invest' ? 'Invested' : 'Repaid', inr(total - change)]]
+      : [['Amount', inr(invest)]]),
       ['From', `${who.slice(0, 4)}…${who.slice(-4)}`]],
     hold: change > 0,
     contractName: 'fx_pool', fn: 'cash_scan_mint',
@@ -110,7 +115,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
             readContract(cfg, 'fund_core', 'food_token', [sv.address(cfg.union), sv.bytes32(h)]).then(loanOf),
             readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(h)]).catch(() => null),
           ]);
-          return loan && !loan.closed ? { token: h, ...(crops[h] || { crop: 'Crop share' }), loan, vb } : null;
+          return loan && !loan.closed ? { token: h, ...(crops[h] || { crop: 'Crop agreement' }), loan, vb } : null;
         }));
       }));
       return per.flat().filter(Boolean);
@@ -118,7 +123,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
   });
   // Cash and the voucher's value, with interest, and the treasury's 5% of handed-back acres (26 Oct).
   const owed = (l) => Math.ceil(Number(owedOf(l.loan, l.vb)) / Number(NIN));
-  // From her G2 with one open loan, or her crop share QR (24 Oct): that loan is picked for her.
+  // From her G2 with one open loan, or her crop agreement QR (24 Oct): that loan is picked for her.
   useEffect(() => {
     if (!fixed || token || !loans.data) return;
     const l = loans.data.find((x) => x.token === initialToken) || (loans.data.length === 1 ? loans.data[0] : null);
@@ -130,9 +135,10 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
   const sel = loans.data?.find((l) => l.token === token);
   const who = purpose === 'repay' ? sel?.loan?.borrower : member.trim();
   const record = async ({ total, s3Keys }) => {
-    setAmount(total);
-    // Without stored photos there is no unique scan, so nothing is recorded.
-    if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose, who, total, s3Keys, token: sel?.token }))) setNoPhotos(true);
+    // Without stored photos there is no unique scan, so nothing is recorded. Invest (7 Nov): the amount set here is
+    // invested, the rest of the count is handed back as change.
+    if (!(await recordCash({ tx, leader: s.stellarAddress, cfg, purpose, who, total, s3Keys, token: sel?.token,
+      amount: purpose === 'invest' ? amount : undefined }))) setNoPhotos(true);
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   if (counting) {
@@ -169,14 +175,14 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
 }
 
 /** A task from the Tasks tab (24 Oct, as Pay out cash): the leader scans her QR first. Her wallet QR gives her
- *  account; her crop share QR (`nila:share:<plan>_<token>:<her G>`) gives her account and that share. */
+ *  account; her crop agreement QR (`nila:share:<plan>_<token>:<her G>`) gives her account and that share. */
 function ScanHer({ title, note, shareOnly, onFound, onBack }) {
   const [error, setError] = useState();
   const read = (text) => {
     const t = String(text || '').trim();
     const share = /^nila:share:(\w+?)_(\w+):([GC][A-Z2-7]{55})$/.exec(t);
     if (share) { onFound({ who: share[3], plan: share[1], token: share[2] }); return; }
-    if (shareOnly) { setError('Scan the crop share QR (a Ready crop share in Assets).'); return; }
+    if (shareOnly) { setError('Scan the crop agreement QR (a Ready crop agreement in Assets).'); return; }
     const g = addressFromQr(t);
     if (g) onFound({ who: g }); else setError('This is not a member QR.');
   };
@@ -193,7 +199,7 @@ const FLAG_CLOSED = 4;
 const dayOf = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
 /** Tasks → Scan her QR (executive decision 26 Oct: one QR at the office, every mode): the member's help QR starts the
- *  session and opens the member's G2, where the leader invests, repays, uses a crop share or pays out a withdrawal. A
+ *  session and opens the member's G2, where the leader invests, repays, uses a crop agreement or pays out a withdrawal. A
  *  machine owner's signed nIN cash-out QR (NILA:N, 4 Nov) opens Hand over ₹X instead. */
 function ScanAny({ onBack }) {
   const api = usePlanClient();
@@ -215,7 +221,7 @@ function ToMembersFrom({ member }) {
 
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
 // Her own actions start from her QR (executive decision 24 Oct, as Pay out cash): a task without her scans her wallet or
-// crop share QR first, then the count. From her G2 they come as #/cash/<action>/<her Stellar address>.
+// crop agreement QR first, then the count. From her G2 they come as #/cash/<action>/<her Stellar address>.
 const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', machine: 'machine', withdraw: 'withdraw', share: 'share', scan: 'scan' };
 const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
 const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/([GC][A-Z2-7]{55})/) || [])[1];
@@ -233,10 +239,10 @@ export default function CashDesk({ initial }) {
   if (view === 'scan') return <ScanAny onBack={toTasks} />;
   if (!member && !found && (view === 'invest' || view === 'repay')) {
     return <ScanHer title={view === 'invest' ? 'Invest' : 'Repay'} onBack={toTasks} onFound={setFound}
-      note={view === 'invest' ? 'Scan the member\'s wallet QR, then count the cash.' : 'Scan the member\'s wallet QR or the crop share QR of the loan, then count the cash.'} />;
+      note={view === 'invest' ? 'Scan the member\'s wallet QR, then count the cash.' : 'Scan the member\'s wallet QR or the crop agreement QR of the loan, then count the cash.'} />;
   }
   if (!member && view === 'share') {
-    return <ScanHer title="Use a crop share" shareOnly onBack={toTasks} note="Scan the crop share QR (a Ready crop share in Assets)."
+    return <ScanHer title="Use a crop agreement" shareOnly onBack={toTasks} note="Scan the crop agreement QR (a Ready crop agreement in Assets)."
       onFound={(f) => window.location.replace(`#/loan/${f.plan}_${f.token}`)} />;
   }
   if (found) return <Scan purpose={view} onBack={toTasks} initialMember={found.who} initialToken={found.token && tokenHex(found.token)} />;

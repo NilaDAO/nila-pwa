@@ -105,7 +105,7 @@ export function useKnownMembers(api) {
 }
 
 /** The union's to-do items for L1 (25 Oct): from the members list kept on the phone, not one call per plan or loan.
- *  Crop shares ready: one row with the count, which opens the Assets map (every member with a Ready share is marked
+ *  Crop agreements ready: one row with the count, which opens the Assets map (every member with a Ready share is marked
  *  there). Repayments: from the list's loans and their estimated due date (LOAN_RULES §1); her G2 reads the contract's. */
 export function useLeaderTodo(api, cash) {
   const { data: cfg } = useStellarConfig();
@@ -123,7 +123,7 @@ export function useLeaderTodo(api, cash) {
         const ready = (m.shareList || []).filter((x) => x.state === 'ready' && !(Number(x.final || 0) > 0 && now > Number(x.final)));
         if (ready.length) { shares += ready.length; who += 1; }
       }
-      if (shares) out.push({ key: 'share-ready', title: 'Crop shares ready', who: `${shares} share${shares === 1 ? '' : 's'} · ${who} member${who === 1 ? '' : 's'}`, to: 'assets' });
+      if (shares) out.push({ key: 'share-ready', title: 'Crop agreements ready', who: `${shares} agreement${shares === 1 ? '' : 's'} · ${who} member${who === 1 ? '' : 's'}`, to: 'assets' });
       for (const m of members.data) {
         for (const l of m.loans) {
           if (l.overdue || (l.due && l.due < now)) out.push({ key: `collect-${l.token}`, title: 'Collect repayment', amount: l.left, who: m.label, to: `members/${m.route}`, urgent: true });

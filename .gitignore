@@ -52,3 +52,6 @@ localhost-cert.pem
 .env.mainnet-local
 .env.local.bak
 .env.local.hardhat
+
+# release lane: publish.sh state (which commit went to dev / prod) and its build zip
+/.release/

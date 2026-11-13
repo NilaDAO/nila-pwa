@@ -2,7 +2,7 @@
 // and burning the title (2 Nov: POST /stellar/titles/burn, the holder; 4 Nov, G4: a Polygon title goes to 0x…dEaD first). DESIGN GAPs (no hook yet, so not shown or not
 // active): marking a well or bore (A5a, useWaterSources / useSaveWaterSources), farm improvements (useImprovements,
 // useImprovementInterest), the trees row (useTreeCheck, TreeMap).
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ethers } from 'ethers';
 import { useProvider } from '../hooks/useWallet.ts';
@@ -19,7 +19,7 @@ import { areaM2, tapRule } from '../plan/mapTap';
 import { Sheet } from '../plan/ui';
 import { Loading } from '../register/Boot';
 import { IdentityRow } from '../leader/LeaderSettings';
-import { useBorderClient } from '../border/hooks';
+import { titlePending, useBorderClient, useMyBorderJob } from '../border/hooks';
 import { C, R } from './tokens';
 
 const LAND_TITLE = process.env.REACT_APP_LAND_TITLE_MAIN;
@@ -35,7 +35,7 @@ const btn = { width: '100%', height: 44, border: 0, borderRadius: R.button, font
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
 
 /** bar / onSwipe (map-central trial): the ‹ asset › bar on top of the card, and a swipe on the card that steps it. */
-export default function LandTitle({ onBack, bar, onSwipe }) {
+export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
   const s = useNilaSigner();
   const titles = useLandTitles(s?.evmAddress);
   const stellarTitles = useStellarTitles(s);
@@ -104,6 +104,20 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
     mutationFn: () => border.sheetPlaced(landId),
     onSuccess: (d) => { qc.setQueryData(['oracle', 'border', 'landCheck', landId], d); setSheetOpen(false); },
   });
+  // A leader without a title (burned it, 12 Nov): the mint button in place of Burn, as on the Crop plan's no-title
+  // card — her field points already with the union open that border job, else a new title starts (L2a–L4).
+  const myJob = useMyBorderJob();
+  // Only with a balance of 0 read on both chains (Polygon and Stellar): never while a read is loading or failed.
+  const noTitle = titles.isSuccess && stellarTitles.isSuccess && count === 0;
+  // Just minted (12 Nov): a pending state, not "No land title yet" with the mint button; her titles are read again
+  // every 5 s until it shows.
+  const pending = titlePending(myJob.data, noTitle);
+  useEffect(() => {
+    if (!pending) return undefined;
+    const t = setInterval(() => { titles.refetch(); stellarTitles.refetch(); }, 5000);
+    return () => clearInterval(t);
+  }, [pending]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openJob = myJob.data && myJob.data.status !== 'failed' && myJob.data.status !== 'minted' ? myJob.data : null;
   const onTap = tapRule(picked, { open: setPicked, back: () => setPicked(null) });
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
   if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched) || field.isLoading) return <Loading />;
@@ -121,7 +135,7 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
             <span style={{ color: C.muted }}>Size</span><span style={{ fontWeight: 700 }}>at least 4 m × 4 m</span>
           </div>
-          <p style={muted}>Needed before your open cash passes ₹1 lakh.</p>
+          <p style={muted}>Needed for larger crop agreements.</p>
           <button type="button" onClick={() => placed.mutate()} disabled={placed.isPending || !border}
             style={{ ...btn, background: C.accent, color: C.ink, cursor: 'pointer' }}>
             {placed.isPending ? 'Sending…' : 'I placed the sheet'}
@@ -154,7 +168,7 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
         <span style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>Land title</span>
-          <span style={{ color: C.muted }}>{landId != null ? [farm, `id ${landId}`, `on ${onPolygon ? 'Polygon' : 'Stellar'}`].filter(Boolean).join(' · ') : 'No land title yet'}</span>
+          <span style={{ color: C.muted }}>{landId != null ? [farm, `id ${landId}`, onPolygon ? 'on Polygon' : 'attested'].filter(Boolean).join(' · ') : pending ? 'Being minted' : 'No land title yet'}</span>
         </span>
         <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>{count}</span>
@@ -167,32 +181,52 @@ export default function LandTitle({ onBack, bar, onSwipe }) {
         const sub = st === 'leader_gps' ? 'Checked: your leader took your fields on site'
           : st === 'sheet_found' ? 'Checked: the sheet was seen'
             : st === 'sheet_pending' ? `Waiting for a clear satellite image (sheet placed ${check.data.placed_at})`
-              : 'Needed before your open cash passes ₹1 lakh';
-        return <IdentityRow title="Land check" checked={done} sub={sub} todo={st === 'sheet_pending' ? 'Waiting' : 'Not checked'}
-          onClick={done || st === 'sheet_pending' ? undefined : () => setSheetOpen(true)} />;
+              : 'Needed for larger crop agreements';
+        // More room above and below the land check (13 Nov).
+        return (
+          <div style={{ margin: '16px 0' }}>
+            <IdentityRow title="Land check" checked={done} sub={sub} todo={st === 'sheet_pending' ? 'Waiting' : 'Not checked'}
+              onClick={done || st === 'sheet_pending' ? undefined : () => setSheetOpen(true)} />
+          </div>
+        );
       })()}
       <hr style={line} />
       <section aria-label="Water on your land" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h2 style={h2}>Water on your land</h2>
         <p style={muted}>No well or bore marked yet. Your crop plan and the water improvements need it.</p>
         {/* DESIGN GAP: A5a (MemberWellForm) is not built, so the button does nothing yet. */}
-        <button type="button" disabled aria-disabled="true" style={{ ...btn, background: C.accent, color: C.ink, opacity: 0.5, cursor: 'default' }}>
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
+        {/* A second button (13 Nov): grey, not the screen's primary action. */}
+        <button type="button" disabled aria-disabled="true" style={{ ...btn, background: C.raised, color: C.text, opacity: 0.5, cursor: 'default' }}>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
           Mark a well or bore
         </button>
       </section>
       <hr style={line} />
       {/* A5 Burn my land title (R68, executive decision 2 Nov; Polygon titles too since 4 Nov, G4: sent to 0x…dEaD); the
-          node checks no crop share and no investment. Membership ends; a leader stays a leader (roles). */}
-      <button type="button" onClick={() => setAsk(true)} disabled={landId == null}
-        style={{ ...btn, background: C.raised, color: C.coral, opacity: landId != null ? 1 : 0.5, cursor: landId != null ? 'pointer' : 'default' }}>
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.coral} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-        Burn my land title
-      </button>
+          node checks no crop agreement and no investment. Membership ends; a leader stays a leader (roles). Without a title a
+          leader gets the mint button instead (12 Nov); a member's leader mints hers (3 Nov), so she sees neither. */}
+      {landId == null ? (pending ? (
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, lineHeight: 1.5, color: C.muted }}>
+          <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite', flexShrink: 0 }} />
+            <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
+          Minting your land title. It shows here in a minute or two.
+        </div>
+      ) : leader && noTitle && (
+        <button type="button" onClick={() => { window.location.hash = openJob ? `#/tasks/border/${openJob.id}` : '#/crop/register'; }}
+          style={{ ...btn, background: C.accent, color: C.ink, cursor: 'pointer' }}>
+          Mint land title
+        </button>
+      )) : (
+        <button type="button" onClick={() => setAsk(true)}
+          style={{ ...btn, background: C.raised, color: C.coral, cursor: 'pointer' }}>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.coral} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+          Burn my land title
+        </button>
+      )}
       {ask && (
         <ConfirmCard title="Burn my land title" ok={burn.isPending ? 'Burning…' : 'Burn'} okStyle={{ background: C.coral }} okDisabled={burn.isPending}
           onCancel={() => setAsk(false)} onOk={() => burn.mutate()}
-          warn={`Burn land title ${landId}? This ends your membership of the union and cannot be undone. nIN, USDC and vouchers stay in your wallet. To join again you need a new land title (Crop plan). Not possible while you have a crop share or an investment.`}>
+          warn={`Burn land title ${landId}? This ends your membership of the union and cannot be undone. nIN, USDC and vouchers stay in your wallet. To join again you need a new land title (Crop plan). Not possible while you have a crop agreement or an investment.`}>
           {step && <p style={muted}>{step}</p>}
           {burn.error && <p style={{ ...muted, color: C.coral }}>{burn.error.message}</p>}
         </ConfirmCard>

@@ -128,12 +128,14 @@ export function useLpSlides({ on = true } = {}) {
 export function LpTaskRows({ go }) {
   const { mine } = useMine();
   if (!mine.length) return null;
-  return (
-    <ListSection title="Cash offers">
-      {mine.map((o, i) => <ListRow key={o.id} first={i === 0} icon={RupeeIcon} tone="new" title={titleOf(o)} sub="Show your code to your leader"
-        onClick={() => go(`lpcode/${o.id}`)} />)}
-    </ListSection>
-  );
+  return <ListSection title="Cash offers"><LpOwnRows go={go} /></ListSection>;
+}
+
+/** The same rows without their section, for a leader who is also an LP (8 Nov): on the leader's Tasks, "Your own". */
+export function LpOwnRows({ go, first = true, sub = 'Show your code to your leader' }) {
+  const { mine } = useMine();
+  return mine.map((o, i) => <ListRow key={o.id} first={first && i === 0} icon={RupeeIcon} tone="new" title={titleOf(o)} sub={sub}
+    onClick={() => go(`lpcode/${o.id}`)} />);
 }
 
 /** The LP's code on the standard QR screen (as the help QR): close it any time, open it again from Tasks. After the

@@ -17,7 +17,7 @@ import { ChevronIcon, LockIcon, MachineryTile } from '../shell/icons';
 import Segmented from '../shell/Segmented';
 import { NoteBar } from '../loan/AssetParts';
 import { Card, CardButton, ConfirmCard, Row, Text, btn } from '../shell/SettingsParts';
-import { MAX_UNION_TYPES, PARTS, TYPES, VOUCHER_CATEGORIES, useRates, typeName } from '../machine/hooks';
+import { MAX_UNION_TYPES, PARTS, TYPES, VOUCHER_CATEGORIES, useMachines, useRates, typeName } from '../machine/hooks';
 import { useStellarConfig } from '../stellar/hooks';
 import { keyQr, loadKey, parseKeyQr } from './book';
 import { addressFromQr } from '../leader/unionMembers';
@@ -462,7 +462,11 @@ export function VoucherPrices() {
   // A proposal for a type the union has no price for yet: a new machine (its card leads, like any proposal).
   const pendingNew = [...new Set(all.filter((p) => (p.status === 'open' || p.status === 'sending')
     && !(rates.data || []).some((r) => r.type === Number(p.args.machine_type))).map((p) => Number(p.args.machine_type)))];
-  const list = [...(rates.data || [])].sort((x, y) => {
+  // Settings shows only the priced types with a registered machine in the union (7 Nov), or with a proposal open;
+  // registering a machine (RegisterMachine) still lists every priced type, and Add a voucher every standard one.
+  const machines = useMachines();
+  const registered = machines.data ? new Set(machines.data.map((m) => m.machine_type)) : null;
+  const list = [...(rates.data || [])].filter((r) => !registered || registered.has(r.type) || openOf(r.type)).sort((x, y) => {
     const px = openOf(x.type); const py = openOf(y.type);
     if (!!px !== !!py) return px ? -1 : 1;
     return px ? py.created_at - px.created_at : x.type - y.type;
@@ -502,13 +506,15 @@ export function PersonalName({ address, phone: knownPhone }) {
   const label = (
     <button type="button" onClick={() => setNote(!note)} aria-label="Who can read the full name" aria-pressed={note}
       style={{ display: 'flex', alignItems: 'center', gap: 6, border: 0, background: 'none', padding: 0, color: C.muted, fontFamily: 'inherit', fontSize: 14,
-        cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-      <LockIcon size={14} color={note ? C.text : C.muted} />Full name
+        cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, lineHeight: 'inherit' }}>
+      {/* Lock after the label (13 Nov): the row reads as Property and Fields, the icon only a hint. */}
+      Full name<LockIcon size={12} color={note ? C.text : C.muted} />
     </button>
   );
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 36, fontSize: 14 }}>
+    // No margin or min height (13 Nov): one more row in G2's Property / Fields group, same spacing.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14 }}>
         {label}
         {locked ? (
           <span style={{ color: C.muted, textAlign: 'right' }}>{book.data.state === 'mismatch' ? 'Union key does not match' : 'No union key on this phone'}</span>

@@ -1,0 +1,51 @@
+# The release lane's gate (Docs/RELEASE.md): every PR and every push to main / release builds the app the way a
+# release is built — no production settings, no demo flags — and scripts/release/check-no-demo.sh fails it when demo
+# code or demo settings would ship to pwa.nila.land.
+name: ci
+on:
+  pull_request:
+    branches: [main, release]
+  push:
+    branches: [main, release]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    name: build + no demo
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --legacy-peer-deps   # as the local installs: @privy-io/react-auth peers (@solana/kit) conflict
+      - name: Build (no production settings, no demo flags)
+        run: npx react-app-rewired build
+        env:
+          CI: 'false'                 # CRA turns lint warnings into errors under CI=true; the build is the check here
+          GENERATE_SOURCEMAP: 'false'
+          REACT_APP_VERSION: ci-${{ github.sha }}
+      - name: No demo code or settings in the build
+        run: scripts/release/check-no-demo.sh build
+  test:
+    name: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Not blocking yet: 4 suites fail on main (10 Nov: App, grantInfo, useRegFlow, fieldRegMaps). Make this job a
+    # required check once they pass.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --legacy-peer-deps   # as the local installs: @privy-io/react-auth peers (@solana/kit) conflict
+      - run: npx react-app-rewired test --watchAll=false
+        env:
+          CI: 'true'
