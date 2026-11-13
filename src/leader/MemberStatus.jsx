@@ -216,7 +216,8 @@ export default function MemberStatus({ id, go }) {
   // Map taps (24 Oct rule): her property again → back to the list (only her property is on G2's map).
   // No record yet: the title's fields, as the Assets map (28 Oct).
   const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} />
-    : fields.length ? <AreaMap record={{ zones: fields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry })) }} onSelect={() => go('members')} />
+    // Before the record (13 Nov): the title's fields with their names, not "Area n".
+    : fields.length ? <AreaMap record={{ zones: fields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry, ...(f.name ? { name: f.name } : {}) })) }} onSelect={() => go('members')} />
       // No land (13 Nov: e.g. her title removed): the union's land, as the crop plan's no-title map.
       : <AreaMap record={null} center={unionCentre(members.data)} />;
   const myLands = new Set([m.titleId, ...(m.lands || [])].filter((x) => x != null).map(String));
