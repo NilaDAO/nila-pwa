@@ -141,8 +141,11 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
   // plan's first crop there. Set on the field record, so not changed here.
   for (const st of (plan.plan.standing || []).filter((x) => x.zone === zone)) {
     if (at(st.until) <= 0) continue;
-    // No sowing date (she set the crop herself, 13 Nov): it stands from the start of the year shown, not only at its end.
-    const s0 = st.sow ? Math.max(0, Math.min(12, at(st.sow))) : 0;
+    // No sowing date (she set the crop herself, 13 Nov): it stands from today — not only at its end, and not in a past
+    // year on the bar.
+    const from = st.sow ? at(st.sow) : at(new Date().toISOString().slice(0, 10));
+    if (from >= 12) continue;
+    const s0 = Math.max(0, Math.min(12, from));
     const s1 = Math.max(s0 + 0.3, Math.min(12, at(st.until)));
     const m = MON[new Date(st.until).getMonth()];
     out.push({ key: `standing-${st.crop}`, s0, s1, name: `${st.name}, until ${st.estimate ? '~' : ''}${m}`, fill: st.colour || C.muted,
