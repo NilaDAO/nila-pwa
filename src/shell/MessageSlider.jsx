@@ -21,9 +21,9 @@ export function Bar({ pct, label, color = C.accent }) {
   );
 }
 
-export function Steps({ items }) {
+export function Steps({ items, gap = 12 }) {   // gap: 16 on G2's Join the union (13 Nov)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap }}>
       {items.map((t, i) => (
         <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', ...small }}>
           <span aria-hidden="true" style={{ width: 32, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>

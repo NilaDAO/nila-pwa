@@ -70,8 +70,9 @@ function Row({ k, v, tone }) {
     </div>
   );
 }
-const Section = ({ title, right, children }) => (
-  <section style={{ borderTop: `1px solid ${C.raised}`, paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+// gap: 8 by default; Join the union takes 20, the Assets cards' gap (13 Nov).
+const Section = ({ title, right, children, gap = 8 }) => (
+  <section style={{ borderTop: `1px solid ${C.raised}`, paddingTop: 16, display: 'flex', flexDirection: 'column', gap }}>
     {(title || right) && (
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h2>
@@ -375,18 +376,20 @@ export default function MemberStatus({ id, go }) {
 function JoinSteps({ m, onScan }) {
   const [phone, setPhone] = useState('smart');      // 'smart' | 'keypad'
   const [moving, setMoving] = useState(false);
-  const scan = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={onScan}>Scan the QR</button>;
+  // Buttons in a step keep 8 px above and below (16 / 24 to the text and the next step; 13 Nov).
+  const stepBtn = { ...btn(), flex: 'none', width: '100%', margin: '8px 0' };
+  const scan = <button type="button" style={stepBtn} onClick={onScan}>Scan the QR</button>;
   const steps = phone === 'smart'
     ? ['The member opens the Nila app and recovers the account.', 'The member taps the scan icon at the bottom: the QR shows.', <>Scan the QR. Done: the member has joined.{scan}</>]
     : ['The phone needs internet only while Nila lite installs.',
-      <>Send the SMS.<button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setMoving(true)}>Move</button></>,
+      <>Send the SMS.<button type="button" style={stepBtn} onClick={() => setMoving(true)}>Move</button></>,
       'The member opens the SMS and taps QR in the bottom right corner.', <>Scan the QR. Done: the member has joined.{scan}</>];
   // A G2 section (13 Nov), not a card: the phone switch, then numbered steps with the action in its step.
   return (
-    <Section title="Join the union" right="Not joined yet">
+    <Section title="Join the union" right="Not joined yet" gap={20}>
       {/* The phone switch as Cash ahead's All | Half (13 Nov). */}
       <Segmented label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad phone']]} />
-      <Steps items={steps} />
+      <Steps items={steps} gap={16} />
       {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
     </Section>
   );
