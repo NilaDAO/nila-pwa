@@ -15,7 +15,7 @@ import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePendingApprovals, usePlanClient } from '../plan/hooks';
 import { C, FONT, R } from '../shell/tokens';
-import { ChevronIcon, TrashIcon, WarnIcon } from '../shell/icons';
+import { ChevronIcon, FileIcon, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
 import AreaMap from '../plan/AreaMap';
 import { unionCentre } from './unionMap';
@@ -402,7 +402,7 @@ const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, background: C
  *  delete button, each opening the same confirm card as before, then her record. Recover is disabled while a recovery
  *  waits out the union's wait or the app must finish it (its status under her name says which). */
 function Account({ m, inv, go }) {
-  const [card, setCard] = useState();       // 'recover' | 'keypad' | 'remove'
+  const [card, setCard] = useState();       // 'recover' | 'keypad' | 'remove' | 'delete' | 'data' | 'record'
   const rcv = useRecovery(m.address);
   const titleId = m.titleId || [...(m.lands || [])][0];
   const p = inv.data;
@@ -419,28 +419,48 @@ function Account({ m, inv, go }) {
   const close = () => setCard();
   return (
     <Section title="Account">
-      {(rcv.applies || titleId || gone) && (
+      {(rcv.applies || titleId || gone || m.recordHash) && (
         <div style={{ display: 'flex', gap: 8 }}>
           {rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
           {move && <button type="button" style={btn()} onClick={() => setCard('keypad')}>Move</button>}
           {/* "Sync with phone" (13 Nov; was "Her data as QR"): what it does for her, not how. */}
           {lite && <button type="button" style={btn()} onClick={() => setCard(card === 'data' ? undefined : 'data')}>Sync with phone</button>}
+          {/* Her record as a square button before the bin (13 Nov; was a "Record" row): the hash is for checking, not
+              reading, so it opens in a card with Copy. Disabled without a record. */}
+          <button type="button" aria-label="Field record" disabled={!m.recordHash} onClick={() => setCard('record')}
+            style={{ ...square(!!m.recordHash), marginLeft: 'auto' }}>
+            <FileIcon color={C.text} />
+          </button>
           {(titleId || gone) && (
             <button type="button" aria-label={gone ? 'Delete member' : 'Remove member'} onClick={() => setCard(gone ? 'delete' : 'remove')}
-              style={{ ...btn(), flex: 'none', width: 44, marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              style={square()}>
               <TrashIcon color={C.coral} />
             </button>
           )}
         </div>
       )}
-      {/* The record in the normal text colour (4 Nov: gold is for pins and icons only, the accent never on text). */}
-      {m.recordHash && <Row k="Record" v={`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`} />}
+      {card === 'record' && <RecordCard hash={m.recordHash} onClose={close} />}
       {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
       {card === 'data' && <LiteDataQr m={m} inv={inv} onClose={close} />}
       {card === 'keypad' && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={close} />}
       {card === 'remove' && <RemoveMember m={m} why={why} titleId={titleId} go={go} onClose={close} />}
       {card === 'delete' && <DeleteMember m={m} go={go} onClose={close} />}
     </Section>
+  );
+}
+
+// Account's square icon buttons (13 Nov): the record and the bin share one size.
+const square = (enabled = true) => ({ ...btn(enabled), flex: 'none', width: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' });
+
+/** The field record (13 Nov): the full hash, selectable and wrapping, with Copy; one tap shows "Copied" briefly. */
+function RecordCard({ hash, onClose }) {
+  const [done, setDone] = useState(false);
+  const copy = () => { navigator.clipboard?.writeText(hash).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); }).catch(() => {}); };
+  return (
+    <ConfirmCard title="Field record" cancel="Close" ok={done ? 'Copied' : 'Copy'} onCancel={onClose} onOk={copy}>
+      <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 13, lineHeight: 1.5, color: C.text,
+        wordBreak: 'break-all', userSelect: 'text', WebkitUserSelect: 'text' }}>{hash}</span>
+    </ConfirmCard>
   );
 }
 

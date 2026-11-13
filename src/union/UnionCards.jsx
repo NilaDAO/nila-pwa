@@ -506,13 +506,15 @@ export function PersonalName({ address, phone: knownPhone }) {
   const label = (
     <button type="button" onClick={() => setNote(!note)} aria-label="Who can read the full name" aria-pressed={note}
       style={{ display: 'flex', alignItems: 'center', gap: 6, border: 0, background: 'none', padding: 0, color: C.muted, fontFamily: 'inherit', fontSize: 14,
-        cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-      <LockIcon size={14} color={note ? C.text : C.muted} />Full name
+        cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, lineHeight: 'inherit' }}>
+      {/* Lock after the label (13 Nov): the row reads as Property and Fields, the icon only a hint. */}
+      Full name<LockIcon size={12} color={note ? C.text : C.muted} />
     </button>
   );
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 36, fontSize: 14 }}>
+    // No margin or min height (13 Nov): one more row in G2's Property / Fields group, same spacing.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14 }}>
         {label}
         {locked ? (
           <span style={{ color: C.muted, textAlign: 'right' }}>{book.data.state === 'mismatch' ? 'Union key does not match' : 'No union key on this phone'}</span>
