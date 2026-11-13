@@ -122,8 +122,8 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, ass
       <Group name="Coming up" items={later} />
       {/* 13 Nov: the whole plan as crop bars, below the tasks, under its own title. */}
       {chart && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>The overall plan</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16, borderTop: `1px solid ${C.raised}`, paddingTop: 16 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>This year's plan</span>
           {chart}
           {/* 13 Nov: the plan's date right under its bars. */}
           {madeOn && <span style={{ fontSize: 13, color: C.muted }}>Plan made {madeOn}</span>}
