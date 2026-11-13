@@ -213,11 +213,21 @@ export function TakeUp({ token, leader, onBack }) {
 const coverRows = (p) => (p?.soil_cover || []).filter((c) => c.finance).map((c) => ({ zone: c.zone, zones: [c.zone], crop: c.cover,
   name: c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/^./, (a) => a.toUpperCase()), colour: c.colour, sow: c.sow,
   kg: 0, value: 0, finance: c.finance, green_manure: true }));
-export const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
+const rowOne = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
   .concat(coverRows(x.plan?.plan))
   .filter((r) => (r.zones || [r.zone]).includes(x.zone) && (r.crop === x.crop || r.name === x.crop))
   // The same crop can stand on one area in two seasons: the share's sowing date picks the season.
   .sort((a, b) => (b.sow === x.share.from_date) - (a.sow === x.share.from_date))[0];
+/** Her agreement's plan row. A green manure merged over several areas (13 Nov, one agreement like a merged crop): its
+ *  areas' covers added up, since the plan keeps one cover per area. */
+export const rowOf = (x) => {
+  const r = rowOne(x);
+  const zones = x.share?.zones || [];
+  if (!r?.green_manure || zones.length < 2) return r;
+  const same = coverRows(x.plan?.plan).filter((c) => zones.includes(c.zone) && c.crop === r.crop && c.sow === r.sow);
+  const add = (k) => same.reduce((t, c) => t + (c.finance?.[k] || 0), 0);
+  return { ...r, zones, finance: { ...r.finance, cash: add('cash'), voucher_value: add('voucher_value'), interest: add('interest'), repay: add('repay') } };
+};
 export const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
 export const amount = (kg) => (kg >= 1000 ? `~${Math.round(kg / 100) / 10} t` : `~${Math.round(kg)} kg`);
 
