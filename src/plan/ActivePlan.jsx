@@ -4,14 +4,13 @@
 // "Done · n" group (no activity-done store yet, design Q26), no mismatch card (no crop-seen check yet,
 // open-cp/3-4), no farm improvements (not in the record or plan), no "Sell" steps (not in the plan).
 // As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month; the
-// season bar on top of the card steps through the seasons (the map's chips follow, CropPlanFlow); the card title is
-// "Your plan · <approval date>" in the season she is in, "<months> season" in the others.
+// season bar on top of the card steps through the seasons (the map's chips follow, CropPlanFlow). 13 Nov: no title and
+// no "Your plan" rows (the crop bars above the card's list show the plan); the plan's date is a muted line at the end.
 import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' }).replace('Sept', 'Sep');
-const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).replace('Sept', 'Sep');
 // Machine jobs as the board words them ("Weed maize"); the catalogue's `for` text otherwise.
 const VERB = [[/weeding/i, 'Weed'], [/spraying|spray/i, 'Spray'], [/harvest/i, 'Harvest'], [/cutting|cut/i, 'Cut']];
 // The board's row icons (lucide paths, gold #D4A634).
@@ -89,14 +88,6 @@ function Row({ t, now }) {
   );
 }
 
-function KV({ k, v }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
-      <span style={{ color: C.muted }}>{k}</span><span style={{ fontWeight: 700, textAlign: 'right', color: C.text }}>{v}</span>
-    </div>
-  );
-}
-
 function Group({ name, items, now }) {
   if (!items.length) return null;
   return (
@@ -118,29 +109,20 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, ass
   const now = today.toISOString().slice(0, 10);
   const idx = currentSeason(seasons, today);
   const shown = Math.min(season ?? idx, Math.max(0, seasons.length - 1));
-  const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance?.due)).filter(Boolean).sort().pop();
   const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
   const all = tasksOf(plan.plan, areaNo, areaName).filter((t) => t.season === shown && !(t.share && byKey[t.share]?.drawn));
   const ready = (t) => !!(t.share && byKey[t.share]?.ready);
   const thisMonth = all.filter((t) => ready(t) || (t.date.slice(0, 7) === now.slice(0, 7) && !(t.share && byKey[t.share] && !ready(t))));
   const later = all.filter((t) => !thisMonth.includes(t) && t.date.slice(0, 7) > now.slice(0, 7));
   const approvedAt = plan.approval?.ts ? new Date(plan.approval.ts * 1000) : null;
-  const title = shown === idx && approvedAt
-    ? `Your plan · ${approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
-    : `${SLOT[seasons[shown]?.slot] || 'This'} season`;
+  const madeOn = approvedAt && approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return (
     <>
-      <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, textAlign: 'center', padding: '8px 0' }}>{title}</div>
       <Group name="To do now" items={thisMonth} now />
       <Group name="Coming up" items={later} />
-      {/* Your plan (board CropPlanActive): a group like the others — Plan year and Now as rows, then the secondary button. */}
+      {/* 13 Nov: the "Your plan" rows are gone (the crop bars above show the plan); the extend button stays, disabled. */}
+      {/* Always one year ahead: the three cycles after this one (25 Oct). The seasons planned stay as they are. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>Your plan</span>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {seasons[0] && lastDue && <KV k="Planned" v={`${monthYear(seasons[0].start)} to ${monthYear(lastDue)}`} />}
-          <KV k="Now" v={`Season ${idx + 1} of ${seasons.length}${idx === seasons.length - 1 ? ' · last season' : ''}`} />
-        </div>
-        {/* Always one year ahead: the three cycles after this one (25 Oct). The seasons planned stay as they are. */}
         {!canExtend.length
           ? <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>Your plan covers the next three seasons.</span>
           : assist
@@ -151,6 +133,8 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, ass
             </button>}
         {extendError && <span style={{ fontSize: 14, color: C.coral }}>{extendError}</span>}
       </div>
+      {/* 13 Nov: the plan's date as a small muted line at the bottom, not a title. */}
+      {madeOn && <p style={{ margin: '16px 0 0', fontSize: 13, color: C.muted, textAlign: 'center' }}>Plan made {madeOn}</p>}
     </>
   );
 }

@@ -360,7 +360,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [season, setSeason] = useState(0);
   // A plan year before the plan (12 Nov: plan history from the record); null = the plan's years.
   const [pastYear, setPastYear] = useState(null);
-  useEffect(() => { if (step !== 'plan') setPastYear(null); }, [step]);
+  // 13 Nov: the approved plan (CP13) steps back through the record too; any step change leaves either screen, so reset.
+  useEffect(() => { setPastYear(null); }, [step]);
   const [area, setArea] = useState(null);
   const [checked, setChecked] = useState(() => new Set());
   const planId = current.data?.id;
@@ -370,7 +371,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const myShares = useMyShares();   // CP13: a crop agreement she can collect now is a to-do
   // CP13 opens on the season she is in today (CP10 on the first).
   const approved = plan?.approval?.decision === 'approve';
-  useEffect(() => { if (approved) setSeason(currentSeason(plan.plan.seasons || [])); }, [planId, approved]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (approved) { setSeason(currentSeason(plan.plan.seasons || [])); setPastYear(null); } }, [planId, approved]); // eslint-disable-line react-hooks/exhaustive-deps
   // Her land's name comes from the land title's metadata (not the record), "Land <id>" only when it has none.
   const titleName = useTitleName(landId, onPolygon, stellarTitle);
   const name = (forLand && forLand.label) || titleName || (landId != null ? `Land ${landId}` : 'Nila');
@@ -901,8 +902,38 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // or when making them failed, one line above it says so — no separate "being made" or "N of M made" screen.
     const ss = plan.plan.seasons || [];
     const shown = Math.min(season, Math.max(0, ss.length - 1));
-    const bar = ss.length > 0 && <SlideBar label={seasonLabel(ss[shown], shown)} prevLabel="Previous season" nextLabel="Next season"
-      onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
+    // 13 Nov: before season 1 the bar becomes a year bar over the record's past years (as the draft plan's overview);
+    // the map and the chart show that year's crops; "Back to now" returns to the season she is in.
+    const planYears = [...new Set(ss.map((x) => planYear(x.start)))];
+    const first = Math.min(firstRecordYear(record) ?? planYears[0], planYears[0]);
+    const y0 = pastYear ?? planYear(ss[shown]?.start);
+    const nowSeason = currentSeason(ss);
+    const prev = () => {
+      if (pastYear != null) setPastYear(Math.max(first, pastYear - 1));
+      else if (shown === 0 && first < planYears[0]) setPastYear(planYears[0] - 1);
+      else setSeason((i) => (i + ss.length - 1) % ss.length);
+    };
+    const next = () => {
+      if (pastYear == null) setSeason((i) => (i + 1) % ss.length);
+      else if (pastYear + 1 < planYears[0]) setPastYear(pastYear + 1);
+      else { setPastYear(null); setSeason(0); }
+    };
+    const toNow = () => { setPastYear(null); setSeason(nowSeason); };
+    const bar = ss.length > 0 && (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        {(pastYear != null || shown !== nowSeason) && (
+          <button type="button" onClick={toNow} style={{ height: 32, padding: '0 14px', borderRadius: 16, border: 0, background: 'rgba(18,18,18,0.85)', color: C.accent,
+            fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Back to now</button>
+        )}
+        <div style={{ alignSelf: 'stretch' }}>
+          {pastYear != null
+            ? <SlideBar label={`${yearLabel(null, pastYear)} · from your record`} prevLabel="Previous year" nextLabel="Next year" onPrev={prev} onNext={next} />
+            : <SlideBar label={seasonLabel(ss[shown], shown)} prevLabel="Previous season" nextLabel="Next season" onPrev={prev} onNext={next} />}
+        </div>
+      </div>
+    );
+    // The crop bars (13 Nov, as the draft plan's overview): one lane per area, read-only.
+    const zones = Object.keys(plan.plan.proposal || {}).sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
     const made = mint.status === 'done' || mint.status === 'partial' || deferredOnly;
     return (
       <Sheet map={map} landName={name} bar={bar}>
@@ -915,6 +946,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
             <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>
           </div>
         )}
+        <PlanChart plan={plan} record={record} zones={zones} areaName={areaName} checked={new Set()} y0={y0} crops={catalogue.data?.crops} />
         <ActivePlan plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
           canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
           onExtend={async () => {
