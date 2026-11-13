@@ -14,10 +14,10 @@ import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePendingApprovals, usePlanClient } from '../plan/hooks';
-import { C, FONT, R, SHADOW } from '../shell/tokens';
-import { ChevronIcon, FileIcon, MarkTile, TrashIcon, WarnIcon } from '../shell/icons';
+import { C, FONT, R } from '../shell/tokens';
+import { ChevronIcon, FileIcon, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
-import { Steps, Title } from '../shell/MessageSlider';
+import { Steps } from '../shell/MessageSlider';
 import Segmented from '../shell/Segmented';   // the numbered steps of the Assets slider cards (13 Nov)
 import AreaMap from '../plan/AreaMap';
 import { unionCentre } from './unionMap';
@@ -372,22 +372,20 @@ export default function MemberStatus({ id, go }) {
 function JoinSteps({ m, onScan }) {
   const [phone, setPhone] = useState('smart');      // 'smart' | 'keypad'
   const [moving, setMoving] = useState(false);
-  const scan = <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }} onClick={onScan}>Scan the QR</button>;
+  const scan = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={onScan}>Scan the QR</button>;
   const steps = phone === 'smart'
     ? ['The member opens the Nila app and recovers the account.', 'The member taps the scan icon at the bottom: the QR shows.', <>Scan the QR. Done: the member has joined.{scan}</>]
     : ['The phone needs internet only while Nila lite installs.',
       <>Send the SMS.<button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setMoving(true)}>Move</button></>,
       'The member opens the SMS and taps QR in the bottom right corner.', <>Scan the QR. Done: the member has joined.{scan}</>];
-  // The look of the Assets slider cards (board: Register a machine): tile, title, numbered steps, the action in its step.
+  // A G2 section (13 Nov), not a card: the phone switch, then numbered steps with the action in its step.
   return (
-    <section aria-label="Join the union" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, marginTop: 8,
-      display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <Title Icon={MarkTile}>Join the union</Title>
-      {/* The phone switch as Cash ahead's All | Half (13 Nov), on its own row: beside the title it wrapped the title. */}
+    <Section title="Join the union" right="Not joined yet">
+      {/* The phone switch as Cash ahead's All | Half (13 Nov). */}
       <Segmented label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad phone']]} />
       <Steps items={steps} />
       {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
-    </section>
+    </Section>
   );
 }
 
