@@ -143,7 +143,7 @@ export function LeaderLoan({ initial }) {
   // No session yet (26 Oct: the help QR is the one office QR): the leader scans the member's help QR first, then uses
   // the crop agreement for the member in the session.
   if (req) {
-    return <StartHelp member={req.member} label="the member" onBack={() => setReq(undefined)} onStarted={() => { setReq(undefined); setOwn(true); }} />;
+    return <StartHelp member={req.member} label="the member" title="Take up the crop agreement" onBack={() => setReq(undefined)} onStarted={() => { setReq(undefined); setOwn(true); }} />;
   }
   // The page shows at once (header and card); the card fills as the plan, her share and the union are read.
   if (!plan) {
