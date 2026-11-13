@@ -154,11 +154,13 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
       : undefined;
   const wait = unnamed || busy;
   return (
-    <MapFrame header={forName ? `Fields of ${forName}` : undefined} onBack={onBack} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
+    <MapFrame header={forName ? `Fields of ${forName}` : null /* own points: only the step's title (13 Nov) */} onBack={onBack} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
       selected={selected} onSelect={setSelected}>
       <div style={cardTitle}>{forName
         ? (n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field')
-        : (n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field')}</div>
+        : pan /* Choose on the map (13 Nov) */
+          ? (n === 0 ? 'Move to your first field' : 'Move to the center of your next field')
+          : (n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field')}</div>
       {!online && (
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', ...sheetText }}>
           <div style={{ width: 20, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><WifiOff /></div>

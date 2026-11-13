@@ -174,7 +174,8 @@ export function MapStage({ header = 'Mint your land title', children }) {
         {children}
         <div style={{ height: 28 }} />
         {view.info && (
-          <div style={{ transform: lowered ? 'translateY(110%)' : 'translateY(0)', transition: `transform 450ms ${EASE}` }}>
+          <div style={{ transform: lowered ? `translateY(calc(110% + ${inShell ? TAB_BAR_HEIGHT : 0}px))` : 'translateY(0)', /* in the shell: also past the tab bar (13 Nov) */
+            transition: `transform 450ms ${EASE}` }}>
           <div className="nila-motion" style={{ animation: anim.swap, position: 'relative', margin: '16px 8px 0 8px', background: '#121212',
             padding: '14px 16px 30px', display: 'flex', gap: 12, alignItems: 'flex-start', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
             <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><InfoIcon /></div>
@@ -197,7 +198,8 @@ export function MapFrame({ header, onBack, map = [], me = null, start = null, sh
   useEffect(() => { if (ctx) { ctx.centre.current = onCenter; ctx.select.current = onSelect; } }, [ctx, onCenter, onSelect]);
   const card = (
     <>
-      <DragCard onLowered={(v) => ctx?.setLowered(v)} title={header || ctx?.header || 'Mint your land title'} onBack={onBack}>{children}</DragCard>
+      {/* header null: no title in the row, only Back (the leader's own points, 13 Nov) */}
+      <DragCard title={header === null ? null : (header || ctx?.header || 'Mint your land title')} onBack={onBack}>{children}</DragCard>
       {overlay}
     </>
   );
@@ -208,8 +210,11 @@ export function MapFrame({ header, onBack, map = [], me = null, start = null, sh
 /** The map card with the standard drag line (map cards): drag down lowers the card — never off the screen, the top
  *  strip stays — and the info footer slides out (the reverse of its slide in); drag up or a tap on the line brings
  *  both back. Releasing snaps to the nearer end. */
-function DragCard({ onLowered, title, onBack, children }) {
-  const { ref, style, handle } = useSheetDrag(onLowered);
+function DragCard({ title, onBack, children }) {
+  // The stage is read here, inside its provider: a standalone MapFrame (in the shell) builds the card before its own
+  // MapStage exists, so the info footer never heard the card go down (13 Nov).
+  const ctx = useContext(MapCtx);
+  const { ref, style, handle } = useSheetDrag((v) => ctx?.setLowered(v));
   // The header is a row inside the card, as on every map card (28 Oct): Back, the title.
   return (
     <div ref={ref} data-reg-card="" style={{ position: 'relative', zIndex: 4, ...style }}>
@@ -220,7 +225,8 @@ function DragCard({ onLowered, title, onBack, children }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {onBack ? <button type="button" aria-label="Back" onClick={onBack} style={{ width: 40, height: 40, borderRadius: 9999, background: '#1F2733', border: 0,
           color: '#F1F5F9', fontSize: 20, flexShrink: 0 }}>←</button> : <span style={{ width: 40 }} />}
-        <h1 style={{ flexGrow: 1, margin: 0, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{title}</h1>
+        {title ? <h1 style={{ flexGrow: 1, margin: 0, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{title}</h1>
+          : <span style={{ flexGrow: 1 }} />}
         <span style={{ width: 40 }} />
       </div>
       {children}
