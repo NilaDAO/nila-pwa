@@ -250,11 +250,7 @@ export default function MemberStatus({ id, go }) {
         {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
             scan of her help QR sends her signed set_union (StartHelp), which also turns on her recovery. */}
         {m.joined === false && (
-          <Section title="Account" right="Not joined yet">
-            <span style={{ color: C.muted }}>Her account was moved. Scan her help QR once to join it to the union.</span>
-            <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }}
-              onClick={() => setScanning({ what: 'Join the union', then: () => { markJoined(m.address); refetchMembers(); } })}>Scan her help QR</button>
-          </Section>
+          <JoinSteps m={m} onScan={() => setScanning({ what: 'Join the union', then: () => { markJoined(m.address); refetchMembers(); } })} />
         )}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
         {/* A member without a land title (13 Nov: e.g. hers was removed): a new one. A keypad member: the leader takes her
@@ -264,6 +260,8 @@ export default function MemberStatus({ id, go }) {
             onClick={() => go(m.keypadId ? `tasks/member/${m.keypadId}/points` : m.address && m.address === s?.stellarAddress ? 'crop/register' : 'tasks/member')}>Make a new land title</button>
         )}
       </div>
+      {/* Not joined yet (13 Nov): only the steps to join her; the rest of G2 waits until she has joined. */}
+      {m.joined !== false && (<>
       {waiting && (
         // Her plan waits for a leader's approval (L12): here as in the task list, also for a self-mode member (5 Nov).
         <Section title="Crop plan" right="Waiting for approval">
@@ -360,8 +358,38 @@ export default function MemberStatus({ id, go }) {
         </Section>
       )}
       <Account m={m} inv={inv} go={go} onSync={() => setSyncing(true)} />
+      </>)}
       </div>
     </MapCard>
+  );
+}
+
+/** Not joined yet (moved by the operator, 7 Nov; steps 13 Nov): her account holds her title but does not name the union.
+ *  The leader picks her phone and follows the steps; the last one is the scan of her QR, which sends her signed
+ *  set_union. A keypad phone needs internet only while Nila lite installs. */
+function JoinSteps({ m, onScan }) {
+  const [phone, setPhone] = useState();      // 'smart' | 'keypad'
+  const [moving, setMoving] = useState(false);
+  const chip = (on) => ({ ...btn(), background: on ? C.accent : C.raised, color: on ? C.ink : C.text });
+  const steps = phone === 'smart'
+    ? ['On her phone, open the Nila app and recover her account.', 'In her app, tap the scan icon at the bottom: her QR shows.', 'Scan her QR. She has then joined the union.']
+    : ['She needs internet only while Nila lite installs.', 'Tap Move: she gets an SMS.', 'She opens the SMS and taps QR in the bottom right corner.', 'Scan her QR. She has then joined the union.'];
+  return (
+    <Section title="Account" right="Not joined yet">
+      <span style={{ color: C.muted }}>Her account was moved. Which phone does she use?</span>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" aria-pressed={phone === 'smart'} style={chip(phone === 'smart')} onClick={() => setPhone('smart')}>Smartphone</button>
+        <button type="button" aria-pressed={phone === 'keypad'} style={chip(phone === 'keypad')} onClick={() => setPhone('keypad')}>Keypad phone</button>
+      </div>
+      {phone && (
+        <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {steps.map((t) => <li key={t}>{t}</li>)}
+        </ol>
+      )}
+      {phone === 'keypad' && <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setMoving(true)}>Move</button>}
+      {phone && <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }} onClick={onScan}>Scan her QR</button>}
+      {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
+    </Section>
   );
 }
 
