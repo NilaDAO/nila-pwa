@@ -291,7 +291,12 @@ export default function MemberStatus({ id, go }) {
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
         {/* A member without a land title (13 Nov: e.g. hers was removed): a new one. A keypad member: the leader takes her
             points again; the leader's own row: the leader's own points; a smartphone member: L14, the leader scans her QR. */}
-        {!m.titleId && !m.lands?.length && (m.keypadId || m.formerTitle != null) && (
+        {/* Fields sent, a border job open (13 Nov): G2 opens that task (L2), not a new title. */}
+        {!m.titleId && !m.lands?.length && m.job && (
+          <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
+            onClick={() => go(`tasks/border/${m.job}`)}>Open the field borders</button>
+        )}
+        {!m.titleId && !m.lands?.length && !m.job && (m.keypadId || m.formerTitle != null) && (
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
             onClick={() => go(m.keypadId ? `tasks/member/${m.keypadId}/points` : m.address && m.address === s?.stellarAddress ? 'crop/register' : 'tasks/member')}>Make a new land title</button>
         )}
