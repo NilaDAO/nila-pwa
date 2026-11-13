@@ -104,7 +104,7 @@ function Group({ name, items, now }) {
  *  month; a drawn one is done and not listed. assist: a shared phone, where the leader extends the plan.
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
-export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart }) {
+export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart, chartTitle = "This year's plan", past = false }) {
   const seasons = plan.plan.seasons || [];
   const now = today.toISOString().slice(0, 10);
   const idx = currentSeason(seasons, today);
@@ -118,20 +118,20 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, ass
   const madeOn = approvedAt && approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return (
     <>
-      <Group name="To do now" items={thisMonth} now />
-      <Group name="Coming up" items={later} />
+      {!past && <Group name="To do now" items={thisMonth} now />}
+      {!past && <Group name="Coming up" items={later} />}
       {/* 13 Nov: the whole plan as crop bars, below the tasks, under its own title. */}
       {chart && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16, borderTop: `1px solid ${C.raised}`, paddingTop: 16 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>This year's plan</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>{chartTitle}</span>
           {chart}
           {/* 13 Nov: the plan's date right under its bars. */}
-          {madeOn && <span style={{ fontSize: 13, color: C.muted }}>Plan made {madeOn}</span>}
+          {madeOn && !past && <span style={{ fontSize: 13, color: C.muted }}>Plan made {madeOn}</span>}
         </div>
       )}
       {/* 13 Nov: the "Your plan" rows are gone (the crop bars above show the plan); the extend button stays, disabled. */}
       {/* Always one year ahead: the three cycles after this one (25 Oct). The seasons planned stay as they are. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+      {!past && <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
         {!canExtend.length
           ? <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>Your plan covers the next three seasons.</span>
           : assist
@@ -141,7 +141,7 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, ass
               {extending ? 'Planning…' : `Extend my plan · ${canExtend.length} season${canExtend.length > 1 ? 's' : ''}`}
             </button>}
         {extendError && <span style={{ fontSize: 14, color: C.coral }}>{extendError}</span>}
-      </div>
+      </div>}
       {/* 13 Nov: the plan's date as a small muted line, under the bars when they show, else at the bottom. */}
       {madeOn && !chart && <p style={{ margin: '16px 0 0', fontSize: 13, color: C.muted, textAlign: 'center' }}>Plan made {madeOn}</p>}
     </>

@@ -946,7 +946,10 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
             <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>
           </div>
         )}
+        {/* 13 Nov: the bars' title follows the year on the bar; a past year shows only its bars (no tasks). */}
         <ActivePlan chart={<PlanChart plan={plan} record={record} zones={zones} areaName={areaName} checked={new Set()} y0={y0} crops={catalogue.data?.crops} />}
+          chartTitle={pastYear != null ? `${yearLabel(null, pastYear)} · from your record` : y0 === planYear() ? "This year's plan" : `${yearLabel(null, y0)} plan`}
+          past={pastYear != null}
           plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
           canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
           onExtend={async () => {
