@@ -373,17 +373,17 @@ function JoinSteps({ m, onScan }) {
   const [moving, setMoving] = useState(false);
   const seg = (on) => ({ flex: 1, height: 36, borderRadius: R.round, border: 0, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer',
     background: on ? C.text : 'transparent', color: on ? C.ink : C.muted });
-  const scan = <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }} onClick={onScan}>Scan her QR</button>;
+  const scan = <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }} onClick={onScan}>Scan the QR</button>;
   const steps = phone === 'smart'
-    ? ['She opens the Nila app and recovers her account.', 'She taps the scan icon at the bottom: her QR shows.', <>You scan her QR. Done: she has joined.{scan}</>]
-    : ['Her phone needs internet only while Nila lite installs.',
-      <>Send her the SMS.<button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setMoving(true)}>Move</button></>,
-      'She opens the SMS and taps QR in the bottom right corner.', <>You scan her QR. Done: she has joined.{scan}</>];
+    ? ['The member opens the Nila app and recovers the account.', 'The member taps the scan icon at the bottom: the QR shows.', <>Scan the QR. Done: the member has joined.{scan}</>]
+    : ['The phone needs internet only while Nila lite installs.',
+      <>Send the SMS.<button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setMoving(true)}>Move</button></>,
+      'The member opens the SMS and taps QR in the bottom right corner.', <>Scan the QR. Done: the member has joined.{scan}</>];
   // The look of the Assets slider cards (board: Register a machine): tile, title, numbered steps, the action in its step.
   return (
-    <section aria-label="Join her to the union" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, marginTop: 8,
+    <section aria-label="Join the union" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, marginTop: 8,
       display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <Title Icon={MarkTile}>Join her to the union</Title>
+      <Title Icon={MarkTile}>Join the union</Title>
       <div role="group" aria-label="Her phone" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: R.round, background: C.raised }}>
         <button type="button" aria-pressed={phone === 'smart'} style={seg(phone === 'smart')} onClick={() => setPhone('smart')}>Smartphone</button>
         <button type="button" aria-pressed={phone === 'keypad'} style={seg(phone === 'keypad')} onClick={() => setPhone('keypad')}>Keypad phone</button>
@@ -568,7 +568,7 @@ function LiteDataQr({ m, inv, onClose }) {
     <AssetScreen title="Sync with phone" onBack={onClose}>
       <Card label="Sync with phone">
         <QrCircle img={ready ? img : undefined} alt="Sync with phone: QR for Nila lite" />
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center' }}>On her phone: Nila lite → Update from your leader → scan this.</p>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center' }}>On the member's phone: Nila lite → Update from your leader → scan this.</p>
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center', color: C.muted }}>Owed {inr(owed)} · invested {inr(invested)}</p>
         {ready && <p style={{ margin: 0, fontSize: 12, textAlign: 'center', color: C.muted }}>{text.length} characters</p>}
         <Secondary onClick={onClose}>Close</Secondary>
