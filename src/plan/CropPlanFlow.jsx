@@ -226,11 +226,12 @@ function nowLabelsOf(record, crops = [], growing = {}) {
   const now = growingNow(record, crops);
   const zones = areasOf(record);
   const list = [...crops, ...COVERS];
-  return Object.fromEntries(zones.filter((z) => now[z.zone_id] || growing[z.zone_id]).map((z, i) => {
+  // Every area (13 Nov): one with no reading and nothing set by her is hatched too, so every area still to set shows.
+  return Object.fromEntries(zones.map((z) => {
     const c = growing[z.zone_id] && list.find((x) => x.key === growing[z.zone_id]);
     const l = now[z.zone_id] || { text: z.name || `Area ${zones.indexOf(z) + 1}` };
     // Still to be set (13 Nov): hatched on the map, so she sees which areas are left.
-    return [z.zone_id, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : { ...l, hatch: !!l.unknown }];
+    return [z.zone_id, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : { ...l, hatch: !!l.unknown || !now[z.zone_id] }];
   }));
 }
 
@@ -592,11 +593,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {growArea && settable(growArea) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0 8px' }}>
             <span style={{ fontSize: 14, fontWeight: 700 }}>What grows on {nowLabels[growArea]?.text || nameOf(growArea)} now?</span>
-            {/* 13 Nov: no crop (empty, trees, bushes, buildings, water) first, then the crops. */}
-            <CropSelect crops={COVERS} current={growing[growArea]}
+            {/* 13 Nov: no crop (empty, trees, bushes, buildings, water) first, then the crops; each under its title. */}
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.muted }}>Land covers</span>
+            <CropSelect crops={COVERS} current={COVERS.some((c) => c.key === growing[growArea]) ? growing[growArea] : undefined}
               onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
             <span style={{ fontSize: 13, fontWeight: 700, color: C.muted, marginTop: 8 }}>Crops</span>
-            <CropSelect crops={cropList} current={growing[growArea]}
+            {/* A land cover picked is not a crop (13 Nov: the crop grid listed it as an extra chip, "trees"). */}
+            <CropSelect crops={cropList} current={COVERS.some((c) => c.key === growing[growArea]) ? undefined : growing[growArea]}
               onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
           </div>
         )}

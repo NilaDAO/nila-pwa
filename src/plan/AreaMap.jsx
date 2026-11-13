@@ -53,7 +53,7 @@ function hatchPattern() {
   box.setAttribute('aria-hidden', 'true');
   box.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
   box.innerHTML = '<svg width="0" height="0"><defs><pattern id="nila-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
-    + '<rect width="8" height="8" fill="rgba(18,18,18,0.35)"/><rect width="3" height="8" fill="rgba(241,245,249,0.75)"/></pattern></defs></svg>';
+    + '<rect width="8" height="8" fill="rgba(18,18,18,0.15)"/><rect width="2" height="8" fill="rgba(241,245,249,0.4)"/></pattern></defs></svg>';
   document.body.appendChild(box);
 }
 
