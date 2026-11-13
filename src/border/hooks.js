@@ -35,6 +35,12 @@ export function useBorderJob(id) {
 }
 
 /** R14: her own latest job, or null. */
+/** A land title minted and not read on the chains yet (12 Nov): her border job is minting, or was minted in the last
+ *  10 minutes while her titles still read none (the node writes the title; the app's reads catch up). An older minted
+ *  job with no title is a title she has burned since. */
+export const titlePending = (job, none) => !!none && !!job
+  && (job.status === 'minting' || (job.status === 'minted' && Date.now() / 1000 - Number(job.updated || 0) < 600));
+
 export function useMyBorderJob() {
   const s = useNilaSigner();
   const api = useBorderClient();
