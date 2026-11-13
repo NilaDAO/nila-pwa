@@ -234,6 +234,38 @@ export default function MemberStatus({ id, go }) {
   const myLands = new Set([m.titleId, ...(m.lands || [])].filter((x) => x != null).map(String));
   const waiting = (pendingPlans.data?.plans || []).find((p) => myLands.has(String(p.land_id)));
   const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>;
+  // Invested (13 Nov): above Join the union before the member has joined (the amount only; actions after joining).
+  const investedSection = m.address && (
+        <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
+          {/* Her actions start here only (executive decision 22 Oct: Members → G2 → action; the Cash tab is the union's money).
+              Nothing invested: Invest only; else Invest more and Withdraw. Invest opens the count choice. */}
+          {m.joined === false ? null : !act ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
+              {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
+                onClick={withdrawing ? withQr('Pay out the withdrawal', payOut) : withQr('Withdraw', () => setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
+            </div>
+          ) : (
+            <>
+              {/* Invest (7 Nov): the amount first, as on her A7 Invest; the count then needs at least this much. */}
+              <span style={{ color: C.muted }}>Bring cash to the office</span>
+              <Stepper value={bring} set={setBring} min={0} unit="₹" label="Rupees to invest" />
+              {desk.data && bring > desk.data.room && <span style={{ color: C.coral }}>{overRoom(desk.data, bring)}</span>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" style={btn(bring >= 1)} disabled={bring < 1 || (desk.data && bring > desk.data.room)} onClick={() => setStep('count')}>Photo count</button>
+                <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
+              </div>
+            </>
+          )}
+          {act && (
+            <button type="button" onClick={() => { setAct(); setBring(0); }} style={{ alignSelf: 'center', border: 0, background: 'transparent', color: C.muted,
+              fontFamily: FONT, fontSize: 14, cursor: 'pointer', padding: 4 }}>
+              Cancel
+            </button>
+          )}
+          {noPhotos && <span style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</span>}
+        </Section>
+      );
   return (
     <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings'), busy: refreshing,
       onRefresh: refresh }}
@@ -251,6 +283,7 @@ export default function MemberStatus({ id, go }) {
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
             scan of her help QR sends her signed set_union (StartHelp), which also turns on her recovery. */}
+        {m.joined === false && investedSection}
         {m.joined === false && (
           <JoinSteps m={m} onScan={() => setScanning({ what: 'Join the union', then: () => { markJoined(m.address); refetchMembers(); } })} />
         )}
@@ -294,40 +327,7 @@ export default function MemberStatus({ id, go }) {
           {!dueLoan && <span style={{ color: C.muted }}>Possible once the repay date has passed.</span>}
         </Section>
       )}
-      </>)}
-      {/* Invested shows also before the member has joined (13 Nov): the amount only; the actions after joining. */}
-      {m.address && (
-        <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
-          {/* Her actions start here only (executive decision 22 Oct: Members → G2 → action; the Cash tab is the union's money).
-              Nothing invested: Invest only; else Invest more and Withdraw. Invest opens the count choice. */}
-          {m.joined === false ? null : !act ? (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
-              {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
-                onClick={withdrawing ? withQr('Pay out the withdrawal', payOut) : withQr('Withdraw', () => setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
-            </div>
-          ) : (
-            <>
-              {/* Invest (7 Nov): the amount first, as on her A7 Invest; the count then needs at least this much. */}
-              <span style={{ color: C.muted }}>Bring cash to the office</span>
-              <Stepper value={bring} set={setBring} min={0} unit="₹" label="Rupees to invest" />
-              {desk.data && bring > desk.data.room && <span style={{ color: C.coral }}>{overRoom(desk.data, bring)}</span>}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" style={btn(bring >= 1)} disabled={bring < 1 || (desk.data && bring > desk.data.room)} onClick={() => setStep('count')}>Photo count</button>
-                <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
-              </div>
-            </>
-          )}
-          {act && (
-            <button type="button" onClick={() => { setAct(); setBring(0); }} style={{ alignSelf: 'center', border: 0, background: 'transparent', color: C.muted,
-              fontFamily: FONT, fontSize: 14, cursor: 'pointer', padding: 4 }}>
-              Cancel
-            </button>
-          )}
-          {noPhotos && <span style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</span>}
-        </Section>
-      )}
-      {m.joined !== false && (<>
+      {m.joined !== false && investedSection}
       {shares.isLoading && <Section title="Crop agreements"><SkeletonRows rows={2} /></Section>}
       {m.shares.length > 0 && (
         <Section title="Crop agreements">
