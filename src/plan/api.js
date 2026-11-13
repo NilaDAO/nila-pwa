@@ -79,6 +79,8 @@ export function planClient(signer) {
     unionTitles: () => call('GET', '/stellar/union/titles'),
     // G2 Remove member (28 Oct): the node burns the member's Stellar title (no crop agreements, no investment).
     removeMember: (titleId) => call('POST', '/stellar/union/remove', { title_id: Number(titleId) }),
+    // 13 Nov: a member whose title was burned (smartphone or keypad) leaves the members list for good.
+    removeFormer: (holder) => call('DELETE', `/stellar/union/former/${encodeURIComponent(holder)}`),
     // The compact members list (map-centred lane, 23 Oct): one row per member; 404 until the node has it.
     // since (25 Oct): the change counter of the list kept on the phone; only the rows changed after it come back.
     unionMembers: (since) => call('GET', since ? `/stellar/union/members?since=${since}` : '/stellar/union/members'),

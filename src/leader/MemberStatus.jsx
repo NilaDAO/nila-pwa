@@ -17,6 +17,8 @@ import { usePendingApprovals, usePlanClient } from '../plan/hooks';
 import { C, FONT, R } from '../shell/tokens';
 import { ChevronIcon, FileIcon, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
+import { Steps } from '../shell/MessageSlider';
+import Segmented from '../shell/Segmented';   // the numbered steps of the Assets slider cards (13 Nov)
 import AreaMap from '../plan/AreaMap';
 import { unionCentre } from './unionMap';
 import { areaM2 } from '../plan/mapTap';
@@ -185,7 +187,7 @@ export default function MemberStatus({ id, go }) {
   // Sync with phone (13 Nov; was an inline white card): a full QR screen like the app's other QRs.
   if (syncing) return <LiteDataQr m={m} inv={inv} onClose={() => setSyncing(false)} />;
   if (scanning) {
-    return <StartHelp member={m.address} label={`${scanning.what} · ${m.label}`} onBack={() => setScanning(false)}
+    return <StartHelp member={m.address} label={m.label} title={scanning.what} onBack={() => setScanning(false)}
       onStarted={() => { const then = scanning.then; setScanning(false); then(); }} />;
   }
   const withQr = (what, then) => () => (helpUntil > Date.now() / 1000 + 10 ? then() : setScanning({ what, then }));
@@ -232,6 +234,38 @@ export default function MemberStatus({ id, go }) {
   const myLands = new Set([m.titleId, ...(m.lands || [])].filter((x) => x != null).map(String));
   const waiting = (pendingPlans.data?.plans || []).find((p) => myLands.has(String(p.land_id)));
   const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>;
+  // Invested (13 Nov): above Join the union before the member has joined (the amount only; actions after joining).
+  const investedSection = m.address && (
+        <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
+          {/* Her actions start here only (executive decision 22 Oct: Members → G2 → action; the Cash tab is the union's money).
+              Nothing invested: Invest only; else Invest more and Withdraw. Invest opens the count choice. */}
+          {m.joined === false ? null : !act ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
+              {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
+                onClick={withdrawing ? withQr('Pay out the withdrawal', payOut) : withQr('Withdraw', () => setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
+            </div>
+          ) : (
+            <>
+              {/* Invest (7 Nov): the amount first, as on her A7 Invest; the count then needs at least this much. */}
+              <span style={{ color: C.muted }}>Bring cash to the office</span>
+              <Stepper value={bring} set={setBring} min={0} unit="₹" label="Rupees to invest" />
+              {desk.data && bring > desk.data.room && <span style={{ color: C.coral }}>{overRoom(desk.data, bring)}</span>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" style={btn(bring >= 1)} disabled={bring < 1 || (desk.data && bring > desk.data.room)} onClick={() => setStep('count')}>Photo count</button>
+                <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
+              </div>
+            </>
+          )}
+          {act && (
+            <button type="button" onClick={() => { setAct(); setBring(0); }} style={{ alignSelf: 'center', border: 0, background: 'transparent', color: C.muted,
+              fontFamily: FONT, fontSize: 14, cursor: 'pointer', padding: 4 }}>
+              Cancel
+            </button>
+          )}
+          {noPhotos && <span style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</span>}
+        </Section>
+      );
   return (
     <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings'), busy: refreshing,
       onRefresh: refresh }}
@@ -249,20 +283,20 @@ export default function MemberStatus({ id, go }) {
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
             scan of her help QR sends her signed set_union (StartHelp), which also turns on her recovery. */}
+        {m.joined === false && investedSection}
         {m.joined === false && (
-          <Section title="Account" right="Not joined yet">
-            <span style={{ color: C.muted }}>Her account was moved. Scan her help QR once to join it to the union.</span>
-            <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }}
-              onClick={() => setScanning({ what: 'Join the union', then: () => { markJoined(m.address); refetchMembers(); } })}>Scan her help QR</button>
-          </Section>
+          <JoinSteps m={m} onScan={() => setScanning({ what: 'Join the union', then: () => { markJoined(m.address); refetchMembers(); } })} />
         )}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
-        {/* A keypad member without a land title (13 Nov: e.g. hers was removed): the leader takes her points again. */}
-        {!m.titleId && !m.lands?.length && m.keypadId && (
+        {/* A member without a land title (13 Nov: e.g. hers was removed): a new one. A keypad member: the leader takes her
+            points again; the leader's own row: the leader's own points; a smartphone member: L14, the leader scans her QR. */}
+        {!m.titleId && !m.lands?.length && (m.keypadId || m.formerTitle != null) && (
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
-            onClick={() => go(`tasks/member/${m.keypadId}/points`)}>Make a new land title</button>
+            onClick={() => go(m.keypadId ? `tasks/member/${m.keypadId}/points` : m.address && m.address === s?.stellarAddress ? 'crop/register' : 'tasks/member')}>Make a new land title</button>
         )}
       </div>
+      {/* Not joined yet (13 Nov): only the steps to join her; the rest of G2 waits until she has joined. */}
+      {m.joined !== false && (<>
       {waiting && (
         // Her plan waits for a leader's approval (L12): here as in the task list, also for a self-mode member (5 Nov).
         <Section title="Crop plan" right="Waiting for approval">
@@ -293,37 +327,7 @@ export default function MemberStatus({ id, go }) {
           {!dueLoan && <span style={{ color: C.muted }}>Possible once the repay date has passed.</span>}
         </Section>
       )}
-      {m.address && (
-        <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
-          {/* Her actions start here only (executive decision 22 Oct: Members → G2 → action; the Cash tab is the union's money).
-              Nothing invested: Invest only; else Invest more and Withdraw. Invest opens the count choice. */}
-          {!act ? (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
-              {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
-                onClick={withdrawing ? withQr('Pay out the withdrawal', payOut) : withQr('Withdraw', () => setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
-            </div>
-          ) : (
-            <>
-              {/* Invest (7 Nov): the amount first, as on her A7 Invest; the count then needs at least this much. */}
-              <span style={{ color: C.muted }}>Bring cash to the office</span>
-              <Stepper value={bring} set={setBring} min={0} unit="₹" label="Rupees to invest" />
-              {desk.data && bring > desk.data.room && <span style={{ color: C.coral }}>{overRoom(desk.data, bring)}</span>}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" style={btn(bring >= 1)} disabled={bring < 1 || (desk.data && bring > desk.data.room)} onClick={() => setStep('count')}>Photo count</button>
-                <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
-              </div>
-            </>
-          )}
-          {act && (
-            <button type="button" onClick={() => { setAct(); setBring(0); }} style={{ alignSelf: 'center', border: 0, background: 'transparent', color: C.muted,
-              fontFamily: FONT, fontSize: 14, cursor: 'pointer', padding: 4 }}>
-              Cancel
-            </button>
-          )}
-          {noPhotos && <span style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</span>}
-        </Section>
-      )}
+      {m.joined !== false && investedSection}
       {shares.isLoading && <Section title="Crop agreements"><SkeletonRows rows={2} /></Section>}
       {m.shares.length > 0 && (
         <Section title="Crop agreements">
@@ -359,8 +363,32 @@ export default function MemberStatus({ id, go }) {
         </Section>
       )}
       <Account m={m} inv={inv} go={go} onSync={() => setSyncing(true)} />
+      </>)}
       </div>
     </MapCard>
+  );
+}
+
+/** Not joined yet (moved by the operator, 7 Nov; steps 13 Nov): her account holds her title but does not name the union.
+ *  The leader picks her phone and follows the steps; the last one is the scan of her QR, which sends her signed
+ *  set_union. A keypad phone needs internet only while Nila lite installs. */
+function JoinSteps({ m, onScan }) {
+  const [phone, setPhone] = useState('smart');      // 'smart' | 'keypad'
+  const [moving, setMoving] = useState(false);
+  const scan = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={onScan}>Scan the QR</button>;
+  const steps = phone === 'smart'
+    ? ['The member opens the Nila app and recovers the account.', 'The member taps the scan icon at the bottom: the QR shows.', <>Scan the QR. Done: the member has joined.{scan}</>]
+    : ['The phone needs internet only while Nila lite installs.',
+      <>Send the SMS.<button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setMoving(true)}>Move</button></>,
+      'The member opens the SMS and taps QR in the bottom right corner.', <>Scan the QR. Done: the member has joined.{scan}</>];
+  // A G2 section (13 Nov), not a card: the phone switch, then numbered steps with the action in its step.
+  return (
+    <Section title="Join the union" right="Not joined yet">
+      {/* The phone switch as Cash ahead's All | Half (13 Nov). */}
+      <Segmented label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad phone']]} />
+      <Steps items={steps} />
+      {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
+    </Section>
   );
 }
 
@@ -418,7 +446,7 @@ function Account({ m, inv, go, onSync }) {
   const move = rcv.applies && !rcv.keypad && /^C/.test(m.address || '');
   const lite = rcv.keypad && !!m.address;   // her data as a QR for Nila lite (13 Nov, test of the offline refresh)
   // No land title but a keypad row (13 Nov: e.g. hers was removed): the bin deletes her for good.
-  const gone = !titleId && !!m.keypadId;
+  const gone = !titleId && (!!m.keypadId || m.formerTitle != null);   // 13 Nov: also a smartphone member whose title was burned
   if (!rcv.applies && !titleId && !m.recordHash && !gone) return null;
   const close = () => setCard();
   return (
@@ -538,7 +566,7 @@ function LiteDataQr({ m, inv, onClose }) {
     <AssetScreen title="Sync with phone" onBack={onClose}>
       <Card label="Sync with phone">
         <QrCircle img={ready ? img : undefined} alt="Sync with phone: QR for Nila lite" />
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center' }}>On her phone: Nila lite → Update from your leader → scan this.</p>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center' }}>On the member's phone: Nila lite → Update from your leader → scan this.</p>
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center', color: C.muted }}>Owed {inr(owed)} · invested {inr(invested)}</p>
         {ready && <p style={{ margin: 0, fontSize: 12, textAlign: 'center', color: C.muted }}>{text.length} characters</p>}
         <Secondary onClick={onClose}>Close</Secondary>
@@ -599,9 +627,11 @@ function MoveToKeypad({ address, name, phone, onClose }) {
 /** A member without a land title deleted for good (13 Nov): her row and links on the node; her account stays on-chain. */
 function DeleteMember({ m, go, onClose }) {
   const s = useNilaSigner();
+  const api = usePlanClient();
   const qc = useQueryClient();
   const del = useMutation({
-    mutationFn: () => keypadClient(s).remove(m.keypadId),
+    // A keypad member by her keypad row; a smartphone member (13 Nov) by her account in the node's former members.
+    mutationFn: () => (m.keypadId ? keypadClient(s).remove(m.keypadId) : api.removeFormer(m.address)),
     onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
   });
   return (
@@ -618,7 +648,8 @@ function RemoveMember({ m, why, titleId, go, onClose }) {
   const qc = useQueryClient();
   const rm = useMutation({
     mutationFn: () => api.removeMember(titleId),
-    onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
+    // 13 Nov: her titles too, so the leader's own crop plan and assets drop a removed own title at once.
+    onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); qc.invalidateQueries({ queryKey: ['polygon', 'titles'] }); qc.invalidateQueries({ queryKey: ['stellar', 'titles'] }); go('members'); },
   });
   return why ? (
     <ConfirmCard title="Remove member" ok="OK" onCancel={onClose} onOk={onClose}

@@ -13,7 +13,8 @@ import { isDeskCode } from './deskCode';
 import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
 import { useNilaSigner } from '../wallet/signer';
 
-export default function StartHelp({ member, label, onBack, onStarted, onDesk }) {
+/** title (13 Nov): the task only ("Join the union"); the land's name is already on the screen behind it. */
+export default function StartHelp({ member, label, title, onBack, onStarted, onDesk }) {
   const tx = useSorobanTx();
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -52,7 +53,7 @@ export default function StartHelp({ member, label, onBack, onStarted, onDesk }) 
   if (joining) return <DeskCard title="Joining her account to the union…" onBack={onBack}><p style={muted}>One moment.</p></DeskCard>;
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   return (
-    <DeskCard title={label ? `Scan the QR · ${label}` : "Scan the member's QR"} onBack={onBack}>
+    <DeskCard title={title || "Scan the member's QR"} onBack={onBack}>
       <CameraView key={tries} mode="qr" onText={read} />
       <p style={muted}>Scan the QR on the member's phone. With a help QR you can then act for the member for 5 minutes.</p>
       {error && <p style={{ color: C.coral }}>{error}</p>}

@@ -4,11 +4,11 @@
 // are sent with her union (R9) and the node draws the shapes for a leader to check (L2a–L4). R14 waits for the mint.
 // The boards ask a field name per point (R6, R7), no farm name: the title's name is given by the leader at L4.
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
-import { DEMO_COGNITO } from '../utils/demoMode';
+import { unionCentre } from '../leader/unionMap';
 import RegFrame, { Bouncing, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
-const DEMO_START = { lat: 11.88720, lng: 78.96594, acc: 0 };   // Viriyur, TN: among the real fields of the node's records
 const EMPTY = { points: [], farm: '', finish: false };
 // Per account: on a shared phone (assisted mode) one member's points never go out under the next member's login.
 const keyOf = (evm) => `nila.border.points.${(evm || 'none').toLowerCase()}`;
@@ -95,9 +95,15 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
     if (pan) save({ ...q, pan: false });
     fix((m) => { setMe(m); setBlocked(false); setLoc('on'); }, (e) => { setBlocked(e.code === 1); setLoc('off'); });
   };
-  // Demo only (localhost + chain 31337 + flag): "Choose on the map" starts in Viriyur, Tamil Nadu (the union's
-  // place), not at the laptop's location; a real build starts where she is.
-  const choose = () => { save({ ...q, pan: true }); if (startAt) setMe(startAt); else if (DEMO_COGNITO) setMe(DEMO_START); else if (!me) fix(setMe); };
+  // "Choose on the map" starts at the union's location in every build (Carst, 13 Nov; was the demo only): the middle of
+  // its members' land when this phone has the members list (a leader), else the union's place (UNION_START).
+  const qc = useQueryClient();
+  const choose = () => {
+    save({ ...q, pan: true });
+    if (startAt) { setMe(startAt); return; }
+    const members = qc.getQueriesData({ queryKey: ['stellar', 'unionMembers'] }).map(([, d]) => d).find(Array.isArray);
+    setMe({ ...unionCentre(members), acc: 0 });
+  };
   useEffect(() => {
     let live = true;
     navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (live && r.state === 'granted') share(); }).catch(() => {});
@@ -154,11 +160,13 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
       : undefined;
   const wait = unnamed || busy;
   return (
-    <MapFrame header={forName ? `Fields of ${forName}` : undefined} onBack={onBack} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
+    <MapFrame header={forName ? `Fields of ${forName}` : null /* own points: only the step's title (13 Nov) */} onBack={onBack} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
       selected={selected} onSelect={setSelected}>
       <div style={cardTitle}>{forName
         ? (n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field')
-        : (n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field')}</div>
+        : pan /* Choose on the map (13 Nov) */
+          ? (n === 0 ? 'Move to your first field' : 'Move to the center of your next field')
+          : (n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field')}</div>
       {!online && (
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', ...sheetText }}>
           <div style={{ width: 20, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><WifiOff /></div>
