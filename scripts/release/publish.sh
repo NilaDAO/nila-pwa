@@ -41,15 +41,23 @@ fi
 
 # ── build (clean environment) and the gate ──────────────────────────────────
 say "build $SHORT (version $VERSION) with .env.production only"
-rm -rf build
-env -i PATH="$PATH" HOME="$HOME" NODE_ENV=production GENERATE_SOURCEMAP=false \
-  npx env-cmd -f .env.production npx react-app-rewired build >"$STATE/build.log" 2>&1 \
+# 13 Nov: in a clean worktree of this commit, holding only .env.production. Built in this folder, CRA also read
+# .env.local (the local demo's settings), and its demo values reached the build.
+SRC="$STATE/src"
+git worktree remove --force "$SRC" >/dev/null 2>&1 || rm -rf "$SRC"
+git worktree add --detach -q "$SRC" "$HEAD_SHA"
+trap 'git worktree remove --force "$SRC" >/dev/null 2>&1 || true' EXIT
+cp .env.production "$SRC/.env.production"
+ln -s "$PWD/node_modules" "$SRC/node_modules"
+( cd "$SRC" && env -i PATH="$PATH" HOME="$HOME" NODE_ENV=production GENERATE_SOURCEMAP=false \
+  npx env-cmd -f .env.production npx react-app-rewired build ) >"$STATE/build.log" 2>&1 \
   || { tail -20 "$STATE/build.log" >&2; die "build failed (log: .release/build.log)"; }
-scripts/release/check-no-demo.sh build
+BUILD="$SRC/build"
+scripts/release/check-no-demo.sh "$BUILD"
 
 # ── upload to Amplify (manual deployment) ───────────────────────────────────
 ZIP="$STATE/build-$SHORT.zip"
-rm -f "$ZIP"; ( cd build && zip -qr "$ZIP" . )
+rm -f "$ZIP"; ( cd "$BUILD" && zip -qr "$ZIP" . )
 say "Amplify $APP_ID / branch $ENVN: upload $(du -h "$ZIP" | cut -f1)"
 read -r JOB URL < <(aws amplify create-deployment --app-id "$APP_ID" --branch-name "$ENVN" --region "$REGION" \
   --query '[jobId, zipUploadUrl]' --output text)
