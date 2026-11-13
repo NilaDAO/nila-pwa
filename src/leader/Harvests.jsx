@@ -150,7 +150,7 @@ function Calendar({ groups, go }) {
 
 /** H1: the Harvests tab. The map shows every member's property (25 Oct). */
 export function HarvestList({ go }) {
-  const { map } = useLeaderMap('members');
+  const { map } = useLeaderMap('harvests');   // 13 Nov: what grows now per area (was the members map)
   const { groups, priceOf, loading, refetch } = useHarvests();
   const [edit, setEdit] = useState();
   const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'list'; } catch { return 'list'; } });

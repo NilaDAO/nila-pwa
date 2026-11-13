@@ -106,6 +106,18 @@ export default function Members({ go }) {
           </div>
         )}
         {msg && <span style={{ color: C.coral, fontWeight: 700 }}>{msg}</span>}
+        {/* Joining first (13 Nov): the members who still need the leader (link, points, a new title) come before the rest. */}
+        {joining.length > 0 && (
+          <>
+            <span style={{ color: C.muted, fontWeight: 700, paddingTop: 4 }}>Joining · {joining.length}</span>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
+              {joining.map((m, i) => (
+                <ListRow key={m.key} first={i === 0} title={m.label} sub={<span style={{ color: C.muted }}>{m.note || 'App link sent'}</span>}
+                  onClick={() => pick(m.key)} />
+              ))}
+            </ul>
+          </>
+        )}
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
           {list.slice(0, n).map((m, i) => (
             <ListRow key={m.key} first={i === 0} title={personal(m)} sub={<span style={{ color: m.loans.some((x) => x.overdue) ? C.coral : C.muted }}>{summary(m)}</span>}
@@ -119,17 +131,6 @@ export default function Members({ go }) {
           <button type="button" onClick={() => setN(n + MORE)} style={{ ...field, fontWeight: 700, cursor: 'pointer' }}>
             Show {Math.min(MORE, left)} more of {left}
           </button>
-        )}
-        {joining.length > 0 && (
-          <>
-            <span style={{ color: C.muted, fontWeight: 700, paddingTop: 4 }}>Joining · {joining.length}</span>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
-              {joining.map((m, i) => (
-                <ListRow key={m.key} first={i === 0} title={m.label} sub={<span style={{ color: C.muted }}>{m.note || 'App link sent'}</span>}
-                  onClick={() => pick(m.key)} />
-              ))}
-            </ul>
-          </>
         )}
       </section>
     </MapCard>

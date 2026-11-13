@@ -11,7 +11,7 @@
  *                     shares, machine work, crop plan, land, messages (read only; no nIN rows: members hold no nIN)
  *   #/help            the help QR as large as the screen allows (A2: a leader acts for her for 5 minutes, session.js)
  *   #/property        the land title is ready: one image of the screen's exact size showing the property; OK → home
- *   #/share/<token>   F7: one crop share (lent, repay, repaid, by when; or ready to use, with the help QR)
+ *   #/share/<token>   F7: one crop agreement (lent, repay, repaid, by when; or ready to use, with the help QR)
  *   #/plan, #/plan/<i>  F12: the crop plan's seasons per area, and one season
  *   #/land, #/land/<n>  F13: her land title's areas (a picture per area), an area's earlier crops; #pending before the title
  *   #/messages(/<i>)  F8: the SMS Nila sent her
@@ -59,6 +59,11 @@
   var qrKey = false;
   function screen(html, l, c, r, title) {
     if (qrKey) r = ['QR', function () { go('#/help'); }];
+    // Offline (13 Nov): what she sees is the last data this phone read; say from when.
+    if (data && data.offline && !/id="qr"/.test(html)) {
+      var d0 = new Date(data.at);
+      html = '<p class="muted small">No internet · as of ' + d0.getDate() + ' ' + MON[d0.getMonth()] + '</p>' + html;
+    }
     hd.textContent = title || 'Nila';
     main.innerHTML = html;
     keys = { SoftLeft: l && l[1], Enter: c && c[1], SoftRight: r && r[1] };
@@ -82,6 +87,11 @@
     });
   }
 
+  // ---- the app on the phone (13 Nov): a service worker keeps the lite files, so Nila lite opens without internet ----
+  if ('serviceWorker' in navigator && !window.NILA_LITE_STATIC) {
+    try { navigator.serviceWorker.register('/lite/lite-sw.js', { scope: '/lite/' }).catch(function () { /* online only */ }); } catch (e) { /* none */ }
+  }
+
   // ---- the device key (IndexedDB 'nila-lite' / 'keys' / 'device') ----
 
   function idb() {
@@ -94,7 +104,7 @@
   }
   /** Her Polygon key is kept encrypted (4 Nov): under an AES-GCM key made on this phone that cannot be exported (as
    *  the device key), so the stored bytes alone never give it away; its address is kept beside it, so the phone never
-   *  has to decrypt it to know where her title and crop shares are. `polygonKey`: the key in hex. */
+   *  has to decrypt it to know where her title and crop agreements are. `polygonKey`: the key in hex. */
   function sealPolygon(polygonKey) {
     var c = window.crypto.subtle, iv = window.crypto.getRandomValues(new Uint8Array(12)), seal;
     return c.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']).then(function (k) {
@@ -140,7 +150,7 @@
     return a;
   }
   /** A new device key (not extractable), kept on this phone; its public key and its signature over the link, with the
-   *  Polygon address the phone makes for her crop shares (26 Oct, option C: the key stays on this phone, only the
+   *  Polygon address the phone makes for her crop agreements (26 Oct, option C: the key stays on this phone, only the
    *  address is used: L12 mints her FoodTokens to it). */
   function makeKey(code) {
     var c = window.crypto && window.crypto.subtle;
@@ -287,7 +297,10 @@
    *  leader's scan makes it and joins it with no node in between. null once it has its union. */
   function joinPart(cfg, account, ledger, pair, sign) {
     if (!cfg.union || !cfg.sponsor || stored('nila.lite.joined.' + account) === '1') return Promise.resolve(null);
-    return window.NilaChain.read(cfg.rpc_url, cfg.sponsor, account, 'union', []).catch(function () { return null; }).then(function (u) {
+    // Offline (13 Nov): the chain cannot be read; once this phone sent her union, the join is left out.
+    var offline = {};
+    return window.NilaChain.read(cfg.rpc_url, cfg.sponsor, account, 'union', []).catch(function () { return offline; }).then(function (u) {
+      if (u === offline) { if (stored('nila.lite.union.' + account) === '1') return null; u = null; }
       if (u) { store('nila.lite.joined.' + account, '1'); return null; }
       return Promise.all([
         window.crypto.subtle.exportKey('spki', pair.publicKey),
@@ -297,6 +310,24 @@
         var j = r[1]; j.key = spki.subarray(spki.length - 65);
         return j;
       });
+    });
+  }
+
+  /** The latest ledger, for a signature's expiry. Online: asked, and kept with its time. Offline (13 Nov): estimated from
+   *  the last one kept (a ledger about every 5 s), plus a margin, so the help QR can be made with no internet — the
+   *  leader's phone, which is online, sends what it allows. */
+  function latestLedger(cfg) {
+    return fetch(cfg.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (res) { return res.json(); }).then(function (l) {
+      var seq = l.result.sequence;
+      store('nila.lite.ledger', JSON.stringify({ seq: seq, at: Date.now() }));
+      return seq;
+    }, function (e) {
+      var k = null;
+      try { k = JSON.parse(stored('nila.lite.ledger') || 'null'); } catch (x) { /* none */ }
+      if (!k) throw new Error('No internet, and this phone has not been online yet. Connect once, then the QR works offline.');
+      var gone = Math.max(0, (Date.now() - k.at) / 1000);
+      return Math.floor(k.seq + gone / 5 + 20 + gone / 100);
     });
   }
 
@@ -323,8 +354,24 @@
   function tsOf(iso) { return iso ? Date.parse(String(iso).slice(0, 10) + 'T00:00:00Z') / 1000 : 0; }
   function months(slot) { return { S1: 'Oct \u2013 Feb', S2: 'Mar \u2013 May', S3: 'Jun \u2013 Aug' }[slot] || ''; }
 
+  /** Her data from the node and the chain (needs internet). Offline (13 Nov): the last data this phone read, kept in
+   *  localStorage and marked `offline`, so every screen still opens and says "As of <date>". */
   function load(force) {
-    if (data && !force && Date.now() - data.at < 60000) return Promise.resolve(data);
+    if (data && !force && !data.offline && Date.now() - data.at < 60000) return Promise.resolve(data);
+    return loadOnline(force).then(function (d) {
+      try { localStorage.setItem('nila.lite.data', JSON.stringify({ at: d.at, me: d.me, cfg: d.cfg, invested: d.invested, loans: d.loans, vouchers: d.vouchers })); } catch (e) { /* not kept */ }
+      return d;
+    }, function (e) {
+      var kept = null;
+      try { kept = JSON.parse(localStorage.getItem('nila.lite.data') || 'null'); } catch (x) { /* none */ }
+      if (!kept || (e && e.status)) throw e;      // a refusal from the node is not "offline"
+      kept.offline = true;
+      data = kept;
+      return kept;
+    });
+  }
+
+  function loadOnline(force) {
     var me, cfg, C = window.NilaChain;
     return signed('me', {}).then(function (q) { return call('POST', '/keypad/me', q); }).then(function (m) {
       me = m;
@@ -465,8 +512,8 @@
       var i = shareInfo(d, x);
       hours += i.hours;
       if (i.m) owed += i.m.left;
-      if (i.m && i.m.left > 0) rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 repay by ' + part(i.due), v: inr(i.m.atDue), go: function () { go('#/share/' + hexKey(x.token)); } });
-      else if (x.state === 'ready') rows.push({ t: 'Crop share', s: (x.name || x.crop) + ' \u00b7 ready to use', v: inr(x.cash), go: function () { go('#/share/' + hexKey(x.token)); } });
+      if (i.m && i.m.left > 0) rows.push({ t: 'Crop agreement', s: (x.name || x.crop) + ' \u00b7 repay by ' + part(i.due), v: inr(i.m.atDue), go: function () { go('#/share/' + hexKey(x.token)); } });
+      else if (x.state === 'ready') rows.push({ t: 'Crop agreement', s: (x.name || x.crop) + ' \u00b7 ready to use', v: inr(x.cash), go: function () { go('#/share/' + hexKey(x.token)); } });
     });
     if (hours > 0) rows.push({ t: 'Machine work', s: 'Pay a machine owner', v: (Math.round(hours * 10) / 10) + ' ac', go: function () { go('#/hours'); } });
     var next = shares.filter(function (x) { return x.state === 'ready' || x.state === 'early'; })
@@ -475,7 +522,10 @@
     var t = me.title, acres = t.areas.reduce(function (a, z) { return a + z.acres; }, 0);
     rows.push({ t: 'My land', s: t.areas.length + (t.areas.length === 1 ? ' area' : ' areas') + ' \u00b7 ' + (Math.round(acres * 10) / 10) + ' acres', go: function () { go('#/land'); } });
     rows.push({ t: 'Messages', s: (me.messages || []).length + ' from Nila', go: function () { go('#/messages'); } });
-    // The total at the top (26 Oct): what is invested less what is owed on crop shares now.
+    // No internet (13 Nov): her leader's phone shows her data as a QR (G2), this phone scans it.
+    var fl = fromLeader();
+    rows.push({ t: 'Update from your leader', s: fl ? 'Last: ' + dayMon(fl.at * 1000) : 'Scan your leader\'s QR', go: function () { go(fl ? '#/fromleader' : '#/scan'); } });
+    // The total at the top (26 Oct): what is invested less what is owed on crop agreements now.
     var head = '<div class="total"><small class="muted">Total balance</small><div class="big">' + esc(inr(d.invested - owed)) + '</div>' +
       (owed > 0 ? '<small class="muted">Invested ' + esc(inr(d.invested)) + ' \u00b7 owed ' + esc(inr(owed)) + '</small>' : '') + '</div>';
     if (me.title) setTimeout(function () { keepAreas(d); }, 500);
@@ -483,10 +533,10 @@
   }
 
   function share(token) {
-    withData('My crop share', function (d) {
+    withData('My crop agreement', function (d) {
       var x = (d.me.shares || []).filter(function (y) { return hexKey(y.token) === token; })[0];
       var back = ['Back', function () { go('#/home'); }];
-      if (!x) { screen('<p class="muted">This crop share is not in your plan.</p>', back, null, null, 'My crop share'); return; }
+      if (!x) { screen('<p class="muted">This crop agreement is not in your plan.</p>', back, null, null, 'My crop agreement'); return; }
       // Under the area picture (27 Oct): what to do with it, as the crop plan's explainer, in a lighter grey.
       var i = shareInfo(d, x), what = i.m ? 'Repay at the union office, in cash.' : 'To use it, go to your union office and show your QR to your leader.';
       var h = '<h1>' + esc(x.name || x.crop) + ' \u00b7 Area ' + esc(x.area) + '</h1>' +
@@ -498,15 +548,15 @@
         h += row('Cash up to', inr(x.cash)) + row(x.state === 'early' ? 'From' : 'Use by', part(x.state === 'early' ? x.open : x.final)) +
           '</div>';
       }
-      screen(h, back, null, null, 'My crop share');
+      screen(h, back, null, null, 'My crop agreement');
       if (x.area) areaImage(d, x.area).then(function (url) {
         var box = document.getElementById('areamap'); if (!box) return;
         box.innerHTML = '<img width="220" height="150" alt="Area ' + esc(x.area) + '" src="' + url + '">';
       }, function () { var box = document.getElementById('areamap'); if (box) box.innerHTML = '<p class="muted small">No picture right now.</p>'; });
     });
   }
-  // ---- machine work (27 Oct, in acres): she picks the crop share and the job, her phone shows a QR the owner scans ----
-  // Nothing is typed: the job's acres are the crop share's area × its passes (the plan's jobs, /keypad/me). The QR is her
+  // ---- machine work (27 Oct, in acres): she picks the crop agreement and the job, her phone shows a QR the owner scans ----
+  // Nothing is typed: the job's acres are the crop agreement's area × its passes (the plan's jobs, /keypad/me). The QR is her
   // own signed authorization of machinery.claim for this voucher, up to that job's units, once, for 2 days (session.js
   // voucher): the owner gets no session and cannot act for her account; the owner may lower the acres for a part done.
   var VOUCHER_LEDGERS = 34560;   // 48 hours of 5-second ledgers
@@ -522,14 +572,14 @@
     return out;
   }
   function tAcres(units) { return Math.round(units / 10) / 10; }
-  /** #/hours: her crop shares with machine work left; one goes straight to its jobs. */
+  /** #/hours: her crop agreements with machine work left; one goes straight to its jobs. */
   function machineHours() {
     withData('Machine work', function (d) {
       var list = voucherList(d);
       if (list.length === 1) { go('#/hours/' + hexKey(list[0].x.token)); return; }
-      menu('hours', 'Machine work', '<p class="small">Pay a machine owner for work on your crop share. Choose the crop share.</p>',
+      menu('hours', 'Machine work', '<p class="small">Pay a machine owner for work on your crop agreement. Choose the crop agreement.</p>',
         list.map(function (v) {
-          return { t: (v.x.name || v.x.crop || 'Crop share') + (v.x.area ? ' \u00b7 Area ' + v.x.area : ''), s: tAcres(v.left) + ' tractor acres left',
+          return { t: (v.x.name || v.x.crop || 'Crop agreement') + (v.x.area ? ' \u00b7 Area ' + v.x.area : ''), s: tAcres(v.left) + ' tractor acres left',
             go: function () { go('#/hours/' + hexKey(v.x.token)); } };
         }), ['Back', function () { go('#/home'); }], list.length ? undefined : null, null);
       if (!list.length) main.innerHTML += '<p class="muted">No machine work left.</p>';
@@ -541,7 +591,7 @@
       var left = d.vouchers[tok] || 0;
       var x = (d.me.shares || []).filter(function (y) { return hexKey(y.token) === tok; })[0] || {};
       var back = ['Back', function () { go('#/home'); }];
-      if (left <= 0) { screen('<p class="muted">No machine work left on this crop share.</p>', back, null, null, 'Machine work'); return; }
+      if (left <= 0) { screen('<p class="muted">No machine work left on this crop agreement.</p>', back, null, null, 'Machine work'); return; }
       var jobs = (x.jobs || []).filter(function (j) { return j.units > 0; });
       var make = function (units, label) {
         busy = true;
@@ -568,11 +618,11 @@
       };
       // No jobs in the plan (an older share): one QR for what is left, any machine; the owner's app caps it at the area.
       if (!jobs.length) {
-        screen('<p class="small">Show a QR for the machine work left on this crop share (' + tAcres(left) + ' tractor acres).</p>',
+        screen('<p class="small">Show a QR for the machine work left on this crop agreement (' + tAcres(left) + ' tractor acres).</p>',
           back, ['Show QR', function () { make(left, 'Machine work up to ' + tAcres(left) + ' tractor acres'); }], null, 'Machine work');
         return;
       }
-      menu('jobs', 'Machine work', '<p class="small">Choose the job. The QR covers the area of this crop share.</p>',
+      menu('jobs', 'Machine work', '<p class="small">Choose the job. The QR covers the area of this crop agreement.</p>',
         jobs.map(function (j) {
           var units = Math.min(j.units, left), part = units < j.units;
           var name = JOB_NAMES[j.type] || 'Machine';
@@ -602,7 +652,7 @@
     screen('<h1>' + esc(st[0]) + '</h1><ol class="steps">' + st[1].map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>',
       ['Back', function () { go('#/invested'); }], null, null, st[0]);
   }
-  // ---- area pictures (26 Oct): one per crop share's area, kept on the phone; made again when the plan or its areas
+  // ---- area pictures (26 Oct): one per crop agreement's area, kept on the phone; made again when the plan or its areas
   // change (the key holds the record and the plan ids), older ones removed ----
   var AREA = 'nila.lite.area.';
   function areaVersion(d) {
@@ -639,7 +689,7 @@
       });
     });
   }
-  /** After the asset list: every crop share's area picture, one after the other (so they are there offline). */
+  /** After the asset list: every crop agreement's area picture, one after the other (so they are there offline). */
   function keepAreas(d) {
     dropOldAreas(d);
     var seen = {}, list = [];
@@ -663,7 +713,7 @@
       // One sentence on what a crop plan is (26 Oct); without a plan, the member opens the QR for the leader to make it.
       head = '<p class="small">Your crop plan says what to grow on each area for the coming year, and the cash and machine work for it.</p>' + head +
         (list.length ? '' : d.me.plan === 'waiting' ? '<p>Your crop plan is made. It waits for your union leader to approve it.</p>' :
-          d.me.plan === 'approved' ? '<p>Your crop plan is approved. Your union is making your crop shares.</p>' :
+          d.me.plan === 'approved' ? '<p>Your crop plan is approved. Your union is making your crop agreements.</p>' :
           d.me.plan === 'denied' ? '<p>Your union leader did not approve the plan. Open your QR and show it to your union leader to make a new one.</p>' :
           '<p>No crop plan yet. Open your QR and show it to your union leader to make it with you.</p>');
       menu('plan', 'My crop plan', head, list.map(function (x, k) {
@@ -805,11 +855,11 @@
     var sign = function (payload) { return window.crypto.subtle.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, pair.privateKey, payload); };
     chainConfig().then(function (c) {
       cfg = c;
-      // The latest ledger, for the signature's expiry (the phone's own clock ends the QR after 5 minutes).
-      return fetch(c.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (res) { return res.json(); });
+      // The latest ledger, for the signature's expiry (the phone's own clock ends the QR after 5 minutes); estimated
+      // when offline (13 Nov).
+      return latestLedger(c);
     }).then(function (l) {
-      ledger = l.result.sequence;
+      ledger = l;
       return loadKey();
     }).then(function (p) {
       pair = p;
@@ -866,8 +916,114 @@
       add, null, 'Nila');
   }
 
+  // ---- Update from your leader (13 Nov, test): her data as a QR on the leader's phone (G2), read with this phone's
+  // camera — no internet on this phone.
+  // Format v2 (13 Nov; encoder liteDataText in src/leader/MemberStatus.jsx). `NILA:D2:` + base45 (RFC 9285) of bytes;
+  // v = unsigned LEB128 varint, in this order: v version (2) · v made at, unix minutes · 6 bytes ASCII: last 6
+  // characters of her account · v owed ₹ · v invested ₹ · v agreement count · per agreement: v crop family · v state
+  // (0 not open yet, 1 ready, 2 financed, 3 overdue, 4 repaid, 5 lapsed) · v left to repay ₹ · v repay by, days since
+  // 2020-01-01 (0 none) · v machine vouchers left, centi tractor acres (0 none).
+  // Crop family numbers: must match the crop_calendar contract / FoodToken crop codes (code ÷ 1000).
+  var LITE_CROPS = { 0: 'Paddy', 1: 'Groundnut', 2: 'Sugarcane', 3: 'Banana', 6: 'Sesame', 7: 'Cassava', 8: 'Maize',
+    9: 'Green gram', 10: 'Horse gram', 11: 'Black gram', 14: 'Fodder sorghum', 15: 'Cumbu napier', 16: 'Sunhemp',
+    17: 'Dhaincha', 18: 'Wild indigo' };
+  var LITE_STATES = ['Not open yet', 'Ready', 'Financed', 'Overdue', 'Repaid', 'Lapsed'];
+  var B45 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
+
+  /** base45 text → byte array, or null when it is not valid base45. */
+  function unbase45(s) {
+    var out = [], i, a, b, c, v;
+    for (i = 0; i < s.length; i += 3) {
+      a = B45.indexOf(s.charAt(i)); b = B45.indexOf(s.charAt(i + 1));
+      if (a < 0 || b < 0) return null;
+      if (i + 2 < s.length) {
+        c = B45.indexOf(s.charAt(i + 2));
+        if (c < 0) return null;
+        v = a + b * 45 + c * 2025;
+        if (v > 65535) return null;
+        out.push(Math.floor(v / 256), v % 256);
+      } else {
+        v = a + b * 45;
+        if (v > 255) return null;
+        out.push(v);
+      }
+    }
+    return out;
+  }
+
+  function dayMon(ms) { var d = new Date(ms); return d.getDate() + ' ' + MON[d.getMonth()]; }
+  function fromLeader() { try { return JSON.parse(stored('nila.lite.fromleader') || 'null'); } catch (e) { return null; } }
+
+  /** Reads `NILA:D2:` text; her own data only (her account's tail in it). → { at (unix s), o, i, l: [{ f, s, left,
+   *  due (unix s), c }] }, or an Error with a plain reason. */
+  function readLeaderQr(text) {
+    if (!/^NILA:D/.test(text || '')) return new Error('This is not a Nila data QR.');
+    if (!/^NILA:D2:/.test(text)) return new Error('This QR is from another app version. Ask your leader.');
+    var bytes = unbase45(text.slice(8)), p = 0, bad = false;
+    if (!bytes) return new Error('The QR could not be read. Try again.');
+    var vi = function () {
+      var x = 0, m = 1, b;
+      do { if (p >= bytes.length) { bad = true; return 0; } b = bytes[p++]; x += (b % 128) * m; m *= 128; } while (b >= 128);
+      return x;
+    };
+    if (vi() !== 2) return new Error('This QR is from another app version. Ask your leader.');
+    var j = { at: vi() * 60 }, tail = '', k, n;
+    for (k = 0; k < 6; k++) tail += String.fromCharCode(bytes[p++] || 0);
+    j.o = vi(); j.i = vi(); n = vi(); j.l = [];
+    for (k = 0; k < n && !bad; k++) {
+      var f = vi(), st = vi(), left = vi(), day = vi(), c = vi();
+      j.l.push({ f: f, s: st, left: left, due: day ? 1577836800 + day * 86400 : 0, c: c });
+    }
+    if (bad || p !== bytes.length) return new Error('The QR could not be read. Try again.');
+    if (tail !== String(stored('nila.lite.account') || '').slice(-6)) return new Error('This QR is for another member.');
+    return j;
+  }
+
+  var scanner = null;
+  function stopScan() { if (scanner) { var s0 = scanner; scanner = null; try { s0.stop().catch(function () {}); } catch (e) { /* stopped */ } } }
+
+  /** #/scan: the camera, until a Nila data QR is read. The reader (html5-qrcode) loads only here. */
+  function scan() {
+    screen('<div id="reader" style="width:100%"></div><p class="muted small" id="msg">Point at your leader\'s QR</p>',
+      ['Back', function () { stopScan(); go('#/home'); }], null, null, 'Scan');
+    var start = function () {
+      if (!window.Html5Qrcode) { document.getElementById('msg').textContent = 'The camera reader could not load.'; return; }
+      scanner = new window.Html5Qrcode('reader');
+      scanner.start({ facingMode: 'environment' }, { fps: 5, qrbox: 180 }, function (text) {
+        var j = readLeaderQr(text), msg = document.getElementById('msg');
+        if (j instanceof Error) { if (msg) msg.textContent = j.message; return; }
+        store('nila.lite.fromleader', JSON.stringify(j));
+        stopScan();
+        go('#/fromleader');
+      }, function () { /* no QR in this frame */ }).catch(function () {
+        var msg = document.getElementById('msg'); if (msg) msg.textContent = 'No camera. Allow the camera for Nila.';
+      });
+    };
+    if (window.Html5Qrcode) { start(); return; }
+    var sc = document.createElement('script');
+    sc.src = '/lite/html5-qrcode.min.js';
+    sc.onload = start;
+    sc.onerror = function () { var msg = document.getElementById('msg'); if (msg) msg.textContent = 'The camera reader could not load.'; };
+    document.body.appendChild(sc);
+  }
+
+  /** #/fromleader: what her leader's phone showed, "as of" its time. */
+  function fromLeaderScreen() {
+    var j = fromLeader(), back = ['Back', function () { go('#/home'); }];
+    if (!j) { go('#/scan'); return; }
+    var h = '<p class="muted small">From your leader \u00b7 as of ' + esc(dayMon(j.at * 1000)) + '</p><div class="rows">' +
+      row('You owe now', inr(j.o)) + row('Invested', inr(j.i)) + '</div>';
+    (j.l || []).forEach(function (l) {
+      h += '<div class="rows">' + row(LITE_CROPS[l.f] || 'Crop agreement', LITE_STATES[l.s] || '') +
+        (l.left ? row('Left to repay', inr(l.left)) : '') + (l.due ? row('Repay by', part(l.due)) : '') +
+        (l.c ? row('Machine work', (Math.round(l.c / 10) / 10).toFixed(1) + ' tractor acres') : '') + '</div>';
+    });
+    screen(h, back, ['Scan', function () { go('#/scan'); }], null, 'From your leader');
+  }
+
   function route() {
     var h = location.hash, m;
+    if (h !== '#/scan') stopScan();
     if (h !== '#/property') document.body.className = '';
     qrKey = false;
     if ((m = /^#\/l\/([0-9A-Z]+)$/.exec(h))) {
@@ -888,6 +1044,8 @@
     if (h === '#/property') { property(); return; }
     if (h === '#/help') { help(); return; }
     if (h === '#/home') { home(); return; }
+    if (h === '#/scan') { scan(); return; }
+    if (h === '#/fromleader') { fromLeaderScreen(); return; }
     if ((m = /^#\/share\/([0-9a-f]+)$/.exec(h))) { share(m[1]); return; }
     if (h === '#/invested') { invested(); return; }
     if (h === '#/hours') { machineHours(); return; }

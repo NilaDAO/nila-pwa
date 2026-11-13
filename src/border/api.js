@@ -18,16 +18,18 @@ export function borderClient(signer) {
     jobs: () => call('GET', '/border/jobs').then(listOf),
     job: (id) => call('GET', `/border/job/${id}`).then(jobOf),
     preview: (id, field, shape) => call('POST', `/border/job/${id}/preview`, { field, shape }),
-    accept: (id, field, shape) => call('POST', `/border/job/${id}/decide`, { field, action: 'accept', shape }).then(jobOf),
+    // 13 Nov: the field's soil (1–5) is accepted with its shape.
+    accept: (id, field, shape, soil) => call('POST', `/border/job/${id}/decide`, { field, action: 'accept', shape, ...(soil ? { soil } : {}) }).then(jobOf),
     noneFit: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit' }).then(jobOf),
     remove: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'delete' }).then(jobOf),   // 1 Nov
     retry: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'retry' }).then(jobOf),
-    acceptPlan: (id) => call('POST', `/border/job/${id}/decide`, { field: 0, action: 'accept_plan' }).then(jobOf),
+    acceptPlan: (id, soil) => call('POST', `/border/job/${id}/decide`, { field: 0, action: 'accept_plan', ...(soil ? { soil } : {}) }).then(jobOf),
     addPlot: (id, field, plot) => call('POST', `/border/job/${id}/decide`, { field, action: 'add_plot', shape: plot }).then(jobOf),
     newField: (id, plot) => call('POST', `/border/job/${id}/decide`, { field: 0, action: 'new_field', shape: plot }).then(jobOf),
     // L2 + Add a point (26 Oct): more fields for an open job, taken on the leader's phone.
     addPoints: (id, points) => call('POST', `/border/job/${id}/points`, { points }).then(jobOf),
-    mint: (id, farm) => call('POST', `/border/job/${id}/mint`, farm ? { farm } : {}).then(jobOf),
+    // 13 Nov: soils {field n: 1–5} and tenant (the member rents the land) go with the mint.
+    mint: (id, farm, soils, tenant) => call('POST', `/border/job/${id}/mint`, { ...(farm ? { farm } : {}), ...(soils ? { soils } : {}), ...(tenant != null ? { tenant } : {}) }).then(jobOf),
     // Land check (4 Nov, LOAN_RULES "Land check before more than ₹1 lakh"): her title's check, and "I placed the sheet".
     landCheck: (titleId) => call('GET', `/border/title/${titleId}/check`),
     sheetPlaced: (titleId) => call('POST', `/border/title/${titleId}/sheet`, {}),

@@ -2,22 +2,20 @@
 // member's property on the one shared map, filtered by the tab, at any scroll position of the card, with a chip on
 // the map naming the filter and its count. A tap on the leader's own property opens her own Crop plan; on any other
 // member's property, that member's G2.
-//  - members: all members' properties, name labels (the default);
-//  - assets: every member's land as on her land title (24 Oct): the title's fields (NFT metadata, else the record's),
-//    no crop labels; a property with a crop agreement Ready to take up in accent, a machine owner with her machines;
-//  - cash: properties with an active loan, by repayment (due within 14 days gold, overdue coral);
-//  - harvests: properties with a harvest in the next 60 days, by weeks to harvest.
+// 13 Nov (Carst), per area from each member's field record (her title's outline when there is no record yet):
+//  - members: every property's outline, with the member's name;
+//  - assets: every area's outline; the areas with a crop agreement ready to use in accent, named by its crop;
+//  - cash: the areas whose crop agreement was taken up (cash drawn), as outlines, the member's name on one;
+//  - harvests: what grows on each area now, from the record (its crop's colour; unidentified in grey).
 // (Crop plan keeps the leader's own property, CropPlanFlow.)
 import { useCallback, useMemo } from 'react';
 import AreaMap, { ringsOf } from '../plan/AreaMap';
-import { usePlanClient } from '../plan/hooks';
+import { useCropCatalogue, usePlanClient } from '../plan/hooks';
 import { useNilaSigner } from '../wallet/signer';
-import { useMachines, typeName } from '../machine/hooks';
 import { C } from '../shell/tokens';
-import { useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
+import { useUnionMembers, useUnionShares } from './unionMembers';
 import { UNION_START } from '../shell/MapStage';
 
-const DAY = 86_400;
 // Where the union map looks before any member has land on it: UNION_START (MapStage).
 
 /** The middle of all the union's land (every member's property and title fields), for a filter with nothing in it. */
@@ -30,7 +28,7 @@ export function unionCentre(members) {
   }
   return k ? { lat: Math.round((lat / k) * 1e5) / 1e5, lng: Math.round((lng / k) * 1e5) / 1e5 } : UNION_START;
 }
-export const FILTER_NAMES = { members: 'Members', assets: 'Assets', cash: 'Active loans', harvests: 'Harvests' };
+export const FILTER_NAMES = { members: 'Members', assets: 'Ready to use', cash: 'Taken up', harvests: 'Growing now' };
 
 /** { map, count }: the union map for a tab. fitBottom: the room the card leaves at the bottom (px). on: false reads
  *  nothing (a member's app, where the hook is still called). */
@@ -40,10 +38,8 @@ export function useLeaderMap(filter = 'members', fitBottom = 170, on = true) {
   const s = useNilaSigner();
   const members = useUnionMembers(api);
   const shares = useUnionShares(api);
-  const machines = useMachines({ on: on && filter === 'assets' });
+  const catalogue = useCropCatalogue();
   const all = useMemo(() => members.data || [], [members.data]);
-  const loans = useMemo(() => (filter === 'cash' ? all.flatMap((m) => m.loans.filter((l) => !l.due)) : []), [filter, all]);
-  const dues = useLoanDues(loans);
   const me = s?.stellarAddress;
   const pick = useCallback((key) => {
     const m = all.find((x) => x.key === key);
@@ -52,50 +48,74 @@ export function useLeaderMap(filter = 'members', fitBottom = 170, on = true) {
   }, [all, me]);
 
   return useMemo(() => {
-    const now = Date.now() / 1000;
+    const crops = catalogue.data?.crops || [];
+    const cropOf = (key) => {
+      if (!key || key === 'unknown') return { name: 'Unidentified', colour: '#8A94A6' };
+      const hit = crops.find((c) => c.key === key) || crops.find((c) => key.startsWith(`${c.key}_`));
+      return { name: hit?.name || String(key).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()), colour: hit?.colour || '#7BA05B' };
+    };
+    // What grows on each area now (the record's current reading, else its open cycle), as the crop plan's first step.
+    const growing = (rec) => {
+      const out = {};
+      for (const c of Array.isArray(rec?.current_cycle) ? rec.current_cycle : []) {
+        const z = c.cluster_id ?? c.zone_id;
+        if (z != null && c.crop_type !== undefined) out[z] = c.crop_type || 'unknown';
+      }
+      for (const c of Array.isArray(rec?.cycles) ? rec.cycles : []) {
+        if (c.zone_id != null && !c.eos && out[c.zone_id] === undefined) out[c.zone_id] = c.crop_type || 'unknown';
+      }
+      return out;
+    };
     const label = {};
+    const zones = [];
+    let count = 0;
+    const add = (id, geometry, lab) => { if (geometry && !label[id]) { zones.push({ zone_id: id, geometry }); label[id] = lab; } };
     for (const m of all) {
-      if (!m.places.length && !m.fields?.length) continue;
+      const areas = (m.record?.zones || []).filter((z) => z.geometry);
       const mine = shares.data?.[m.address]?.shares || [];
-      if (filter === 'members') label[m.key] = { text: m.label };
-      else if (filter === 'assets') {
-        const owned = (machines.data || []).filter((x) => x.owner === m.address);
-        const ready = mine.filter((x) => x.ready).length || Number(m.shareCounts?.ready || 0);
-        label[m.key] = ready ? { text: m.label, sub: `${owned.length ? `${owned.length} machine${owned.length === 1 ? '' : 's'} · ` : ''}${ready} Ready`, colour: C.accent }
-          : owned.length ? { text: m.label, sub: owned.map((x) => typeName(x.machine_type)).join(', '), colour: C.text }
-            : { text: m.label };
+      const outline = () => m.places.forEach((p, i) => add(`${m.key}#p${i}`, p.geometry, i ? { hide: true } : { text: m.label }));
+      if (!areas.length && !m.places.length) continue;
+      if (filter === 'members') {
+        // Every property as its outline (the title's), dashed white, with her name — not its record areas.
+        m.places.forEach((p, i) => add(`${m.key}#p${i}`, p.geometry, { ...(i ? { hide: true } : { text: m.label }), colour: '#ffffff', outline: true, dashed: true }));
+        if (!m.places.length) areas.forEach((z, i) => add(`${m.key}#${z.zone_id}`, z.geometry, { ...(i ? { hide: true } : { text: m.label }), colour: '#ffffff', outline: true, dashed: true }));
+        count += 1;
+      } else if (filter === 'assets') {
+        // Every area as an outline; an area with a crop agreement ready to use in accent, named by its crop.
+        const ready = new Map();
+        mine.filter((x) => x.ready).forEach((x) => (x.zones || []).forEach((z) => ready.set(z, x)));
+        if (areas.length) {
+          areas.forEach((z) => {
+            const x = ready.get(z.zone_id);
+            add(`${m.key}#${z.zone_id}`, z.geometry, x ? { text: x.crop || 'Ready', sub: 'Ready to use', colour: C.accent } : { hide: true });
+          });
+        } else outline();
+        count += ready.size ? 1 : 0;
       } else if (filter === 'cash') {
-        const open = [...m.loans, ...mine.filter((x) => x.loan && !m.loans.some((l) => l.token === x.token)).map((x) => x.loan)];
-        if (!open.length) continue;
-        const due = Math.min(...open.map((l) => l.due || dues.data?.[l.token] || Infinity));
-        const late = open.some((l) => l.overdue) || due < now;
-        const soon = !late && due - now < 14 * DAY;
-        label[m.key] = { text: m.label, sub: late ? 'Overdue' : soon ? `Due in ${Math.max(1, Math.ceil((due - now) / DAY))} d` : 'Active loan',
-          colour: late ? C.coral : soon ? C.gold : '#ffffff' };
+        // Only the areas whose crop agreement was taken up (cash drawn), as outlines.
+        const taken = new Set(mine.filter((x) => x.drawn).flatMap((x) => x.zones || []));
+        const hit = areas.filter((z) => taken.has(z.zone_id));
+        if (!hit.length) continue;
+        hit.forEach((z, i) => add(`${m.key}#${z.zone_id}`, z.geometry, i ? { hide: true, colour: '#ffffff', outline: true } : { text: m.label, colour: '#ffffff', outline: true }));
+        count += 1;
       } else if (filter === 'harvests') {
-        const next = mine.filter((x) => x.drawn && x.harvest).map((x) => Date.parse(x.harvest) / 1000)
-          .concat(m.nextHarvest ? [Date.parse(m.nextHarvest) / 1000] : []).filter((t) => t >= now - 7 * DAY).sort((a, b) => a - b)[0];
-        if (!next || next - now > 60 * DAY) continue;
-        const weeks = Math.max(0, Math.round((next - now) / (7 * DAY)));
-        label[m.key] = { text: m.label, sub: weeks ? `Harvest in ${weeks} wk` : 'Harvest now', colour: weeks <= 2 ? C.accent : C.gold };
+        // What grows on each area now, in its crop's colour.
+        const now = growing(m.record);
+        if (!areas.length) continue;
+        let any = false;
+        areas.forEach((z) => {
+          const k = now[z.zone_id];
+          if (k === undefined) { add(`${m.key}#${z.zone_id}`, z.geometry, { hide: true }); return; }
+          const c = cropOf(k);
+          any = any || k !== 'unknown';
+          add(`${m.key}#${z.zone_id}`, z.geometry, { text: c.name, colour: c.colour });
+        });
+        count += any ? 1 : 0;
       }
     }
-    const shown = all.filter((m) => label[m.key]);
-    // Assets: each title field its own shape (`<key>#<n>`); the member's label on her first field only.
-    const byFields = filter === 'assets';
-    const zones = shown.flatMap((m) => (byFields && m.fields?.length
-      ? m.fields.map((f, i) => {
-        const id = `${m.key}#${i}`;
-        if (i) label[id] = { ...label[m.key], text: undefined, sub: undefined, hide: true };
-        else label[id] = label[m.key];
-        return { zone_id: id, geometry: f.geometry };
-      })
-      : m.places.map((p) => ({ zone_id: m.key, geometry: p.geometry }))))
-      .filter((z, i, a) => a.findIndex((y) => y.zone_id === z.zone_id) === i);
-    const count = shown.length;
     const chip = `${FILTER_NAMES[filter] || filter} · ${count}`;
     // No property to show (26 Oct): the satellite map centred on the union's land, the chip saying 0.
     const map = <AreaMap record={zones.length ? { zones } : null} center={zones.length ? undefined : unionCentre(all)} labels={label} onSelect={(z) => z && pick(String(z).split('#')[0])} fitSide={90} fitBottom={fitBottom} chip={chip} />;
     return { map, count, loading: !members.data };
-  }, [all, filter, shares.data, machines.data, dues.data, pick, fitBottom, members.data]);
+  }, [all, filter, shares.data, catalogue.data, pick, fitBottom, members.data]);
 }
