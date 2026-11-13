@@ -4,7 +4,7 @@
 // "Done · n" group (no activity-done store yet, design Q26), no mismatch card (no crop-seen check yet,
 // open-cp/3-4), no farm improvements (not in the record or plan), no "Sell" steps (not in the plan).
 // As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month; the
-// season bar on top of the card steps through the seasons (the map's chips follow, CropPlanFlow). 13 Nov: no title and
+// year bar on top of the card steps plan years; season chips above the tasks filter them (CropPlanFlow, 13 Nov). No title and
 // no "Your plan" rows (the crop bars above the card's list show the plan); the plan's date is a muted line at the end.
 import { useState } from 'react';
 import { C, FONT } from '../shell/tokens';
@@ -111,11 +111,13 @@ function Group({ name, items, now, first }) {
  *  month; a drawn one is done and not listed. assist: a shared phone, where the leader extends the plan.
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
-export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart, chartTitle = "This year's plan", past = false }) {
+export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart, chartTitle = "This year's plan", past = false, seasons, filter }) {
   const now = today.toISOString().slice(0, 10);
   const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
   // One list for the whole property (13 Nov): every season's tasks in date order, not only the season on the bar.
+  // 13 Nov: seasons = the season indices whose chip is on (filter: the chips); only their tasks are listed.
   const all = tasksOf(plan.plan, areaNo, areaName).filter((t) => !(t.share && byKey[t.share]?.drawn))
+    .filter((t) => !seasons || seasons.has(t.season))
     .sort((a, b) => a.date.localeCompare(b.date));
   const ready = (t) => !!(t.share && byKey[t.share]?.ready);
   const thisMonth = all.filter((t) => ready(t) || (t.date.slice(0, 7) === now.slice(0, 7) && !(t.share && byKey[t.share] && !ready(t))));
@@ -124,6 +126,7 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, ass
   const madeOn = approvedAt && approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return (
     <>
+      {!past && filter}
       {!past && <Group name="To do now" items={thisMonth} now />}
       {!past && <Group name="Coming up" items={later} first={4} />}
       {/* 13 Nov: the whole plan as crop bars, below the tasks, under its own title. */}

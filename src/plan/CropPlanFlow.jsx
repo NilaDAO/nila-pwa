@@ -7,7 +7,7 @@ import { Bouncing } from '../register/RegFrame';
 import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
-import { C, FONT } from '../shell/tokens';
+import { C, FONT, R } from '../shell/tokens';
 import { KV } from '../loan/AssetParts';
 import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanClient, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { CheckRow, Choice, Notice, Primary, Section, Sheet, Steps, inr, muted } from './ui';
@@ -22,7 +22,7 @@ import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
-import { AreaCard, CropSelect, PlanChart, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
+import { AreaCard, CropSelect, PlanChart, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
 import { areaHash } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
@@ -204,6 +204,11 @@ function AssistPlan({ map, name, waiting }) {
 // satellite reading `current_cycle` (one entry per area); an area without one takes its open cycle in `cycles` (sown,
 // no harvest yet), "since <month>". A crop the reading does not know shows as "Unidentified". An area with neither
 // (harvested, or never read) keeps "Area n". Name and colour from the catalogue when it lists the crop.
+// 13 Nov: the approved plan's season chips. The seasons of the plan year season i is in (indices), and those of them
+// whose chip is on (all when none of this year's is: another year may have other slots).
+const yearSeasons = (ss, i) => ss.map((_, k) => k).filter((k) => planYear(ss[k].start) === planYear(ss[i]?.start));
+const seasonsOn = (ss, i, on) => { const ys = yearSeasons(ss, i); const k = ys.filter((x) => on.has(ss[x].slot)); return k.length ? k : ys; };
+const ALL_SLOTS = ['S1', 'S2', 'S3'];
 const words = (k) => String(k).replace(/_/g, ' ');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const sinceOf = (d) => (/^\d{4}-\d{2}/.test(d || '') ? `since ${MONTH[Number(d.slice(5, 7)) - 1]}` : undefined);
@@ -360,12 +365,14 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [season, setSeason] = useState(0);
   // A plan year before the plan (12 Nov: plan history from the record); null = the plan's years.
   const [pastYear, setPastYear] = useState(null);
+  // 13 Nov: the season chips switched on (CP13): they filter the tasks, the map and the bars.
+  const [slotsOn, setSlotsOn] = useState(() => new Set(ALL_SLOTS));
   // 13 Nov: the approved plan (CP13) steps back through the record too; any step change leaves either screen, so reset.
   useEffect(() => { setPastYear(null); }, [step]);
   const [area, setArea] = useState(null);
   const [checked, setChecked] = useState(() => new Set());
   const planId = current.data?.id;
-  useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); setPastYear(null); setTicks(new Set()); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); setPastYear(null); setTicks(new Set()); setSlotsOn(new Set(ALL_SLOTS)); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Approved: the chain as one plan (its seasons and shares, 25 Oct); a waiting extension shows as itself.
   const plan = current.data?.approval?.decision === 'approve' ? mergedPlan(chainQ.data, current.data) : current.data;
   const myShares = useMyShares();   // CP13: a crop agreement she can collect now is a to-do
@@ -391,9 +398,15 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const gone = Object.entries(plan.plan.left_out_reasons || {}).filter(([, why]) => why === 'removed by her')
       .map(([z]) => [z, { gone: true }]);
     const i = Math.min(season, ss.length - 1);
-    const rows = rowsInSeason(ss, i);
+    // 13 Nov: the approved plan shows every season whose chip is on in the year on the bar; an area with crops in more
+    // than one shows them joined ("Groundnut → Maize"), in the first crop's colour.
+    const idx = approved ? seasonsOn(ss, i, slotsOn) : [i];
+    const per = {};
+    for (const k of idx) for (const [z, r] of Object.entries(rowsInSeason(ss, k))) { per[z] = per[z] || []; if (!per[z].includes(r)) per[z].push(r); }
+    const rows = Object.fromEntries(Object.entries(per).map(([z, rs]) => [z, rs.length === 1 ? rs[0]
+      : { ...rs[0], name: rs.map((r) => r.name).filter((n, k, a) => n !== a[k - 1]).join(' → ') }]));
     // Crops picked and not sent yet (28 Oct): the area shows the picked crop, in its colour.
-    const slotNow = ss[i].slot;
+    const slotNow = ss[idx[0]].slot;
     const pickedHere = (z) => pending[z]?.[slotNow] && (catalogue.data?.crops || []).find((c) => c.key === pending[z][slotNow]);
     // A merged row (same crop on several areas, 21 Oct): its harvest on the first area's chip, "with Area n" on the others.
     const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, pickedHere(z) ? { text: pickedHere(z).name, sub: 'changed',
@@ -403,9 +416,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // An area with no crop that season but a pick for it.
     for (const z of Object.keys(pending)) if (!out[z] && pickedHere(z)) out[z] = { text: pickedHere(z).name, sub: 'changed', colour: pickedHere(z).colour };
     // A soil cover in this season (no bare soil in the dry months, 21 Oct), where no crop is on the area then.
-    const slot = ss[i].slot;
     for (const c of plan.plan.soil_cover || []) {
-      if (out[c.zone] || !(c.slots || []).includes(slot)) continue;
+      if (out[c.zone] || !idx.some((k) => (c.slots || []).includes(ss[k].slot))) continue;
       const short = c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/ \(.*\)$/, '');
       out[c.zone] = { text: c.kind === 'bare' ? 'Bare soil' : short.charAt(0).toUpperCase() + short.slice(1),
         sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',
@@ -419,14 +431,14 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     }
     // The crop in the field now (13 Nov): on its areas in every season that starts before its (estimated) harvest,
     // where the plan has nothing of its own there yet.
-    const start = ss[i].start;
+    const start = ss[idx[0]].start;
     for (const st of plan.plan.standing || []) {
       if (out[st.zone] || !start || st.until <= start) continue;
       const m = new Date(st.until).toLocaleDateString('en-GB', { month: 'short' });
       out[st.zone] = { text: st.name, sub: `until ${st.estimate ? '~' : ''}${m}`, colour: st.colour, acc: checked.has(st.zone) };
     }
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, pastYear]);
+  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, pastYear, approved, slotsOn]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
@@ -903,37 +915,57 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // or when making them failed, one line above it says so — no separate "being made" or "N of M made" screen.
     const ss = plan.plan.seasons || [];
     const shown = Math.min(season, Math.max(0, ss.length - 1));
-    // 13 Nov: before season 1 the bar becomes a year bar over the record's past years (as the draft plan's overview);
-    // the map and the chart show that year's crops; "Back to now" returns to the season she is in.
+    // 13 Nov: the bar steps plan years only ("2026–27"; `season` = a season of the year shown, so the area page links
+    // keep their year): back past the plan's first year into the record's years, forward into an extension's year.
     const planYears = [...new Set(ss.map((x) => planYear(x.start)))];
     const first = Math.min(firstRecordYear(record) ?? planYears[0], planYears[0]);
     const y0 = pastYear ?? planYear(ss[shown]?.start);
     const nowSeason = currentSeason(ss);
+    const nowYear = planYear(ss[nowSeason]?.start);
+    const toPlanYear = (y) => { setPastYear(null); setSeason(Math.max(0, ss.findIndex((x) => planYear(x.start) === y))); };
     const prev = () => {
       if (pastYear != null) setPastYear(Math.max(first, pastYear - 1));
-      else if (shown === 0 && first < planYears[0]) setPastYear(planYears[0] - 1);
-      else setSeason((i) => (i + ss.length - 1) % ss.length);
+      else if (planYears.includes(y0 - 1)) toPlanYear(y0 - 1);
+      else if (y0 === planYears[0] && first < y0) setPastYear(y0 - 1);
     };
     const next = () => {
-      if (pastYear == null) setSeason((i) => (i + 1) % ss.length);
-      else if (pastYear + 1 < planYears[0]) setPastYear(pastYear + 1);
-      else { setPastYear(null); setSeason(0); }
+      if (pastYear != null) { if (pastYear + 1 < planYears[0]) setPastYear(pastYear + 1); else toPlanYear(planYears[0]); }
+      else if (planYears.includes(y0 + 1)) toPlanYear(y0 + 1);
     };
     const toNow = () => { setPastYear(null); setSeason(nowSeason); };
     const bar = ss.length > 0 && (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        {/* 13 Nov: only on the year bar (a past year); on the plan's own seasons the bar is enough. */}
-        {pastYear != null && (
+        {/* 13 Nov: only off the year she is in. */}
+        {(pastYear != null || y0 !== nowYear) && (
           <button type="button" onClick={toNow} style={{ height: 32, padding: '0 14px', borderRadius: 16, border: 0, background: 'rgba(18,18,18,0.85)', color: C.accent,
             fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Back to now</button>
         )}
         <div style={{ alignSelf: 'stretch' }}>
-          {pastYear != null
-            ? <SlideBar label={`${yearLabel(null, pastYear)} · from your record`} prevLabel="Previous year" nextLabel="Next year" onPrev={prev} onNext={next} />
-            : <SlideBar label={seasonLabel(ss[shown], shown)} prevLabel="Previous season" nextLabel="Next season" onPrev={prev} onNext={next} />}
+          <SlideBar label={`${yearLabel(null, y0)}${pastYear != null ? ' · from your record' : ''}`} prevLabel="Previous year" nextLabel="Next year" onPrev={prev} onNext={next} />
         </div>
       </div>
     );
+    // 13 Nov: the year's seasons as chips (all on at first); at least one stays on. Not in a record year (no plan).
+    const yearIdx = yearSeasons(ss, shown);
+    const onIdx = seasonsOn(ss, shown, slotsOn);
+    const toggleSlot = (slot) => {
+      const left = onIdx.filter((k) => ss[k].slot !== slot);
+      if (left.length === onIdx.length) setSlotsOn(new Set([...onIdx.map((k) => ss[k].slot), slot]));
+      else if (left.length) setSlotsOn(new Set(left.map((k) => ss[k].slot)));
+    };
+    const chips = yearIdx.length > 1 && (
+      <div role="group" aria-label="Seasons shown" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+        {yearIdx.map((k) => {
+          const on = onIdx.includes(k);
+          return (
+            <button key={k} type="button" aria-pressed={on} onClick={() => toggleSlot(ss[k].slot)}
+              style={{ height: 32, padding: '0 14px', borderRadius: R.round, border: 0, background: on ? C.accent : C.raised, color: on ? C.ink : C.muted,
+                fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{SEASON[ss[k].slot] || `Season ${k - yearIdx[0] + 1}`}</button>
+          );
+        })}
+      </div>
+    );
+    const slotsShown = pastYear == null ? new Set(onIdx.map((k) => ss[k].slot)) : undefined;
     // The crop bars (13 Nov, as the draft plan's overview): one lane per area, read-only.
     const zones = Object.keys(plan.plan.proposal || {}).sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
     const made = mint.status === 'done' || mint.status === 'partial' || deferredOnly;
@@ -950,9 +982,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         )}
         {/* 13 Nov: the bars' title follows the year on the bar; a past year shows only its bars (no tasks). */}
         {/* A row opens its area's page (13 Nov), as a tap on its area on the map. */}
-        <ActivePlan chart={<PlanChart plan={plan} record={record} zones={zones} areaName={areaName} checked={new Set()} y0={y0} crops={catalogue.data?.crops} onArea={pastYear == null ? openShare : undefined} />}
+        <ActivePlan chart={<PlanChart plan={plan} record={record} zones={zones} areaName={areaName} checked={new Set()} y0={y0} crops={catalogue.data?.crops} onArea={pastYear == null ? openShare : undefined} slots={slotsShown} />}
           chartTitle={pastYear != null ? `${yearLabel(null, pastYear)} · from your record` : y0 === planYear() ? "This year's plan" : `${yearLabel(null, y0)} plan`}
-          past={pastYear != null}
+          past={pastYear != null} filter={chips} seasons={pastYear == null ? new Set(onIdx) : undefined}
           plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
           canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
           onExtend={async () => {

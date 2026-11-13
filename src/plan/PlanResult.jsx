@@ -125,7 +125,8 @@ const monthsFrom = (y0) => (d) => { const t = new Date(d); return (t.getFullYear
 /** One area's year as bars on one lane (12 Nov): crops follow each other, so one lane holds them all, the crop's name in
  *  its bar. Crops in their colour; soil covers hatched; a crop she picked and has not sent yet in its colour.
  *  → [{ key, slot, s0, s1, name, fill, ink, editable, row }] for plan year y0 (months 0–12 from October). */
-export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readOnly, record, crops } = {}) {
+// slots (13 Nov): the season chips that are on (S1/S2/S3); the plan's bars of the other seasons are dimmed, not removed.
+export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readOnly, record, crops, slots } = {}) {
   const at = monthsFrom(y0);
   const clamp = (a, b) => { const s0 = Math.max(0, Math.min(12, at(a))); return [s0, Math.max(s0 + 0.3, Math.min(12, at(b)))]; };
   const out = [];
@@ -159,7 +160,7 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
       const colour = (pick && pick.colour) || r.colour || C.muted;
       taken.add(se.slot);
       out.push({ key: `${se.slot}-${r.crop}`, slot: se.slot, s0, s1, name: pick ? pick.name : r.name, fill: colour,
-        ink: lightBg(colour) ? C.ink : C.text, editable: !readOnly, row: { ...r, slot: se.slot } });
+        ink: lightBg(colour) ? C.ink : C.text, editable: !readOnly, row: { ...r, slot: se.slot }, dim: !!slots && !slots.has(se.slot) });
     }
   }
   for (const c of (plan.plan.soil_cover || []).filter((x) => x.zone === zone)) {
@@ -174,7 +175,7 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
       : `repeating-linear-gradient(45deg, ${c.colour || '#7FB069'} 0 3px, rgba(127,176,105,0.25) 3px 6px)`;
     // A soil cover is advice (21 Oct): a crop may be picked in its season instead (28 Oct).
     out.push({ key: `soil-${c.from}`, slot, s0, s1, name: label, fill, ink: C.text, soil: true, cover: c,
-      editable: !readOnly && !!slot && !taken.has(slot), row: { slot } });
+      editable: !readOnly && !!slot && !taken.has(slot), row: { slot }, dim: !!slots && !!slot && !slots.has(slot) });
   }
   return out.sort((a, b) => a.s0 - b.s0);
 }
@@ -185,7 +186,7 @@ export function Lane({ items, height = 40, onBar, open }) {
     <div style={{ position: 'relative', height }}>
       {items.map((it) => {
         const style = { position: 'absolute', left: `${(it.s0 / 12) * 100}%`, width: `calc(${((it.s1 - it.s0) / 12) * 100}% - 2px)`, top: 0, bottom: 0,
-          borderRadius: 6, background: it.fill, opacity: it.faded ? 0.4 : 1, color: it.ink, border: open === it.key ? `2px solid ${C.text}` : 0, padding: '0 6px', boxSizing: 'border-box',
+          borderRadius: 6, background: it.fill, opacity: it.faded ? 0.4 : it.dim ? 0.25 : 1, color: it.ink, border: open === it.key ? `2px solid ${C.text}` : 0, padding: '0 6px', boxSizing: 'border-box',
           display: 'flex', alignItems: 'center', fontFamily: FONT, fontSize: 12, fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap',
           textShadow: it.soil ? '0 0 3px #000' : undefined };
         const text = <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>;
@@ -374,7 +375,7 @@ export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, o
 
 /** The overview chart (12 Nov): one lane per area, its name on the left (✓ when she checked it); a tap opens the area.
  *  Areas left out are named and greyed. */
-export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending = {}, onArea, record, focus }) {
+export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending = {}, onArea, record, focus, slots }) {
   const cropOf = (key) => (crops || []).find((c) => c.key === key);
   const CL = 104;
   const out = plan.plan.left_out || [];
@@ -390,7 +391,7 @@ export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending =
             <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {checked?.has(z) && <span aria-label="checked" style={{ color: C.accent }}>✓ </span>}{areaName(z)}
             </span>
-            <span style={{ flexGrow: 1 }}><Lane items={laneOf(plan, z, { y0, picked: pending[z] || {}, cropOf, readOnly: true, record, crops })} height={30} /></span>
+            <span style={{ flexGrow: 1 }}><Lane items={laneOf(plan, z, { y0, picked: pending[z] || {}, cropOf, readOnly: true, record, crops, slots })} height={30} /></span>
           </button>
         ))}
         {/* Left-out areas (corners, trees; 12 Nov): one muted line, not a row each. */}
