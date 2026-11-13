@@ -23,10 +23,9 @@ import { useLeaderMap } from './unionMap';
 const PAGE = 10;
 const MORE = 20;
 // A row's second line: what she owes (coral when overdue), else where her onboarding stands, else her land.
-function summary(m) {
+function owedText(m) {
   const owed = m.loans.reduce((a, x) => a + (x.left || 0), 0);
-  if (owed > 0) return `${inr(owed)} owed${m.loans.some((x) => x.overdue) ? ' · overdue' : ''}`;
-  return m.note || (m.lands.length ? `Land ${m.lands.join(', ')}` : 'Member');
+  return owed > 0 ? `${inr(owed)} owed${m.loans.some((x) => x.overdue) ? ' · overdue' : ''}` : '';
 }
 export default function Members({ go }) {
   const api = usePlanClient();
@@ -44,7 +43,8 @@ export default function Members({ go }) {
   const waiting = !members.data;
   // The leaders' contact book (1 Nov): the full name a leader gave the account, with the public farm name.
   const book = useContactBook();
-  const personal = (m) => { const n = m.address && book.data?.names.get(m.address)?.name; return n ? `${n} · ${m.label}` : m.label; };
+  // 13 Nov: the row's title is the name alone (the farm name when there is none); the farm name is the subtitle.
+  const personal = (m) => (m.address && book.data?.names.get(m.address)?.name) || m.label;
   // A pasted help QR or address finds the member by account (26 Oct).
   const needle = (addressFromQr(q.trim()) || q.trim()).toLowerCase();
   // A member holds a land title (24 Oct); people still onboarding (keypad link, fields sent, title on its way) are
@@ -120,7 +120,7 @@ export default function Members({ go }) {
         )}
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
           {list.slice(0, n).map((m, i) => (
-            <ListRow key={m.key} first={i === 0} title={personal(m)} sub={<span style={{ color: m.loans.some((x) => x.overdue) ? C.coral : C.muted }}>{summary(m)}</span>}
+            <ListRow key={m.key} first={i === 0} title={personal(m)} sub={<span style={{ color: m.loans.some((x) => x.overdue) ? C.coral : C.muted }}>{owedText(m) ? `${m.label} · ${owedText(m)}` : m.label}</span>}
               onClick={() => pick(m.key)} />
           ))}
           {waiting && <li><SkeletonRows rows={5} /></li>}
