@@ -124,7 +124,8 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
       <span style={{ display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{name}</span>
-        <span style={{ ...muted, lineHeight: 1.5 }}>Crop agreement · {x.area}</span>
+        {/* 13 Nov: the fields are in the bar above; this line says what the numbers on the right are. */}
+        <span style={{ ...muted, lineHeight: 1.5 }}>{x.share.green_manure ? 'Green manure' : fodder ? 'Fodder' : 'Estimated sales'}</span>
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{r.kg ? amount(r.kg) : '—'}</span>
