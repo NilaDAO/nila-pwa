@@ -1,6 +1,6 @@
 // G2 (board LeaderMember): one grower for the leader, a map card from G1 (#/members/<title id>). Header: back to G1,
 // her farm name, settings. Her map with this season's crops; then, from what the app can already read:
-// property and fields (the title's fields), the next crop agreement; Lending (what she owes, repay date) with Repay (Photo count → the desk)
+// property and fields (the title's fields); Lending (what she owes, repay date) with Repay (Photo count → the desk)
 // and Mark as default (fund_core.mark_default, once her loan is past due); Invested (fund_core.position) with Invest
 // more (→ the desk); Redeem from the plan (her crop agreements not drawn yet; Ready → L11); her record.
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
@@ -22,7 +22,7 @@ import { unionCentre } from './unionMap';
 import { areaM2 } from '../plan/mapTap';
 import { areasOf } from '../plan/record';
 import { rowsInSeason } from '../plan/PlanResult';
-import { SEASON } from '../loan/MyShares';
+import { SEASON, areaNames } from '../loan/MyShares';
 import { SkeletonRows } from '../shell/Skeleton';
 import { inr } from '../plan/ui';
 import { markJoined, useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
@@ -201,9 +201,13 @@ export default function MemberStatus({ id, go }) {
   const fields = m.record ? m.record.meta?.geometry?.field_features?.features || [] : m.fields || [];
   const acres = (m.record ? areas.reduce((a, z) => a + (z.area_m2 || 0), 0) : fields.reduce((a, f) => a + areaM2(f.geometry), 0)) / 4046.86;
   const hasLand = !!m.record || fields.length > 0;
-  // Not drawn and not lapsed (25 Oct: no from date any more, attested with its last draw date), soonest last date first.
-  const open = m.shares.filter((x) => !x.drawn && !x.lapsed);
-  const next = [...open].sort((a, b) => (a.final || a.from) - (b.final || b.from))[0];
+  // A crop agreement's areas by their field names (13 Nov; "Area 1 + 2 + 3 + 5" said nothing to the leader), each
+  // field once, as the crop plan screens; "Area n" only for an area without a name.
+  const zoneName = Object.fromEntries((m.record?.zones || []).filter((z) => z.name).map((z) => [z.zone_id, z.name]));
+  const fieldsOf = (x) => {
+    const nos = String(x.area ?? '').split(' + ');
+    return x.zones.length ? areaNames(x.zones.map((z, i) => zoneName[z] || `Area ${nos.length === x.zones.length ? nos[i] : areas.findIndex((y) => y.zone_id === z) + 1}`)) : `Area ${x.area}`;
+  };
   const owed = m.loans.reduce((a, x) => a + (x.left || 0), 0);
   const loan = [...m.loans].sort((a, b) => (a.due || 9e12) - (b.due || 9e12))[0];
   const dueLoan = m.loans.find((x) => x.due && x.due < now);
@@ -237,7 +241,6 @@ export default function MemberStatus({ id, go }) {
         {/* Fields: the fields her title was minted with (L3/L4), from the title's record (meta.geometry.field_features);
             the record's areas are only for the crops on the map. "—" when the record lists none. */}
         {hasLand && <Row k="Fields" v={fields.length || '—'} />}
-        {next && <Row k="Next crop agreement" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
         {/* The leaders' contact book (1 Nov): the member's full name, beside the public farm name in the header. */}
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
@@ -329,7 +332,7 @@ export default function MemberStatus({ id, go }) {
                   <span aria-hidden="true" style={{ width: 10, height: 10, flexShrink: 0, borderRadius: R.round, background: x.colour || C.muted }} />
                   <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <span style={{ fontWeight: 700 }}>{x.crop}</span>
-                    <span style={{ color: C.muted }}>Area {x.area}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
+                    <span style={{ color: C.muted }}>{fieldsOf(x)}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
                   </span>
                   {st.more && (
                     <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
@@ -420,7 +423,8 @@ function Account({ m, inv, go }) {
         <div style={{ display: 'flex', gap: 8 }}>
           {rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
           {move && <button type="button" style={btn()} onClick={() => setCard('keypad')}>Move</button>}
-          {lite && <button type="button" style={btn()} onClick={() => setCard(card === 'data' ? undefined : 'data')}>Her data as QR</button>}
+          {/* "Sync with phone" (13 Nov; was "Her data as QR"): what it does for her, not how. */}
+          {lite && <button type="button" style={btn()} onClick={() => setCard(card === 'data' ? undefined : 'data')}>Sync with phone</button>}
           {(titleId || gone) && (
             <button type="button" aria-label={gone ? 'Delete member' : 'Remove member'} onClick={() => setCard(gone ? 'delete' : 'remove')}
               style={{ ...btn(), flex: 'none', width: 44, marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -457,7 +461,7 @@ function LiteDataQr({ m, inv, onClose }) {
   useEffect(() => { QRCode.toDataURL(text, { margin: 2, errorCorrectionLevel: 'L', width: 320 }).then(setImg).catch(() => setImg(null)); }, [text]);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 12, padding: 16 }}>
-      {img ? <img src={img} alt="Her data for Nila lite" style={{ width: 260, height: 260 }} /> : <span style={{ color: C.ink }}>Making the QR…</span>}
+      {img ? <img src={img} alt="Sync with phone: QR for Nila lite" style={{ width: 260, height: 260 }} /> : <span style={{ color: C.ink }}>Making the QR…</span>}
       <span style={{ color: C.ink, fontSize: 14, textAlign: 'center' }}>On her phone: Nila lite → Update from your leader → scan this.</span>
       <span style={{ color: '#475569', fontSize: 13 }}>Owed {inr(owed)} · invested {inr(invested)}</span>
       <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={onClose}>Close</button>
