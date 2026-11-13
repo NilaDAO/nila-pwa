@@ -39,6 +39,8 @@ export const QrIcon = (p) => line(<>
   <rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" />
 </>, { size: 18, ...p });
 // A padlock (lucide 'lock'): a field only the union's leaders can read (the contact book, 2 Nov).
+// A page outline (13 Nov): G2's field-record button.
+export const FileIcon = (p) => line(<><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /><path d="M8 13h8M8 17h5" /></>, p);
 export const LockIcon = (p) => line(<><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>, p);
 export const PlusIcon = (p) => line(<><path d="M12 5v14" /><path d="M5 12h14" /></>, p);
 export const ChevronIcon = (p) => line(<path d="m9 18 6-6-6-6" />, p);

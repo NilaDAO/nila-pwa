@@ -1,12 +1,13 @@
 // G2 (board LeaderMember): one grower for the leader, a map card from G1 (#/members/<title id>). Header: back to G1,
 // her farm name, settings. Her map with this season's crops; then, from what the app can already read:
-// property and fields (the title's fields), the next crop agreement; Lending (what she owes, repay date) with Repay (Photo count → the desk)
+// property and fields (the title's fields); Lending (what she owes, repay date) with Repay (Photo count → the desk)
 // and Mark as default (fund_core.mark_default, once her loan is past due); Invested (fund_core.position) with Invest
 // more (→ the desk); Redeem from the plan (her crop agreements not drawn yet; Ready → L11); her record.
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import QRCode from 'qrcode';
 import { ConfirmCard, Text, useUnionInfo } from '../shell/SettingsParts';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
@@ -14,21 +15,24 @@ import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePendingApprovals, usePlanClient } from '../plan/hooks';
 import { C, FONT, R } from '../shell/tokens';
-import { ChevronIcon, TrashIcon, WarnIcon } from '../shell/icons';
+import { ChevronIcon, FileIcon, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
 import AreaMap from '../plan/AreaMap';
+import { unionCentre } from './unionMap';
 import { areaM2 } from '../plan/mapTap';
 import { areasOf } from '../plan/record';
 import { rowsInSeason } from '../plan/PlanResult';
-import { SEASON } from '../loan/MyShares';
+import { SEASON, areaNames } from '../loan/MyShares';
 import { SkeletonRows } from '../shell/Skeleton';
 import { inr } from '../plan/ui';
 import { markJoined, useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
 import { useNilaSigner } from '../wallet/signer';
+import { keypadClient } from '../keypad/api';
+import { shareOfToken } from '../machine/hooks';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
 import { overRoom, useDeskRoom } from '../loan/deskRoom';
-import { Stepper } from '../loan/AssetParts';
+import { AssetScreen, Card, QrCircle, Secondary, Stepper } from '../loan/AssetParts';
 import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
 import { PersonalName } from '../union/UnionCards';
@@ -129,6 +133,7 @@ export default function MemberStatus({ id, go }) {
   const [noPhotos, setNoPhotos] = useState(false);
   const [bring, setBring] = useState(0);     // Invest (7 Nov): Bring cash to the office, the amount she invests
   const [scanning, setScanning] = useState(false);
+  const [syncing, setSyncing] = useState(false);   // Sync with phone: its own QR screen (13 Nov)
   const [helpError, setHelpError] = useState();
   const helpUntil = useSessionUntil(m?.address);
   const labels = useMemo(() => {
@@ -177,6 +182,8 @@ export default function MemberStatus({ id, go }) {
   // Help (A2, 26 Oct): the member's help QR starts a 5-minute session in which this leader acts for the member.
   // No generic Help button (26 Oct): an action that needs the member's consent asks for the member's QR itself, then
   // goes on (withdraw, pay out); one scan covers 5 minutes of them.
+  // Sync with phone (13 Nov; was an inline white card): a full QR screen like the app's other QRs.
+  if (syncing) return <LiteDataQr m={m} inv={inv} onClose={() => setSyncing(false)} />;
   if (scanning) {
     return <StartHelp member={m.address} label={`${scanning.what} · ${m.label}`} onBack={() => setScanning(false)}
       onStarted={() => { const then = scanning.then; setScanning(false); then(); }} />;
@@ -198,9 +205,13 @@ export default function MemberStatus({ id, go }) {
   const fields = m.record ? m.record.meta?.geometry?.field_features?.features || [] : m.fields || [];
   const acres = (m.record ? areas.reduce((a, z) => a + (z.area_m2 || 0), 0) : fields.reduce((a, f) => a + areaM2(f.geometry), 0)) / 4046.86;
   const hasLand = !!m.record || fields.length > 0;
-  // Not drawn and not lapsed (25 Oct: no from date any more, attested with its last draw date), soonest last date first.
-  const open = m.shares.filter((x) => !x.drawn && !x.lapsed);
-  const next = [...open].sort((a, b) => (a.final || a.from) - (b.final || b.from))[0];
+  // A crop agreement's areas by their field names (13 Nov; "Area 1 + 2 + 3 + 5" said nothing to the leader), each
+  // field once, as the crop plan screens; "Area n" only for an area without a name.
+  const zoneName = Object.fromEntries((m.record?.zones || []).filter((z) => z.name).map((z) => [z.zone_id, z.name]));
+  const fieldsOf = (x) => {
+    const nos = String(x.area ?? '').split(' + ');
+    return x.zones.length ? areaNames(x.zones.map((z, i) => zoneName[z] || `Area ${nos.length === x.zones.length ? nos[i] : (areas.findIndex((y) => y.zone_id === z) + 1 || '')}`.trim())) : `Area ${x.area}`;
+  };
   const owed = m.loans.reduce((a, x) => a + (x.left || 0), 0);
   const loan = [...m.loans].sort((a, b) => (a.due || 9e12) - (b.due || 9e12))[0];
   const dueLoan = m.loans.find((x) => x.due && x.due < now);
@@ -214,7 +225,10 @@ export default function MemberStatus({ id, go }) {
   // Map taps (24 Oct rule): her property again → back to the list (only her property is on G2's map).
   // No record yet: the title's fields, as the Assets map (28 Oct).
   const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} />
-    : fields.length ? <AreaMap record={{ zones: fields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry })) }} onSelect={() => go('members')} /> : <span />;
+    // Before the record (13 Nov): the title's fields with their names, not "Area n".
+    : fields.length ? <AreaMap record={{ zones: fields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry, ...(f.name ? { name: f.name } : {}) })) }} onSelect={() => go('members')} />
+      // No land (13 Nov: e.g. her title removed): the union's land, as the crop plan's no-title map.
+      : <AreaMap record={null} center={unionCentre(members.data)} />;
   const myLands = new Set([m.titleId, ...(m.lands || [])].filter((x) => x != null).map(String));
   const waiting = (pendingPlans.data?.plans || []).find((p) => myLands.has(String(p.land_id)));
   const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>;
@@ -231,7 +245,6 @@ export default function MemberStatus({ id, go }) {
         {/* Fields: the fields her title was minted with (L3/L4), from the title's record (meta.geometry.field_features);
             the record's areas are only for the crops on the map. "—" when the record lists none. */}
         {hasLand && <Row k="Fields" v={fields.length || '—'} />}
-        {next && <Row k="Next crop agreement" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
         {/* The leaders' contact book (1 Nov): the member's full name, beside the public farm name in the header. */}
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
@@ -244,6 +257,11 @@ export default function MemberStatus({ id, go }) {
           </Section>
         )}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
+        {/* A keypad member without a land title (13 Nov: e.g. hers was removed): the leader takes her points again. */}
+        {!m.titleId && !m.lands?.length && m.keypadId && (
+          <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
+            onClick={() => go(`tasks/member/${m.keypadId}/points`)}>Make a new land title</button>
+        )}
       </div>
       {waiting && (
         // Her plan waits for a leader's approval (L12): here as in the task list, also for a self-mode member (5 Nov).
@@ -318,7 +336,7 @@ export default function MemberStatus({ id, go }) {
                   <span aria-hidden="true" style={{ width: 10, height: 10, flexShrink: 0, borderRadius: R.round, background: x.colour || C.muted }} />
                   <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <span style={{ fontWeight: 700 }}>{x.crop}</span>
-                    <span style={{ color: C.muted }}>Area {x.area}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
+                    <span style={{ color: C.muted }}>{fieldsOf(x)}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
                   </span>
                   {st.more && (
                     <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
@@ -340,7 +358,7 @@ export default function MemberStatus({ id, go }) {
           {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
         </Section>
       )}
-      <Account m={m} inv={inv} go={go} />
+      <Account m={m} inv={inv} go={go} onSync={() => setSyncing(true)} />
       </div>
     </MapCard>
   );
@@ -387,8 +405,8 @@ const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, background: C
 /** G2 ends with "Account" (Carst 4 Nov): one row of Recover and Move (secondary buttons sharing the row) and a square
  *  delete button, each opening the same confirm card as before, then her record. Recover is disabled while a recovery
  *  waits out the union's wait or the app must finish it (its status under her name says which). */
-function Account({ m, inv, go }) {
-  const [card, setCard] = useState();       // 'recover' | 'keypad' | 'remove'
+function Account({ m, inv, go, onSync }) {
+  const [card, setCard] = useState();       // 'recover' | 'keypad' | 'remove' | 'delete' | 'record'
   const rcv = useRecovery(m.address);
   const titleId = m.titleId || [...(m.lands || [])][0];
   const p = inv.data;
@@ -398,28 +416,134 @@ function Account({ m, inv, go }) {
       : investment > 0 ? 'The member has an investment: pay it out first.' : null;
   const recoverOk = rcv.r !== 'pending' && rcv.r !== 'needed';
   const move = rcv.applies && !rcv.keypad && /^C/.test(m.address || '');
-  if (!rcv.applies && !titleId && !m.recordHash) return null;
+  const lite = rcv.keypad && !!m.address;   // her data as a QR for Nila lite (13 Nov, test of the offline refresh)
+  // No land title but a keypad row (13 Nov: e.g. hers was removed): the bin deletes her for good.
+  const gone = !titleId && !!m.keypadId;
+  if (!rcv.applies && !titleId && !m.recordHash && !gone) return null;
   const close = () => setCard();
   return (
     <Section title="Account">
-      {(rcv.applies || titleId) && (
+      {(rcv.applies || titleId || gone || m.recordHash) && (
         <div style={{ display: 'flex', gap: 8 }}>
           {rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
           {move && <button type="button" style={btn()} onClick={() => setCard('keypad')}>Move</button>}
-          {titleId && (
-            <button type="button" aria-label="Remove member" onClick={() => setCard('remove')}
-              style={{ ...btn(), flex: 'none', width: 44, marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {/* "Sync with phone" (13 Nov; was "Her data as QR"): what it does for her, not how. */}
+          {lite && <button type="button" style={btn()} onClick={onSync}>Sync with phone</button>}
+          {/* Her record as a square button before the bin (13 Nov; was a "Record" row): the hash is for checking, not
+              reading, so it opens in a card with Copy. Disabled without a record. */}
+          <button type="button" aria-label="Field record" disabled={!m.recordHash} onClick={() => setCard('record')}
+            style={{ ...square(!!m.recordHash), marginLeft: 'auto' }}>
+            <FileIcon color={C.text} />
+          </button>
+          {(titleId || gone) && (
+            <button type="button" aria-label={gone ? 'Delete member' : 'Remove member'} onClick={() => setCard(gone ? 'delete' : 'remove')}
+              style={square()}>
               <TrashIcon color={C.coral} />
             </button>
           )}
         </div>
       )}
-      {/* The record in the normal text colour (4 Nov: gold is for pins and icons only, the accent never on text). */}
-      {m.recordHash && <Row k="Record" v={`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`} />}
+      {card === 'record' && <RecordCard hash={m.recordHash} onClose={close} />}
       {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
       {card === 'keypad' && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={close} />}
       {card === 'remove' && <RemoveMember m={m} why={why} titleId={titleId} go={go} onClose={close} />}
+      {card === 'delete' && <DeleteMember m={m} go={go} onClose={close} />}
     </Section>
+  );
+}
+
+// Account's square icon buttons (13 Nov): the record and the bin share one size.
+const square = (enabled = true) => ({ ...btn(enabled), flex: 'none', width: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' });
+
+/** The field record (13 Nov): the full hash, selectable and wrapping, with Copy; one tap shows "Copied" briefly. */
+function RecordCard({ hash, onClose }) {
+  const [done, setDone] = useState(false);
+  const copy = () => { navigator.clipboard?.writeText(hash).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); }).catch(() => {}); };
+  return (
+    <ConfirmCard title="Field record" cancel="Close" ok={done ? 'Copied' : 'Copy'} onCancel={onClose} onOk={copy}>
+      <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 13, lineHeight: 1.5, color: C.text,
+        wordBreak: 'break-all', userSelect: 'text', WebkitUserSelect: 'text' }}>{hash}</span>
+    </ConfirmCard>
+  );
+}
+
+/* Nila lite data QR, format v2 (13 Nov). Text `NILA:D2:` + base45 (RFC 9285 alphabet: the QR uses alphanumeric mode)
+ * of bytes; `v` = unsigned LEB128 varint, fields in this order, no names:
+ *   v version (2) · v made at, unix minutes · 6 bytes: last 6 characters of her account, ASCII · v owed ₹ · v invested ₹
+ *   · v agreement count · per agreement: v crop family · v state (0 not open yet, 1 ready, 2 financed, 3 overdue,
+ *     4 repaid, 5 lapsed) · v left to repay ₹ · v repay by, days since 2020-01-01 (0 none) · v machine vouchers left,
+ *     centi tractor acres (0 none).
+ * Crop family = the FoodToken crop code ÷ 1000, read from the token id (machinery's shareOfToken), so it matches the
+ * crop_calendar contract by construction; the decoder is readLeaderQr in public/lite/lite.js (its LITE_CROPS names). */
+const B45 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
+const DAY0 = 1577836800;   // 2020-01-01 UTC
+function varint(out, v) {
+  let x = Math.max(0, Math.floor(Number(v) || 0));
+  do { const b = x % 128; x = Math.floor(x / 128); out.push(x > 0 ? b + 128 : b); } while (x > 0);
+}
+function base45(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 2) {
+    if (i + 1 < bytes.length) {
+      const v = bytes[i] * 256 + bytes[i + 1];
+      s += B45[v % 45] + B45[Math.floor(v / 45) % 45] + B45[Math.floor(v / 2025)];
+    } else s += B45[bytes[i] % 45] + B45[Math.floor(bytes[i] / 45)];
+  }
+  return s;
+}
+/** { at (unix s), account, owed, invested, rows: [{ family, state, left, due (unix s), centi }] } → the QR text. */
+export function liteDataText({ at, account, owed, invested, rows }) {
+  const out = [];
+  varint(out, 2); varint(out, Math.floor(at / 60));
+  const tail = String(account || '').slice(-6).padStart(6, ' ');
+  for (let i = 0; i < 6; i++) out.push(tail.charCodeAt(i) & 127);
+  varint(out, owed); varint(out, invested); varint(out, rows.length);
+  rows.forEach((r) => { varint(out, r.family); varint(out, r.state); varint(out, r.left);
+    varint(out, r.due > DAY0 ? Math.floor((r.due - DAY0) / 86400) : 0); varint(out, r.centi); });
+  return `NILA:D2:${base45(out)}`;
+}
+
+/** Her data for Nila lite as a QR (13 Nov, test): a keypad phone without internet scans it from the leader's screen
+ *  (Nila lite → Update from your leader) and shows it "as of" now. Only a summary, small enough for a weak camera:
+ *  what she owes, invested, and per crop agreement its state, what is left and when, machine work left. Format v2
+ *  above; her phone takes only a QR with her account's tail. Read-only on her phone: it changes nothing on-chain. */
+function LiteDataQr({ m, inv, onClose }) {
+  const [img, setImg] = useState();
+  const { data: cfg } = useStellarConfig();
+  const invested = inv.data ? Math.round(n(inv.data.invested)) : 0;
+  const owed = m.loans.reduce((a, l) => a + Math.max(0, Math.round(l.left || 0)), 0);
+  // Machine vouchers left per drawn agreement (machinery.voucher, as useVouchers in her own app), read once here.
+  const drawn = m.shares.filter((x) => x.drawn).map((x) => x.token);
+  const vouchers = useQuery({ queryKey: ['stellar', 'g2Vouchers', cfg?.union, m.address, drawn.join(',')],
+    enabled: !!cfg?.contracts?.machinery && drawn.length > 0, staleTime: 30_000,
+    queryFn: async () => Object.fromEntries(await Promise.all(drawn.map(async (t) => {
+      const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(t)]).catch(() => null);
+      return [t, v && !v.void && v.member === m.address ? Math.max(0, Number(v.units) - Number(v.used)) : 0];
+    }))) });
+  const rows = [...m.shares].sort((a, b) => a.from - b.from).map((x) => {
+    const loan = m.loans.find((l) => l.token === x.token);
+    const state = loan ? (loan.overdue ? 3 : 2) : x.drawn ? 4 : x.lapsed ? 5 : x.ready ? 1 : 0;
+    return { family: shareOfToken(x.token).family, state, left: loan ? Math.max(0, Math.round(loan.left || 0)) : 0,
+      due: loan?.due || 0, centi: vouchers.data?.[x.token] || 0 };
+  });
+  const text = useMemo(() => liteDataText({ at: Date.now() / 1000, account: m.address, owed, invested, rows }),
+    [m.address, owed, invested, JSON.stringify(rows)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ready = !vouchers.isLoading;
+  useEffect(() => {
+    if (!ready) return;
+    QRCode.toDataURL(text, { margin: 2, errorCorrectionLevel: 'L', width: 400 }).then(setImg).catch(() => setImg(undefined));
+  }, [text, ready]);
+  // Laid out as DeskQr (13 Nov): the QR in the white circle in its card, the lines under it, Close at the bottom.
+  return (
+    <AssetScreen title="Sync with phone" onBack={onClose}>
+      <Card label="Sync with phone">
+        <QrCircle img={ready ? img : undefined} alt="Sync with phone: QR for Nila lite" />
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center' }}>On her phone: Nila lite → Update from your leader → scan this.</p>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center', color: C.muted }}>Owed {inr(owed)} · invested {inr(invested)}</p>
+        {ready && <p style={{ margin: 0, fontSize: 12, textAlign: 'center', color: C.muted }}>{text.length} characters</p>}
+        <Secondary onClick={onClose}>Close</Secondary>
+      </Card>
+    </AssetScreen>
   );
 }
 
@@ -472,6 +596,23 @@ function MoveToKeypad({ address, name, phone, onClose }) {
 /** G2 Remove member (executive decision 28 Oct; the look of Settings → Reset account): the node burns the member's land
  *  title on Stellar, which ends the membership. Only with no crop agreement and no investment; nIN, USDC and vouchers stay
  *  in the member's wallet. The confirm says what it does, or why it cannot be done now (`why`). */
+/** A member without a land title deleted for good (13 Nov): her row and links on the node; her account stays on-chain. */
+function DeleteMember({ m, go, onClose }) {
+  const s = useNilaSigner();
+  const qc = useQueryClient();
+  const del = useMutation({
+    mutationFn: () => keypadClient(s).remove(m.keypadId),
+    onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
+  });
+  return (
+    <ConfirmCard title="Delete member" ok={del.isPending ? 'Deleting…' : 'Delete'} okStyle={{ background: C.coral }} okDisabled={del.isPending}
+      onCancel={onClose} onOk={() => del.mutate()}
+      warn={`Delete ${m.label} from the union's list for good? This cannot be undone. The number can be added again as a new member.`}>
+      {del.error && <Text style={{ color: C.coral }}>{del.error.message}</Text>}
+    </ConfirmCard>
+  );
+}
+
 function RemoveMember({ m, why, titleId, go, onClose }) {
   const api = usePlanClient();
   const qc = useQueryClient();

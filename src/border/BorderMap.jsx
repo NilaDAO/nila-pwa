@@ -180,16 +180,19 @@ function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawi
 
 /** A small picture of one shape for the L3 thumbnails (no tiles: the outline in its own box). */
 export function ShapeThumb({ geometry, size = 72 }) {
-  const ring = geometry?.coordinates?.[0] || [];
-  if (!ring.length) return <div style={{ width: size, height: size }} />;
-  const xs = ring.map((q) => q[0]); const ys = ring.map((q) => q[1]);
+  // Every part's outer ring (13 Nov: a MultiPolygon shape was read as one ring of polygons, "M NaN NaN").
+  const rings = (geometry?.type === 'MultiPolygon' ? (geometry.coordinates || []).map((p) => p[0] || [])
+    : [geometry?.coordinates?.[0] || []]).filter((r) => r.length && r.every((q) => Number.isFinite(q[0]) && Number.isFinite(q[1])));
+  if (!rings.length) return <div style={{ width: size, height: size }} />;
+  const all = rings.flat();
+  const xs = all.map((q) => q[0]); const ys = all.map((q) => q[1]);
   const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
   const k = (size - 12) / Math.max(x1 - x0, y1 - y0, 1e-9);
-  const d = ring.map((q, i) => `${i ? 'L' : 'M'}${(6 + (q[0] - x0) * k).toFixed(1)} ${(size - 6 - (q[1] - y0) * k).toFixed(1)}`).join(' ');
+  const d = rings.map((ring) => `${ring.map((q, i) => `${i ? 'L' : 'M'}${(6 + (q[0] - x0) * k).toFixed(1)} ${(size - 6 - (q[1] - y0) * k).toFixed(1)}`).join(' ')} Z`).join(' ');
   return (
     <svg aria-hidden="true" width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block' }}>
       <rect width={size} height={size} fill="#25361f" />
-      <path d={`${d} Z`} fill="rgba(212,207,90,0.28)" stroke={C.accent} strokeWidth="2" />
+      <path d={d} fill="rgba(212,207,90,0.28)" stroke={C.accent} strokeWidth="2" />
     </svg>
   );
 }
