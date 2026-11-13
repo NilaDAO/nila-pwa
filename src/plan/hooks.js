@@ -85,7 +85,11 @@ export function mergedPlan(chain, fallback) {
   if (ps.length < 2) return fallback;
   const last = ps[ps.length - 1];
   const seasons = ps.flatMap((p) => p.plan.seasons || []).sort((a, b) => String(a.start).localeCompare(String(b.start)));
-  return { ...last, plan: { ...last.plan, seasons, shares: ps.flatMap((p) => p.plan.shares || []) } };
+  // 13 Nov: the crop standing now and every plan's areas come from the whole chain (an extension's own plan may lack
+  // them), so CP13's bars and map still show the standing crop; the first plan's standing crop wins per area.
+  const standing = ps.flatMap((p) => p.plan.standing || []).filter((st, i, a) => a.findIndex((x) => x.zone === st.zone) === i);
+  const proposal = Object.assign({}, ...ps.map((p) => p.plan.proposal || {}));
+  return { ...last, plan: { ...last.plan, seasons, standing, proposal, shares: ps.flatMap((p) => p.plan.shares || []) } };
 }
 
 /** "Extend my plan": the node plans the missing cycles as a new plan (a job), or answers nothing_to_add. */

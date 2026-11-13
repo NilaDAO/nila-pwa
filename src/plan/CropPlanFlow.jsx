@@ -7,7 +7,7 @@ import { Bouncing } from '../register/RegFrame';
 import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
-import { C, FONT } from '../shell/tokens';
+import { C, FONT, R } from '../shell/tokens';
 import { KV } from '../loan/AssetParts';
 import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanClient, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { CheckRow, Choice, Notice, Primary, Section, Sheet, Steps, inr, muted } from './ui';
@@ -22,9 +22,9 @@ import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
 import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
-import { AreaCard, CropSelect, PlanChart, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
+import { AreaCard, CropSelect, PlanChart, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
-import { shareOn } from '../shell/MapStage';
+import { areaHash } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
 import RoundButton from '../shell/RoundButton';
 import ReadAloud from './ReadAloud';
@@ -204,6 +204,11 @@ function AssistPlan({ map, name, waiting }) {
 // satellite reading `current_cycle` (one entry per area); an area without one takes its open cycle in `cycles` (sown,
 // no harvest yet), "since <month>". A crop the reading does not know shows as "Unidentified". An area with neither
 // (harvested, or never read) keeps "Area n". Name and colour from the catalogue when it lists the crop.
+// 13 Nov: the approved plan's season chips. The seasons of the plan year season i is in (indices), and those of them
+// whose chip is on (all when none of this year's is: another year may have other slots).
+const yearSeasons = (ss, i) => ss.map((_, k) => k).filter((k) => planYear(ss[k].start) === planYear(ss[i]?.start));
+const seasonsOn = (ss, i, on) => { const ys = yearSeasons(ss, i); const k = ys.filter((x) => on.has(ss[x].slot)); return k.length ? k : ys; };
+const ALL_SLOTS = ['S1', 'S2', 'S3'];
 const words = (k) => String(k).replace(/_/g, ' ');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const sinceOf = (d) => (/^\d{4}-\d{2}/.test(d || '') ? `since ${MONTH[Number(d.slice(5, 7)) - 1]}` : undefined);
@@ -213,16 +218,25 @@ const GROWING = '#7BA05B';
 const UNKNOWN = '#8A94A6';
 // Empty (12 Nov): nothing grows there now, so the plan may use the area at once.
 const EMPTY = { key: 'empty', name: 'Empty', colour: '#5B6472' };
+// What grows now that is not a crop (13 Nov), in a grid above the crops, Empty first. The node leaves such an area out
+// of the plan with this as its reason (plan/engine.COVERS); Empty frees it at once.
+const COVERS = [EMPTY,
+  { key: 'coconut', name: 'Coconut', colour: '#8C6A3F' }, { key: 'neem', name: 'Neem tree', colour: '#4F7A3A' },
+  { key: 'trees', name: 'Other trees', colour: '#3E6B4A' }, { key: 'bushes', name: 'Bushes', colour: '#7A8B4F' },
+  { key: 'buildings', name: 'Buildings', colour: '#9A8F86' }, { key: 'water', name: 'Water', colour: '#4A7FA6' }];
+const LEFT_OUT = new Set(COVERS.filter((c) => c.key !== 'empty').map((c) => c.key));
 /** The map before a plan: what grows now (growingNow), with the crops she set herself (12 Nov) on top, on every screen
  *  until the plan is made. */
 function nowLabelsOf(record, crops = [], growing = {}) {
   const now = growingNow(record, crops);
   const zones = areasOf(record);
-  const list = [...crops, EMPTY];
-  return Object.fromEntries(zones.filter((z) => now[z.zone_id] || growing[z.zone_id]).map((z, i) => {
+  const list = [...crops, ...COVERS];
+  // Every area (13 Nov): one with no reading and nothing set by her is hatched too, so every area still to set shows.
+  return Object.fromEntries(zones.map((z) => {
     const c = growing[z.zone_id] && list.find((x) => x.key === growing[z.zone_id]);
     const l = now[z.zone_id] || { text: z.name || `Area ${zones.indexOf(z) + 1}` };
-    return [z.zone_id, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : l];
+    // Still to be set (13 Nov): hatched on the map, so she sees which areas are left.
+    return [z.zone_id, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : { ...l, hatch: !!l.unknown || !now[z.zone_id] }];
   }));
 }
 
@@ -351,17 +365,20 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [season, setSeason] = useState(0);
   // A plan year before the plan (12 Nov: plan history from the record); null = the plan's years.
   const [pastYear, setPastYear] = useState(null);
-  useEffect(() => { if (step !== 'plan') setPastYear(null); }, [step]);
+  // 13 Nov: the season chips switched on (CP13): they filter the tasks, the map and the bars.
+  const [slotsOn, setSlotsOn] = useState(() => new Set(ALL_SLOTS));
+  // 13 Nov: the approved plan (CP13) steps back through the record too; any step change leaves either screen, so reset.
+  useEffect(() => { setPastYear(null); }, [step]);
   const [area, setArea] = useState(null);
   const [checked, setChecked] = useState(() => new Set());
   const planId = current.data?.id;
-  useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); setPastYear(null); setTicks(new Set()); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setChecked(new Set(Object.keys(current.data?.accepted || {}))); setArea(null); setSeason(0); setPastYear(null); setTicks(new Set()); setSlotsOn(new Set(ALL_SLOTS)); }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Approved: the chain as one plan (its seasons and shares, 25 Oct); a waiting extension shows as itself.
   const plan = current.data?.approval?.decision === 'approve' ? mergedPlan(chainQ.data, current.data) : current.data;
   const myShares = useMyShares();   // CP13: a crop agreement she can collect now is a to-do
   // CP13 opens on the season she is in today (CP10 on the first).
   const approved = plan?.approval?.decision === 'approve';
-  useEffect(() => { if (approved) setSeason(currentSeason(plan.plan.seasons || [])); }, [planId, approved]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (approved) { setSeason(currentSeason(plan.plan.seasons || [])); setPastYear(null); } }, [planId, approved]); // eslint-disable-line react-hooks/exhaustive-deps
   // Her land's name comes from the land title's metadata (not the record), "Land <id>" only when it has none.
   const titleName = useTitleName(landId, onPolygon, stellarTitle);
   const name = (forLand && forLand.label) || titleName || (landId != null ? `Land ${landId}` : 'Nila');
@@ -381,9 +398,15 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const gone = Object.entries(plan.plan.left_out_reasons || {}).filter(([, why]) => why === 'removed by her')
       .map(([z]) => [z, { gone: true }]);
     const i = Math.min(season, ss.length - 1);
-    const rows = rowsInSeason(ss, i);
+    // 13 Nov: the approved plan shows every season whose chip is on in the year on the bar; an area with crops in more
+    // than one shows them joined ("Groundnut → Maize"), in the first crop's colour.
+    const idx = approved ? seasonsOn(ss, i, slotsOn) : [i];
+    const per = {};
+    for (const k of idx) for (const [z, r] of Object.entries(rowsInSeason(ss, k))) { per[z] = per[z] || []; if (!per[z].includes(r)) per[z].push(r); }
+    const rows = Object.fromEntries(Object.entries(per).map(([z, rs]) => [z, rs.length === 1 ? rs[0]
+      : { ...rs[0], name: rs.map((r) => r.name).filter((n, k, a) => n !== a[k - 1]).join(' → ') }]));
     // Crops picked and not sent yet (28 Oct): the area shows the picked crop, in its colour.
-    const slotNow = ss[i].slot;
+    const slotNow = ss[idx[0]].slot;
     const pickedHere = (z) => pending[z]?.[slotNow] && (catalogue.data?.crops || []).find((c) => c.key === pending[z][slotNow]);
     // A merged row (same crop on several areas, 21 Oct): its harvest on the first area's chip, "with Area n" on the others.
     const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, pickedHere(z) ? { text: pickedHere(z).name, sub: 'changed',
@@ -393,29 +416,43 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // An area with no crop that season but a pick for it.
     for (const z of Object.keys(pending)) if (!out[z] && pickedHere(z)) out[z] = { text: pickedHere(z).name, sub: 'changed', colour: pickedHere(z).colour };
     // A soil cover in this season (no bare soil in the dry months, 21 Oct), where no crop is on the area then.
-    const slot = ss[i].slot;
     for (const c of plan.plan.soil_cover || []) {
-      if (out[c.zone] || !(c.slots || []).includes(slot)) continue;
+      if (out[c.zone] || !idx.some((k) => (c.slots || []).includes(ss[k].slot))) continue;
       const short = c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/ \(.*\)$/, '');
       out[c.zone] = { text: c.kind === 'bare' ? 'Bare soil' : short.charAt(0).toUpperCase() + short.slice(1),
         sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
+    // An area left out for what stands on it (13 Nov: trees, buildings, water…): named so on the map, in its colour.
+    for (const [z, why] of Object.entries(plan.plan.left_out_reasons || {})) {
+      const cv = COVERS.find((c) => c.key !== 'empty' && LEFT_OUT.has(c.key) && plan.plan.intake?.growing?.[z] === c.key);
+      if (!out[z] && cv) out[z] = { text: cv.name, sub: 'left out', colour: cv.colour };
+      else if (!out[z] && why && why !== 'too small' && why !== 'removed by her') out[z] = { text: why, sub: 'left out' };
+    }
+    // The crop in the field now (13 Nov): on its areas in every season that starts before its (estimated) harvest,
+    // where the plan has nothing of its own there yet.
+    const start = ss[idx[0]].start;
+    for (const st of plan.plan.standing || []) {
+      if (out[st.zone] || !start || st.until <= start) continue;
+      const m = new Date(st.until).toLocaleDateString('en-GB', { month: 'short' });
+      out[st.zone] = { text: st.name, sub: `until ${st.estimate ? '~' : ''}${m}`, colour: st.colour, acc: checked.has(st.zone) };
+    }
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, pastYear]);
+  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, pastYear, approved, slotsOn]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
-  // CP13 (map-central trial, 21 Oct): a tap on an area opens its crop agreement in the season shown (A4/A4a).
+  // CP13 (map-central trial, 21 Oct): a tap on an area opens it (since 13 Nov its area page, not one agreement).
   // A share whose sowing is over a year ahead is made later (the node defers it, 25 Oct): it does not hold the plan up.
   const deferredOnly = mint.status === 'partial' && (mint.refused || []).length > 0
     && mint.refused.every((r) => /more than a year ahead|made later/i.test(r.error || ''));
   const active = approved && (mint.status === 'done' || mint.status === 'partial');
+  // 13 Nov: a tap opens the area's page (every agreement on it that plan year, its standing crop), so an area with only
+  // the standing crop or a green manure in the season shown opens too.
   const openShare = useCallback((z) => {
     const ss = plan?.plan?.seasons || [];
-    const x = z && shareOn(myShares.data, ss, Math.min(season, ss.length - 1), z);
-    if (x) window.location.hash = `#/cropshare/${x.token_id}`;
-  }, [plan, season, myShares.data]);
+    if (z) window.location.hash = areaHash(z, planYear(ss[Math.min(season, ss.length - 1)]?.start));
+  }, [plan, season]);
   // Before the field record (CP1, 1 Nov): the land title's field outlines, as on the land title screen (A5).
   const titleShape = fieldsMap(useTitleFields(landId, onPolygon, stellarTitle, null));
   const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
@@ -547,7 +584,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // First what grows now (12 Nov): every area the satellite could not identify needs its crop before the plan.
     const now = growingNow(record, catalogue.data?.crops);
     // Barren (12 Nov): nothing grows there now, so the plan may use the area at once.
-    const cropList = [...sortedCrops(catalogue.data?.crops || []), EMPTY];
+    const cropList = sortedCrops(catalogue.data?.crops || []);
     const toSet = Object.keys(now).filter((z) => now[z].unknown && !growing[z]);
     // An empty area can take a crop too (12 Nov): she may have just sown it, which no image shows yet. Optional there;
     // an unidentified area must be set.
@@ -556,7 +593,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const nowLabels = nowLabelsOf(record, catalogue.data?.crops, growing);
     // Any area can be set (12 Nov): hers replaces the satellite's reading; only an unidentified one must be set.
     const settable = (z) => !!z;
-    const growingCount = zoneIds.filter((z) => (growing[z] ? growing[z] !== 'empty' : !!now[z])).length;
+    const growingCount = zoneIds.filter((z) => (growing[z] ? growing[z] !== 'empty' && !LEFT_OUT.has(growing[z]) : !!now[z])).length;
     // Option A (12 Nov, as G2's top block): the record's facts as rows, a line, then the button.
     return (
       <Sheet map={<AreaMap record={record} labels={nowLabels} selected={growArea} onSelect={(z) => setGrowArea(settable(z) ? z : null)} />}
@@ -570,7 +607,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {growArea && settable(growArea) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0 8px' }}>
             <span style={{ fontSize: 14, fontWeight: 700 }}>What grows on {nowLabels[growArea]?.text || nameOf(growArea)} now?</span>
-            <CropSelect crops={cropList} current={growing[growArea]}
+            {/* 13 Nov: no crop (empty, trees, bushes, buildings, water) first, then the crops; each under its title. */}
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.muted }}>Land covers</span>
+            <CropSelect crops={COVERS} current={COVERS.some((c) => c.key === growing[growArea]) ? growing[growArea] : undefined}
+              onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.muted, marginTop: 8 }}>Crops</span>
+            {/* A land cover picked is not a crop (13 Nov: the crop grid listed it as an extra chip, "trees"). */}
+            <CropSelect crops={cropList} current={COVERS.some((c) => c.key === growing[growArea]) ? undefined : growing[growArea]}
               onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
           </div>
         )}
@@ -872,8 +915,59 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // or when making them failed, one line above it says so — no separate "being made" or "N of M made" screen.
     const ss = plan.plan.seasons || [];
     const shown = Math.min(season, Math.max(0, ss.length - 1));
-    const bar = ss.length > 0 && <SlideBar label={seasonLabel(ss[shown], shown)} prevLabel="Previous season" nextLabel="Next season"
-      onPrev={() => setSeason((i) => (i + ss.length - 1) % ss.length)} onNext={() => setSeason((i) => (i + 1) % ss.length)} />;
+    // 13 Nov: the bar steps plan years only ("2026–27"; `season` = a season of the year shown, so the area page links
+    // keep their year): back past the plan's first year into the record's years, forward into an extension's year.
+    const planYears = [...new Set(ss.map((x) => planYear(x.start)))];
+    const first = Math.min(firstRecordYear(record) ?? planYears[0], planYears[0]);
+    const y0 = pastYear ?? planYear(ss[shown]?.start);
+    const nowSeason = currentSeason(ss);
+    const nowYear = planYear(ss[nowSeason]?.start);
+    const toPlanYear = (y) => { setPastYear(null); setSeason(Math.max(0, ss.findIndex((x) => planYear(x.start) === y))); };
+    const prev = () => {
+      if (pastYear != null) setPastYear(Math.max(first, pastYear - 1));
+      else if (planYears.includes(y0 - 1)) toPlanYear(y0 - 1);
+      else if (y0 === planYears[0] && first < y0) setPastYear(y0 - 1);
+    };
+    const next = () => {
+      if (pastYear != null) { if (pastYear + 1 < planYears[0]) setPastYear(pastYear + 1); else toPlanYear(planYears[0]); }
+      else if (planYears.includes(y0 + 1)) toPlanYear(y0 + 1);
+    };
+    const toNow = () => { setPastYear(null); setSeason(nowSeason); };
+    const bar = ss.length > 0 && (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        {/* 13 Nov: only off the year she is in. */}
+        {(pastYear != null || y0 !== nowYear) && (
+          <button type="button" onClick={toNow} style={{ height: 32, padding: '0 14px', borderRadius: 16, border: 0, background: 'rgba(18,18,18,0.85)', color: C.accent,
+            fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Back to now</button>
+        )}
+        <div style={{ alignSelf: 'stretch' }}>
+          <SlideBar label={`${yearLabel(null, y0)}${pastYear != null ? ' · from your record' : ''}`} prevLabel="Previous year" nextLabel="Next year" onPrev={prev} onNext={next} />
+        </div>
+      </div>
+    );
+    // 13 Nov: the year's seasons as chips (all on at first); at least one stays on. Not in a record year (no plan).
+    const yearIdx = yearSeasons(ss, shown);
+    const onIdx = seasonsOn(ss, shown, slotsOn);
+    const toggleSlot = (slot) => {
+      const left = onIdx.filter((k) => ss[k].slot !== slot);
+      if (left.length === onIdx.length) setSlotsOn(new Set([...onIdx.map((k) => ss[k].slot), slot]));
+      else if (left.length) setSlotsOn(new Set(left.map((k) => ss[k].slot)));
+    };
+    const chips = yearIdx.length > 1 && (
+      <div role="group" aria-label="Seasons shown" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+        {yearIdx.map((k) => {
+          const on = onIdx.includes(k);
+          return (
+            <button key={k} type="button" aria-pressed={on} onClick={() => toggleSlot(ss[k].slot)}
+              style={{ height: 32, padding: '0 14px', borderRadius: R.round, border: 0, background: on ? C.accent : C.raised, color: on ? C.ink : C.muted,
+                fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{SEASON[ss[k].slot] || `Season ${k - yearIdx[0] + 1}`}</button>
+          );
+        })}
+      </div>
+    );
+    const slotsShown = pastYear == null ? new Set(onIdx.map((k) => ss[k].slot)) : undefined;
+    // The crop bars (13 Nov, as the draft plan's overview): one lane per area, read-only.
+    const zones = Object.keys(plan.plan.proposal || {}).sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
     const made = mint.status === 'done' || mint.status === 'partial' || deferredOnly;
     return (
       <Sheet map={map} landName={name} bar={bar}>
@@ -886,7 +980,12 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
             <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>
           </div>
         )}
-        <ActivePlan plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
+        {/* 13 Nov: the bars' title follows the year on the bar; a past year shows only its bars (no tasks). */}
+        {/* A row opens its area's page (13 Nov), as a tap on its area on the map. */}
+        <ActivePlan chart={<PlanChart plan={plan} record={record} zones={zones} areaName={areaName} checked={new Set()} y0={y0} crops={catalogue.data?.crops} onArea={pastYear == null ? openShare : undefined} slots={slotsShown} />}
+          chartTitle={pastYear != null ? `${yearLabel(null, pastYear)} · from your record` : y0 === planYear() ? "This year's plan" : `${yearLabel(null, y0)} plan`}
+          past={pastYear != null} filter={chips} seasons={pastYear == null ? new Set(onIdx) : undefined}
+          plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
           canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
           onExtend={async () => {
             setError(undefined);

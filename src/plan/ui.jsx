@@ -129,14 +129,17 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         {/* Room around every CP title (executive decision 21 Oct), the sheet's title and the questions' alike. */}
         <style>{'.cp-sheet h1{margin:12px 0 24px!important;line-height:1.3}.cp-sheet [data-sheet-head] h1{margin:0!important}html,body{overscroll-behavior-y:none}'}</style>
         {/* CP10's season / area bar sits on top of the card and moves with it (board CropPlanQ3-xdlz). */}
-        {bar && <div style={{ position: 'absolute', left: 8, right: 8, bottom: 'calc(100% + 12px)' }}>{bar}</div>}
-        {/* Labels on the map on or off (25 Oct): a small toggle above the card, on map screens with labels. */}
-        {!bar && staged && labelled && (
-          <div style={{ position: 'absolute', right: 8, bottom: 'calc(100% + 12px)' }}>
-            <button type="button" aria-pressed={!labelsCtx.off} onClick={labelsCtx.toggle} style={{ height: 32, borderRadius: R.round, border: 0, padding: '0 12px',
-              background: 'rgba(18,18,18,0.85)', color: C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              {labelsCtx.off ? 'Show labels' : 'Hide labels'}
-            </button>
+        {/* Labels on the map on or off (25 Oct): a small toggle above the card, on map screens with labels. 13 Nov: also
+            above a bar (CP10, CP13): labels turned off elsewhere could not be turned on again there, so no chips showed. */}
+        {(bar || (staged && labelled)) && (
+          <div style={{ position: 'absolute', left: 8, right: 8, bottom: 'calc(100% + 12px)', display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
+            {staged && labelled && (
+              <button type="button" aria-pressed={!labelsCtx.off} onClick={labelsCtx.toggle} style={{ alignSelf: 'flex-end', pointerEvents: 'auto', height: 32, borderRadius: R.round, border: 0, padding: '0 12px',
+                background: 'rgba(18,18,18,0.85)', color: C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                {labelsCtx.off ? 'Show labels' : 'Hide labels'}
+              </button>
+            )}
+            {bar && <div style={{ pointerEvents: 'auto' }}>{bar}</div>}
           </div>
         )}
         <div style={{ marginBottom: inShell ? 4 : 16 }}>{drag.handle}</div>

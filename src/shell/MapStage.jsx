@@ -75,6 +75,9 @@ export function shareOn(shares, seasons, i, zone) {
     && (x.crop === row.crop || x.crop === row.name) && (rowOf(x)?.sow === row.sow));
 }
 
+/** An area's page (13 Nov: one page per area, src/loan/CropArea): #/croparea/<zone>/<plan year>. */
+export const areaHash = (zone, y0) => `#/croparea/${encodeURIComponent(zone)}${y0 != null ? `/${y0}` : ''}`;
+
 /** Where a map looks with nothing of the member's to draw (the demo union's area; also the union map's start). */
 export const UNION_START = { lat: 11.8872, lng: 78.9659 };
 

@@ -46,6 +46,17 @@ export function useLeaflet() {
 
 /** labels: zone_id → { text, sub, colour } (default "Area n"). The Google satellite map (the same key and loader as
  *  R5–R8 and L2–L4, executive decision 21 Oct); Leaflet/Esri only when Google cannot load. height '100%' fills. */
+/** The hatch for areas still to be set (13 Nov): one hidden SVG pattern in the page, used as `fill: url(#nila-hatch)`. */
+function hatchPattern() {
+  if (document.getElementById('nila-hatch')) return;
+  const box = document.createElement('div');
+  box.setAttribute('aria-hidden', 'true');
+  box.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+  box.innerHTML = '<svg width="0" height="0"><defs><pattern id="nila-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+    + '<rect width="8" height="8" fill="rgba(18,18,18,0.15)"/><rect width="2" height="8" fill="rgba(241,245,249,0.4)"/></pattern></defs></svg>';
+  document.body.appendChild(box);
+}
+
 export default function AreaMap(props) {
   const { ok } = useFieldMapLoaded();
   return ok ? <GoogleAreaMap {...props} /> : <LeafletAreaMap {...props} />;
@@ -113,14 +124,19 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       rings.forEach((ring) => {
         const path = ring.map(([lng, lat]) => ({ lat, lng }));
         path.forEach((q) => { bounds.extend(q); sx += q.lng; sy += q.lat; k += 1; });
-        // lab.outline (13 Nov, the union map): the line in its colour, almost no fill.
-        const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1),
+        // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so a dashed accent outline and a faint fill.
+        const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
+          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
-          strokeColor: colour, strokeOpacity: lab.dashed ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
+          strokeColor: colour, strokeOpacity: lab.hatch || lab.dashed ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
         // lab.dashed (13 Nov, the members map): a property's outline as a dashed line.
         if (lab.dashed) {
           drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
             icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? 0.3 : 1, strokeColor: colour, strokeWeight: 2, scale: 3 }, offset: '0', repeat: '10px' }] }));
+        }
+        if (lab.hatch) {
+          drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
+            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? 0.3 : 1, strokeColor: '#D4CF5A', strokeWeight: 2, scale: 3 }, offset: '0', repeat: '9px' }] }));
         }
         if (pick) poly.addListener('click', pick(z.zone_id));
         drawn.current.push(poly);
@@ -184,7 +200,11 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
       if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const faded = !!selected && selected !== z.zone_id;
       const colour = lab.colour || '#ffffff';
-      const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, ...(lab.dashed ? { dashArray: '6 4', weight: 2 } : {}), opacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
+      // An area still to be set (13 Nov): hatched, so she sees at once which areas are left (lab.hatch).
+      if (lab.hatch) hatchPattern();
+      const layer = L.geoJSON(z.geometry, { style: lab.hatch
+        ? { color: '#F1F5F9', weight: 2, opacity: faded ? 0.3 : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? 0.3 : 1 }
+        : { color: colour, weight: 1.5, ...(lab.dashed ? { dashArray: '6 4', weight: 2 } : {}), opacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
       layer.addTo(group);
       if (onSelect) layer.on('click', () => onSelect(selected === z.zone_id ? null : z.zone_id));
       if (!lab.hide && !chipsOff) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });

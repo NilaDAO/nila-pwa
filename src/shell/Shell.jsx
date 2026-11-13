@@ -27,6 +27,7 @@ import { HarvestGroup, HarvestList } from '../leader/Harvests';
 import MapCard from './MapCard';
 import { SlideBar } from '../plan/PlanResult';
 import CropShare from '../loan/CropShare';
+import CropArea from '../loan/CropArea';
 import IdCheck from '../anchor/IdCheck';
 import { useLpStatus } from '../anchor/hooks';
 import LeaderSettings from '../leader/LeaderSettings';
@@ -53,6 +54,8 @@ import { useUnionMembers } from '../leader/unionMembers';
 
 const readTab = () => (window.location.hash.match(/^#\/(\w+)/) || [])[1];
 const readArg = () => (window.location.hash.match(/^#\/\w+\/(\w+)/) || [])[1];
+// #/croparea/<zone>[/<plan year>] (13 Nov): a zone id is not always a word, so it is URI-encoded.
+const readArea = () => { const m = window.location.hash.match(/^#\/croparea\/([^/]+)(?:\/(\d{4}))?/); return m ? { zone: decodeURIComponent(m[1]), year: m[2] ? Number(m[2]) : undefined } : {}; };
 
 // Screens built in later steps (P4 crop plan, P5 scan and loans, leader screens). DESIGN GAP: interim.
 function Later({ title, step }) {
@@ -247,6 +250,11 @@ export default function Shell({ leader }) {
   else if (view === 'cropshare') {
     body = <AssetStep view={view}>{(p) => <CropShare key={readArg()} token={readArg()} onBack={() => go('assets')} onTakeUp={(t) => go(`share/${t}`)} {...p} />}</AssetStep>;
   }
+  // One page per area (13 Nov): from the approved plan's map and crop bars; back returns to the plan.
+  else if (view === 'croparea') {
+    const { zone, year } = readArea();
+    body = <CropArea key={window.location.hash} zone={zone} year={year} onBack={() => go('crop')} onTakeUp={(t) => go(`share/${t}`)} />;
+  }
   // A2 Tasks: the other task rows come in a later step.
   else if (view === 'tasks') body = <TasksView leader={leader} go={go} />;
   else if (view === 'members' && leader) body = readArg() ? <MemberStatus key={readArg()} id={readArg()} go={go} /> : <Members go={go} />;
@@ -258,7 +266,7 @@ export default function Shell({ leader }) {
   // No tab is active on task, settings, history and wallet screens; a crop agreement (A4/A4a, and taking it up) belongs to
   // the Crop plan tab (21 Oct).
   // nIN and nIN invested (A7, A3) are Assets screens (boards MemberAssetNin, StNinWithdraw).
-  const tabOf = view === 'cropshare' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' || view === 'usdc' || view === 'lpcode' ? 'assets' : view;
+  const tabOf = view === 'cropshare' || view === 'croparea' || view === 'share' ? 'crop' : view === 'cashout' || view === 'invested' || view === 'usdc' || view === 'lpcode' ? 'assets' : view;
   const active = tabs.some(([id]) => id === tabOf) ? tabOf : undefined;
   return (
     // Every non-map screen sits on the boards' gradient (executive decision 21 Oct); map screens cover it with their map.
