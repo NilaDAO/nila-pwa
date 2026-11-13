@@ -122,7 +122,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
       <span style={{ display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{name}</span>
-        <span style={{ ...muted, lineHeight: 1.5 }}>Crop agreement · Area {x.area}</span>
+        <span style={{ ...muted, lineHeight: 1.5 }}>Crop agreement · {x.area}</span>
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{r.kg ? amount(r.kg) : '—'}</span>
@@ -179,7 +179,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   // One QR at the office (executive decision 26 Oct): the help QR; the leader counts the cash and records the repayment.
   // More machine hours (27 Oct, self mode): until its last draw date, while the loan is open and not overdue.
   const canAdd = open && !(Number(l.flags ?? 0) & FLAG_OVERDUE) && !assisted() && (!x.final || Date.now() / 1000 <= x.final);
-  if (adding && canAdd) return <AddHours token={x.token_id} name={`${name} · Area ${x.area}`} map={map} onBack={() => setAdding(false)} />;
+  if (adding && canAdd) return <AddHours token={x.token_id} name={`${name} · ${x.area}`} map={map} onBack={() => setAdding(false)} />;
   // G9 (4 Nov): repaying needs no signature from her: her account QR in self mode, the help QR in assist mode.
   if (repayQr) return <WalletQr onBack={() => setRepayQr(false)} note="Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment." />;
   // What is left: the cash part and the voucher's value, with interest (26 Oct: the voucher is debt from the draw).

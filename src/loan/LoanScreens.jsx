@@ -28,7 +28,13 @@ import { useBringRoom } from '../anchor/hooks';
 import { BRING } from '../anchor/sep';
 import { TRACTOR, acresFor, ta, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
 import ConfirmShare from './ConfirmShare';
-import { opensOf } from './MyShares';
+import { areaNames, opensOf } from './MyShares';
+
+// A share's areas by their field names (13 Nov; was "Area n").
+const areaOf = (plan, share) => {
+  const order = Object.keys(plan.plan.proposal).sort();
+  return areaNames((share.zones || [share.zone]).map((z) => plan.plan.area_names?.[z] || `Area ${order.indexOf(z) + 1}`));
+};
 
 const FLAG_DRAWN = 8;
 const FLAG_ENDED = 2 | 4;   // defaulted or closed
@@ -183,9 +189,9 @@ export function LeaderLoan({ initial }) {
   if (bring.tx.status === 'pending' || bring.tx.status === 'failed') return <TxScreens tx={bring.tx} onClose={() => bring.tx.reset()} onRetry={() => bring.tx.retry()} />;
   if (own && sel && mine) {
     const nm = `${row?.name || sel.crop}`;
-    const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
+    const ar = areaOf(plan, sel.share);
     const draw = () => tx.run({
-      label: more ? `More machine work · ${nm}` : `Crop agreement ${nm}`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · Area ${ar}`]],
+      label: more ? `More machine work · ${nm}` : `Crop agreement ${nm}`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan',
       args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
       invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
@@ -194,9 +200,9 @@ export function LeaderLoan({ initial }) {
   }
   if (own && sel && helping) {
     const nm = `${row?.name || sel.crop}`;
-    const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
+    const ar = areaOf(plan, sel.share);
     const draw = () => tx.run({
-      label: more ? `More machine work · ${nm} · for the member` : `Crop agreement ${nm} · for the member`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · Area ${ar}`]],
+      label: more ? `More machine work · ${nm} · for the member` : `Crop agreement ${nm} · for the member`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan', session: sel.ft.member,
       args: [sv.address(cfg.union), sv.address(sel.ft.member), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
       invalidate: [['oracle', 'shares'], ['stellar', 'unionChecks']],
@@ -205,7 +211,7 @@ export function LeaderLoan({ initial }) {
   }
   // Board LeaderRedeem, without its crop agreement list (23 Oct: the share comes picked): one card with the share, the
   // steppers, total / interest / repay and the union checks. No seed row: seed is paid as cash (P5).
-  const name = sel ? `${row?.name || sel.crop} · Area ${Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1}` : '';
+  const name = sel ? `${row?.name || sel.crop} · ${areaOf(plan, sel.share)}` : '';
   // Cash is lent from member money only (junior, above its reserve); the plan's cash above that is shown, not lent.
   const notCovered = sel && checks.data && !more ? Math.max(0, Math.round(sel.share.loan_amount || 0) - caps.cash) : 0;
   const rows = checkRows(checks.data, cash, hours, caps);

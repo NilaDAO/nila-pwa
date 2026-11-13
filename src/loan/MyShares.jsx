@@ -109,12 +109,21 @@ export function useMyShares() {
         const late = !!ft && !drawn && !lapsed && final > 0 && now > final;
         const early = !!ft && !drawn && !lapsed && !late && now < opens;
         const ready = !!ft && !drawn && !lapsed && !late && !early;
-        // "1" or, for areas merged in a season (same crop, 21 Oct), "1 + 2": shown as "Area {area}".
-        const area = (m.zones || share.zones || [m.zone]).map((z) => zones.indexOf(z) + 1).join(' + ');
+        // Her areas by their field names (13 Nov; was "Area 3 + 4", which says nothing to her): "Nexttowell", or for
+        // areas merged in a season "veryhighyield · 3 + 4"; "Area n" only for a record without names.
+        const area = areaNames((m.zones || share.zones || [m.zone]).map((z) => p.plan.area_names?.[z] || `Area ${zones.indexOf(z) + 1}`));
         return { ...m, share, ft, drawn, ready, late, early, opens, lapsed, final, area, plan: p };
       }));
     },
   });
+}
+
+/** Area names joined, the field said once when they share it: ["veryhighyield · 3", "veryhighyield · 4"] →
+ *  "veryhighyield · 3 + 4". */
+export function areaNames(names) {
+  const parts = names.map((n) => { const i = n.lastIndexOf(' · '); return i > 0 ? [n.slice(0, i), n.slice(i + 3)] : [n, null]; });
+  if (parts.length > 1 && parts.every(([f, k]) => k && f === parts[0][0])) return `${parts[0][0]} · ${parts.map(([, k]) => k).join(' + ')}`;
+  return names.join(' + ');
 }
 
 /** When a crop agreement opens (25 Oct): a week before the sowing window that holds its planned sowing. On-chain the
@@ -148,7 +157,7 @@ function Page({ title, onBack, children }) {
 function ShareScan({ x, onBack }) {
   const name = rowOf(x)?.name || x.crop.replace(/_/g, ' ');
   if (!assisted()) return <ShareSign x={x} name={name} onBack={onBack} />;
-  return <HelpQr onBack={onBack} note={`To use your ${name} crop agreement (Area ${x.area}), go to the union office. Your leader scans this, reads you the amounts and hands you the cash.`} />;
+  return <HelpQr onBack={onBack} note={`To use your ${name} crop agreement (${x.area}), go to the union office. Your leader scans this, reads you the amounts and hands you the cash.`} />;
 }
 
 /** Self mode (G9, executive decision 4 Nov): taking up a share is debt, so she sets the cash and machine work and
@@ -174,11 +183,11 @@ function ShareSign({ x, name, onBack }) {
     } catch (e) { setError(e.message); }
   };
   if (qr) {
-    return <DeskQr title={`${name} · Area ${x.area}`} qr={qr.qr} until={qr.until} onBack={() => setQr(undefined)}
+    return <DeskQr title={`${name} · ${x.area}`} qr={qr.qr} until={qr.until} onBack={() => setQr(undefined)}
       rows={[['You get', `${inr(c)} in cash`], ...(a ? [['Machine vouchers', `${a} tractor acres`]] : [])]} />;
   }
   return (
-    <Page title={`${name} · Area ${x.area}`} onBack={onBack}>
+    <Page title={`${name} · ${x.area}`} onBack={onBack}>
       {checks.isLoading ? <p style={muted}>…</p> : (
         <>
           <p style={muted}>Cash</p>
@@ -236,7 +245,7 @@ export function ReadyShareRows({ go, first = true }) {
   const ready = (useMyShares().data || []).filter((x) => x.ready);
   return ready.map((x, i) => (
     <ListRow key={x.token_id} first={first && i === 0} icon={RupeeIcon} tone="new" title="Use your crop agreement"
-      sub={`${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area} · at the union office`} onClick={() => go(`share/${x.token_id}`)} />
+      sub={`${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · ${x.area} · at the union office`} onClick={() => go(`share/${x.token_id}`)} />
   ));
 }
 
@@ -260,7 +269,7 @@ export function ShareRows({ onOpen }) {
             <ShareTile colour={r.colour} soil={!!(r.green_manure || x.share?.green_manure)} />
             <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontWeight: 700 }}>{r.name || x.crop.replace(/_/g, ' ')}</span>
-              <span style={{ color: C.muted }}>Area {x.area}{r.slot ? ` · ${SEASON[r.slot]}` : ''}{fodder ? ' · fodder' : ''}</span>
+              <span style={{ color: C.muted }}>{x.area}{r.slot ? ` · ${SEASON[r.slot]}` : ''}{fodder ? ' · fodder' : ''}</span>
               <span style={{ color: x.ready ? C.accent : C.muted, fontWeight: 700 }}>{tag}</span>
             </span>
             {/* 13 Nov: what is to be paid back on this agreement (cash, vouchers and interest), the harvest under it. */}

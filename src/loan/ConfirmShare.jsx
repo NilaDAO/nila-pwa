@@ -25,7 +25,7 @@ export default function ConfirmShare({ cash, hours, name, area, own, forMember, 
       <Card label="Your crop agreement" style={{ gap: 12 }}>
         {!more && kv('Cash you receive', inr(cash))}
         {hours > 0 && kv('Machine vouchers', `${ta(hours)} tractor acres`)}
-        {kv('For', `${name} · Area ${area}`)}
+        {kv('For', `${name} · ${area}`)}
         {kv('Repay', '3 weeks after harvest')}
       </Card>
       {!more && <Card label="Before you confirm" style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
