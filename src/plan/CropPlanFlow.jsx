@@ -316,6 +316,16 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const t = setInterval(() => checkMinted(approvedId), 15_000);
     return () => clearInterval(t);
   }, [approvedId, checkMinted, mint.status, making]);
+  // A mint cut off (13 Nov: a reload just as it started): when this app is the one that mints (a leader's own plan, or a
+  // member's plan made with the leader) and the check finds crop agreements not made, it continues where it stopped,
+  // once per opening. Members wait for their leader, as before.
+  const resumedFor = useRef();
+  const runMint = mint.run;
+  useEffect(() => {
+    if (!approvedId || making || !(self || forLand) || mint.status !== 'waiting' || resumedFor.current === approvedId) return;
+    resumedFor.current = approvedId;
+    runMint(approvedId);
+  }, [approvedId, making, self, forLand, mint.status, runMint]);
   const [step, setStep] = useState(null);
   const [crops, setCrops] = useState(new Set());
   const [role, setRole] = useState();

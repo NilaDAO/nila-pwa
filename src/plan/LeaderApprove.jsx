@@ -97,6 +97,14 @@ function L12({ plan, onDone, approvedAlready = false }) {
   // An approved plan reopened (from its task): which of her crop agreements are made already.
   const checkMade = mint.check;
   useEffect(() => { if (approvedAlready) checkMade(plan.id); }, [approvedAlready, plan.id, checkMade]);
+  // Reopened with crop agreements not all made (a mint cut off by a reload, 13 Nov): continue where it stopped, once.
+  const resumed = useRef(false);
+  const runMint = mint.run;
+  useEffect(() => {
+    if (!approvedAlready || mint.status !== 'waiting' || resumed.current) return;
+    resumed.current = true;
+    runMint(plan.id);
+  }, [approvedAlready, mint.status, plan.id, runMint]);
   const decide = async (decision, reason, note) => {
     setBusy(true); setError(undefined);
     try {

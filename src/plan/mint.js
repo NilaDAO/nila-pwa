@@ -90,11 +90,21 @@ export function useMintCropShares() {
     return lt.ownerOf(landId);
   }, [provider]);
 
-  /** The leader's app, right after Approve on L12. */
+  /** The leader's app, right after Approve on L12 — and again when it reopens a plan whose mint was cut off (a reload,
+   *  13 Nov): every step is safe to repeat, and a token she already holds is skipped. */
   const run = useCallback(async (planId) => {
     nonceRef.current = null;
     setState({ status: 'busy', done: 0 });
     try {
+      // A mint sent just before a reload may still be on its way: wait until this key has nothing pending (≤ 30 s), so
+      // its token counts as held below instead of being sent twice.
+      if (s?.evmAddress && process.env.REACT_APP_DEMO_STATIC !== '1') {
+        for (let i = 0; i < 15; i++) {
+          const [mined, sent] = await Promise.all([provider.getTransactionCount(s.evmAddress, 'latest'), provider.getTransactionCount(s.evmAddress, 'pending')]);
+          if (mined >= sent) break;
+          await sleep(2000);
+        }
+      }
       const ft = new ethers.Contract(FOODTOKEN, ABI, provider);
       const { mints, union, land_id: landId } = await api.mintList(planId);
       const ready = mints.filter((m) => m.args);
@@ -129,7 +139,7 @@ export function useMintCropShares() {
       console.error('[mint]', e);
       setState({ status: 'failed', error: reasonOf(e) });
     }
-  }, [api, provider, send, holderOf]);
+  }, [api, provider, send, holderOf, s]);
 
   /** Her CP12 (and the leader's L12 on reopening): which of her crop agreements are made (on-chain balances). */
   const check = useCallback(async (planId) => {
