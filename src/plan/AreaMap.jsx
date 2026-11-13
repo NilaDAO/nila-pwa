@@ -139,7 +139,9 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       ringsOf(pickedArea.geometry).forEach((ring) => ring.forEach(([lng, lat]) => b.extend({ lat, lng })));
       if (!b.isEmpty()) target = b;
     }
-    const fitKey = `${record?.report_hash_bytes32 || ''}:${fitBottom || ''}:${selected || ''}`;
+    // Which land, not only which report (13 Nov): a record without a report hash gave every land the same key, so the
+    // map stayed on a member's land (G2) when the leader's crop plan opened.
+    const fitKey = `${record?.land_id ?? ''}:${record?.report_hash_bytes32 || record?.report_hash || ''}:${fitBottom || ''}:${selected || ''}`;
     if (!target.isEmpty() && fitted.current !== fitKey) {
       fitted.current = fitKey;
       // Her areas sit in the part above the card (the card covers the lower part of the screen).
