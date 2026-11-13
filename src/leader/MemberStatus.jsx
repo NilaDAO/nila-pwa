@@ -7,6 +7,7 @@
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import QRCode from 'qrcode';
 import { ConfirmCard, Text, useUnionInfo } from '../shell/SettingsParts';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
@@ -398,6 +399,7 @@ function Account({ m, inv, go }) {
       : investment > 0 ? 'The member has an investment: pay it out first.' : null;
   const recoverOk = rcv.r !== 'pending' && rcv.r !== 'needed';
   const move = rcv.applies && !rcv.keypad && /^C/.test(m.address || '');
+  const lite = rcv.keypad && !!m.address;   // her data as a QR for Nila lite (13 Nov, test of the offline refresh)
   if (!rcv.applies && !titleId && !m.recordHash) return null;
   const close = () => setCard();
   return (
@@ -406,6 +408,7 @@ function Account({ m, inv, go }) {
         <div style={{ display: 'flex', gap: 8 }}>
           {rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
           {move && <button type="button" style={btn()} onClick={() => setCard('keypad')}>Move</button>}
+          {lite && <button type="button" style={btn()} onClick={() => setCard(card === 'data' ? undefined : 'data')}>Her data as QR</button>}
           {titleId && (
             <button type="button" aria-label="Remove member" onClick={() => setCard('remove')}
               style={{ ...btn(), flex: 'none', width: 44, marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -417,9 +420,35 @@ function Account({ m, inv, go }) {
       {/* The record in the normal text colour (4 Nov: gold is for pins and icons only, the accent never on text). */}
       {m.recordHash && <Row k="Record" v={`${m.recordHash.slice(0, 8)}…${m.recordHash.slice(-6)}`} />}
       {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
+      {card === 'data' && <LiteDataQr m={m} inv={inv} onClose={close} />}
       {card === 'keypad' && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={close} />}
       {card === 'remove' && <RemoveMember m={m} why={why} titleId={titleId} go={go} onClose={close} />}
     </Section>
+  );
+}
+
+/** Her data for Nila lite as a QR (13 Nov, test): a keypad phone without internet scans it from the leader's screen
+ *  (Nila lite → Update from your leader) and shows it "as of" now. Only a summary, small enough for a weak camera:
+ *  what she owes now, invested, and per crop agreement what is left and when. `NILA:D:` + base64url(JSON); her account
+ *  in it, so her phone takes only her own. Read-only on her phone: it changes nothing on-chain. */
+function LiteDataQr({ m, inv, onClose }) {
+  const [img, setImg] = useState();
+  const invested = inv.data ? Math.round(n(inv.data.invested)) : 0;
+  const loans = m.loans.filter((l) => (l.left || 0) > 0).map((l) => [String(l.crop || '').replace(/_/g, ' ').slice(0, 24), Math.round(l.left), l.due || 0]);
+  const owed = loans.reduce((a, l) => a + l[1], 0);
+  const text = useMemo(() => {
+    const json = JSON.stringify({ v: 1, at: Math.floor(Date.now() / 1000), a: m.address, o: owed, i: invested, l: loans });
+    const b64 = btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return `NILA:D:${b64}`;
+  }, [m.address, owed, invested, JSON.stringify(loans)]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { QRCode.toDataURL(text, { margin: 2, errorCorrectionLevel: 'L', width: 320 }).then(setImg).catch(() => setImg(null)); }, [text]);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 12, padding: 16 }}>
+      {img ? <img src={img} alt="Her data for Nila lite" style={{ width: 260, height: 260 }} /> : <span style={{ color: C.ink }}>Making the QR…</span>}
+      <span style={{ color: C.ink, fontSize: 14, textAlign: 'center' }}>On her phone: Nila lite → Update from your leader → scan this.</span>
+      <span style={{ color: '#475569', fontSize: 13 }}>Owed {inr(owed)} · invested {inr(invested)}</span>
+      <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={onClose}>Close</button>
+    </div>
   );
 }
 

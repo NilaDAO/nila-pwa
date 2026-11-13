@@ -2,9 +2,9 @@
  * has no data). Network first: online she always gets the latest files and the copy is refreshed; offline the kept copy
  * answers. Only the app's own files under /lite/: the node and the Stellar RPC are never cached here (her data is kept
  * by lite.js, marked "as of"). Plain ES5 for KaiOS 2.5 (Gecko 48). */
-var CACHE = 'nila-lite-v1';
+var CACHE = 'nila-lite-v2';
 var FILES = ['/lite/', '/lite/index.html', '/lite/lite.css', '/lite/lite.js', '/lite/static.js', '/lite/qr.js',
-  '/lite/session.js', '/lite/chain.js', '/lite/polygon.js', '/lite/manifest.webapp', '/lite/icon56.png', '/lite/icon112.png'];
+  '/lite/session.js', '/lite/chain.js', '/lite/polygon.js', '/lite/manifest.webapp', '/lite/icon56.png', '/lite/icon112.png', '/lite/html5-qrcode.min.js'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
