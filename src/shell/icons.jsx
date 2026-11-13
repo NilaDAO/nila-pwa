@@ -44,6 +44,8 @@ export const FileIcon = (p) => line(<><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 
 export const LockIcon = (p) => line(<><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>, p);
 export const PlusIcon = (p) => line(<><path d="M12 5v14" /><path d="M5 12h14" /></>, p);
 export const ChevronIcon = (p) => line(<path d="m9 18 6-6-6-6" />, p);
+// The back arrow (13 Nov): drawn, as G2's; the ← character showed broken on Android phones.
+export const BackIcon = (p) => line(<><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></>, p);
 export const SettingsIcon = ({ size = 24, color = '#F1F5F9' }) => (
   <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill={color}>
     <path d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94 7.07 7.07 0 0 0-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.63-.94l-.36-2.54A.48.48 0 0 0 13.92 2h-3.84a.48.48 0 0 0-.48.41l-.36 2.54a7 7 0 0 0-1.63.94l-2.39-.96a.49.49 0 0 0-.59.22L2.71 8.47a.48.48 0 0 0 .12.61l2.03 1.58a7.4 7.4 0 0 0 0 1.88l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.39 1.05.7 1.63.94l.36 2.54c.05.24.25.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54a7 7 0 0 0 1.63-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z" />

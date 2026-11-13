@@ -6,6 +6,7 @@ import { C, FONT, R } from '../shell/tokens';
 import { Primary, inr, muted } from '../plan/ui';
 import CameraView from '../shell/CameraView';
 import { overRoom } from './deskRoom';
+import { BackIcon } from '../shell/icons';
 
 const API = process.env.REACT_APP_API_BASE_URL;
 
@@ -50,7 +51,7 @@ export default function PhotoCount({ name, target, verb, onDone, onBack, desk, l
   return (
     <div style={{ fontFamily: FONT, color: C.text, padding: '16px 8px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <button type="button" aria-label="Back" onClick={onBack} style={{ width: 40, height: 40, borderRadius: R.round, border: 0, background: C.raised, color: C.text, fontSize: 18 }}>←</button>
+        <button type="button" aria-label="Back" onClick={onBack} style={{ width: 40, height: 40, borderRadius: R.round, border: 0, background: C.raised, color: C.text, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><BackIcon color={C.text} /></button>
         <b>{name}</b><span style={{ width: 40 }} />
       </div>
       <div style={{ background: C.ink, borderRadius: R.card, padding: '18px 22px' }}>
