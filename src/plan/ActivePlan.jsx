@@ -125,6 +125,8 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, ass
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>The overall plan</span>
           {chart}
+          {/* 13 Nov: the plan's date right under its bars. */}
+          {madeOn && <span style={{ fontSize: 13, color: C.muted }}>Plan made {madeOn}</span>}
         </div>
       )}
       {/* 13 Nov: the "Your plan" rows are gone (the crop bars above show the plan); the extend button stays, disabled. */}
@@ -140,8 +142,8 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, ass
             </button>}
         {extendError && <span style={{ fontSize: 14, color: C.coral }}>{extendError}</span>}
       </div>
-      {/* 13 Nov: the plan's date as a small muted line at the bottom, not a title. */}
-      {madeOn && <p style={{ margin: '16px 0 0', fontSize: 13, color: C.muted, textAlign: 'center' }}>Plan made {madeOn}</p>}
+      {/* 13 Nov: the plan's date as a small muted line, under the bars when they show, else at the bottom. */}
+      {madeOn && !chart && <p style={{ margin: '16px 0 0', fontSize: 13, color: C.muted, textAlign: 'center' }}>Plan made {madeOn}</p>}
     </>
   );
 }
