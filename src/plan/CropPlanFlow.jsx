@@ -401,6 +401,14 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
+    // The crop in the field now (13 Nov): on its areas in every season that starts before its (estimated) harvest,
+    // where the plan has nothing of its own there yet.
+    const start = ss[i].start;
+    for (const st of plan.plan.standing || []) {
+      if (out[st.zone] || !start || st.until <= start) continue;
+      const m = new Date(st.until).toLocaleDateString('en-GB', { month: 'short' });
+      out[st.zone] = { text: st.name, sub: `until ${st.estimate ? '~' : ''}${m}`, colour: st.colour, acc: checked.has(st.zone) };
+    }
     return { ...out, ...Object.fromEntries(gone) };
   }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, pastYear]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
