@@ -11,6 +11,8 @@
   "start_url": "/?source=pwa",
   "display_override": ["standalone","fullscreen"],
   "display": "standalone",
+  "theme_color": "#25361f",
+  "background_color": "#25361f",
   "scope": "/",
   "permissions": ["geolocation","deviceorientation"],
   "protocol_handlers": [

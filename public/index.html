@@ -7,6 +7,9 @@
     <!-- iOS PWA status bar style -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- Android cannot draw the map behind its status bar (iPhone does, black-translucent): the bar takes the map's ground
+         colour instead (nila-design token ground-map, 13 Nov). -->
+    <meta name="theme-color" content="#25361f" />
     <meta name="description" content="Nila farmland app" />
     <meta property="og:title" content="Nila farm finance app" />
     <meta property="og:description" content="Join your local union to access loans and grants." />
