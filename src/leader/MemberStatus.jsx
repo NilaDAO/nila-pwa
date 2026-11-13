@@ -28,6 +28,7 @@ import { inr } from '../plan/ui';
 import { markJoined, useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
 import { useNilaSigner } from '../wallet/signer';
 import { keypadClient } from '../keypad/api';
+import { shareOfToken } from '../machine/hooks';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
 import { overRoom, useDeskRoom } from '../loan/deskRoom';
@@ -466,28 +467,80 @@ function RecordCard({ hash, onClose }) {
   );
 }
 
+/* Nila lite data QR, format v2 (13 Nov). Text `NILA:D2:` + base45 (RFC 9285 alphabet: the QR uses alphanumeric mode)
+ * of bytes; `v` = unsigned LEB128 varint, fields in this order, no names:
+ *   v version (2) · v made at, unix minutes · 6 bytes: last 6 characters of her account, ASCII · v owed ₹ · v invested ₹
+ *   · v agreement count · per agreement: v crop family · v state (0 not open yet, 1 ready, 2 financed, 3 overdue,
+ *     4 repaid, 5 lapsed) · v left to repay ₹ · v repay by, days since 2020-01-01 (0 none) · v machine vouchers left,
+ *     centi tractor acres (0 none).
+ * Crop family = the FoodToken crop code ÷ 1000, read from the token id (machinery's shareOfToken), so it matches the
+ * crop_calendar contract by construction; the decoder is readLeaderQr in public/lite/lite.js (its LITE_CROPS names). */
+const B45 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
+const DAY0 = 1577836800;   // 2020-01-01 UTC
+function varint(out, v) {
+  let x = Math.max(0, Math.floor(Number(v) || 0));
+  do { const b = x % 128; x = Math.floor(x / 128); out.push(x > 0 ? b + 128 : b); } while (x > 0);
+}
+function base45(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 2) {
+    if (i + 1 < bytes.length) {
+      const v = bytes[i] * 256 + bytes[i + 1];
+      s += B45[v % 45] + B45[Math.floor(v / 45) % 45] + B45[Math.floor(v / 2025)];
+    } else s += B45[bytes[i] % 45] + B45[Math.floor(bytes[i] / 45)];
+  }
+  return s;
+}
+/** { at (unix s), account, owed, invested, rows: [{ family, state, left, due (unix s), centi }] } → the QR text. */
+export function liteDataText({ at, account, owed, invested, rows }) {
+  const out = [];
+  varint(out, 2); varint(out, Math.floor(at / 60));
+  const tail = String(account || '').slice(-6).padStart(6, ' ');
+  for (let i = 0; i < 6; i++) out.push(tail.charCodeAt(i) & 127);
+  varint(out, owed); varint(out, invested); varint(out, rows.length);
+  rows.forEach((r) => { varint(out, r.family); varint(out, r.state); varint(out, r.left);
+    varint(out, r.due > DAY0 ? Math.floor((r.due - DAY0) / 86400) : 0); varint(out, r.centi); });
+  return `NILA:D2:${base45(out)}`;
+}
+
 /** Her data for Nila lite as a QR (13 Nov, test): a keypad phone without internet scans it from the leader's screen
  *  (Nila lite → Update from your leader) and shows it "as of" now. Only a summary, small enough for a weak camera:
- *  what she owes now, invested, and per crop agreement what is left and when. `NILA:D:` + base64url(JSON); her account
- *  in it, so her phone takes only her own. Read-only on her phone: it changes nothing on-chain. */
+ *  what she owes, invested, and per crop agreement its state, what is left and when, machine work left. Format v2
+ *  above; her phone takes only a QR with her account's tail. Read-only on her phone: it changes nothing on-chain. */
 function LiteDataQr({ m, inv, onClose }) {
   const [img, setImg] = useState();
+  const { data: cfg } = useStellarConfig();
   const invested = inv.data ? Math.round(n(inv.data.invested)) : 0;
-  const loans = m.loans.filter((l) => (l.left || 0) > 0).map((l) => [String(l.crop || '').replace(/_/g, ' ').slice(0, 24), Math.round(l.left), l.due || 0]);
-  const owed = loans.reduce((a, l) => a + l[1], 0);
-  const text = useMemo(() => {
-    const json = JSON.stringify({ v: 1, at: Math.floor(Date.now() / 1000), a: m.address, o: owed, i: invested, l: loans });
-    const b64 = btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    return `NILA:D:${b64}`;
-  }, [m.address, owed, invested, JSON.stringify(loans)]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { QRCode.toDataURL(text, { margin: 2, errorCorrectionLevel: 'L', width: 400 }).then(setImg).catch(() => setImg(undefined)); }, [text]);
+  const owed = m.loans.reduce((a, l) => a + Math.max(0, Math.round(l.left || 0)), 0);
+  // Machine vouchers left per drawn agreement (machinery.voucher, as useVouchers in her own app), read once here.
+  const drawn = m.shares.filter((x) => x.drawn).map((x) => x.token);
+  const vouchers = useQuery({ queryKey: ['stellar', 'g2Vouchers', cfg?.union, m.address, drawn.join(',')],
+    enabled: !!cfg?.contracts?.machinery && drawn.length > 0, staleTime: 30_000,
+    queryFn: async () => Object.fromEntries(await Promise.all(drawn.map(async (t) => {
+      const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(t)]).catch(() => null);
+      return [t, v && !v.void && v.member === m.address ? Math.max(0, Number(v.units) - Number(v.used)) : 0];
+    }))) });
+  const rows = [...m.shares].sort((a, b) => a.from - b.from).map((x) => {
+    const loan = m.loans.find((l) => l.token === x.token);
+    const state = loan ? (loan.overdue ? 3 : 2) : x.drawn ? 4 : x.lapsed ? 5 : x.ready ? 1 : 0;
+    return { family: shareOfToken(x.token).family, state, left: loan ? Math.max(0, Math.round(loan.left || 0)) : 0,
+      due: loan?.due || 0, centi: vouchers.data?.[x.token] || 0 };
+  });
+  const text = useMemo(() => liteDataText({ at: Date.now() / 1000, account: m.address, owed, invested, rows }),
+    [m.address, owed, invested, JSON.stringify(rows)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ready = !vouchers.isLoading;
+  useEffect(() => {
+    if (!ready) return;
+    QRCode.toDataURL(text, { margin: 2, errorCorrectionLevel: 'L', width: 400 }).then(setImg).catch(() => setImg(undefined));
+  }, [text, ready]);
   // Laid out as DeskQr (13 Nov): the QR in the white circle in its card, the lines under it, Close at the bottom.
   return (
     <AssetScreen title="Sync with phone" onBack={onClose}>
       <Card label="Sync with phone">
-        <QrCircle img={img} alt="Sync with phone: QR for Nila lite" />
+        <QrCircle img={ready ? img : undefined} alt="Sync with phone: QR for Nila lite" />
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center' }}>On her phone: Nila lite → Update from your leader → scan this.</p>
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, textAlign: 'center', color: C.muted }}>Owed {inr(owed)} · invested {inr(invested)}</p>
+        {ready && <p style={{ margin: 0, fontSize: 12, textAlign: 'center', color: C.muted }}>{text.length} characters</p>}
         <Secondary onClick={onClose}>Close</Secondary>
       </Card>
     </AssetScreen>

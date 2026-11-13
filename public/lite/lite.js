@@ -917,20 +917,65 @@
   }
 
   // ---- Update from your leader (13 Nov, test): her data as a QR on the leader's phone (G2), read with this phone's
-  // camera — no internet on this phone. `NILA:D:` + base64url(JSON {v, at, a, o, i, l: [[crop, left, due]]}).
+  // camera — no internet on this phone.
+  // Format v2 (13 Nov; encoder liteDataText in src/leader/MemberStatus.jsx). `NILA:D2:` + base45 (RFC 9285) of bytes;
+  // v = unsigned LEB128 varint, in this order: v version (2) · v made at, unix minutes · 6 bytes ASCII: last 6
+  // characters of her account · v owed ₹ · v invested ₹ · v agreement count · per agreement: v crop family · v state
+  // (0 not open yet, 1 ready, 2 financed, 3 overdue, 4 repaid, 5 lapsed) · v left to repay ₹ · v repay by, days since
+  // 2020-01-01 (0 none) · v machine vouchers left, centi tractor acres (0 none).
+  // Crop family numbers: must match the crop_calendar contract / FoodToken crop codes (code ÷ 1000).
+  var LITE_CROPS = { 0: 'Paddy', 1: 'Groundnut', 2: 'Sugarcane', 3: 'Banana', 6: 'Sesame', 7: 'Cassava', 8: 'Maize',
+    9: 'Green gram', 10: 'Horse gram', 11: 'Black gram', 14: 'Fodder sorghum', 15: 'Cumbu napier', 16: 'Sunhemp',
+    17: 'Dhaincha', 18: 'Wild indigo' };
+  var LITE_STATES = ['Not open yet', 'Ready', 'Financed', 'Overdue', 'Repaid', 'Lapsed'];
+  var B45 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
+
+  /** base45 text → byte array, or null when it is not valid base45. */
+  function unbase45(s) {
+    var out = [], i, a, b, c, v;
+    for (i = 0; i < s.length; i += 3) {
+      a = B45.indexOf(s.charAt(i)); b = B45.indexOf(s.charAt(i + 1));
+      if (a < 0 || b < 0) return null;
+      if (i + 2 < s.length) {
+        c = B45.indexOf(s.charAt(i + 2));
+        if (c < 0) return null;
+        v = a + b * 45 + c * 2025;
+        if (v > 65535) return null;
+        out.push(Math.floor(v / 256), v % 256);
+      } else {
+        v = a + b * 45;
+        if (v > 255) return null;
+        out.push(v);
+      }
+    }
+    return out;
+  }
 
   function dayMon(ms) { var d = new Date(ms); return d.getDate() + ' ' + MON[d.getMonth()]; }
   function fromLeader() { try { return JSON.parse(stored('nila.lite.fromleader') || 'null'); } catch (e) { return null; } }
 
-  /** Reads `NILA:D:` text; her own data only (her account in it). → the data, or an Error with a plain reason. */
+  /** Reads `NILA:D2:` text; her own data only (her account's tail in it). → { at (unix s), o, i, l: [{ f, s, left,
+   *  due (unix s), c }] }, or an Error with a plain reason. */
   function readLeaderQr(text) {
-    if (!/^NILA:D:/.test(text || '')) return new Error('This is not a Nila data QR.');
-    var b = text.slice(7).replace(/-/g, '+').replace(/_/g, '/');
-    while (b.length % 4) b += '=';
-    var j;
-    try { j = JSON.parse(decodeURIComponent(escape(atob(b)))); } catch (e) { return new Error('The QR could not be read. Try again.'); }
-    if (!j || j.v !== 1) return new Error('This QR is from a newer app. Ask your leader.');
-    if (j.a !== stored('nila.lite.account')) return new Error('This QR is for another member.');
+    if (!/^NILA:D/.test(text || '')) return new Error('This is not a Nila data QR.');
+    if (!/^NILA:D2:/.test(text)) return new Error('This QR is from another app version. Ask your leader.');
+    var bytes = unbase45(text.slice(8)), p = 0, bad = false;
+    if (!bytes) return new Error('The QR could not be read. Try again.');
+    var vi = function () {
+      var x = 0, m = 1, b;
+      do { if (p >= bytes.length) { bad = true; return 0; } b = bytes[p++]; x += (b % 128) * m; m *= 128; } while (b >= 128);
+      return x;
+    };
+    if (vi() !== 2) return new Error('This QR is from another app version. Ask your leader.');
+    var j = { at: vi() * 60 }, tail = '', k, n;
+    for (k = 0; k < 6; k++) tail += String.fromCharCode(bytes[p++] || 0);
+    j.o = vi(); j.i = vi(); n = vi(); j.l = [];
+    for (k = 0; k < n && !bad; k++) {
+      var f = vi(), st = vi(), left = vi(), day = vi(), c = vi();
+      j.l.push({ f: f, s: st, left: left, due: day ? 1577836800 + day * 86400 : 0, c: c });
+    }
+    if (bad || p !== bytes.length) return new Error('The QR could not be read. Try again.');
+    if (tail !== String(stored('nila.lite.account') || '').slice(-6)) return new Error('This QR is for another member.');
     return j;
   }
 
@@ -968,7 +1013,11 @@
     if (!j) { go('#/scan'); return; }
     var h = '<p class="muted small">From your leader \u00b7 as of ' + esc(dayMon(j.at * 1000)) + '</p><div class="rows">' +
       row('You owe now', inr(j.o)) + row('Invested', inr(j.i)) + '</div>';
-    (j.l || []).forEach(function (l) { h += '<div class="rows">' + row(l[0] || 'Crop agreement', inr(l[1])) + (l[2] ? row('Repay by', part(l[2])) : '') + '</div>'; });
+    (j.l || []).forEach(function (l) {
+      h += '<div class="rows">' + row(LITE_CROPS[l.f] || 'Crop agreement', LITE_STATES[l.s] || '') +
+        (l.left ? row('Left to repay', inr(l.left)) : '') + (l.due ? row('Repay by', part(l.due)) : '') +
+        (l.c ? row('Machine work', (Math.round(l.c / 10) / 10).toFixed(1) + ' tractor acres') : '') + '</div>';
+    });
     screen(h, back, ['Scan', function () { go('#/scan'); }], null, 'From your leader');
   }
 
