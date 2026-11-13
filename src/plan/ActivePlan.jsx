@@ -104,7 +104,7 @@ function Group({ name, items, now }) {
  *  month; a drawn one is done and not listed. assist: a shared phone, where the leader extends the plan.
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
-export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError }) {
+export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart }) {
   const seasons = plan.plan.seasons || [];
   const now = today.toISOString().slice(0, 10);
   const idx = currentSeason(seasons, today);
@@ -120,6 +120,13 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, ass
     <>
       <Group name="To do now" items={thisMonth} now />
       <Group name="Coming up" items={later} />
+      {/* 13 Nov: the whole plan as crop bars, below the tasks, under its own title. */}
+      {chart && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>The overall plan</span>
+          {chart}
+        </div>
+      )}
       {/* 13 Nov: the "Your plan" rows are gone (the crop bars above show the plan); the extend button stays, disabled. */}
       {/* Always one year ahead: the three cycles after this one (25 Oct). The seasons planned stay as they are. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
