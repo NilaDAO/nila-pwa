@@ -98,7 +98,10 @@ export const MyMachineTile = tile('#D4A634', glyph(tractor));    // your machine
 export const SeedTile = tile('#E69283', glyph(<path d="M12 3c3 3 4 7 0 11c-4-4-3-8 0-11zM12 14v7M8 21h8" />));
 // A crop agreement: a seedling on a tile in the crop's colour (13 Nov; was a coin with a stroke and a bar, read as a
 // cross; no inner ring).
-export const ShareTile = ({ colour = '#D4CF5A' }) => tile(colour, glyph(<path d="M12 20v-8M12 12c0-3.3-2.4-5.5-6-5.5c0 3.3 2.4 5.5 6 5.5M12 14c0-2.8 2-4.8 5.5-4.8c0 2.8-2 4.8-5.5 4.8" />))();
+// A green manure's agreement (13 Nov): soil layers, three wavy lines — it is grown to feed the soil, not sold.
+export const ShareTile = ({ colour = '#D4CF5A', soil = false }) => tile(colour, glyph(soil
+  ? <path d="M3 8c3-2 6 2 9 0s6-2 9 0M3 13c3-2 6 2 9 0s6-2 9 0M3 18c3-2 6 2 9 0s6-2 9 0" />
+  : <path d="M12 20v-8M12 12c0-3.3-2.4-5.5-6-5.5c0 3.3 2.4 5.5 6 5.5M12 14c0-2.8 2-4.8 5.5-4.8c0 2.8-2 4.8-5.5 4.8" />))();
 // Slider message icons: repay (rupee on coral), invest and withdrawal (the mark on amber).
 export const RepayTile = tile('#E69283', glyph(<path d="M6 3h12M6 8h12M6 13l8.5 8M6 13h3a5 5 0 0 0 0-10" />, { size: 16, width: 2.4 }));
 export const MarkTile = tile('#D4A634', <img src="/images/reg-logo.png" alt="" style={{ width: 20, height: 20, filter: 'invert(1)' }} />);

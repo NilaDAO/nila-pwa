@@ -257,7 +257,7 @@ export function ShareRows({ onOpen }) {
           <button key={x.token_id} type="button" onClick={() => onOpen(x.token_id)} style={{
             display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: 12, padding: '12px 16px', minHeight: 48,
             width: '100%', border: 0, color: C.text, textAlign: 'left', fontSize: 14, lineHeight: 1.5, cursor: 'pointer' }}>
-            <ShareTile colour={r.colour} />
+            <ShareTile colour={r.colour} soil={!!(r.green_manure || x.share?.green_manure)} />
             <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontWeight: 700 }}>{r.name || x.crop.replace(/_/g, ' ')}</span>
               <span style={{ color: C.muted }}>Area {x.area}{r.slot ? ` · ${SEASON[r.slot]}` : ''}{fodder ? ' · fodder' : ''}</span>
