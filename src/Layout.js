@@ -1,6 +1,6 @@
 // src/Layout.js
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import ErrorBoundary from './utils/ErrorBoundary';
 import ErrorScreen from './components/UI/errorScreen';
 import { DataProvider, NavigationProvider, TxProvider, ViewModeProvider } from './utils/NavigationContext';
@@ -41,8 +41,9 @@ function Layout() {
     };
   }, []); // run once
 
-  // set a sensible default for meta theme color (mirror to CSS var too)
-  useEffect(() => {
+  // set a sensible default for meta theme color (mirror to CSS var too). A layout effect (13 Nov): it runs before the
+  // screens' own useStatusBar, so a screen's colour (registration's green) is not overwritten on the first open.
+  useLayoutEffect(() => {
     const isDark = document.documentElement.classList.contains('dark');
     console.log('isDark, theme: ', isDark)
     setMetaThemeColor(isDark ? '#121212' : '#ffffff'); //0A0A0A

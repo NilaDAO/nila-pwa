@@ -3,6 +3,7 @@ import { cloneElement, isValidElement, useContext, useEffect, useLayoutEffect, u
 import { LabelsCtx, SheetLowCtx, useShellLook, useStage } from '../shell/stageCtx';
 import { C, FONT, GRADIENT, R } from '../shell/tokens';
 import useSheetDrag from '../shell/useSheetDrag';
+import { STATUS, useStatusBar } from '../utils/metaTheme';
 import { SettingsButton } from '../shell/RoundButton';
 
 /** head: header buttons in place of Back / name / Settings. top: the card's top (px) when it opens. onSwipe(±1): a
@@ -21,6 +22,9 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
   // A sheet without its record yet clears the stage (23 Oct): the last screen's fields never stay behind it.
   useEffect(() => { if (staged) stage.set(map.props.record || map.props.chip || map.props.center ? map.props : null); });   // a filter with no match keeps its chip
   const shown = staged ? null : map;
+  // A screen drawing its own map behind the card (registration R5–R8, the border screens): the status bar in the
+  // map's green while it is open (13 Nov).
+  useStatusBar(STATUS.map, !!shown);
   const x0 = useRef(null);
   const swipe = onSwipe ? {
     onTouchStart: (e) => { const t = e.touches[0]; x0.current = { x: t.clientX, y: t.clientY }; },
