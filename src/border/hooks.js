@@ -74,7 +74,7 @@ export function useSendFieldPoints() {
 
 /** L3: accept a shape (locks the field) or None fit (redraw); no preview call (4 Nov). */
 export function useBorderDecision(id) {
-  const accept = useJobWrite(id, (a, { field, shape }) => a.accept(id, field, shape));
+  const accept = useJobWrite(id, (a, { field, shape, soil }) => a.accept(id, field, shape, soil));
   const noneFit = useJobWrite(id, (a, { field }) => a.noneFit(id, field));
   const retry = useJobWrite(id, (a, { field }) => a.retry(id, field));
   const remove = useJobWrite(id, (a, { field }) => a.remove(id, field));   // delete the field and its point (1 Nov)

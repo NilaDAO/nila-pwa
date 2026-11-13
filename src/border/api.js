@@ -18,7 +18,8 @@ export function borderClient(signer) {
     jobs: () => call('GET', '/border/jobs').then(listOf),
     job: (id) => call('GET', `/border/job/${id}`).then(jobOf),
     preview: (id, field, shape) => call('POST', `/border/job/${id}/preview`, { field, shape }),
-    accept: (id, field, shape) => call('POST', `/border/job/${id}/decide`, { field, action: 'accept', shape }).then(jobOf),
+    // 13 Nov: the field's soil (1–5) is accepted with its shape.
+    accept: (id, field, shape, soil) => call('POST', `/border/job/${id}/decide`, { field, action: 'accept', shape, ...(soil ? { soil } : {}) }).then(jobOf),
     noneFit: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit' }).then(jobOf),
     remove: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'delete' }).then(jobOf),   // 1 Nov
     retry: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'retry' }).then(jobOf),

@@ -53,12 +53,13 @@ const SOILS = [[1, 'Red', 'semmann'], [2, 'Black', 'karisal'], [3, 'Sandy', ''],
 function SoilPick({ value, onPick }) {
   return (
     <div role="group" aria-label="Soil" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 0 6px' }}>
-      <span style={{ fontSize: 13, color: value ? C.muted : C.accent, fontWeight: 700 }}>{value ? 'Soil' : 'Soil: pick one'}</span>
+      <span style={{ fontSize: 14, fontWeight: 700 }}>Soil</span>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
         {SOILS.map(([n, label, local]) => (
           <button key={n} type="button" aria-pressed={value === n} onClick={() => onPick(n)}
-            style={{ minHeight: 40, padding: '4px 6px', borderRadius: 10, border: 0, fontFamily: FONT, fontSize: 13, fontWeight: 700, lineHeight: 1.2, cursor: 'pointer',
-              background: value === n ? C.accent : C.raised, color: value === n ? C.ink : C.text }}>
+            // Picked as a shape is (13 Nov): an accent border on the raised chip.
+            style={{ minHeight: 44, padding: '4px 6px', borderRadius: 12, border: `2px solid ${value === n ? C.accent : C.raised}`, fontFamily: FONT, fontSize: 13, fontWeight: 700, lineHeight: 1.2, cursor: 'pointer',
+              background: C.raised, color: C.text }}>
             {label}{local && <span style={{ display: 'block', fontWeight: 400, fontSize: 11, opacity: 0.8 }}>{local}</span>}
           </button>
         ))}
@@ -169,6 +170,7 @@ function Check({ job, n, onDone, onBack }) {
   const shapes = [...(f?.shapes || [])].sort((a, b) => a.score - b.score);
   const start = f?.accepted || job.plan?.[String(n)] || shapes[0]?.id;
   const [sel, setSel] = useState(start);
+  const [soil, setSoil] = useState(0);   // 13 Nov: picked with the shape; a field accepted before keeps its own
   const plan = job.plan;
   const { accept, noneFit, retry, remove } = useBorderDecision(job.id);
   const [ask, setAsk] = useState(false);   // the delete confirm (1 Nov)
@@ -189,6 +191,7 @@ function Check({ job, n, onDone, onBack }) {
   }
   const chosen = shapes.find((s) => s.id === sel);
   const holds = chosen?.holds?.length || 0;
+  const soilNow = soil || f.soil || 0;
   const moved = Object.keys(plan || {}).filter((k) => Number(k) !== n && plan[k] !== job.plan?.[k]);
   return (
     <Frame name={memberName(job)} onBack={onBack}
@@ -207,6 +210,8 @@ function Check({ job, n, onDone, onBack }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
         <span style={{ color: C.muted }}>Area</span><b>{chosen ? acres(chosen.acres) : '—'}</b>
       </div>
+      {/* 13 Nov: a field is accepted with its shape and its soil (the leader is on the land); the soil goes on the title. */}
+      {shapes.length > 0 && <SoilPick value={soilNow} onPick={setSoil} />}
       {/* DESIGN GAP: no board for a field whose every shape overlaps an accepted field (e.g. two points a few metres
           apart): say so, Accept stays off, None fit draws it again from a moved point. */}
       {shapes.length === 0 && (
@@ -228,8 +233,8 @@ function Check({ job, n, onDone, onBack }) {
           <TrashIcon color={C.coral} size={20} />
         </button>
         <button type="button" disabled={busy} style={btn(false)} onClick={() => noneFit.mutate({ field: n }, { onSuccess: onDone })}>None fit</button>
-        <button type="button" disabled={busy || !sel} style={{ ...btn(true), opacity: busy || !sel ? 0.4 : 1 }}
-          onClick={() => accept.mutate({ field: n, shape: sel }, { onSuccess: onDone })}>{accept.isPending ? 'Accepting…' : 'Accept'}</button>
+        <button type="button" disabled={busy || !sel || !soilNow} style={{ ...btn(true), opacity: busy || !sel || !soilNow ? 0.4 : 1 }}
+          onClick={() => accept.mutate({ field: n, shape: sel, soil: soilNow }, { onSuccess: onDone })}>{accept.isPending ? 'Accepting…' : 'Accept'}</button>
       </div>
       {ask && (
         <ConfirmCard title={`Delete field ${n}`} ok={remove.isPending ? 'Deleting…' : 'Delete'} okStyle={{ background: C.coral }} okDisabled={remove.isPending}
@@ -281,9 +286,8 @@ function Done({ job, onField, onBack, onAdd }) {
   const mint = useMintLandTitle(job.id);
   const joined = useMemberJoined(job);
   const [farm, setFarm] = useState('');   // the title's name: hers from R6, else the leader names it here
-  // Each field's soil (13 Nov), set here by the leader who is on the land: on the title as a number, used by crop
-  // detection. And whether the member rents the land (kept with the job, not on the public title).
-  const [soils, setSoils] = useState({});
+  // Whether the member rents the land (13 Nov; kept with the job, not on the public title). The fields' soils are
+  // accepted with their shapes on L3.
   const [tenant, setTenant] = useState(false);
   const [plotId, setPlotId] = useState();
   const plot = (job.plots || []).find((p) => p.id === plotId);
@@ -307,7 +311,7 @@ function Done({ job, onField, onBack, onAdd }) {
       reason: mint.error?.message || job.mint?.error || 'The mint failed.',
     };
     return <TxScreens tx={tx} network="Polygon" onClose={() => { setClosed(true); if (st === 'minted') onBack(); }}
-      onRetry={() => { mint.reset(); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }} />;
+      onRetry={() => { mint.reset(); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), tenant }); }} />;
   }
   return (
     <Frame name={memberName(job)} onBack={onBack}
@@ -318,7 +322,6 @@ function Done({ job, onField, onBack, onAdd }) {
         <div key={f.n} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <FieldRow f={f} sub={f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
             onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} />
-          {!st && f.state === 'accepted' && <SoilPick value={soils[f.n]} onPick={(v) => setSoils((x) => ({ ...x, [f.n]: v }))} />}
         </div>
       ))}
       {!st && <AddRow onClick={onAdd} />}
@@ -356,8 +359,8 @@ function Done({ job, onField, onBack, onAdd }) {
         </div>
       )}
       {!st && (job.polygon
-        ? <button type="button" disabled={mint.isPending || joined.needed || !ok.length || (!job.farm && !farm.trim()) || ok.some((f) => !soils[f.n])} style={{ ...btn(true), flex: 'none' }}
-          onClick={() => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }}>Mint land title</button>
+        ? <button type="button" disabled={mint.isPending || joined.needed || !ok.length || (!job.farm && !farm.trim()) } style={{ ...btn(true), flex: 'none' }}
+          onClick={() => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), tenant }); }}>Mint land title</button>
         : <button type="button" disabled style={{ ...btn(false), flex: 'none', color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: R.round, border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite' }} />
           <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
