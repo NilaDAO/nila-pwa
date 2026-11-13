@@ -79,7 +79,7 @@ export function useBorderDecision(id) {
   const retry = useJobWrite(id, (a, { field }) => a.retry(id, field));
   const remove = useJobWrite(id, (a, { field }) => a.remove(id, field));   // delete the field and its point (1 Nov)
   // 28 Oct: the proposed plan at once (L2), and a neighbour plot added to a field or made a field of its own.
-  const acceptPlan = useJobWrite(id, (a) => a.acceptPlan(id));
+  const acceptPlan = useJobWrite(id, (a, { soil } = {}) => a.acceptPlan(id, soil));
   const addPlot = useJobWrite(id, (a, { field, plot }) => a.addPlot(id, field, plot));
   const newField = useJobWrite(id, (a, { plot }) => a.newField(id, plot));
   return { accept, noneFit, retry, remove, acceptPlan, addPlot, newField };

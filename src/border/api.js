@@ -23,7 +23,7 @@ export function borderClient(signer) {
     noneFit: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit' }).then(jobOf),
     remove: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'delete' }).then(jobOf),   // 1 Nov
     retry: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'retry' }).then(jobOf),
-    acceptPlan: (id) => call('POST', `/border/job/${id}/decide`, { field: 0, action: 'accept_plan' }).then(jobOf),
+    acceptPlan: (id, soil) => call('POST', `/border/job/${id}/decide`, { field: 0, action: 'accept_plan', ...(soil ? { soil } : {}) }).then(jobOf),
     addPlot: (id, field, plot) => call('POST', `/border/job/${id}/decide`, { field, action: 'add_plot', shape: plot }).then(jobOf),
     newField: (id, plot) => call('POST', `/border/job/${id}/decide`, { field: 0, action: 'new_field', shape: plot }).then(jobOf),
     // L2 + Add a point (26 Oct): more fields for an open job, taken on the leader's phone.

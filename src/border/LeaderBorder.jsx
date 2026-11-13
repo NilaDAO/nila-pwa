@@ -137,14 +137,16 @@ function Plan({ job, onField, onBack, onAdd }) {
   const plot = (job.plots || []).find((p) => p.id === plotId);
   const { acceptPlan } = useBorderDecision(job.id);
   const waiting = job.fields.filter((f) => f.state === 'ready' && job.plan?.[String(f.n)]);
+  const [soil, setSoil] = useState(0);   // 13 Nov: one soil for the fields this plan accepts (each can differ on L3)
   return (
     <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} onField={onField} plots={job.plots || []} plotOn={plotId} onPlot={setPlotId} />}>
       {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
       <Head title={`${open.length} fields · proposed plan`} sub="Accept the plan, or tap a field to check it" />
+      {waiting.length > 0 && <SoilPick value={soil} onPick={setSoil} />}
       {waiting.length > 0 && (
-        <button type="button" disabled={acceptPlan.isPending} style={{ ...btn(true), flex: 'none' }}
-          onClick={() => acceptPlan.mutate()}>{acceptPlan.isPending ? 'Accepting…' : `Accept this plan (${waiting.length} field${waiting.length === 1 ? '' : 's'})`}</button>
+        <button type="button" disabled={acceptPlan.isPending || !soil} style={{ ...btn(true), flex: 'none', opacity: acceptPlan.isPending || !soil ? 0.4 : 1 }}
+          onClick={() => acceptPlan.mutate({ soil })}>{acceptPlan.isPending ? 'Accepting…' : `Accept this plan (${waiting.length} field${waiting.length === 1 ? '' : 's'})`}</button>
       )}
       {acceptPlan.error && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{acceptPlan.error.message}</p>}
       {(job.plots || []).length > 0 && (
