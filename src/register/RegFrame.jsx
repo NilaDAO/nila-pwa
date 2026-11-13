@@ -7,6 +7,7 @@ import FieldScene from './FieldScene';
 import FieldMap, { useFieldMapLoaded, usePinY } from './FieldMap';
 import useSheetDrag from '../shell/useSheetDrag';
 import { useShellLook, useStage } from '../shell/stageCtx';
+import { STATUS, useStatusBar } from '../utils/metaTheme';
 import { TAB_BAR_HEIGHT } from '../shell/tokens';
 
 const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
@@ -41,6 +42,7 @@ export const btnQuiet = { minHeight: 44, border: 0, background: 'transparent', p
 
 /** onBack: the round back button (R3, R4); info: the note under the card; logo=false for long cards (R5 list). */
 export default function RegFrame({ onBack, backLabel = 'Back', info, logo = true, drop = false, zoom = false, children }) {
+  useStatusBar(STATUS.reg);   // the top bar in the frame's olive (13 Nov)
   const [pull, setPull] = useState(null);
   const grab = useRef(null);
   return (
@@ -236,6 +238,7 @@ function StandaloneView({ view, onCenter, onSelect, children }) {
 }
 
 export function FieldFrame({ points, sheet, map, pan, onCenter, children }) {
+  useStatusBar(STATUS.reg);
   return (
     <div style={{ minHeight: '100dvh', boxSizing: 'border-box', background: '#8a9a2e', display: 'flex', flexDirection: 'column',
       fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
