@@ -208,7 +208,10 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
           value={titles ?? '…'} valueSub="—" onClick={onLand} />
         {/* A member sees nIN only when she holds some: a machine owner's income, collected in cash (24 Oct). */}
-        {(leader || (lp?.idChecked && nin >= 1)) && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />}
+        {/* 13 Nov: nIN opens only after the identity check too, as USDC: a leader without it sees the row locked. */}
+        {leader && !lp?.idChecked
+          ? <Row label="nIN, identity check needed" icon={<NinTile />} title="nIN" warn="Identity check (KYC) needed" />
+          : (leader || (lp?.idChecked && nin >= 1)) && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />}
         {invested !== undefined && (
           <Row label={leader ? 'Open nIN invested' : 'Open union investment'} icon={<InvestedTile />} title={leader ? 'nIN invested' : 'Union investment'}
             sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : leader ? 'Union investment' : 'In your union'}

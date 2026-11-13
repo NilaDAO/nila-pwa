@@ -32,7 +32,7 @@ import { RefreshIcon } from '../shell/icons';
 import HelpQr from '../loan/HelpQr';
 import StartHelp from '../loan/StartHelp';
 import { useSessionUntil } from '../stellar/session';
-import { useMyBorderJob } from '../border/hooks';
+import { titlePending, useMyBorderJob } from '../border/hooks';
 import { unionCentre } from '../leader/unionMap';
 import { useUnionMembers } from '../leader/unionMembers';
 
@@ -433,6 +433,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   // registering again.
   const myJob = useMyBorderJob();
   const openJob = myJob.data && myJob.data.status !== 'failed' && myJob.data.status !== 'minted' ? myJob.data : null;
+  // Just minted (12 Nov): "being minted" until her title reads, every 5 s, not the no-title card with its button.
+  const minting = titlePending(myJob.data, !forLand && titles.isSuccess && !(titles.data || []).length && stellarTitles.isSuccess && !stellarTitle);
+  useEffect(() => {
+    if (!minting) return undefined;
+    const t = setInterval(() => { titles.refetch(); stellarTitles.refetch(); }, 5000);
+    return () => clearInterval(t);
+  }, [minting]); // eslint-disable-line react-hooks/exhaustive-deps
   const titlesKnown = !!forLand || (!titles.isLoading && (onPolygon || stellarTitles.isFetched));
   // Plain loading (titles, plan, record not fetched yet) is S1 (executive decision 21 Oct); CP1's pending card is only
   // for a record that is really not there yet.
@@ -479,16 +486,16 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           <span style={{ display: 'flex', animation: busy ? 'nila-spin 900ms linear infinite' : 'none' }}><RefreshIcon color={C.text} /></span>
         </RoundButton>
       )}>
-        <p style={muted}>{openJob
+        <p style={muted}>{minting ? 'Your land title is being minted. Your crop plan starts when it is ready.' : openJob
           ? (self ? 'Your field points are with the union. Check the borders and mint your land title.' : 'Your field points are with the union. Your leader mints your land title.')
           : helped ? 'Your leader takes the field points at your farm and mints your land title. Your crop plan starts when it is ready.'
             : 'Your crop plan starts when your land title is ready.'}</p>
         {(titles.isError || stellarTitles.isError) && <p style={{ ...muted, color: C.coral }}>Your land title could not be loaded.</p>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-          {openJob
-            ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>{openJob.status === 'ready' ? 'Check borders and mint' : 'See my fields'}</Primary>
+          {minting ? null : openJob
+            ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>Mint land title</Primary>
             : helped ? <Primary onClick={() => setTitleQr(true)}>Show your QR</Primary>
-              : <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint a new land title</Primary>}
+              : <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint land title</Primary>}
         </div>
       </Sheet>
     );

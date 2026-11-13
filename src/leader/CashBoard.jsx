@@ -349,7 +349,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
               </a>
             )}
             <Row k="Member contributions" v={book ? inr(book.contributions) : '…'} />
-            <Row k="Cash at the office" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}% of the treasury)`} />
+            <Row k="Cash at the office" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}%)`} />
             {/* What the office may hold (fund_core.cash_room, on-chain since 31 Oct): the treasury plus the cash members
                 are due to take out again; a count above it is refused. */}
             <Row k="The office may hold" v={room ? inr(room.limit) : '…'} />

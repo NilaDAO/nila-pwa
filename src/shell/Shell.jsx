@@ -235,7 +235,7 @@ export default function Shell({ leader }) {
   else if (view === 'wallet') body = <WalletQr onBack={() => go('assets')} leader={leader} />;
   else if (view === 'usdc') body = <UsdcAsset leader={leader} onBack={() => go('assets')} />;
   else if (view === 'lpcode') body = <LpCodeScreen key={readArg()} id={readArg()} onBack={() => go('assets')} />;
-  else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} {...p} />}</AssetStep>;
+  else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} leader={leader} {...p} />}</AssetStep>;
   else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go(`cash/invest/${s?.stellarAddress}`)} />;
   // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.
   // nIN for a leader, or a member whose identity the anchor checked (K1, 24 Oct); A7 then collects it in cash.
