@@ -374,7 +374,7 @@ export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, o
 
 /** The overview chart (12 Nov): one lane per area, its name on the left (✓ when she checked it); a tap opens the area.
  *  Areas left out are named and greyed. */
-export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending = {}, onArea, record }) {
+export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending = {}, onArea, record, focus }) {
   const cropOf = (key) => (crops || []).find((c) => c.key === key);
   const CL = 104;
   const out = plan.plan.left_out || [];
@@ -384,7 +384,9 @@ export function PlanChart({ plan, zones, areaName, checked, y0, crops, pending =
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
         {zones.map((z) => (
           <button key={z} type="button" onClick={onArea ? () => onArea(z) : undefined} disabled={!onArea}
-            style={{ display: 'flex', alignItems: 'center', border: 0, padding: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: onArea ? 'pointer' : 'default', width: '100%' }}>
+            // focus (13 Nov): a crop agreement's own rows in full, the other areas faded.
+            style={{ display: 'flex', alignItems: 'center', border: 0, padding: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: onArea ? 'pointer' : 'default', width: '100%',
+              opacity: focus && !focus.includes(z) ? 0.35 : 1 }}>
             <span style={{ width: CL - 8, marginRight: 8, textAlign: 'left', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {checked?.has(z) && <span aria-label="checked" style={{ color: C.accent }}>✓ </span>}{areaName(z)}
             </span>

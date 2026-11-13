@@ -27,6 +27,7 @@ import AddHours from './AddHours';
 import { tapRule } from '../plan/mapTap';
 import { shareOn } from '../shell/MapStage';
 import { currentSeason } from '../plan/ActivePlan';
+import { PlanChart, planYear } from '../plan/PlanResult';
 
 const FLAG_OVERDUE = 1;
 const FLAG_DEFAULTED = 2;
@@ -120,6 +121,15 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   // its first area, so its other field looked faded and outside the agreement.
   const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 && own.length === 1 ? x.zone : null} onSelect={onTap}
     fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
+  // The plan's bars (13 Nov), this agreement's rows in full and the others faded; a row opens its agreement as the map.
+  const planOrder = areasOf(record).map((z) => z.zone_id).filter((z) => x.plan?.plan?.proposal?.[z]);
+  const nameOf = (z) => areasOf(record).find((y) => y.zone_id === z)?.name || `Area ${areasOf(record).findIndex((y) => y.zone_id === z) + 1}`;
+  const bars = x.plan?.plan && planOrder.length > 0 && (
+    <div style={{ margin: '4px 0 12px' }}>
+      <PlanChart plan={x.plan} record={record} zones={planOrder} areaName={nameOf} checked={new Set()} focus={own}
+        y0={planYear(x.share.from_date)} onArea={onTap} />
+    </div>
+  );
   const head = (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
       <span style={{ display: 'flex', flexDirection: 'column' }}>
@@ -148,6 +158,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
     return (
       <Sheet map={map} onBack={onBack} bar={bar} onSwipe={onSwipe}>
         {head}
+        {bars}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Row k="Status" v={statusOf(x)} />
           {!over && opens && <Row k={x.ready ? 'Ready since' : 'Ready from'} v={day(opens)} strong />}
@@ -194,6 +205,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   return (
     <Sheet map={map} onBack={onBack} bar={bar} onSwipe={onSwipe}>
       {head}
+      {bars}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Row k="Status" v={statusOf(x)} />
         <Row k="Harvest" v={fodder ? 'Regular cuts' : partOfMonth(harvest)} strong />
