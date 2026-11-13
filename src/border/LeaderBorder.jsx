@@ -287,6 +287,8 @@ function Done({ job, onField, onBack, onAdd }) {
   const [plotId, setPlotId] = useState();
   const plot = (job.plots || []).find((p) => p.id === plotId);
   const ok = job.fields.filter((f) => f.state === 'accepted');
+  // 13 Nov: the soils shown on the map go with the mint, so the title has them even if the node lost one.
+  const soils = Object.fromEntries(ok.filter((f) => f.soil).map((f) => [String(f.n), f.soil]));
   const total = ok.reduce((a, f) => a + (shapeFor(f, job.plan)?.acres || 0), 0);
   // A failed mint, or an error the beat recorded while it retries, shows even while the job is still 'minting'.
   const st = job.status === 'minted' || job.mint?.status === 'minted' ? 'minted'
@@ -306,7 +308,7 @@ function Done({ job, onField, onBack, onAdd }) {
       reason: mint.error?.message || job.mint?.error || 'The mint failed.',
     };
     return <TxScreens tx={tx} network="Polygon" onClose={() => { setClosed(true); if (st === 'minted') onBack(); }}
-      onRetry={() => { mint.reset(); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), tenant }); }} />;
+      onRetry={() => { mint.reset(); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }} />;
   }
   return (
     <Frame name={memberName(job)} onBack={onBack}
@@ -355,7 +357,7 @@ function Done({ job, onField, onBack, onAdd }) {
       )}
       {!st && (job.polygon
         ? <button type="button" disabled={mint.isPending || joined.needed || !ok.length || (!job.farm && !farm.trim()) } style={{ ...btn(true), flex: 'none' }}
-          onClick={() => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), tenant }); }}>Mint land title</button>
+          onClick={() => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }}>Mint land title</button>
         : <button type="button" disabled style={{ ...btn(false), flex: 'none', color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: R.round, border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite' }} />
           <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
