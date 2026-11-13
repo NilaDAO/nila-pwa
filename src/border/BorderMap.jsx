@@ -20,6 +20,10 @@ const pinHtml = (n, on) => {
  * fields: the job's fields; plan: field n → shape id (the job's, or a preview); active: the field being
  * checked (or drawn); drawing: show the points only, in accent; onField(n): a pin or shape was tapped.
  */
+/** A field's soil on the map (13 Nov): an earth colour per soil (1 red, 2 black, 3 sandy, 4 clay / tank silt, 5 gravelly),
+ *  as on the soil chips. `soils`: field n → soil (the job's, with the one just picked). */
+export const SOIL_COLOUR = { 1: '#B5562F', 2: '#3A3330', 3: '#D9C38A', 4: '#6F8696', 5: '#9A8C74' };
+
 export default function BorderMap(props) {
   const { ok } = useFieldMapLoaded();
   return ok ? <GoogleBorderMap {...props} /> : <LeafletBorderMap {...props} />;
@@ -31,7 +35,7 @@ const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, zoomControl:
   clickableIcons: false, mapId: '8fa18e8fd7e4c318' };
 
 /** Google: the same drawing rules as below, on the satellite map. */
-function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360, fitBottom, plots = [], plotOn, onPlot }) {
+function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360, fitBottom, plots = [], plotOn, onPlot, soils = {} }) {
   const map = useRef(null);
   const drawn = useRef([]);
   const fitKey = useRef();
@@ -50,9 +54,10 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
         const path = ring.map(([lng, lat]) => ({ lat, lng }));
         const accepted = !!f.accepted && !on;
         const dashed = !on && !accepted;
+        const soil = SOIL_COLOUR[soils[f.n] || f.soil];
         const poly = new g.Polygon({ map: m, paths: path, clickable: !!onField,
           strokeColor: on ? C.accent : '#ffffff', strokeOpacity: dashed ? 0 : 1, strokeWeight: on ? 3 : 2,
-          fillColor: on ? C.accent : '#ffffff', fillOpacity: on ? 0.28 : accepted ? 0.08 : 0 });
+          fillColor: soil || (on ? C.accent : '#ffffff'), fillOpacity: soil ? 0.5 : on ? 0.28 : accepted ? 0.08 : 0 });
         if (onField) poly.addListener('click', () => onField(f.n));
         drawn.current.push(poly);
         if (dashed) {   // dashed white = to check (a dashed polyline over the outline)
@@ -107,7 +112,7 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
 }
 
 /** Leaflet + Esri: only when Google Maps cannot load. */
-function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360, plots = [], plotOn, onPlot }) {
+function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360, plots = [], plotOn, onPlot, soils = {} }) {
   const ready = useLeaflet();
   const box = useRef();
   const map = useRef();
@@ -136,9 +141,11 @@ function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawi
         : on && shapeOverride ? f.shapes?.find((s) => s.id === shapeOverride) : shapeFor(f, plan);
       if (shape?.geometry) {
         const accepted = !!f.accepted && !on;
-        const style = on ? { color: C.accent, weight: 3, fillColor: C.accent, fillOpacity: 0.28 }
+        const soil = SOIL_COLOUR[soils[f.n] || f.soil];
+        const base = on ? { color: C.accent, weight: 3, fillColor: C.accent, fillOpacity: 0.28 }
           : accepted ? { color: '#ffffff', weight: 2, fillOpacity: 0.08, fillColor: '#ffffff' }
             : { color: '#ffffff', weight: 1.5, dashArray: '6 4', fillOpacity: 0 };
+        const style = soil ? { ...base, fillColor: soil, fillOpacity: 0.5 } : base;
         const shp = L.geoJSON(shape.geometry, { style });
         if (onField) shp.on('click', () => onField(f.n));
         shp.addTo(g);
@@ -167,7 +174,7 @@ function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawi
       const b = focus.length ? focus.reduce((a, x) => a.extend(x), L.latLngBounds(focus[0].getSouthWest(), focus[0].getNorthEast())) : g.getBounds();
       m.fitBounds(b, { padding: [32, 32], maxZoom: 18 });
     }
-  }, [ready, fields, plan, active, shapeOverride, drawing, onField, plots, plotOn, onPlot]);
+  }, [ready, fields, plan, active, shapeOverride, drawing, onField, plots, plotOn, onPlot, JSON.stringify(soils)]); // eslint-disable-line react-hooks/exhaustive-deps
   return <div ref={box} style={{ height, width: '100%', background: '#25361f' }} aria-label="Satellite map with field shapes" />;
 }
 

@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
 import { acres, shapeFor } from './api';
-import BorderMap, { ShapeThumb } from './BorderMap';
+import BorderMap, { SOIL_COLOUR, ShapeThumb } from './BorderMap';
 import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
@@ -60,7 +60,10 @@ function SoilPick({ value, onPick }) {
             // Picked as a shape is (13 Nov): an accent border on the raised chip.
             style={{ minHeight: 44, padding: '4px 6px', borderRadius: 12, border: `2px solid ${value === n ? C.accent : C.raised}`, fontFamily: FONT, fontSize: 13, fontWeight: 700, lineHeight: 1.2, cursor: 'pointer',
               background: C.raised, color: C.text }}>
-            {label}{local && <span style={{ display: 'block', fontWeight: 400, fontSize: 11, opacity: 0.8 }}>{local}</span>}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 9999, background: SOIL_COLOUR[n], flexShrink: 0 }} />{label}
+            </span>
+            {local && <span style={{ display: 'block', fontWeight: 400, fontSize: 11, opacity: 0.8 }}>{local}</span>}
           </button>
         ))}
       </div>
@@ -140,7 +143,8 @@ function Plan({ job, onField, onBack, onAdd }) {
   const [soil, setSoil] = useState(0);   // 13 Nov: one soil for the fields this plan accepts (each can differ on L3)
   return (
     <Frame name={memberName(job)} onBack={onBack}
-      map={<BorderMap fields={job.fields} plan={job.plan} onField={onField} plots={job.plots || []} plotOn={plotId} onPlot={setPlotId} />}>
+      map={<BorderMap fields={job.fields} plan={job.plan} onField={onField} plots={job.plots || []} plotOn={plotId} onPlot={setPlotId}
+        soils={soil ? Object.fromEntries(waiting.filter((f) => !f.soil).map((f) => [f.n, soil])) : {}} />}>
       {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
       <Head title={`${open.length} fields · proposed plan`} sub="Accept the plan, or tap a field to check it" />
       {waiting.length > 0 && <SoilPick value={soil} onPick={setSoil} />}
@@ -197,7 +201,7 @@ function Check({ job, n, onDone, onBack }) {
   const moved = Object.keys(plan || {}).filter((k) => Number(k) !== n && plan[k] !== job.plan?.[k]);
   return (
     <Frame name={memberName(job)} onBack={onBack}
-      map={<BorderMap fields={job.fields} plan={plan} active={n} shapeOverride={sel} onField={() => {}} />}>
+      map={<BorderMap fields={job.fields} plan={plan} active={n} shapeOverride={sel} onField={() => {}} soils={soilNow ? { [n]: soilNow } : {}} />}>
       <Head title={fieldName(f)} sub={memberName(job)} />
       <div role="group" aria-label={`Shapes for field ${n}`} style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
         {shapes.map((s, i) => (
