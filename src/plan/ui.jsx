@@ -5,6 +5,7 @@ import { C, FONT, GRADIENT, R } from '../shell/tokens';
 import useSheetDrag from '../shell/useSheetDrag';
 import { STATUS, useStatusBar } from '../utils/metaTheme';
 import { SettingsButton } from '../shell/RoundButton';
+import { BackIcon } from '../shell/icons';
 
 /** head: header buttons in place of Back / name / Settings. top: the card's top (px) when it opens. onSwipe(±1): a
  *  sideways swipe on the card (A4/A5's ‹ asset › bar). */
@@ -73,7 +74,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
       {ownHead || (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           {/* Both sides as wide as the wider one, so the title stays in the middle. */}
-          <span style={{ display: 'flex', width: sideW }}>{onBack && <button type="button" aria-label="Back" onClick={onBack} style={btnIn}>←</button>}</span>
+          <span style={{ display: 'flex', width: sideW }}>{onBack && <button type="button" aria-label="Back" onClick={onBack} style={{ ...btnIn, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><BackIcon color={C.text} /></button>}</span>
           <span style={{ flexGrow: 1, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{inTitle || ''}</span>
           <span style={{ display: 'flex', gap: 8, width: sideW, justifyContent: 'flex-end' }}>{actions}{!noSettings && <SettingsButton />}</span>
         </div>
@@ -83,7 +84,7 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
   const head = ownHead || (
     <>
       {onBack && (
-        <button type="button" aria-label="Back" onClick={onBack} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, left: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0, color: C.text, fontSize: 20 }}>←</button>
+        <button type="button" aria-label="Back" onClick={onBack} style={{ pointerEvents: 'auto', position: 'absolute', zIndex: 2, left: 8, top: 18, width: 40, height: 40, borderRadius: R.round, background: C.ink, border: 0, color: C.text, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><BackIcon color={C.text} /></button>
       )}
       {landName && <span style={{ background: C.ink, borderRadius: R.round, padding: '8px 16px', fontWeight: 700, position: 'absolute', top: 18, zIndex: 2, pointerEvents: 'auto' }}>{landName}</span>}
       {/* Settings on every CP screen (executive decision 21 Oct; board CropPlanPending-n9mn-kewp): the round gear top right. */}

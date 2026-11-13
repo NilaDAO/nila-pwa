@@ -9,6 +9,7 @@ import useSheetDrag from '../shell/useSheetDrag';
 import { useShellLook, useStage } from '../shell/stageCtx';
 import { STATUS, useStatusBar } from '../utils/metaTheme';
 import { TAB_BAR_HEIGHT } from '../shell/tokens';
+import { BackIcon } from '../shell/icons';
 
 const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
 
@@ -224,7 +225,7 @@ function DragCard({ title, onBack, children }) {
       {handle}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {onBack ? <button type="button" aria-label="Back" onClick={onBack} style={{ width: 40, height: 40, borderRadius: 9999, background: '#1F2733', border: 0,
-          color: '#F1F5F9', fontSize: 20, flexShrink: 0 }}>←</button> : <span style={{ width: 40 }} />}
+          color: '#F1F5F9', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><BackIcon color="#F1F5F9" /></button> : <span style={{ width: 40 }} />}
         {title ? <h1 style={{ flexGrow: 1, margin: 0, textAlign: 'center', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{title}</h1>
           : <span style={{ flexGrow: 1 }} />}
         <span style={{ width: 40 }} />
