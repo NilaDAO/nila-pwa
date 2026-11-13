@@ -14,10 +14,10 @@ import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { usePendingApprovals, usePlanClient } from '../plan/hooks';
-import { C, FONT, R } from '../shell/tokens';
-import { ChevronIcon, FileIcon, TrashIcon, WarnIcon } from '../shell/icons';
+import { C, FONT, R, SHADOW } from '../shell/tokens';
+import { ChevronIcon, FileIcon, MarkTile, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
-import { Steps } from '../shell/MessageSlider';   // the numbered steps of the Assets slider cards (13 Nov)
+import { Steps, Title } from '../shell/MessageSlider';   // the numbered steps of the Assets slider cards (13 Nov)
 import AreaMap from '../plan/AreaMap';
 import { unionCentre } from './unionMap';
 import { areaM2 } from '../plan/mapTap';
@@ -369,26 +369,28 @@ export default function MemberStatus({ id, go }) {
  *  The leader picks her phone and follows the steps; the last one is the scan of her QR, which sends her signed
  *  set_union. A keypad phone needs internet only while Nila lite installs. */
 function JoinSteps({ m, onScan }) {
-  const [phone, setPhone] = useState();      // 'smart' | 'keypad'
+  const [phone, setPhone] = useState('smart');      // 'smart' | 'keypad'
   const [moving, setMoving] = useState(false);
-  const chip = (on) => ({ ...btn(), background: on ? C.accent : C.raised, color: on ? C.ink : C.text });
+  const seg = (on) => ({ flex: 1, height: 36, borderRadius: R.round, border: 0, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    background: on ? C.text : 'transparent', color: on ? C.ink : C.muted });
+  const scan = <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }} onClick={onScan}>Scan her QR</button>;
   const steps = phone === 'smart'
-    ? ['On her phone, open the Nila app and recover her account.', 'In her app, tap the scan icon at the bottom: her QR shows.', 'Scan her QR. She has then joined the union.']
-    : ['She needs internet only while Nila lite installs.', 'Tap Move: she gets an SMS.', 'She opens the SMS and taps QR in the bottom right corner.', 'Scan her QR. She has then joined the union.'];
+    ? ['She opens the Nila app and recovers her account.', 'She taps the scan icon at the bottom: her QR shows.', <>You scan her QR. Done: she has joined.{scan}</>]
+    : ['Her phone needs internet only while Nila lite installs.',
+      <>Send her the SMS.<button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setMoving(true)}>Move</button></>,
+      'She opens the SMS and taps QR in the bottom right corner.', <>You scan her QR. Done: she has joined.{scan}</>];
+  // The look of the Assets slider cards (board: Register a machine): tile, title, numbered steps, the action in its step.
   return (
-    <Section title="Account" right="Not joined yet">
-      <span style={{ color: C.muted }}>Her account was moved. Which phone does she use?</span>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" aria-pressed={phone === 'smart'} style={chip(phone === 'smart')} onClick={() => setPhone('smart')}>Smartphone</button>
-        <button type="button" aria-pressed={phone === 'keypad'} style={chip(phone === 'keypad')} onClick={() => setPhone('keypad')}>Keypad phone</button>
+    <section aria-label="Join her to the union" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, marginTop: 8,
+      display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <Title Icon={MarkTile}>Join her to the union</Title>
+      <div role="group" aria-label="Her phone" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: R.round, background: C.raised }}>
+        <button type="button" aria-pressed={phone === 'smart'} style={seg(phone === 'smart')} onClick={() => setPhone('smart')}>Smartphone</button>
+        <button type="button" aria-pressed={phone === 'keypad'} style={seg(phone === 'keypad')} onClick={() => setPhone('keypad')}>Keypad phone</button>
       </div>
-      {phone && (
-        <Steps items={steps} />
-      )}
-      {phone === 'keypad' && <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => setMoving(true)}>Move</button>}
-      {phone && <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }} onClick={onScan}>Scan her QR</button>}
+      <Steps items={steps} />
       {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
-    </Section>
+    </section>
   );
 }
 
