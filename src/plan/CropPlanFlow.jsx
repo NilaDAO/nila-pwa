@@ -24,7 +24,7 @@ import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
 import { AreaCard, CropSelect, PlanChart, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, seasonLabel, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
-import { shareOn } from '../shell/MapStage';
+import { areaHash } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
 import RoundButton from '../shell/RoundButton';
 import ReadAloud from './ReadAloud';
@@ -430,16 +430,17 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
-  // CP13 (map-central trial, 21 Oct): a tap on an area opens its crop agreement in the season shown (A4/A4a).
+  // CP13 (map-central trial, 21 Oct): a tap on an area opens it (since 13 Nov its area page, not one agreement).
   // A share whose sowing is over a year ahead is made later (the node defers it, 25 Oct): it does not hold the plan up.
   const deferredOnly = mint.status === 'partial' && (mint.refused || []).length > 0
     && mint.refused.every((r) => /more than a year ahead|made later/i.test(r.error || ''));
   const active = approved && (mint.status === 'done' || mint.status === 'partial');
+  // 13 Nov: a tap opens the area's page (every agreement on it that plan year, its standing crop), so an area with only
+  // the standing crop or a green manure in the season shown opens too.
   const openShare = useCallback((z) => {
     const ss = plan?.plan?.seasons || [];
-    const x = z && shareOn(myShares.data, ss, Math.min(season, ss.length - 1), z);
-    if (x) window.location.hash = `#/cropshare/${x.token_id}`;
-  }, [plan, season, myShares.data]);
+    if (z) window.location.hash = areaHash(z, planYear(ss[Math.min(season, ss.length - 1)]?.start));
+  }, [plan, season]);
   // Before the field record (CP1, 1 Nov): the land title's field outlines, as on the land title screen (A5).
   const titleShape = fieldsMap(useTitleFields(landId, onPolygon, stellarTitle, null));
   const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
@@ -921,7 +922,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const toNow = () => { setPastYear(null); setSeason(nowSeason); };
     const bar = ss.length > 0 && (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        {(pastYear != null || shown !== nowSeason) && (
+        {/* 13 Nov: only on the year bar (a past year); on the plan's own seasons the bar is enough. */}
+        {pastYear != null && (
           <button type="button" onClick={toNow} style={{ height: 32, padding: '0 14px', borderRadius: 16, border: 0, background: 'rgba(18,18,18,0.85)', color: C.accent,
             fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Back to now</button>
         )}
@@ -947,7 +949,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           </div>
         )}
         {/* 13 Nov: the bars' title follows the year on the bar; a past year shows only its bars (no tasks). */}
-        {/* A row opens its crop agreement (13 Nov), as a tap on its area on the map. */}
+        {/* A row opens its area's page (13 Nov), as a tap on its area on the map. */}
         <ActivePlan chart={<PlanChart plan={plan} record={record} zones={zones} areaName={areaName} checked={new Set()} y0={y0} crops={catalogue.data?.crops} onArea={pastYear == null ? openShare : undefined} />}
           chartTitle={pastYear != null ? `${yearLabel(null, pastYear)} · from your record` : y0 === planYear() ? "This year's plan" : `${yearLabel(null, y0)} plan`}
           past={pastYear != null}
