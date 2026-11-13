@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
 import { acres, shapeFor } from './api';
-import BorderMap, { SOIL_COLOUR, ShapeThumb } from './BorderMap';
+import BorderMap, { SOIL_COLOUR, ShapeThumb, soilInk } from './BorderMap';
 import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
@@ -72,11 +72,15 @@ function SoilPick({ value, onPick }) {
 }
 
 function FieldRow({ f, sub, right, onClick }) {
+  // A field with its soil chosen (13 Nov): the whole row in the soil's colour, its number on the dark circle.
+  const soil = SOIL_COLOUR[f.soil];
+  const ink = soil ? soilInk(soil) : C.text;
+  const quiet = soil ? { color: ink, opacity: 0.8 } : { color: C.muted };
   return (
-    <button type="button" onClick={onClick} disabled={!onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: C.raised, border: 0, borderRadius: 12, padding: '12px 16px', color: C.text, fontFamily: FONT, fontSize: 14 }}>
-      <span style={{ width: 24, height: 24, borderRadius: R.round, background: C.ink, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{f.n}</span>
-      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={{ color: C.muted }}>{sub}</span>}</span>
-      {right && <span style={{ color: C.muted }}>{right}</span>}
+    <button type="button" onClick={onClick} disabled={!onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: soil || C.raised, border: 0, borderRadius: 12, padding: '12px 16px', color: ink, fontFamily: FONT, fontSize: 14 }}>
+      <span style={{ width: 24, height: 24, borderRadius: R.round, background: C.ink, color: C.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{f.n}</span>
+      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={quiet}>{sub}</span>}</span>
+      {right && <span style={quiet}>{right}</span>}
     </button>
   );
 }
