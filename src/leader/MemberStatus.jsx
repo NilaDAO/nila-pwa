@@ -17,7 +17,8 @@ import { usePendingApprovals, usePlanClient } from '../plan/hooks';
 import { C, FONT, R, SHADOW } from '../shell/tokens';
 import { ChevronIcon, FileIcon, MarkTile, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
-import { Steps, Title } from '../shell/MessageSlider';   // the numbered steps of the Assets slider cards (13 Nov)
+import { Steps, Title } from '../shell/MessageSlider';
+import Segmented from '../shell/Segmented';   // the numbered steps of the Assets slider cards (13 Nov)
 import AreaMap from '../plan/AreaMap';
 import { unionCentre } from './unionMap';
 import { areaM2 } from '../plan/mapTap';
@@ -371,8 +372,6 @@ export default function MemberStatus({ id, go }) {
 function JoinSteps({ m, onScan }) {
   const [phone, setPhone] = useState('smart');      // 'smart' | 'keypad'
   const [moving, setMoving] = useState(false);
-  const seg = (on) => ({ flex: 1, height: 36, borderRadius: R.round, border: 0, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer',
-    background: on ? C.text : 'transparent', color: on ? C.ink : C.muted });
   const scan = <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }} onClick={onScan}>Scan the QR</button>;
   const steps = phone === 'smart'
     ? ['The member opens the Nila app and recovers the account.', 'The member taps the scan icon at the bottom: the QR shows.', <>Scan the QR. Done: the member has joined.{scan}</>]
@@ -383,10 +382,10 @@ function JoinSteps({ m, onScan }) {
   return (
     <section aria-label="Join the union" style={{ background: C.ink, borderRadius: R.card, boxShadow: SHADOW, padding: 22, marginTop: 8,
       display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <Title Icon={MarkTile}>Join the union</Title>
-      <div role="group" aria-label="Her phone" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: R.round, background: C.raised }}>
-        <button type="button" aria-pressed={phone === 'smart'} style={seg(phone === 'smart')} onClick={() => setPhone('smart')}>Smartphone</button>
-        <button type="button" aria-pressed={phone === 'keypad'} style={seg(phone === 'keypad')} onClick={() => setPhone('keypad')}>Keypad phone</button>
+      {/* The phone switch as Cash ahead's All | Half (13 Nov): beside the title. */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <Title Icon={MarkTile}>Join the union</Title>
+        <Segmented width="hug" label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad']]} />
       </div>
       <Steps items={steps} />
       {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
