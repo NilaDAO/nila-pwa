@@ -118,7 +118,7 @@ function AssetStep({ view, children }) {
   const shares = useMyShares().data;
   const items = useMemo(() => [{ key: 'land', label: 'Land title' },
     ...[...(shares || [])].sort((a, b) => String(a.share?.from_date || '').localeCompare(String(b.share?.from_date || '')) || a.area - b.area)
-      .map((x) => ({ key: `cropshare/${x.token_id}`, label: `${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area}` }))], [shares]);
+      .map((x) => ({ key: `cropshare/${x.token_id}`, label: `${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · ${x.area}` }))], [shares]);
   const cur = view === 'land' ? 'land' : `cropshare/${readArg()}`;
   const i = items.findIndex((it) => it.key === cur);
   const step = (d) => { if (i < 0) return; window.location.replace(`#/${items[(i + d + items.length) % items.length].key}`); };

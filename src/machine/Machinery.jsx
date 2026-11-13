@@ -74,7 +74,7 @@ export default function Machinery({ onBack }) {
   const shares = useMyShares().data || [];
   const nameOf = (token) => {
     const x = shares.find((y) => tokenHex(y.token_id).replace(/^0x/, '').toLowerCase().padStart(64, '0') === token);
-    return x ? `${(x.crop || '').replace(/_/g, ' ')} · Area ${x.area}` : 'Crop agreement';
+    return x ? `${(x.crop || '').replace(/_/g, ' ')} · ${x.area}` : 'Crop agreement';
   };
   const withLeft = list.filter((v) => v.left > 0);
   const v = withLeft.find((x) => x.token === pick) || withLeft[0];
@@ -237,7 +237,7 @@ export function HandBack({ member, session, onDone }) {
   const nameOf = (token) => {
     const x = myShares.find((y) => tokenHex(y.token_id).replace(/^0x/, '').toLowerCase().padStart(64, '0') === token);
     const a = shareOfToken(token).centiAcres / 100;
-    return x ? `${(x.crop || '').replace(/_/g, ' ')} · Area ${x.area}` : `Crop agreement · ${acresText(a)}`;
+    return x ? `${(x.crop || '').replace(/_/g, ' ')} · ${x.area}` : `Crop agreement · ${acresText(a)}`;
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onDone?.(); }} onRetry={() => tx.retry()} />;
   if (vouchers.isLoading || books.isLoading) return session ? <span style={{ color: C.muted, fontSize: 14 }}>…</span> : null;

@@ -116,7 +116,9 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
       if (y) window.location.hash = `#/cropshare/${y.token_id}`;
     },
   });
-  const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 ? x.zone : null} onSelect={onTap}
+  // One area picked (outlined, the others dimmed) only for a single-area agreement (13 Nov): a merged one picked only
+  // its first area, so its other field looked faded and outside the agreement.
+  const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 && own.length === 1 ? x.zone : null} onSelect={onTap}
     fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
   const head = (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
