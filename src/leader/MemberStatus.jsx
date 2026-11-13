@@ -206,7 +206,7 @@ export default function MemberStatus({ id, go }) {
   const zoneName = Object.fromEntries((m.record?.zones || []).filter((z) => z.name).map((z) => [z.zone_id, z.name]));
   const fieldsOf = (x) => {
     const nos = String(x.area ?? '').split(' + ');
-    return x.zones.length ? areaNames(x.zones.map((z, i) => zoneName[z] || `Area ${nos.length === x.zones.length ? nos[i] : areas.findIndex((y) => y.zone_id === z) + 1}`)) : `Area ${x.area}`;
+    return x.zones.length ? areaNames(x.zones.map((z, i) => zoneName[z] || `Area ${nos.length === x.zones.length ? nos[i] : (areas.findIndex((y) => y.zone_id === z) + 1 || '')}`.trim())) : `Area ${x.area}`;
   };
   const owed = m.loans.reduce((a, x) => a + (x.left || 0), 0);
   const loan = [...m.loans].sort((a, b) => (a.due || 9e12) - (b.due || 9e12))[0];
