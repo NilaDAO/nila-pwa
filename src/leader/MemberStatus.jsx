@@ -294,11 +294,13 @@ export default function MemberStatus({ id, go }) {
           {!dueLoan && <span style={{ color: C.muted }}>Possible once the repay date has passed.</span>}
         </Section>
       )}
+      </>)}
+      {/* Invested shows also before the member has joined (13 Nov): the amount only; the actions after joining. */}
       {m.address && (
         <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
           {/* Her actions start here only (executive decision 22 Oct: Members → G2 → action; the Cash tab is the union's money).
               Nothing invested: Invest only; else Invest more and Withdraw. Invest opens the count choice. */}
-          {!act ? (
+          {m.joined === false ? null : !act ? (
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
               {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
@@ -325,6 +327,7 @@ export default function MemberStatus({ id, go }) {
           {noPhotos && <span style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</span>}
         </Section>
       )}
+      {m.joined !== false && (<>
       {shares.isLoading && <Section title="Crop agreements"><SkeletonRows rows={2} /></Section>}
       {m.shares.length > 0 && (
         <Section title="Crop agreements">
