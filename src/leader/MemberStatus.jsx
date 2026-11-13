@@ -257,10 +257,11 @@ export default function MemberStatus({ id, go }) {
           </Section>
         )}
         {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
-        {/* A keypad member without a land title (13 Nov: e.g. hers was removed): the leader takes her points again. */}
-        {!m.titleId && !m.lands?.length && m.keypadId && (
+        {/* A member without a land title (13 Nov: e.g. hers was removed): a new one. A keypad member: the leader takes her
+            points again; the leader's own row: the leader's own points; a smartphone member: L14, the leader scans her QR. */}
+        {!m.titleId && !m.lands?.length && (m.keypadId || m.formerTitle != null) && (
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
-            onClick={() => go(`tasks/member/${m.keypadId}/points`)}>Make a new land title</button>
+            onClick={() => go(m.keypadId ? `tasks/member/${m.keypadId}/points` : m.address && m.address === s?.stellarAddress ? 'crop/register' : 'tasks/member')}>Make a new land title</button>
         )}
       </div>
       {waiting && (
@@ -418,7 +419,7 @@ function Account({ m, inv, go, onSync }) {
   const move = rcv.applies && !rcv.keypad && /^C/.test(m.address || '');
   const lite = rcv.keypad && !!m.address;   // her data as a QR for Nila lite (13 Nov, test of the offline refresh)
   // No land title but a keypad row (13 Nov: e.g. hers was removed): the bin deletes her for good.
-  const gone = !titleId && !!m.keypadId;
+  const gone = !titleId && (!!m.keypadId || m.formerTitle != null);   // 13 Nov: also a smartphone member whose title was burned
   if (!rcv.applies && !titleId && !m.recordHash && !gone) return null;
   const close = () => setCard();
   return (
@@ -599,9 +600,11 @@ function MoveToKeypad({ address, name, phone, onClose }) {
 /** A member without a land title deleted for good (13 Nov): her row and links on the node; her account stays on-chain. */
 function DeleteMember({ m, go, onClose }) {
   const s = useNilaSigner();
+  const api = usePlanClient();
   const qc = useQueryClient();
   const del = useMutation({
-    mutationFn: () => keypadClient(s).remove(m.keypadId),
+    // A keypad member by her keypad row; a smartphone member (13 Nov) by her account in the node's former members.
+    mutationFn: () => (m.keypadId ? keypadClient(s).remove(m.keypadId) : api.removeFormer(m.address)),
     onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
   });
   return (
@@ -618,7 +621,8 @@ function RemoveMember({ m, why, titleId, go, onClose }) {
   const qc = useQueryClient();
   const rm = useMutation({
     mutationFn: () => api.removeMember(titleId),
-    onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
+    // 13 Nov: her titles too, so the leader's own crop plan and assets drop a removed own title at once.
+    onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); qc.invalidateQueries({ queryKey: ['polygon', 'titles'] }); qc.invalidateQueries({ queryKey: ['stellar', 'titles'] }); go('members'); },
   });
   return why ? (
     <ConfirmCard title="Remove member" ok="OK" onCancel={onClose} onOk={onClose}
