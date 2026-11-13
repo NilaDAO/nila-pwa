@@ -153,9 +153,6 @@ function Plan({ job, onField, onBack, onAdd }) {
           onClick={() => acceptPlan.mutate({ soil })}>{acceptPlan.isPending ? 'Accepting…' : `Accept this plan (${waiting.length} field${waiting.length === 1 ? '' : 's'})`}</button>
       )}
       {acceptPlan.error && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{acceptPlan.error.message}</p>}
-      {(job.plots || []).length > 0 && (
-        <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>Dotted outlines on the map: plots next to the fields. Tap one to add it.</p>
-      )}
       {job.fields.map((f) => {
         const s = shapeFor(f, job.plan);
         const busy = f.state === 'drawing';
