@@ -231,7 +231,7 @@ export function ReadyShareRows({ go, first = true }) {
 }
 
 /** The A1 rows (board MemberAssets-ley3, "Crop agreements"): her crop's coin, crop, "Area N · season", its state, the
- *  expected harvest and its value on the right, a chevron. Every row opens its crop agreement: A4 once a loan is drawn on
+ *  amount to pay back and the expected harvest on the right (13 Nov; was harvest and value), a chevron. Every row opens its crop agreement: A4 once a loan is drawn on
  *  it, A4a before (src/loan/CropShare.jsx). */
 export function ShareRows({ onOpen }) {
   const shares = useMyShares();
@@ -253,9 +253,10 @@ export function ShareRows({ onOpen }) {
               <span style={{ color: C.muted }}>Area {x.area}{r.slot ? ` · ${SEASON[r.slot]}` : ''}{fodder ? ' · fodder' : ''}</span>
               <span style={{ color: x.ready ? C.accent : C.muted, fontWeight: 700 }}>{tag}</span>
             </span>
+            {/* 13 Nov: what is to be paid back on this agreement (cash, vouchers and interest), the harvest under it. */}
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-              {r.kg ? <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{amount(r.kg)}</span> : null}
-              <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{fodder ? 'Fodder' : r.value ? `~${inr(r.value)}` : ''}</span>
+              {r.finance?.repay ? <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{inr(r.finance.repay)}</span> : null}
+              <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{fodder ? 'Fodder' : r.kg ? amount(r.kg) : ''}</span>
             </span>
             <ChevronIcon />
           </button>
