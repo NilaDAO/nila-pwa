@@ -51,19 +51,19 @@ function Frame({ name, onBack, map, children }) {
  *  4 clay / tank silt, 5 gravelly). Required before the mint. */
 const SOILS = [[1, 'Red', 'semmann'], [2, 'Black', 'karisal'], [3, 'Sandy', ''], [4, 'Clay / tank silt', 'vandal'], [5, 'Gravelly', '']];
 function SoilPick({ value, onPick }) {
+  // As the shape tiles above (13 Nov): one row of tiles of the same width, an accent border on the one picked, its
+  // earth colour as a swatch where a shape tile has its picture.
   return (
-    <div role="group" aria-label="Soil" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 0 6px' }}>
+    <div role="group" aria-label="Soil" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <span style={{ fontSize: 14, fontWeight: 700 }}>Soil</span>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
         {SOILS.map(([n, label, local]) => (
-          <button key={n} type="button" aria-pressed={value === n} onClick={() => onPick(n)}
-            // Picked as a shape is (13 Nov): an accent border on the raised chip.
-            style={{ minHeight: 44, padding: '4px 6px', borderRadius: 12, border: `2px solid ${value === n ? C.accent : C.raised}`, fontFamily: FONT, fontSize: 13, fontWeight: 700, lineHeight: 1.2, cursor: 'pointer',
-              background: C.raised, color: C.text }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 9999, background: SOIL_COLOUR[n], flexShrink: 0 }} />{label}
-            </span>
-            {local && <span style={{ display: 'block', fontWeight: 400, fontSize: 11, opacity: 0.8 }}>{local}</span>}
+          <button key={n} type="button" aria-pressed={value === n} aria-label={`${label}${local ? ` (${local})` : ''}`} onClick={() => onPick(n)}
+            style={{ flex: '1 0 72px', minWidth: 0, border: `2px solid ${value === n ? C.accent : C.raised}`, borderRadius: 12, background: C.raised,
+              padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'stretch', color: C.text, fontFamily: FONT, cursor: 'pointer' }}>
+            <span aria-hidden="true" style={{ height: 36, background: SOIL_COLOUR[n] }} />
+            <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.2, padding: '4px 2px 0', textAlign: 'center' }}>{label === 'Clay / tank silt' ? 'Clay' : label}</span>
+            <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.2, padding: '0 2px 4px', textAlign: 'center', minHeight: 13 }}>{local}</span>
           </button>
         ))}
       </div>
@@ -202,7 +202,8 @@ function Check({ job, n, onDone, onBack }) {
   return (
     <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={plan} active={n} shapeOverride={sel} onField={() => {}} soils={soilNow ? { [n]: soilNow } : {}} />}>
-      <Head title={fieldName(f)} sub={memberName(job)} />
+      {/* 13 Nov: the member's name is in the header already; no second line. */}
+      <Head title={fieldName(f)} />
       <div role="group" aria-label={`Shapes for field ${n}`} style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
         {shapes.map((s, i) => (
           <button key={s.id} type="button" aria-label={`Shape ${i + 1}, ${acres(s.acres)}`} aria-pressed={s.id === sel} onClick={() => pick(s.id)} style={{
