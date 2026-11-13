@@ -47,6 +47,26 @@ function Frame({ name, onBack, map, children }) {
   );
 }
 
+/** A field's soil (13 Nov): five chips with the local names, numbers 1–5 on the title (1 red, 2 black, 3 sandy,
+ *  4 clay / tank silt, 5 gravelly). Required before the mint. */
+const SOILS = [[1, 'Red', 'semmann'], [2, 'Black', 'karisal'], [3, 'Sandy', ''], [4, 'Clay / tank silt', 'vandal'], [5, 'Gravelly', '']];
+function SoilPick({ value, onPick }) {
+  return (
+    <div role="group" aria-label="Soil" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 0 6px' }}>
+      <span style={{ fontSize: 13, color: value ? C.muted : C.accent, fontWeight: 700 }}>{value ? 'Soil' : 'Soil: pick one'}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+        {SOILS.map(([n, label, local]) => (
+          <button key={n} type="button" aria-pressed={value === n} onClick={() => onPick(n)}
+            style={{ minHeight: 40, padding: '4px 6px', borderRadius: 10, border: 0, fontFamily: FONT, fontSize: 13, fontWeight: 700, lineHeight: 1.2, cursor: 'pointer',
+              background: value === n ? C.accent : C.raised, color: value === n ? C.ink : C.text }}>
+            {label}{local && <span style={{ display: 'block', fontWeight: 400, fontSize: 11, opacity: 0.8 }}>{local}</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FieldRow({ f, sub, right, onClick }) {
   return (
     <button type="button" onClick={onClick} disabled={!onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: C.raised, border: 0, borderRadius: 12, padding: '12px 16px', color: C.text, fontFamily: FONT, fontSize: 14 }}>
@@ -261,6 +281,10 @@ function Done({ job, onField, onBack, onAdd }) {
   const mint = useMintLandTitle(job.id);
   const joined = useMemberJoined(job);
   const [farm, setFarm] = useState('');   // the title's name: hers from R6, else the leader names it here
+  // Each field's soil (13 Nov), set here by the leader who is on the land: on the title as a number, used by crop
+  // detection. And whether the member rents the land (kept with the job, not on the public title).
+  const [soils, setSoils] = useState({});
+  const [tenant, setTenant] = useState(false);
   const [plotId, setPlotId] = useState();
   const plot = (job.plots || []).find((p) => p.id === plotId);
   const ok = job.fields.filter((f) => f.state === 'accepted');
@@ -283,7 +307,7 @@ function Done({ job, onField, onBack, onAdd }) {
       reason: mint.error?.message || job.mint?.error || 'The mint failed.',
     };
     return <TxScreens tx={tx} network="Polygon" onClose={() => { setClosed(true); if (st === 'minted') onBack(); }}
-      onRetry={() => { mint.reset(); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }} />;
+      onRetry={() => { mint.reset(); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }} />;
   }
   return (
     <Frame name={memberName(job)} onBack={onBack}
@@ -291,8 +315,11 @@ function Done({ job, onField, onBack, onAdd }) {
       {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
       <Head title={`${ok.length} fields · all accepted`} sub={`Total ${total.toFixed(2)} acres`} />
       {job.fields.map((f) => (
-        <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
-          onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} />
+        <div key={f.n} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <FieldRow f={f} sub={f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
+            onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} />
+          {!st && f.state === 'accepted' && <SoilPick value={soils[f.n]} onPick={(v) => setSoils((x) => ({ ...x, [f.n]: v }))} />}
+        </div>
       ))}
       {!st && <AddRow onClick={onAdd} />}
       {st === 'minting' && <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Minting the land title. The member gets a notification when it is ready.</p>}
@@ -303,6 +330,13 @@ function Done({ job, onField, onBack, onAdd }) {
         <label style={{ display: 'grid', gap: 4, fontSize: 14 }}>Name this land (publicly visible)
           <input value={farm} onChange={(e) => setFarm(e.target.value)} maxLength={64} placeholder="e.g. Lake side farm, not a person's name"
             style={{ padding: 10, fontSize: 16, borderRadius: 8, border: `1px solid ${C.muted}`, background: C.raised, color: C.text }} />
+        </label>
+      )}
+      {!st && (
+        // 13 Nov: kept with the job (not on the public title).
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, cursor: 'pointer' }}>
+          <input type="checkbox" checked={tenant} onChange={(e) => setTenant(e.target.checked)} style={{ width: 20, height: 20, accentColor: C.accent }} />
+          The member rents this land (tenant)
         </label>
       )}
       {!st && !job.polygon && (
@@ -322,8 +356,8 @@ function Done({ job, onField, onBack, onAdd }) {
         </div>
       )}
       {!st && (job.polygon
-        ? <button type="button" disabled={mint.isPending || joined.needed || !ok.length || (!job.farm && !farm.trim())} style={{ ...btn(true), flex: 'none' }}
-          onClick={() => { setStarted(true); setClosed(false); mint.mutate(job.farm ? {} : { farm: farm.trim() }); }}>Mint land title</button>
+        ? <button type="button" disabled={mint.isPending || joined.needed || !ok.length || (!job.farm && !farm.trim()) || ok.some((f) => !soils[f.n])} style={{ ...btn(true), flex: 'none' }}
+          onClick={() => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }}>Mint land title</button>
         : <button type="button" disabled style={{ ...btn(false), flex: 'none', color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: R.round, border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite' }} />
           <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>

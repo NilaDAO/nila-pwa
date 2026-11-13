@@ -87,5 +87,5 @@ export function useBorderDecision(id) {
 
 /** L4: the leader asks the node to mint her land title (signed by the node's title key). */
 export function useMintLandTitle(id) {
-  return useJobWrite(id, (a, { farm } = {}) => a.mint(id, farm));
+  return useJobWrite(id, (a, { farm, soils, tenant } = {}) => a.mint(id, farm, soils, tenant));
 }

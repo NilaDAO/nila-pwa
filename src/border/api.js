@@ -27,7 +27,8 @@ export function borderClient(signer) {
     newField: (id, plot) => call('POST', `/border/job/${id}/decide`, { field: 0, action: 'new_field', shape: plot }).then(jobOf),
     // L2 + Add a point (26 Oct): more fields for an open job, taken on the leader's phone.
     addPoints: (id, points) => call('POST', `/border/job/${id}/points`, { points }).then(jobOf),
-    mint: (id, farm) => call('POST', `/border/job/${id}/mint`, farm ? { farm } : {}).then(jobOf),
+    // 13 Nov: soils {field n: 1–5} and tenant (the member rents the land) go with the mint.
+    mint: (id, farm, soils, tenant) => call('POST', `/border/job/${id}/mint`, { ...(farm ? { farm } : {}), ...(soils ? { soils } : {}), ...(tenant != null ? { tenant } : {}) }).then(jobOf),
     // Land check (4 Nov, LOAN_RULES "Land check before more than ₹1 lakh"): her title's check, and "I placed the sheet".
     landCheck: (titleId) => call('GET', `/border/title/${titleId}/check`),
     sheetPlaced: (titleId) => call('POST', `/border/title/${titleId}/sheet`, {}),
