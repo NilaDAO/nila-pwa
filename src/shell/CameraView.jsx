@@ -88,7 +88,9 @@ export default function CameraView({ mode = 'qr', onText, onPhoto, busy = false,
               background: busy ? C.muted : C.text, cursor: busy ? 'default' : 'pointer' }} />
         </div>
       )}
-      {STATIC && (
+      {/* The flag compared right here (13 Nov): a real build folds it to false at this spot and drops the button and its
+          texts; through the STATIC const it was kept in some bundles, and the release check refused the build. */}
+      {process.env.REACT_APP_DEMO_STATIC === '1' && (
         <button type="button" disabled={busy} style={{ alignSelf: 'center', padding: '8px 16px', borderRadius: R.round, border: `1px solid ${C.accent}`, background: 'none', color: C.accent }}
           onClick={async () => { if (mode === 'photo') onPhoto?.(await demoPhoto()); else { const t = demo.demoQr(); if (t) onText?.(t); else console.warn('[demo-static] no QR recorded'); } }}>
           {mode === 'photo' ? 'Use a demo photo' : 'Use the demo QR'}
