@@ -1,4 +1,4 @@
-// The union checks on a crop share (board LeaderRedeem rows "Cash on hand", "Seed and machine stock",
+// The union checks on a crop agreement (board LeaderRedeem rows "Cash on hand", "Seed and machine stock",
 // "Loan limit of the union"), read from the contracts. HARD caps: the ones fund_core.draw_loan enforces —
 // - cash: the junior cash above its reserve (no ₹10,000 cap in code since 30 Oct: the crop plan and the leaders
 //   hold it for the first cycle; max_loan is kept as that recommendation)
@@ -53,7 +53,7 @@ export function useUnionChecks(member) {
       const blocked = [];
       if (Number(hold) > 0) blocked.push('Lending is on hold in the union.');
       if (BigInt(pos?.invested ?? 0) + GATE_ROUNDING < BigInt(uc.gate ?? 0)) blocked.push(`The member needs ₹${Math.round(num(uc.gate)).toLocaleString('en-IN')} invested in the union first.`);
-      if ((loans?.length ?? 0) >= MAX_LOANS_PER_MEMBER) blocked.push('The member has too many open crop shares.');
+      if ((loans?.length ?? 0) >= MAX_LOANS_PER_MEMBER) blocked.push('The member has too many open crop agreements.');
       return {
         maxLoan,
         // Whole rupees: the request is in whole rupees.

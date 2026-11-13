@@ -58,7 +58,7 @@ export async function isDeployed(cfg, id) {
   return ((await server(cfg).getLedgerEntries(key)).entries || []).length > 0;
 }
 
-/** Many crop shares at once (22 Oct): fund_core keeps each as persistent DataKey::FoodToken(union, token_id), so one
+/** Many crop agreements at once (22 Oct): fund_core keeps each as persistent DataKey::FoodToken(union, token_id), so one
  *  getLedgerEntries call reads up to 200 of them instead of a simulation each. Returns { [hex]: FoodToken | null }. */
 export async function readFoodTokens(cfg, union, hexes) {
   const id = contractId(cfg, 'fund_core');

@@ -1,6 +1,6 @@
 // A13 claim limit (27 Oct, acres): the most a machine owner may claim on a scanned voucher code, in whole hundredths of
 // an acre, as machinery.claim checks it: the units her code allows (≤ what is left on her voucher) at this machine's
-// price for her crop against the tractor's price, never more than the crop share's area, never more than the machine's
+// price for her crop against the tractor's price, never more than the crop agreement's area, never more than the machine's
 // acres a week (whole acres; this week's use in hundredths). Integer math only: 0.29 ac is 29, not 28.999….
 // Returns null when a price is unknown (not read yet or the read failed), so the screen can say so instead of "0 ac".
 

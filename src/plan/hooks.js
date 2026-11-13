@@ -79,7 +79,7 @@ export function useCropChain(landId) {
   });
 }
 
-/** The approved chain as one plan for CP13: the last plan with every season and crop share of the chain. */
+/** The approved chain as one plan for CP13: the last plan with every season and crop agreement of the chain. */
 export function mergedPlan(chain, fallback) {
   const ps = chain?.plans || [];
   if (ps.length < 2) return fallback;

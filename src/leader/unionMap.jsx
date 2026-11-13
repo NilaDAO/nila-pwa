@@ -4,7 +4,7 @@
 // member's property, that member's G2.
 //  - members: all members' properties, name labels (the default);
 //  - assets: every member's land as on her land title (24 Oct): the title's fields (NFT metadata, else the record's),
-//    no crop labels; a property with a crop share Ready to take up in accent, a machine owner with her machines;
+//    no crop labels; a property with a crop agreement Ready to take up in accent, a machine owner with her machines;
 //  - cash: properties with an active loan, by repayment (due within 14 days gold, overdue coral);
 //  - harvests: properties with a harvest in the next 60 days, by weeks to harvest.
 // (Crop plan keeps the leader's own property, CropPlanFlow.)

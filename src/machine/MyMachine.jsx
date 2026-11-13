@@ -1,7 +1,7 @@
 // A13 my machine (board MemberMachine), the owner's side of a voucher (executive decision, 17 Oct):
 // - available from the leader's registration (L13); no owner confirmation (executive decision 3 Nov, N9 removed);
 // - she scans a member's voucher code (A8a: the member's signed authorization of machinery.claim for up to N units,
-//   centi tractor acres, 27 Oct), confirms the acres worked (the crop share's area, from its token id; lower for a part
+//   centi tractor acres, 27 Oct), confirms the acres worked (the crop agreement's area, from its token id; lower for a part
 //   done) and claims (machinery.claim, with that authorization). Owner split (1 Nov): the prepay (diesel plus the
 //   union's share of the driver part) reaches the owner's wallet in nIN at once; the rest of the owner's part is held
 //   until the member repays and then collected (fund_core.collect); the union's parts of the price (2 Nov; default
@@ -179,7 +179,7 @@ function Costs({ parts, acres, split }) {
   );
 }
 
-/** Scan her code → the acres worked (the crop share's area, from its token id; the owner may lower it for a part
+/** Scan her code → the acres worked (the crop agreement's area, from its token id; the owner may lower it for a part
  *  done) → machinery.claim (27 Oct: acres, not hours; the price for the share's crop when the union set one). */
 function Claim({ machine, rate, tractor, onBack }) {
   const s = useNilaSigner();
@@ -234,7 +234,7 @@ function Claim({ machine, rate, tractor, onBack }) {
     const job = { owner: s.stellarAddress, token: scan.token, acres, prepay, pending, ts: Math.floor(Date.now() / 1000) };
     saveJob(job);
     // "Paid to you" from the claim's own result at once, no chain read to wait for: the prepay is paid, the pending
-    // part adds to what this crop share owes her (one figure per share and owner, shown on its latest job).
+    // part adds to what this crop agreement owes her (one figure per share and owner, shown on its latest job).
     qc.setQueryData(['stellar', 'dues', cfg?.union, s.stellarAddress], (d) => {
       if (!d) return d;
       const before = d.jobs.find((j) => j.token === job.token && j.pendingNow > 0)?.pendingNow || 0;
@@ -247,7 +247,7 @@ function Claim({ machine, rate, tractor, onBack }) {
   if (scan) {
     return (
       <Page title="Acres worked" onBack={() => setScan(undefined)}>
-        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>{Number.isFinite(scan.area) ? `The crop share is ${acresText(scan.area)}. Lower it only if you did part of it.` : 'Up to what the code allows.'}</p>
+        <p style={{ ...muted, textAlign: 'center', margin: 0 }}>{Number.isFinite(scan.area) ? `The crop agreement is ${acresText(scan.area)}. Lower it only if you did part of it.` : 'Up to what the code allows.'}</p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, margin: '12px 0' }}>
           {/* Tenth-of-an-acre steps, down to a hundredth at the ends. */}
           <button type="button" aria-label="Less" style={b} onClick={() => setAcres(Math.max(Math.min(0.01, scan.max), Math.round((acres - 0.1) * 100) / 100))}>−</button>

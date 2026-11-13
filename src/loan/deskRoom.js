@@ -1,6 +1,6 @@
 // How much cash the office may still take in (executive decision 30 Oct; on-chain since 31 Oct: fund_core.cash_room,
 // which fx_pool enforces at every cash scan): the union's treasury plus the cash members are due to take out again,
-// withdrawals started and not collected and the cash parts of undrawn crop shares whose window closes within 9 weeks.
+// withdrawals started and not collected and the cash parts of undrawn crop agreements whose window closes within 9 weeks.
 // The app reads the same figure so the leader sees the reason before a count is refused.
 import { useQuery } from '@tanstack/react-query';
 import { useStellarConfig } from '../stellar/hooks';
@@ -33,5 +33,5 @@ export function useDeskRoom() {
 
 /** The line shown when a count is more than the office may take in. */
 export const overRoom = (r, total) => `The office may take in ${r.room.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })} more, `
-  + `not ${total.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}: treasury, withdrawals waiting and crop shares to be taken up in the next 9 weeks, less the cash already here. `
-  + 'Let an LP take cash, or pay out a withdrawal or crop share first.';
+  + `not ${total.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}: treasury, withdrawals waiting and crop agreements whose cash is due in the next 9 weeks, less the cash already here. `
+  + 'Let an LP take cash, or pay out a withdrawal or crop agreement first.';

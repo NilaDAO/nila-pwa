@@ -1,4 +1,4 @@
-// A4 / A4a · her crop share (boards MemberCropShare, MemberCropShareInactive; notes a4-spec). A map board: the share's
+// A4 / A4a · her crop agreement (boards MemberCropShare, MemberCropShareInactive; notes a4-spec). A map board: the share's
 // area filled in the crop's colour and labelled with the crop, the other areas plain; the sheet shows the crop, area,
 // expected harvest and value, status and timing (the same numbers as her A1 row).
 //  - A4a, not active yet (no loan drawn on it): what she collects (cash and machine hours, total) and when and where.
@@ -90,8 +90,8 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   if ((!x && (shares.isLoading || !shares.data)) || (x && !record && !field.error)) return <Loading />;
   if (!x) {
     return (
-      <Sheet title="Your crop share" onBack={onBack}>
-        <p style={{ ...muted, textAlign: 'center' }}>This crop share is not in your plan.</p>
+      <Sheet title="Your crop agreement" onBack={onBack}>
+        <p style={{ ...muted, textAlign: 'center' }}>This crop agreement is not in your plan.</p>
       </Sheet>
     );
   }
@@ -116,13 +116,16 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
       if (y) window.location.hash = `#/cropshare/${y.token_id}`;
     },
   });
-  const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 ? x.zone : null} onSelect={onTap}
+  // One area picked (outlined, the others dimmed) only for a single-area agreement (13 Nov): a merged one picked only
+  // its first area, so its other field looked faded and outside the agreement.
+  const map = record ? <AreaMap record={record} labels={labels} selected={nAreas > 1 && own.length === 1 ? x.zone : null} onSelect={onTap}
     fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} /> : null;
   const head = (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
       <span style={{ display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{name}</span>
-        <span style={{ ...muted, lineHeight: 1.5 }}>Crop share · Area {x.area}</span>
+        {/* 13 Nov: the fields are in the bar above; this line says what the numbers on the right are. */}
+        <span style={{ ...muted, lineHeight: 1.5 }}>{x.share.green_manure ? 'Green manure' : fodder ? 'Fodder' : 'Estimated sales'}</span>
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{r.kg ? amount(r.kg) : '—'}</span>
@@ -179,7 +182,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   // One QR at the office (executive decision 26 Oct): the help QR; the leader counts the cash and records the repayment.
   // More machine hours (27 Oct, self mode): until its last draw date, while the loan is open and not overdue.
   const canAdd = open && !(Number(l.flags ?? 0) & FLAG_OVERDUE) && !assisted() && (!x.final || Date.now() / 1000 <= x.final);
-  if (adding && canAdd) return <AddHours token={x.token_id} name={`${name} · Area ${x.area}`} map={map} onBack={() => setAdding(false)} />;
+  if (adding && canAdd) return <AddHours token={x.token_id} name={`${name} · ${x.area}`} map={map} onBack={() => setAdding(false)} />;
   // G9 (4 Nov): repaying needs no signature from her: her account QR in self mode, the help QR in assist mode.
   if (repayQr) return <WalletQr onBack={() => setRepayQr(false)} note="Bring the cash to the union office. Your leader scans this, counts the cash and records your repayment." />;
   // What is left: the cash part and the voucher's value, with interest (26 Oct: the voucher is debt from the draw).

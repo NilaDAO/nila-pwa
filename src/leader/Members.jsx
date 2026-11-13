@@ -1,7 +1,7 @@
 // G1 (board LeaderGrowers): the leader's Members tab, a map card. The header is A1L's (History, All tasks, Settings);
 // the card: "N members" (land title holders, 24 Oct) and "Joining · K" (onboarding), Add a member (→ L14), search with a scan button (her wallet QR, A1a → her row), and one
 // row per grower: her name and a summary (coral when a loan is overdue); a row, or her property on the map, opens G2
-// (#/members/<id>). No crop shares here (22 Oct): they belong under batches (the Harvests tab, later).
+// (#/members/<id>). No crop agreements here (22 Oct): they belong under batches (the Harvests tab, later).
 // Data: src/leader/unionMembers.js.
 import { useContactBook } from '../union/hooks';
 import { useMemo, useState } from 'react';
@@ -57,7 +57,7 @@ export default function Members({ go }) {
   const left = list.length - n;
   const onQr = (text) => {
     setScan(false);
-    // Her crop share QR (her Ready share, 23 Oct): straight to L11 with that share picked.
+    // Her crop agreement QR (her Ready share, 23 Oct): straight to L11 with that share picked.
     const share = /^nila:share:(\w+):/.exec(String(text || '').trim());
     if (share) { go(`loan/${share[1]}`); return; }
     const g = addressFromQr(text);

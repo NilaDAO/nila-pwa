@@ -36,12 +36,12 @@ export function currentSeason(seasons, today = new Date()) {
 const job = (m, name) => { const v = VERB.find(([re]) => re.test(m.for)); return v ? `${v[1]} ${name}` : `${m.for.charAt(0).toUpperCase()}${m.for.slice(1)} · ${name}`; };
 const kg = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')} t` : `${Math.round(n).toLocaleString('en-IN')} kg`);
 
-export function tasksOf(plan, areaNo) {
+export function tasksOf(plan, areaNo, areaName) {
   const out = [];
   for (const [si, s] of (plan.seasons || []).entries()) {
     const at = out.length;
     for (const r of s.rows) {
-      const area = typeof areaNo(r.zone) === 'number' ? areaLabel(r, areaNo) : '';
+      const area = typeof areaNo(r.zone) === 'number' ? areaLabel(r, areaNo, areaName) : '';
       if (r.sow && !r.continues) out.push({ date: r.sow, text: `Plant ${r.name}`, area });
       for (const m of Object.values(r.finance?.machines || {})) {
         if (m.when && m.for && !/sowing|land preparation/.test(m.for)) out.push({ date: m.when, text: job(m, r.name), area });
@@ -54,7 +54,7 @@ export function tasksOf(plan, areaNo) {
     if (due && s.repay) out.push({ date: due, when: 'after harvest', text: `Repay ${inr(s.repay)}`, area: `21 days after your harvest · ${SLOT[s.slot] || ''} finance`.trim() });
     for (const t of out.slice(at)) t.season = si;
   }
-  // Receive cash + vouchers: one per crop share, at its planned sowing (from_date), in the season it starts in; it can be
+  // Receive cash + vouchers: one per crop agreement, at its planned sowing (from_date), in the season it starts in; it can be
   // used from now until its last draw date (25 Oct), shown with it.
   const lastDayText = (d) => (d ? `use it by ${new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : '');
   const ss = plan.seasons || [];
@@ -63,7 +63,7 @@ export function tasksOf(plan, areaNo) {
     if (!sh.from_date || (!sh.loan_amount && !work)) continue;
     const si = Math.max(0, ss.reduce((k, s, i) => (s.start <= sh.from_date ? i : k), 0));
     out.push({ date: sh.from_date, text: work ? 'Receive cash + vouchers' : 'Receive cash', share: sh.key, season: si,
-      area: [typeof areaNo(sh.zone) === 'number' ? areaLabel(sh, areaNo) : '', sh.loan_amount ? inr(sh.loan_amount) : '', work ? `${Math.round(work * 100) / 100} ac of machine work` : '', lastDayText(sh.final_date), 'union office'].filter(Boolean).join(' · ') });
+      area: [typeof areaNo(sh.zone) === 'number' ? areaLabel(sh, areaNo, areaName) : '', sh.loan_amount ? inr(sh.loan_amount) : '', work ? `${Math.round(work * 100) / 100} ac of machine work` : '', lastDayText(sh.final_date), 'union office'].filter(Boolean).join(' · ') });
   }
   // Same month: she receives the cash before she plants.
   return out.sort((a, b) => a.date.slice(0, 7).localeCompare(b.date.slice(0, 7)) || (!!b.share - !!a.share) || a.date.localeCompare(b.date));
@@ -109,18 +109,18 @@ function Group({ name, items, now }) {
   );
 }
 
-/** shares: her crop shares as A1 reads them (useMyShares): a share she can collect now (ready) is a to-do whatever its
+/** shares: her crop agreements as A1 reads them (useMyShares): a share she can collect now (ready) is a to-do whatever its
  *  month; a drawn one is done and not listed. assist: a shared phone, where the leader extends the plan.
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
-export default function ActivePlan({ plan, areaNo, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError }) {
+export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError }) {
   const seasons = plan.plan.seasons || [];
   const now = today.toISOString().slice(0, 10);
   const idx = currentSeason(seasons, today);
   const shown = Math.min(season ?? idx, Math.max(0, seasons.length - 1));
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance?.due)).filter(Boolean).sort().pop();
   const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
-  const all = tasksOf(plan.plan, areaNo).filter((t) => t.season === shown && !(t.share && byKey[t.share]?.drawn));
+  const all = tasksOf(plan.plan, areaNo, areaName).filter((t) => t.season === shown && !(t.share && byKey[t.share]?.drawn));
   const ready = (t) => !!(t.share && byKey[t.share]?.ready);
   const thisMonth = all.filter((t) => ready(t) || (t.date.slice(0, 7) === now.slice(0, 7) && !(t.share && byKey[t.share] && !ready(t))));
   const later = all.filter((t) => !thisMonth.includes(t) && t.date.slice(0, 7) > now.slice(0, 7));
@@ -145,7 +145,8 @@ export default function ActivePlan({ plan, areaNo, season, shares, assist, today
           ? <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>Your plan covers the next three seasons.</span>
           : assist
             ? <span style={{ fontSize: 14, lineHeight: 1.5, color: C.muted }}>Ask your leader to extend your plan.</span>
-            : <button type="button" onClick={onExtend} disabled={extending} style={{ height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer', opacity: extending ? 0.5 : 1 }}>
+            // Disabled for now (13 Nov, executive decision): shown, not tappable.
+            : <button type="button" disabled aria-disabled="true" style={{ height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'default', opacity: 0.5 }}>
               {extending ? 'Planning…' : `Extend my plan · ${canExtend.length} season${canExtend.length > 1 ? 's' : ''}`}
             </button>}
         {extendError && <span style={{ fontSize: 14, color: C.coral }}>{extendError}</span>}

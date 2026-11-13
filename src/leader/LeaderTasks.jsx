@@ -1,5 +1,5 @@
 // L1 — the leader's Tasks tab (board LeaderBorders) and L5 — "Who is it for?" (board LeaderPickMember). P10c.
-// "To do": the union's tasks the contracts and the node give today (plans to approve, crop share requests, cash to
+// "To do": the union's tasks the contracts and the node give today (plans to approve, crop agreement requests, cash to
 // settle, LPs who arrived, paybacks coming and overdue), with a search. "Start a task": the board's groups, each
 // row opening the flow that exists. DESIGN GAPs: no member names (land and short address); not built yet and left
 // out of the list: Make a crop plan with a member, Change her crop plan, Get cash and
@@ -42,7 +42,7 @@ export function PickMember({ title, onPick, onBack, onScan }) {
         {(members.data || []).map((m, i) => (
           <ListRow key={m.address} first={i === 0} icon={PinIcon} title={m.lands.length ? `Land ${m.lands.join(', ')}` : 'Member'} sub={short(m.address)} onClick={() => onPick(m.address)} />
         ))}
-        {members.isSuccess && !members.data.length && <li style={{ color: C.muted, padding: '12px 0' }}>No members with a crop plan or a crop share yet.</li>}
+        {members.isSuccess && !members.data.length && <li style={{ color: C.muted, padding: '12px 0' }}>No members with a crop plan or a crop agreement yet.</li>}
         {onScan && <ListRow first={!members.data?.length} icon={PayOutIcon} title="Scan a wallet QR" sub="A member not in the list" onClick={onScan} />}
       </ListSection>
     </div>
@@ -73,7 +73,7 @@ export function PlanFor({ go }) {
 }
 
 /** Tasks → Hand back acres (executive decision 4 Nov, G7): for an assist or keypad member, the leader scans the
- *  member's help QR (a 5-minute session on the member's account), then picks the crop share, the machine and the
+ *  member's help QR (a 5-minute session on the member's account), then picks the crop agreement, the machine and the
  *  acres; fund_core.return_voucher in the session. A self-mode member does it on their own phone (A8). */
 export function HandBackFor({ go }) {
   const [member, setMember] = useState();
@@ -106,7 +106,7 @@ const START = [
     ['Make a crop plan', 'Scan the member\'s QR', 'tasks/planfor', CropIcon]]],
   // One scan for her (executive decision 24 Oct): the QR says which kind, the chain picks invest, withdraw, use or
   // repay. Her G2 in Members stays a second way in.
-  ['Cash', [['Scan a member QR', 'Invest, use a crop share, repay or pay out', 'cash/scan', PayOutIcon],
+  ['Cash', [['Scan a member QR', 'Invest, use a crop agreement, repay or pay out', 'cash/scan', PayOutIcon],
     ['Scan an LP code', 'An LP brings or collects cash', 'cash/lpscan', BanknoteIcon]]],
   ['Vouchers', [['Register a machine', 'The owner\'s machine, photos and price', 'cash/machine', TractorIcon],
     ['Give back vouchers', 'Return unused vouchers', 'tasks/handback', TractorIcon]]],

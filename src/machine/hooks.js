@@ -60,7 +60,7 @@ export const acresFor = (units, rate, tractor) => (rate > 0 ? Math.floor(Math.ro
 /** Acres with up to two decimals ("1.07 ac"). */
 export const acresText = (a) => `${Math.round(Number(a || 0) * 100) / 100} ac`;
 
-/** A crop share's crop family and area as machinery reads them from its token id (FoodToken packTokenId: crop code
+/** A crop agreement's crop family and area as machinery reads them from its token id (FoodToken packTokenId: crop code
  *  at bit 204, area in m² at bit 148): { family, centiAcres } (rounded up, as the contract's area cap). */
 export function shareOfToken(token) {
   const t = BigInt(`0x${String(token).replace(/^0x/, '').padStart(64, '0')}`);
@@ -105,8 +105,8 @@ const CODE_KEY = 'nila.voucher.signed';
 export const loadVoucherCode = () => { try { return JSON.parse(localStorage.getItem(CODE_KEY)) || null; } catch { return null; } };
 export const saveVoucherCode = (c) => { try { if (c) localStorage.setItem(CODE_KEY, JSON.stringify(c)); else localStorage.removeItem(CODE_KEY); } catch { /* private */ } };
 
-/** Her vouchers: one per crop share with machine work (machinery.voucher), in units. Left = units − used. They stay hers
- *  after the loan is repaid (26 Oct), and a repaid loan leaves fund_core.loans_of: so her drawn crop shares (her plans'
+/** Her vouchers: one per crop agreement with machine work (machinery.voucher), in units. Left = units − used. They stay hers
+ *  after the loan is repaid (26 Oct), and a repaid loan leaves fund_core.loans_of: so her drawn crop agreements (her plans'
  *  mint lists, `tokens`) are read too, not only her open loans. */
 export function useVouchers(member) {
   const { data: cfg } = useStellarConfig();
@@ -170,7 +170,7 @@ export const saveJob = (j) => { try { localStorage.setItem(JOBS, JSON.stringify(
 
 /** A13 "Paid to you" (owner split, 1 Nov): the prepay paid at each job (from the jobs on this phone), what is ready to
  *  collect (fund_core.owner_balance: the held parts the members' repayments settled) and what each voucher still owes
- *  the owner until its member repays (fund_core.owner_dues per crop share of the owner's jobs). */
+ *  the owner until its member repays (fund_core.owner_dues per crop agreement of the owner's jobs). */
 export function useOwnerDues(owner) {
   const { data: cfg } = useStellarConfig();
   return useQuery({
@@ -186,7 +186,7 @@ export function useOwnerDues(owner) {
           .catch(() => 0))),
       ]);
       const owedBy = Object.fromEntries(tokens.map((t, i) => [t, owed[i]]));
-      // A crop share's owed amount is shown on its latest job (the contract keeps one figure per share and owner).
+      // A crop agreement's owed amount is shown on its latest job (the contract keeps one figure per share and owner).
       const last = Object.fromEntries(jobs.map((j, i) => [j.token, i]));
       return {
         received: jobs.reduce((a, j) => a + j.prepay, 0),

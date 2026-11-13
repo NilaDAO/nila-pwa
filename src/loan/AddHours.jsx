@@ -1,4 +1,4 @@
-// More machine work on her own crop share, already taken up (executive decision 27 Oct; self mode: assisted members
+// More machine work on her own crop agreement, already taken up (executive decision 27 Oct; self mode: assisted members
 // get it from their leader in a session, G2 → L11). Until the share's last draw date, while its loan is open: one
 // row per machine type the union has (confirmed machines), in acres (a tenth) at the union's price an acre; the
 // voucher grows by their value in tractor acres (fund_core.draw_loan again with cash 0). Owed from today, with interest.

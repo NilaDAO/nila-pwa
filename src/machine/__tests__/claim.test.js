@@ -6,7 +6,7 @@ describe('claimMaxCenti (A13)', () => {
   it('100 centi tractor acres on a type-1 machine at ₹1,100 an acre pay for 1 acre', () => {
     expect(claimMaxCenti(base)).toBe(100);
   });
-  it('is capped by the crop share area in whole hundredths (0.29 ac stays 29)', () => {
+  it('is capped by the crop agreement area in whole hundredths (0.29 ac stays 29)', () => {
     expect(claimMaxCenti({ ...base, centiAcres: 29 })).toBe(29);
   });
   it('another machine by price ratio, rounded as the contract (₹350 power weeder)', () => {

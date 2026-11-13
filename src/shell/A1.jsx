@@ -1,6 +1,6 @@
 // A1 Assets / A1L (nila-design boards/MemberAssets-ley3; A1L = the same board with the leader flag).
 // P1 shows what has a hook today: total balance (nIN), wallet chip, land title (Polygon, her titles stay
-// there), nIN. Rows whose hooks come later (investment, vouchers, crop shares, union fund, cash) are
+// there), nIN. Rows whose hooks come later (investment, vouchers, crop agreements, union fund, cash) are
 // left out until those hooks exist (design rule 3), not drawn with made-up numbers. P6 adds Machinery (her
 // vouchers, A8) and Your machine (owner, A13). P9 adds USDC for an LP (lp-open/2: her USDC row). P10 (A1L): for a
 // leader, the cash and LP slides and the Union rows (treasury, cash). P11: a member with no land title registers
@@ -240,7 +240,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
             value={lp.usdc.toFixed(2)} valueSub={lp.locked ? `${lp.locked.toFixed(2)} locked` : ''} onClick={onUsdc} />
         )}
         {/* Vouchers under their own label (any voucher kind; machine work today): one row for her machine vouchers,
-            all her crop shares' work left together, in tractor acres (27 Oct); no crop named. */}
+            all her crop agreements' work left together, in tractor acres (27 Oct); no crop named. */}
         {vouchers.data?.length > 0 && (
           <>
             <span style={label}>Vouchers</span>
@@ -249,7 +249,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
               value={`${ta(vouchers.data.reduce((a, v) => a + v.left, 0))} ac`} valueSub="" onClick={onMachinery} />
           </>
         )}
-        {/* Her crop shares last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}
+        {/* Her crop agreements last, under their own label (23 Oct): her other assets, machines and USDC stay under 'Yours'. */}
         <ShareRows onOpen={onShare} />
       </section>
     </>

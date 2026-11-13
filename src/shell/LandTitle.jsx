@@ -203,7 +203,7 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
       </section>
       <hr style={line} />
       {/* A5 Burn my land title (R68, executive decision 2 Nov; Polygon titles too since 4 Nov, G4: sent to 0x…dEaD); the
-          node checks no crop share and no investment. Membership ends; a leader stays a leader (roles). Without a title a
+          node checks no crop agreement and no investment. Membership ends; a leader stays a leader (roles). Without a title a
           leader gets the mint button instead (12 Nov); a member's leader mints hers (3 Nov), so she sees neither. */}
       {landId == null ? (pending ? (
         <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, lineHeight: 1.5, color: C.muted }}>
@@ -226,7 +226,7 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
       {ask && (
         <ConfirmCard title="Burn my land title" ok={burn.isPending ? 'Burning…' : 'Burn'} okStyle={{ background: C.coral }} okDisabled={burn.isPending}
           onCancel={() => setAsk(false)} onOk={() => burn.mutate()}
-          warn={`Burn land title ${landId}? This ends your membership of the union and cannot be undone. nIN, USDC and vouchers stay in your wallet. To join again you need a new land title (Crop plan). Not possible while you have a crop share or an investment.`}>
+          warn={`Burn land title ${landId}? This ends your membership of the union and cannot be undone. nIN, USDC and vouchers stay in your wallet. To join again you need a new land title (Crop plan). Not possible while you have a crop agreement or an investment.`}>
           {step && <p style={muted}>{step}</p>}
           {burn.error && <p style={{ ...muted, color: C.coral }}>{burn.error.message}</p>}
         </ConfirmCard>

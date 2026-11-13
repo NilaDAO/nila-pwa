@@ -1,6 +1,6 @@
-// L11 crop share request + L9 QR (leader) and A1b scan + N10 confirm (member). Boards LeaderRedeem,
+// L11 crop agreement request + L9 QR (leader) and A1b scan + N10 confirm (member). Boards LeaderRedeem,
 // LeaderRequestQR, MemberWalletQR-o19l-1f7c, ConfirmLoan. Since 26 Oct (executive decision: one QR at the office, the
-// help QR) there is no request QR: the leader scans the member's help QR and uses the crop share for the member in the
+// help QR) there is no request QR: the leader scans the member's help QR and uses the crop agreement for the member in the
 // 5-minute session; a leader's own share is drawn on the leader's own phone. Decisions 16 Oct: cash (seed included) and
 // machine hours only; her tokens from her approved plan's mint list, read with fund_core.food_token.
 // DESIGN GAPs: no member names on the node ("Land N", "Your union leader"); the union checks on L11 (cash
@@ -28,7 +28,13 @@ import { useBringRoom } from '../anchor/hooks';
 import { BRING } from '../anchor/sep';
 import { TRACTOR, acresFor, ta, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
 import ConfirmShare from './ConfirmShare';
-import { opensOf } from './MyShares';
+import { areaNames, opensOf } from './MyShares';
+
+// A share's areas by their field names (13 Nov; was "Area n").
+const areaOf = (plan, share) => {
+  const order = Object.keys(plan.plan.proposal).sort();
+  return areaNames((share.zones || [share.zone]).map((z) => plan.plan.area_names?.[z] || `Area ${order.indexOf(z) + 1}`));
+};
 
 const FLAG_DRAWN = 8;
 const FLAG_ENDED = 2 | 4;   // defaulted or closed
@@ -53,7 +59,7 @@ function planRow(plan, share) {
   return null;
 }
 
-/** initial: `<plan id>` (a To do row) or `<plan id>_<token id>` (her crop share QR, decimal; her G2 row, hex): opens on
+/** initial: `<plan id>` (a To do row) or `<plan id>_<token id>` (her crop agreement QR, decimal; her G2 row, hex): opens on
  *  that plan and share. No member picker (23 Oct): a leader comes here from her QR, a To do row or her G2 only. */
 export function LeaderLoan({ initial }) {
   const [initPlan, initToken] = String(initial || '').split('_');
@@ -135,15 +141,15 @@ export function LeaderLoan({ initial }) {
 
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); window.location.hash = '#/assets'; }} onRetry={() => tx.retry()} />;
   // No session yet (26 Oct: the help QR is the one office QR): the leader scans the member's help QR first, then uses
-  // the crop share for the member in the session.
+  // the crop agreement for the member in the session.
   if (req) {
     return <StartHelp member={req.member} label="the member" onBack={() => setReq(undefined)} onStarted={() => { setReq(undefined); setOwn(true); }} />;
   }
   // The page shows at once (header and card); the card fills as the plan, her share and the union are read.
   if (!plan) {
     return (
-      <MapCard map={<span />} header={{ title: 'Crop share request', onBack: () => window.history.back() }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <Card label="Crop share request">
+      <MapCard map={<span />} header={{ title: 'Crop agreement request', onBack: () => window.history.back() }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <Card label="Crop agreement request">
           {plans.isLoading || !plans.data ? <SkeletonRows rows={6} /> : <span style={muted}>This crop plan is not approved. Find the member in Members.</span>}
         </Card>
       </MapCard>
@@ -165,9 +171,9 @@ export function LeaderLoan({ initial }) {
   const ended = more && !!(Number(sel.ft.loan?.flags ?? 0) & FLAG_ENDED);
   // Its window opens a week before its sowing window (25 Oct; fund_core NotOpenYet before it).
   const tooEarly = !!sel?.ft && !more && !tooLate && Date.now() / 1000 < opens;
-  const blocked = [...(tooLate ? [more ? 'Too late: machine work can be added until the last day to use this crop share.' : 'Too late for this cycle: the last day to use this crop share has passed.'] : []),
-    ...(ended ? ['This crop share\'s loan is closed: no machine work can be added.'] : []),
-    ...(tooEarly ? [`Not open yet: this crop share can be used from ${new Date(opens * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.`] : []),
+  const blocked = [...(tooLate ? [more ? 'Too late: machine work can be added until the last day to use this crop agreement.' : 'Too late for this cycle: the last day to use this crop agreement has passed.'] : []),
+    ...(ended ? ['This crop agreement\'s loan is closed: no machine work can be added.'] : []),
+    ...(tooEarly ? [`Not open yet: this crop agreement can be used from ${new Date(opens * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.`] : []),
     ...(checks.data?.blocked || [])];
   // The voucher is debt too (26 Oct): interest on cash and vouchers together.
   const repay = row && rateBp != null ? repayAbout(cash + value, rateBp, new Date(), row.finance.due) : null;
@@ -183,9 +189,9 @@ export function LeaderLoan({ initial }) {
   if (bring.tx.status === 'pending' || bring.tx.status === 'failed') return <TxScreens tx={bring.tx} onClose={() => bring.tx.reset()} onRetry={() => bring.tx.retry()} />;
   if (own && sel && mine) {
     const nm = `${row?.name || sel.crop}`;
-    const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
+    const ar = areaOf(plan, sel.share);
     const draw = () => tx.run({
-      label: more ? `More machine work · ${nm}` : `Crop share ${nm}`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · Area ${ar}`]],
+      label: more ? `More machine work · ${nm}` : `Crop agreement ${nm}`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan',
       args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
       invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
@@ -194,24 +200,24 @@ export function LeaderLoan({ initial }) {
   }
   if (own && sel && helping) {
     const nm = `${row?.name || sel.crop}`;
-    const ar = Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1;
+    const ar = areaOf(plan, sel.share);
     const draw = () => tx.run({
-      label: more ? `More machine work · ${nm} · for the member` : `Crop share ${nm} · for the member`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · Area ${ar}`]],
+      label: more ? `More machine work · ${nm} · for the member` : `Crop agreement ${nm} · for the member`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan', session: sel.ft.member,
       args: [sv.address(cfg.union), sv.address(sel.ft.member), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
       invalidate: [['oracle', 'shares'], ['stellar', 'unionChecks']],
     });
     return <ConfirmShare forMember more={more} cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
   }
-  // Board LeaderRedeem, without its crop share list (23 Oct: the share comes picked): one card with the share, the
+  // Board LeaderRedeem, without its crop agreement list (23 Oct: the share comes picked): one card with the share, the
   // steppers, total / interest / repay and the union checks. No seed row: seed is paid as cash (P5).
-  const name = sel ? `${row?.name || sel.crop} · Area ${Object.keys(plan.plan.proposal).sort().indexOf(sel.share.zone) + 1}` : '';
+  const name = sel ? `${row?.name || sel.crop} · ${areaOf(plan, sel.share)}` : '';
   // Cash is lent from member money only (junior, above its reserve); the plan's cash above that is shown, not lent.
   const notCovered = sel && checks.data && !more ? Math.max(0, Math.round(sel.share.loan_amount || 0) - caps.cash) : 0;
   const rows = checkRows(checks.data, cash, hours, caps);
-  // L11 #short, automatic (25 Oct): when the office has less cash than this crop share, the gap goes to the union's
+  // L11 #short, automatic (25 Oct): when the office has less cash than this crop agreement, the gap goes to the union's
   // LPs as a Bring when the leader shows the QR (or takes up an own share); fx_pool adds it to an open Bring no LP
-  // has accepted yet. Kept per crop share on this phone, so showing the QR again never asks twice. At most what the
+  // has accepted yet. Kept per crop agreement on this phone, so showing the QR again never asks twice. At most what the
   // union's USDC can serve (LP positions, 31 Oct: useBringRoom).
   const short = !!rows?.[0]?.[2] && !!cfg?.anchor_url && !!checks.data;
   const gap = short ? Math.min(Math.ceil(cash - checks.data.onHand), bringRoom.data || 0) : 0;
@@ -230,13 +236,13 @@ export function LeaderLoan({ initial }) {
   const line = { height: 1, background: C.raised };
   return (
     <MapCard map={memberMap} header={{ title: `Land ${plan.land_id}`, onBack: () => window.history.back() }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <Card label={more ? 'More machine work' : 'Crop share request'}>
+      <Card label={more ? 'More machine work' : 'Crop agreement request'}>
         {(shares.isLoading || (sel && !checks.data && !checks.isError)) && <SkeletonRows rows={6} />}
-        {shares.data && !sel && <span style={muted}>None of their crop shares is ready.</span>}
+        {shares.data && !sel && <span style={muted}>None of their crop agreements is ready.</span>}
         {sel && (checks.data || checks.isError) && (
           <>
-            <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>{more ? 'Taken up' : 'Ready'}</span>}>{name}</CardTitle>
-            {more && <span style={muted}>Add machine work to this crop share: owed from today, with interest, like the vouchers at the take-up.</span>}
+            <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>{more ? 'Cash received' : 'Ready'}</span>}>{name}</CardTitle>
+            {more && <span style={muted}>Add machine work to this crop agreement: owed from today, with interest, like the vouchers you got with the cash.</span>}
             {checks.isError && <span style={{ color: C.coral }}>Could not read the union. Try again.</span>}
             {checks.data && !more && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
             {/* Cash above member money: only a sold batch's prepayment could fund it. DESIGN GAP: no on-chain record of
@@ -266,8 +272,8 @@ export function LeaderLoan({ initial }) {
             {blocked.map((b) => <span key={b} style={{ color: C.coral, fontSize: 14 }}>{b}</span>)}
             {/* L11 #short: the gap goes to the union's LPs as a Bring (P9). */}
             {rows[0]?.[2] && (cfg?.anchor_url
-              ? <span style={muted}>Not enough cash at the office: your LPs are asked to bring {inr(gap)} when you {mine ? 'take it up' : 'show the QR'}.</span>
-              : <span style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop share yet.</span>)}
+              ? <span style={muted}>Not enough cash at the office: your LPs are asked to bring {inr(gap)} when you {mine ? 'get the cash' : 'show the QR'}.</span>
+              : <span style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop agreement yet.</span>)}
             {error && <span style={{ color: C.coral }}>{error}</span>}
             <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || (more && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{more ? (mine ? 'Add the machine work' : helping ? 'Add the machine work for the member' : "Scan the member's QR") : mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's QR"}</Primary>
             {helping && <span style={muted}>You can act for this member until {new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.</span>}

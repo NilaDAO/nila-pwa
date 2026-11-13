@@ -88,35 +88,43 @@ function L12({ plan, onDone, approvedAlready = false }) {
   const p = plan.plan;
   const seasons = p.seasons || [];
   const sum = (rows, f) => rows.reduce((a, r) => a + (f(r.finance) || 0), 0);
-  // A green manure is its own crop share (4 Nov), listed in the season it grows in and counted in the totals (5 Nov).
+  // A green manure is its own crop agreement (4 Nov), listed in the season it grows in and counted in the totals (5 Nov).
   const gm = (p.soil_cover || []).filter((c) => c.finance).map((c) => ({ ...c, name: gmName(c.name) }));
   const rowsOf = (s) => [...s.rows, ...gm.filter((c) => (c.slots || [])[0] === s.slot)];
   const all = seasons.flatMap(rowsOf);
   const mint = useMintCropShares();
   const [approved, setApproved] = useState(approvedAlready);
-  // An approved plan reopened (from its task): which of her crop shares are made already.
+  // An approved plan reopened (from its task): which of her crop agreements are made already.
   const checkMade = mint.check;
   useEffect(() => { if (approvedAlready) checkMade(plan.id); }, [approvedAlready, plan.id, checkMade]);
+  // Reopened with crop agreements not all made (a mint cut off by a reload, 13 Nov): continue where it stopped, once.
+  const resumed = useRef(false);
+  const runMint = mint.run;
+  useEffect(() => {
+    if (!approvedAlready || mint.status !== 'waiting' || resumed.current) return;
+    resumed.current = true;
+    runMint(plan.id);
+  }, [approvedAlready, mint.status, plan.id, runMint]);
   const decide = async (decision, reason, note) => {
     setBusy(true); setError(undefined);
     try {
       await approve.mutateAsync({ planId: plan.id, decision, reason, note: note || undefined });
       if (decision !== 'approve') { onDone(); return; }
-      // The union mints her crop shares now (executive decision 21 Oct): this leader's key, her wallet.
+      // The union mints her crop agreements now (executive decision 21 Oct): this leader's key, her wallet.
       setApproved(true);
       await mint.run(plan.id);
     } catch (e) { setError(e.message); setBusy(false); }
   };
-  // After Approve the crop shares are made as an N1 → N2/N3 sequence, then back to Assets (executive decision 23 Oct;
+  // After Approve the crop agreements are made as an N1 → N2/N3 sequence, then back to Assets (executive decision 23 Oct;
   // DESIGN GAP: no N board of its own for this).
   const when = useRef(new Date());
   const seq = { busy: 'pending', done: 'success', failed: 'failed', partial: 'failed' }[mint.status];
   if (approved && seq) {
     if (seq !== 'success') when.current = new Date();
     const toAssets = () => { window.location.hash = '#/assets'; };
-    const tx = { status: seq, label: 'Making the crop shares', when: when.current,
-      rows: [['Crop shares', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Land', farm || `Land ${plan.land_id}`]],
-      reason: (mint.refused || []).map((r) => `${r.crop || 'Crop share'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
+    const tx = { status: seq, label: 'Making the crop agreements', when: when.current,
+      rows: [['Crop agreements', mint.total ? `${mint.done || 0} of ${mint.total}` : '…'], ['Land', farm || `Land ${plan.land_id}`]],
+      reason: (mint.refused || []).map((r) => `${r.crop || 'Crop agreement'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
     return <TxScreens tx={tx} network="Polygon" onClose={toAssets} onRetry={() => mint.run(plan.id)} />;
   }
   const acceptedAt = Math.max(0, ...Object.values(plan.accepted || {}).map((a) => a.ts || 0));
@@ -154,7 +162,7 @@ function L12({ plan, onDone, approvedAlready = false }) {
             <span style={{ flexShrink: 0, fontSize: 14, fontWeight: 700, lineHeight: 1.5, color: C.muted }}>{seasons.length} seasons</span>
           </div>
           <Rows>
-            <Row k="Crop shares" v={String((p.shares || []).length)} />
+            <Row k="Crop agreements" v={String((p.shares || []).length)} />
             <Row k="Cash" v={inr(sum(all, (f) => f.cash))} />
             <Row k="Vouchers" v={inr(sum(all, (f) => f.voucher_value))} />
             <Row k="Repay, with interest" v={inr(sum(all, (f) => f.repay))} />
@@ -162,19 +170,19 @@ function L12({ plan, onDone, approvedAlready = false }) {
           <div style={{ height: 1, background: C.raised }} />
           {error && <p style={{ ...muted, color: C.coral, margin: 0 }}>{error}</p>}
           {approved ? (
-            // DESIGN GAP: no board for the union making her crop shares after Approve; a status line and the result.
+            // DESIGN GAP: no board for the union making her crop agreements after Approve; a status line and the result.
             <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <span style={{ fontSize: 14, fontWeight: 700 }}>
-                {mint.status === 'busy' ? `Making the crop shares${mint.total ? ` · ${mint.done} of ${mint.total}` : '…'}`
-                  : mint.status === 'done' ? 'The crop shares are made and sent to the member\'s wallet'
-                    : mint.status === 'partial' ? `${mint.done} of ${mint.total} crop shares made`
-                      : mint.status === 'failed' ? 'The crop shares were not made'
-                        : mint.status === 'waiting' ? `Approved · ${mint.done || 0} of ${mint.total || 0} crop shares made` : 'Approved'}
+                {mint.status === 'busy' ? `Making the crop agreements${mint.total ? ` · ${mint.done} of ${mint.total}` : '…'}`
+                  : mint.status === 'done' ? 'The crop agreements are made and sent to the member\'s wallet'
+                    : mint.status === 'partial' ? `${mint.done} of ${mint.total} crop agreements made`
+                      : mint.status === 'failed' ? 'The crop agreements were not made'
+                        : mint.status === 'waiting' ? `Approved · ${mint.done || 0} of ${mint.total || 0} crop agreements made` : 'Approved'}
               </span>
-              {mint.refused?.map((r) => <span key={r.share || r.token_id} style={{ ...muted, margin: 0 }}>{r.crop || 'Crop share'}: {r.error}</span>)}
+              {mint.refused?.map((r) => <span key={r.share || r.token_id} style={{ ...muted, margin: 0 }}>{r.crop || 'Crop agreement'}: {r.error}</span>)}
               {mint.status === 'failed' && mint.error && !mint.refused?.length && <span style={{ ...muted, margin: 0 }}>{mint.error}</span>}
               {(mint.status === 'idle' || mint.status === 'waiting') && (
-                <button type="button" onClick={() => mint.run(plan.id)} style={{ ...btn, background: C.accent, color: C.ink }}>Make the crop shares</button>
+                <button type="button" onClick={() => mint.run(plan.id)} style={{ ...btn, background: C.accent, color: C.ink }}>Make the crop agreements</button>
               )}
               {(mint.status === 'failed' || mint.status === 'partial') && (
                 <button type="button" onClick={() => mint.run(plan.id)} style={{ ...btn, background: C.accent, color: C.ink }}>Try again</button>
@@ -198,11 +206,11 @@ export default function LeaderPlans({ planId, onBack }) {
   const list = usePendingApprovals();
   const plans = list.data?.plans || [];
   const found = plans.find((p) => p.id === planId) || (!planId && plans.length === 1 ? plans[0] : null);
-  // Once approved the plan leaves the waiting list: L12 stays open on it while her crop shares are made.
+  // Once approved the plan leaves the waiting list: L12 stays open on it while her crop agreements are made.
   const kept = useRef(null);
   if (found) kept.current = found;
   const sel = found || (kept.current && (!planId || kept.current.id === planId) ? kept.current : null);
-  // An approved plan (no longer waiting): L12 in its approved state, to make the member's crop shares if they are
+  // An approved plan (no longer waiting): L12 in its approved state, to make the member's crop agreements if they are
   // not all made. Read by its id (25 Oct): the approved-plans list holds the newest 200 only.
   const api = usePlanClient();
   const approvedQ = useQuery({ queryKey: ['plan', 'byId', planId], enabled: !!api && !sel && !!planId, queryFn: () => api.plan(planId) });

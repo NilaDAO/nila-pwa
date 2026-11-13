@@ -1,4 +1,4 @@
-// Her crop shares (A1 group "Crop shares", board MemberAssets-ley3) and taking one up: she signs
+// Her crop agreements (A1 group "Crop agreements", board MemberAssets-ley3) and taking one up: she signs
 // fund_core.draw_loan herself; the leader hands over the cash at the office.
 // A member takes a Ready share up at the office (23 Oct): her page is the camera; she scans the leader's L9 QR
 // (the A1 request, 26 Oct), checks it against this share and confirms (N10); in assist mode the phone then shows a
@@ -37,7 +37,7 @@ const FLAG_CLOSED = 4;
 export const assisted = () => { try { return localStorage.getItem('nila.mode') !== 'self'; } catch { return true; } };
 
 /** Her land as the crop plan finds it (CP1): a Polygon title, else her title on Stellar — the demo's titles and every
- *  new member's are on Stellar only, so a Polygon-only lookup found no plan and A1 showed no crop shares (21 Oct). */
+ *  new member's are on Stellar only, so a Polygon-only lookup found no plan and A1 showed no crop agreements (21 Oct). */
 export function useMyLand() {
   const s = useNilaSigner();
   const titles = useLandTitles(s?.evmAddress);
@@ -52,7 +52,7 @@ export function useMyLand() {
 const FT_ABI = ['function getLandTitleTokens(uint32) view returns (uint256[])', 'function tokenStatus(uint256) view returns (uint8)'];
 const FT_LIVE = new Set([1, 2, 3]);
 
-/** The land's FoodTokens on Polygon (3 Nov): the chain says which crop shares exist, not the node. Token ids as
+/** The land's FoodTokens on Polygon (3 Nov): the chain says which crop agreements exist, not the node. Token ids as
  *  decimal strings; burned ones left out. */
 export async function polygonShareIds(provider, landId) {
   const c = new ethers.Contract(process.env.REACT_APP_FOODTOKEN_ADDRESS, FT_ABI, provider);
@@ -109,15 +109,23 @@ export function useMyShares() {
         const late = !!ft && !drawn && !lapsed && final > 0 && now > final;
         const early = !!ft && !drawn && !lapsed && !late && now < opens;
         const ready = !!ft && !drawn && !lapsed && !late && !early;
-        // "1" or, for areas merged in a season (same crop, 21 Oct), "1 + 2": shown as "Area {area}".
-        const area = (m.zones || share.zones || [m.zone]).map((z) => zones.indexOf(z) + 1).join(' + ');
+        // Her areas by their field names (13 Nov; was "Area 3 + 4", which says nothing to her): each field once,
+        // "Nexttowell" or "veryhighyield + Nexttowell"; "Area n" only for a record without names.
+        const area = areaNames((m.zones || share.zones || [m.zone]).map((z) => p.plan.area_names?.[z] || `Area ${zones.indexOf(z) + 1}`));
         return { ...m, share, ft, drawn, ready, late, early, opens, lapsed, final, area, plan: p };
       }));
     },
   });
 }
 
-/** When a crop share opens (25 Oct): a week before the sowing window that holds its planned sowing. On-chain the
+/** The fields her areas lie in, each named once (13 Nov): ["veryhighyield · 3", "veryhighyield · 4", "Nexttowell"] →
+ *  "veryhighyield + Nexttowell". The area numbers inside a field are left out: she knows her fields, not their parts. */
+export function areaNames(names) {
+  const fields = names.map((n) => { const i = n.lastIndexOf(' · '); return i > 0 ? n.slice(0, i) : n; });
+  return [...new Set(fields)].join(' + ');
+}
+
+/** When a crop agreement opens (25 Oct): a week before the sowing window that holds its planned sowing. On-chain the
  *  crop calendar sets it at the attestation (fund_core from_date); before that, the plan's open_date. */
 export function opensOf(ft, share) {
   if (ft) return Number(ft.from_date || 0);
@@ -148,7 +156,7 @@ function Page({ title, onBack, children }) {
 function ShareScan({ x, onBack }) {
   const name = rowOf(x)?.name || x.crop.replace(/_/g, ' ');
   if (!assisted()) return <ShareSign x={x} name={name} onBack={onBack} />;
-  return <HelpQr onBack={onBack} note={`To use your ${name} crop share (Area ${x.area}), go to the union office. Your leader scans this, reads you the amounts and hands you the cash.`} />;
+  return <HelpQr onBack={onBack} note={`To use your ${name} crop agreement (${x.area}), go to the union office. Your leader scans this, reads you the amounts and hands you the cash.`} />;
 }
 
 /** Self mode (G9, executive decision 4 Nov): taking up a share is debt, so she sets the cash and machine work and
@@ -174,18 +182,18 @@ function ShareSign({ x, name, onBack }) {
     } catch (e) { setError(e.message); }
   };
   if (qr) {
-    return <DeskQr title={`${name} · Area ${x.area}`} qr={qr.qr} until={qr.until} onBack={() => setQr(undefined)}
+    return <DeskQr title={`${name} · ${x.area}`} qr={qr.qr} until={qr.until} onBack={() => setQr(undefined)}
       rows={[['You get', `${inr(c)} in cash`], ...(a ? [['Machine vouchers', `${a} tractor acres`]] : [])]} />;
   }
   return (
-    <Page title={`${name} · Area ${x.area}`} onBack={onBack}>
+    <Page title={`${name} · ${x.area}`} onBack={onBack}>
       {checks.isLoading ? <p style={muted}>…</p> : (
         <>
           <p style={muted}>Cash</p>
           <Stepper value={c} set={setCash} min={0} max={caps.cash} unit="₹" label="Cash" />
           <p style={muted}>Machine work</p>
           <Stepper value={a} set={setAcres} step={1} min={0} max={maxAcres} unit="tractor acres" label="Tractor acres" />
-          <p style={muted}>Your leader scans the next QR, hands you the cash and records your crop share. You repay it with interest after the harvest.</p>
+          <p style={muted}>Your leader scans the next QR, hands you the cash and records your crop agreement. You repay it with interest after the harvest.</p>
           <Primary disabled={!s?.ready || !cfg || (c < 1 && a < 1)} onClick={sign}>Make my QR</Primary>
           {error && <p style={{ ...muted, color: C.coral }}>{error}</p>}
         </>
@@ -200,7 +208,7 @@ export function TakeUp({ token, leader, onBack }) {
   const shares = useMyShares();
   const first = useRef();
   const x = shares.data?.find((y) => y.token_id === token);
-  if (!x) return <Page title="Your crop share" onBack={onBack}><p style={muted}>…</p></Page>;
+  if (!x) return <Page title="Your crop agreement" onBack={onBack}><p style={muted}>…</p></Page>;
   // Drawn already when the page opens (a stale link or the back button): nothing to take up; her share's own page
   // instead. Only as first read: her own draw on this page keeps its success screen.
   if (first.current === undefined) first.current = !x.ready;
@@ -209,36 +217,46 @@ export function TakeUp({ token, leader, onBack }) {
   return <ShareScan x={x} onBack={onBack} />;
 }
 
-// A green manure (4 Nov) is a crop share with no season row: its soil cover stands in for one (name, finance, sowing).
+// A green manure (4 Nov) is a crop agreement with no season row: its soil cover stands in for one (name, finance, sowing).
 const coverRows = (p) => (p?.soil_cover || []).filter((c) => c.finance).map((c) => ({ zone: c.zone, zones: [c.zone], crop: c.cover,
   name: c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/^./, (a) => a.toUpperCase()), colour: c.colour, sow: c.sow,
   kg: 0, value: 0, finance: c.finance, green_manure: true }));
-export const rowOf = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
+const rowOne = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
   .concat(coverRows(x.plan?.plan))
   .filter((r) => (r.zones || [r.zone]).includes(x.zone) && (r.crop === x.crop || r.name === x.crop))
   // The same crop can stand on one area in two seasons: the share's sowing date picks the season.
   .sort((a, b) => (b.sow === x.share.from_date) - (a.sow === x.share.from_date))[0];
+/** Her agreement's plan row. A green manure merged over several areas (13 Nov, one agreement like a merged crop): its
+ *  areas' covers added up, since the plan keeps one cover per area. */
+export const rowOf = (x) => {
+  const r = rowOne(x);
+  const zones = x.share?.zones || [];
+  if (!r?.green_manure || zones.length < 2) return r;
+  const same = coverRows(x.plan?.plan).filter((c) => zones.includes(c.zone) && c.crop === r.crop && c.sow === r.sow);
+  const add = (k) => same.reduce((t, c) => t + (c.finance?.[k] || 0), 0);
+  return { ...r, zones, finance: { ...r.finance, cash: add('cash'), voucher_value: add('voucher_value'), interest: add('interest'), repay: add('repay') } };
+};
 export const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
 export const amount = (kg) => (kg >= 1000 ? `~${Math.round(kg / 100) / 10} t` : `~${Math.round(kg)} kg`);
 
-/** Her Ready crop shares as To do rows (A2, and a leader's "Your own"): each opens its take-up page. */
+/** Her Ready crop agreements as To do rows (A2, and a leader's "Your own"): each opens its take-up page. */
 export function ReadyShareRows({ go, first = true }) {
   const ready = (useMyShares().data || []).filter((x) => x.ready);
   return ready.map((x, i) => (
-    <ListRow key={x.token_id} first={first && i === 0} icon={RupeeIcon} tone="new" title="Use your crop share"
-      sub={`${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · Area ${x.area} · at the union office`} onClick={() => go(`share/${x.token_id}`)} />
+    <ListRow key={x.token_id} first={first && i === 0} icon={RupeeIcon} tone="new" title="Use your crop agreement"
+      sub={`${rowOf(x)?.name || x.crop.replace(/_/g, ' ')} · ${x.area} · at the union office`} onClick={() => go(`share/${x.token_id}`)} />
   ));
 }
 
-/** The A1 rows (board MemberAssets-ley3, "Crop shares"): her crop's coin, crop, "Area N · season", its state, the
- *  expected harvest and its value on the right, a chevron. Every row opens its crop share: A4 once a loan is drawn on
+/** The A1 rows (board MemberAssets-ley3, "Crop agreements"): her crop's coin, crop, "Area N · season", its state, the
+ *  amount to pay back and the expected harvest on the right (13 Nov; was harvest and value), a chevron. Every row opens its crop agreement: A4 once a loan is drawn on
  *  it, A4a before (src/loan/CropShare.jsx). */
 export function ShareRows({ onOpen }) {
   const shares = useMyShares();
   if (!shares.data?.length) return null;
   return (
     <>
-      <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5, color: C.muted, paddingTop: 6 }}>Crop shares</span>
+      <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.5, color: C.muted, paddingTop: 6 }}>Crop agreements</span>
       {shares.data.map((x) => {
         const r = rowOf(x) || {};
         const fodder = !x.share.loan_amount && (x.share.acres_work ?? x.share.hours);
@@ -247,15 +265,16 @@ export function ShareRows({ onOpen }) {
           <button key={x.token_id} type="button" onClick={() => onOpen(x.token_id)} style={{
             display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: 12, padding: '12px 16px', minHeight: 48,
             width: '100%', border: 0, color: C.text, textAlign: 'left', fontSize: 14, lineHeight: 1.5, cursor: 'pointer' }}>
-            <ShareTile colour={r.colour} />
+            <ShareTile colour={r.colour} soil={!!(r.green_manure || x.share?.green_manure)} />
             <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontWeight: 700 }}>{r.name || x.crop.replace(/_/g, ' ')}</span>
-              <span style={{ color: C.muted }}>Area {x.area}{r.slot ? ` · ${SEASON[r.slot]}` : ''}{fodder ? ' · fodder' : ''}</span>
+              <span style={{ color: C.muted }}>{x.area}{r.slot ? ` · ${SEASON[r.slot]}` : ''}{fodder ? ' · fodder' : ''}</span>
               <span style={{ color: x.ready ? C.accent : C.muted, fontWeight: 700 }}>{tag}</span>
             </span>
+            {/* 13 Nov: what is to be paid back on this agreement (cash, vouchers and interest), the harvest under it. */}
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-              {r.kg ? <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{amount(r.kg)}</span> : null}
-              <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{fodder ? 'Fodder' : r.value ? `~${inr(r.value)}` : ''}</span>
+              {r.finance?.repay ? <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{inr(r.finance.repay)}</span> : null}
+              <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{fodder ? 'Fodder' : r.kg ? amount(r.kg) : ''}</span>
             </span>
             <ChevronIcon />
           </button>

@@ -16,16 +16,16 @@ const second = { width: '100%', height: 44, borderRadius: 12, border: 0, backgro
 
 // A map card (map-centred lane, 23 Oct): `map` the property behind it (her own by default).
 export default function ConfirmShare({ cash, hours, name, area, own, forMember, more, ready, onConfirm, onCancel, map }) {
-  // more (27 Oct): machine hours added to a crop share already taken up; no cash changes hands.
+  // more (27 Oct): machine hours added to a crop agreement already taken up; no cash changes hands.
   // forMember (26 Oct, A2): a leader helping a member in a session confirms for the member, with the member there.
   return (
-    <MapCard map={map} header={{ title: more ? 'Add machine work' : forMember ? "Use the member's crop share" : 'Confirm your crop share', onBack: onCancel }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <MapCard map={map} header={{ title: more ? 'Add machine work' : forMember ? "Use the member's crop agreement" : 'Confirm your crop agreement', onBack: onCancel }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
       {!own && !forMember && <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Your union leader asks you to confirm</span>}
       {forMember && <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Read the amounts to the member and confirm together</span>}
-      <Card label="Your crop share" style={{ gap: 12 }}>
+      <Card label="Your crop agreement" style={{ gap: 12 }}>
         {!more && kv('Cash you receive', inr(cash))}
         {hours > 0 && kv('Machine vouchers', `${ta(hours)} tractor acres`)}
-        {kv('For', `${name} · Area ${area}`)}
+        {kv('For', `${name} · ${area}`)}
         {kv('Repay', '3 weeks after harvest')}
       </Card>
       {!more && <Card label="Before you confirm" style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>

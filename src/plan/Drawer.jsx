@@ -1,5 +1,6 @@
 // The bottom drawer of the CP screens (CP11's legend style: scrim, rounded card above the tab bar, Close), reused for
 // CP9's "What this plan is based on" and CP10's remove-area confirm (executive decision 21 Oct).
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { C, FONT } from '../shell/tokens';
 import { Notice, muted } from './ui';
@@ -35,11 +36,17 @@ export function InfoButton({ label, onClick }) {
 }
 
 const h = { fontSize: 14, fontWeight: 700, margin: 0 };
-const Tick = ({ on }) => (
-  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={on ? '#4ADE80' : '#94A3B8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
-    {on ? <path d="M20 6 9 17l-5-5" /> : <><circle cx="12" cy="12" r="10" /><path d="M8 12h8" /></>}
-  </svg>
-);
+// One mark in one circle (12 Nov), in Nila's tokens: accent check = used, muted dash = not used, gold "!" = a warning
+// (gold is the tokens' warning icon colour, as on the notices; the tokens have no green).
+const Tick = ({ on, warn }) => {
+  const col = warn ? C.gold : on ? C.accent : C.muted;
+  return (
+    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="10" />
+      {warn ? <><path d="M12 7v6" /><path d="M12 17h.01" /></> : on ? <path d="m7.5 12.5 3 3 6-6.5" /> : <path d="M8 12h8" />}
+    </svg>
+  );
+};
 
 /** CP9 "What this plan is based on": the node's plan.basis, by code (no LLM). */
 export function BasisDrawer({ basis, onClose }) {
@@ -80,5 +87,68 @@ export function BasisDrawer({ basis, onClose }) {
           : <p style={{ ...muted, margin: 0 }}>{acct.note || 'Not checked yet.'}</p>}
       </section>
     </Drawer>
+  );
+}
+
+/** The accept screen's short version of "What this plan is based on" (12 Nov): an accordion of eight groups, all
+ *  closed, a tap opens the group's explanation. Grouped here from the node's plan.basis (code, no AI); a source not used
+ *  yet keeps its dash so the gap stays visible. A crop outside the list has its own warning above, so it is left out. */
+const GROUPS = [
+  { title: 'Field record', names: ['Field record'], problems: 'record' },
+  { title: 'Your answers', names: ['Your answers', 'Your changes'] },
+  { title: 'Yields, prices and costs', names: ['Reference yields', 'Reference costs and rates', 'Harvest costs', 'Market prices'], core: ['Reference yields', 'Reference costs and rates'], gap: 'Harvest costs' },
+  { title: 'Machines', names: ['Union machines'], vouchers: true },
+  { title: 'Water and trees', names: ['Water sources', 'Trees'], all: true },
+  { title: 'Soil and climate', names: ['Soil covers', 'Season climate outlook'] },
+  { title: 'Local competition', names: ['Local competition'] },
+  { title: 'Your account', account: true },
+];
+
+export function BasisList({ basis }) {
+  const [open, setOpen] = useState(null);
+  if (!basis) return null;
+  const acct = basis.account_problems || {};
+  const rec = basis.record_problems || [];
+  const acc = acct.items || [];
+  const byName = Object.fromEntries(basis.inputs.map((i) => [i.name, i]));
+  const say = (i) => `${i.name}: ${i.used ? 'used' : 'not used yet'}. ${i.detail || ''}`.trim();
+  const items = GROUPS.map((g) => {
+    if (g.account) {
+      return { title: g.title, on: acct.checked && !acc.length, warn: acc.length > 0,
+        text: [acct.checked ? (acc.length ? acc.join(' ') : 'No late or missed repayments.') : acct.note || 'Not checked yet.'] };
+    }
+    const parts = g.names.map((n) => byName[n]).filter(Boolean);
+    const lines = parts.map(say);
+    if (g.problems) lines.push(rec.length ? `Problems: ${rec.join(' ')}` : 'No problems found in your record.');
+    if (g.vouchers) lines.push(`Machine vouchers: ${basis.vouchers?.used ? 'used' : 'not used'}. ${basis.vouchers?.why || ''}`.trim());
+    const core = g.core ? parts.filter((i) => g.core.includes(i.name)) : parts;
+    const used = (g.all ? core.length > 0 && core.every((i) => i.used) : core.some((i) => i.used)) || (g.vouchers && basis.vouchers?.used);
+    // A gap that makes the money look better than it is (harvest costs not counted) is a warning, not a dash.
+    const warn = parts.some((i) => i.warn) || (g.problems && rec.length > 0) || (g.gap && byName[g.gap] && !byName[g.gap].used);
+    return { title: g.title, on: !!used && !warn, warn, text: lines.length ? lines : ['Not used yet.'] };
+  });
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column' }}>
+      {items.map((it) => {
+        const isOpen = open === it.title;
+        return (
+          <div key={it.title} style={{ borderBottom: `1px solid ${C.raised}` }}>
+            <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : it.title)}
+              style={{ width: '100%', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, border: 0, padding: 0, background: 'transparent',
+                color: C.text, fontFamily: FONT, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
+              <Tick on={it.on} warn={it.warn} />
+              <span style={{ flexGrow: 1 }}>{it.title}</span>
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            {isOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '0 0 12px 26px' }}>
+                {it.text.map((t) => <p key={t} style={{ ...muted, margin: 0, fontSize: 13 }}>{t}</p>)}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </section>
   );
 }

@@ -1,4 +1,4 @@
-// Lists kept on this phone (25 Oct): the union's members list and the crop shares' chain state, in IndexedDB, so the
+// Lists kept on this phone (25 Oct): the union's members list and the crop agreements' chain state, in IndexedDB, so the
 // leader's app shows them at once and asks the node and the chain only for what changed. Any IndexedDB failure
 // (private mode, no space) gives undefined: the app then reads everything again, as before.
 const DB = 'nila-kept';

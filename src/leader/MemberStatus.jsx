@@ -1,8 +1,8 @@
 // G2 (board LeaderMember): one grower for the leader, a map card from G1 (#/members/<title id>). Header: back to G1,
 // her farm name, settings. Her map with this season's crops; then, from what the app can already read:
-// property and fields (the title's fields), the next crop share; Lending (what she owes, repay date) with Repay (Photo count → the desk)
+// property and fields (the title's fields), the next crop agreement; Lending (what she owes, repay date) with Repay (Photo count → the desk)
 // and Mark as default (fund_core.mark_default, once her loan is past due); Invested (fund_core.position) with Invest
-// more (→ the desk); Redeem from the plan (her crop shares not drawn yet; Ready → L11); her record.
+// more (→ the desk); Redeem from the plan (her crop agreements not drawn yet; Ready → L11); her record.
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import { useEffect, useMemo, useState } from 'react';
@@ -43,7 +43,7 @@ const month = (d) => {
 };
 const fromLabel = (ts) => `From ${new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
 
-// A crop share's state: Planned (from <month>), Ready (Take up → L11), Financed / Overdue from her open loan, Repaid
+// A crop agreement's state: Planned (from <month>), Ready (Take up → L11), Financed / Overdue from her open loan, Repaid
 // once drawn and no loan is open any more. Harvested / Sold need the harvest and sales data (later).
 function stateOf(x, loans) {
   const loan = loans.find((l) => l.token === x.token);
@@ -84,10 +84,10 @@ export default function MemberStatus({ id, go }) {
   const desk = useDeskRoom();
   const { data: cfg } = useStellarConfig();
   const found = (members.data || []).find((x) => x.route === id);
-  // While a member's G2 is open the list is asked every 20 s (only changed rows): crop shares just made show soon (26 Oct).
+  // While a member's G2 is open the list is asked every 20 s (only changed rows): crop agreements just made show soon (26 Oct).
   const refetchMembers = members.refetch;
   useEffect(() => { const t = setInterval(() => refetchMembers(), 20_000); return () => clearInterval(t); }, [refetchMembers]);
-  // Her crop shares from the members list (25 Oct); hers are read on-chain again whenever her G2 opens.
+  // Her crop agreements from the members list (25 Oct); hers are read on-chain again whenever her G2 opens.
   const shares = useUnionShares(api, { fresh: found?.key });
   // Her plan (what grows on each area today): one call for her plan only, not one per member.
   const planId = shares.data?.[found?.address]?.planId;
@@ -97,7 +97,7 @@ export default function MemberStatus({ id, go }) {
     staleTime: 5 * 60_000, queryFn: () => readContract(cfg, 'fx_pool', 'id_checked', [sv.address(found.address)]).catch(() => false) });
   const plan = useQuery({ queryKey: ['plan', 'byId', planId], enabled: !!api && !!planId, staleTime: 5 * 60_000,
     queryFn: () => api.plan(planId) });
-  // The refresh icon (27 Oct): the members list, this member's crop shares on-chain and the plan again; it turns meanwhile.
+  // The refresh icon (27 Oct): the members list, this member's crop agreements on-chain and the plan again; it turns meanwhile.
   const [refreshing, setRefreshing] = useState(false);
   const refresh = async () => {
     setRefreshing(true);
@@ -206,7 +206,7 @@ export default function MemberStatus({ id, go }) {
   const dueLoan = m.loans.find((x) => x.due && x.due < now);
   const invested = inv.data ? n(inv.data.invested) : null;
   const markDefault = () => tx.run({
-    label: `Mark as default · ${m.label}`, rows: [['Owed', inr(dueLoan.left)], ['Crop share', dueLoan.crop || '—']],
+    label: `Mark as default · ${m.label}`, rows: [['Owed', inr(dueLoan.left)], ['Crop agreement', dueLoan.crop || '—']],
     contractName: 'fund_core', fn: 'mark_default', args: [sv.address(cfg.union), sv.bytes32(dueLoan.token)],
     invalidate: [['stellar', 'unionMembers'], ['stellar', 'unionShares'], ['stellar', 'loans']],
   });
@@ -231,7 +231,7 @@ export default function MemberStatus({ id, go }) {
         {/* Fields: the fields her title was minted with (L3/L4), from the title's record (meta.geometry.field_features);
             the record's areas are only for the crops on the map. "—" when the record lists none. */}
         {hasLand && <Row k="Fields" v={fields.length || '—'} />}
-        {next && <Row k="Next crop share" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
+        {next && <Row k="Next crop agreement" v={`${next.crop} · Area ${next.area} · ${next.ready ? `ready${next.final ? `, use by ${month(next.final * 1000)}` : ''}` : month(next.from * 1000)}`} />}
         {/* The leaders' contact book (1 Nov): the member's full name, beside the public farm name in the header. */}
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
@@ -306,9 +306,9 @@ export default function MemberStatus({ id, go }) {
           {noPhotos && <span style={{ color: C.coral }}>The photos were not saved, so the cash was not recorded. Count again.</span>}
         </Section>
       )}
-      {shares.isLoading && <Section title="Crop shares"><SkeletonRows rows={2} /></Section>}
+      {shares.isLoading && <Section title="Crop agreements"><SkeletonRows rows={2} /></Section>}
       {m.shares.length > 0 && (
-        <Section title="Crop shares">
+        <Section title="Crop agreements">
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[...m.shares].sort((a, b) => a.from - b.from).map((x) => {
               const st = stateOf(x, m.loans);
@@ -326,7 +326,7 @@ export default function MemberStatus({ id, go }) {
                   )}
                   {st.take ? (
                     <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
-                      background: C.accent, color: C.ink, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Take up</button>
+                      background: C.accent, color: C.ink, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Get the cash</button>
                   ) : (
                     <span style={{ flexShrink: 0, height: 24, borderRadius: R.round, padding: '0 8px', display: 'flex', alignItems: 'center', fontSize: 12,
                       fontWeight: 700, background: st.bg, color: st.fg }}>{st.label}</span>
@@ -335,7 +335,7 @@ export default function MemberStatus({ id, go }) {
               );
             })}
           </ul>
-          {/* With crop shares the plan is reached below them (26 Oct). */}
+          {/* With crop agreements the plan is reached below them (26 Oct). */}
           {m.recordHash && planBtn}
           {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
         </Section>
@@ -393,7 +393,7 @@ function Account({ m, inv, go }) {
   const titleId = m.titleId || [...(m.lands || [])][0];
   const p = inv.data;
   const investment = p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
-  const why = m.shares.length ? 'The member has crop shares.'
+  const why = m.shares.length ? 'The member has crop agreements.'
     : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
       : investment > 0 ? 'The member has an investment: pay it out first.' : null;
   const recoverOk = rcv.r !== 'pending' && rcv.r !== 'needed';
@@ -470,7 +470,7 @@ function MoveToKeypad({ address, name, phone, onClose }) {
 }
 
 /** G2 Remove member (executive decision 28 Oct; the look of Settings → Reset account): the node burns the member's land
- *  title on Stellar, which ends the membership. Only with no crop share and no investment; nIN, USDC and vouchers stay
+ *  title on Stellar, which ends the membership. Only with no crop agreement and no investment; nIN, USDC and vouchers stay
  *  in the member's wallet. The confirm says what it does, or why it cannot be done now (`why`). */
 function RemoveMember({ m, why, titleId, go, onClose }) {
   const api = usePlanClient();
@@ -481,7 +481,7 @@ function RemoveMember({ m, why, titleId, go, onClose }) {
   });
   return why ? (
     <ConfirmCard title="Remove member" ok="OK" onCancel={onClose} onOk={onClose}
-      warn={`${why} A member can be removed only with no crop share and no investment.`} />
+      warn={`${why} A member can be removed only with no crop agreement and no investment.`} />
   ) : (
     <ConfirmCard title="Remove member" ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending}
       onCancel={onClose} onOk={() => rm.mutate()}

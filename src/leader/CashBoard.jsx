@@ -94,7 +94,7 @@ function Chip({ book, api, onFound }) {
   const [gapInStore, setGapInStore] = useState(false);
   const spin = <style>{'@keyframes chk-spin{to{transform:rotate(360deg)}}'}</style>;
   // The share list is a part of C1 that loads after the screen: the chip spins, never S1 inside the card (22 Oct).
-  if (!book) return <div role="status" style={chipS}>{spin}{BUSY}<span style={{ color: C.muted }}>Checking the share list…</span></div>;
+  if (!book) return <div role="status" style={chipS}>{spin}{BUSY}<span style={{ color: C.muted }}>Checking the agreement list…</span></div>;
   const [win, label] = SEARCH_WINDOWS[Math.min(step, SEARCH_WINDOWS.length - 1)];
   const off = book.gap > 0;
   const done = off && (step >= SEARCH_WINDOWS.length || gapInStore);
@@ -108,7 +108,7 @@ function Chip({ book, api, onFound }) {
         if (r.store_gap) setGapInStore(true);
         const after = (await onFound()).data?.loans.length ?? before;
         const n = Math.max(0, after - before);
-        setNote(`Searched ${label} · ${n ? `${n} share${n > 1 ? 's' : ''} added` : 'nothing new'}`);
+        setNote(`Searched ${label} · ${n ? `${n} agreement${n > 1 ? 's' : ''} added` : 'nothing new'}`);
         setStep((x) => x + 1);
       }
     } catch (e) { setNote(e.message); }
@@ -314,7 +314,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
           {/* The union's cut of open loans' interest (treasury + rainy-day fee, 1.77% on the demo union): small, so in paise. */}
           <div style={{ color: C.muted }}>+ {book ? (book.earningsPending < 10 ? `₹${book.earningsPending.toFixed(2)}` : inr(book.earningsPending)) : '…'} earnings pending</div>
           <Chip book={book} api={api} onFound={() => bookQ.refetch()} />
-          {bookQ.isError && <p style={{ color: C.coral, fontSize: 13, margin: 0 }}>The share list could not be read: {bookQ.error.message}</p>}
+          {bookQ.isError && <p style={{ color: C.coral, fontSize: 13, margin: 0 }}>The agreement list could not be read: {bookQ.error.message}</p>}
         </section>
         <section style={card} aria-label="Funds">
           {/* C3 (22 Oct): the ↓ deposit / ↑ withdraw pair is the card's control; none selected = closed, tapping the selected
@@ -344,7 +344,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
           <div style={rows}>
             {cash.overdue > 0 && (
               <a href="#/tasks" style={{ ...rowS, color: C.text, textDecoration: 'none', minHeight: 44, margin: '-10px 0' }}>
-                <span style={{ color: C.coral }}>{cash.overdue} share{cash.overdue > 1 ? 's' : ''} overdue</span>
+                <span style={{ color: C.coral }}>{cash.overdue} agreement{cash.overdue > 1 ? 's' : ''} overdue</span>
                 <span style={{ fontWeight: 700 }}>In Tasks ›</span>
               </a>
             )}
@@ -354,7 +354,7 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
                 are due to take out again; a count above it is refused. */}
             <Row k="The office may hold" v={room ? inr(room.limit) : '…'} />
             {room && (room.withdrawals > 0 || room.shares > 0) && (
-              <span style={{ color: C.muted, fontSize: 14, marginTop: -6 }}>Treasury {inr(room.treasury)}{room.withdrawals > 0 ? ` + withdrawals waiting ${inr(room.withdrawals)}` : ''}{room.shares > 0 ? ` + crop shares within 9 weeks ${inr(room.shares)}` : ''}</span>
+              <span style={{ color: C.muted, fontSize: 14, marginTop: -6 }}>Treasury {inr(room.treasury)}{room.withdrawals > 0 ? ` + withdrawals waiting ${inr(room.withdrawals)}` : ''}{room.shares > 0 ? ` + crop agreements within 9 weeks ${inr(room.shares)}` : ''}</span>
             )}
             <Row k="Room for more cash" v={room ? inr(room.room) : '…'} accent />
           </div>
