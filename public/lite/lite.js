@@ -59,6 +59,11 @@
   var qrKey = false;
   function screen(html, l, c, r, title) {
     if (qrKey) r = ['QR', function () { go('#/help'); }];
+    // Offline (13 Nov): what she sees is the last data this phone read; say from when.
+    if (data && data.offline && !/id="qr"/.test(html)) {
+      var d0 = new Date(data.at);
+      html = '<p class="muted small">No internet · as of ' + d0.getDate() + ' ' + MON[d0.getMonth()] + '</p>' + html;
+    }
     hd.textContent = title || 'Nila';
     main.innerHTML = html;
     keys = { SoftLeft: l && l[1], Enter: c && c[1], SoftRight: r && r[1] };
@@ -80,6 +85,11 @@
         return out;
       });
     });
+  }
+
+  // ---- the app on the phone (13 Nov): a service worker keeps the lite files, so Nila lite opens without internet ----
+  if ('serviceWorker' in navigator && !window.NILA_LITE_STATIC) {
+    try { navigator.serviceWorker.register('/lite/lite-sw.js', { scope: '/lite/' }).catch(function () { /* online only */ }); } catch (e) { /* none */ }
   }
 
   // ---- the device key (IndexedDB 'nila-lite' / 'keys' / 'device') ----
@@ -287,7 +297,10 @@
    *  leader's scan makes it and joins it with no node in between. null once it has its union. */
   function joinPart(cfg, account, ledger, pair, sign) {
     if (!cfg.union || !cfg.sponsor || stored('nila.lite.joined.' + account) === '1') return Promise.resolve(null);
-    return window.NilaChain.read(cfg.rpc_url, cfg.sponsor, account, 'union', []).catch(function () { return null; }).then(function (u) {
+    // Offline (13 Nov): the chain cannot be read; once this phone sent her union, the join is left out.
+    var offline = {};
+    return window.NilaChain.read(cfg.rpc_url, cfg.sponsor, account, 'union', []).catch(function () { return offline; }).then(function (u) {
+      if (u === offline) { if (stored('nila.lite.union.' + account) === '1') return null; u = null; }
       if (u) { store('nila.lite.joined.' + account, '1'); return null; }
       return Promise.all([
         window.crypto.subtle.exportKey('spki', pair.publicKey),
@@ -297,6 +310,24 @@
         var j = r[1]; j.key = spki.subarray(spki.length - 65);
         return j;
       });
+    });
+  }
+
+  /** The latest ledger, for a signature's expiry. Online: asked, and kept with its time. Offline (13 Nov): estimated from
+   *  the last one kept (a ledger about every 5 s), plus a margin, so the help QR can be made with no internet — the
+   *  leader's phone, which is online, sends what it allows. */
+  function latestLedger(cfg) {
+    return fetch(cfg.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (res) { return res.json(); }).then(function (l) {
+      var seq = l.result.sequence;
+      store('nila.lite.ledger', JSON.stringify({ seq: seq, at: Date.now() }));
+      return seq;
+    }, function (e) {
+      var k = null;
+      try { k = JSON.parse(stored('nila.lite.ledger') || 'null'); } catch (x) { /* none */ }
+      if (!k) throw new Error('No internet, and this phone has not been online yet. Connect once, then the QR works offline.');
+      var gone = Math.max(0, (Date.now() - k.at) / 1000);
+      return Math.floor(k.seq + gone / 5 + 20 + gone / 100);
     });
   }
 
@@ -323,8 +354,24 @@
   function tsOf(iso) { return iso ? Date.parse(String(iso).slice(0, 10) + 'T00:00:00Z') / 1000 : 0; }
   function months(slot) { return { S1: 'Oct \u2013 Feb', S2: 'Mar \u2013 May', S3: 'Jun \u2013 Aug' }[slot] || ''; }
 
+  /** Her data from the node and the chain (needs internet). Offline (13 Nov): the last data this phone read, kept in
+   *  localStorage and marked `offline`, so every screen still opens and says "As of <date>". */
   function load(force) {
-    if (data && !force && Date.now() - data.at < 60000) return Promise.resolve(data);
+    if (data && !force && !data.offline && Date.now() - data.at < 60000) return Promise.resolve(data);
+    return loadOnline(force).then(function (d) {
+      try { localStorage.setItem('nila.lite.data', JSON.stringify({ at: d.at, me: d.me, cfg: d.cfg, invested: d.invested, loans: d.loans, vouchers: d.vouchers })); } catch (e) { /* not kept */ }
+      return d;
+    }, function (e) {
+      var kept = null;
+      try { kept = JSON.parse(localStorage.getItem('nila.lite.data') || 'null'); } catch (x) { /* none */ }
+      if (!kept || (e && e.status)) throw e;      // a refusal from the node is not "offline"
+      kept.offline = true;
+      data = kept;
+      return kept;
+    });
+  }
+
+  function loadOnline(force) {
     var me, cfg, C = window.NilaChain;
     return signed('me', {}).then(function (q) { return call('POST', '/keypad/me', q); }).then(function (m) {
       me = m;
@@ -805,11 +852,11 @@
     var sign = function (payload) { return window.crypto.subtle.sign({ name: 'ECDSA', hash: { name: 'SHA-256' } }, pair.privateKey, payload); };
     chainConfig().then(function (c) {
       cfg = c;
-      // The latest ledger, for the signature's expiry (the phone's own clock ends the QR after 5 minutes).
-      return fetch(c.rpc_url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }) }).then(function (res) { return res.json(); });
+      // The latest ledger, for the signature's expiry (the phone's own clock ends the QR after 5 minutes); estimated
+      // when offline (13 Nov).
+      return latestLedger(c);
     }).then(function (l) {
-      ledger = l.result.sequence;
+      ledger = l;
       return loadKey();
     }).then(function (p) {
       pair = p;
