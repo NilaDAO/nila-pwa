@@ -182,8 +182,13 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
           : st === 'sheet_found' ? 'Checked: the sheet was seen'
             : st === 'sheet_pending' ? `Waiting for a clear satellite image (sheet placed ${check.data.placed_at})`
               : 'Needed for larger crop agreements';
-        return <IdentityRow title="Land check" checked={done} sub={sub} todo={st === 'sheet_pending' ? 'Waiting' : 'Not checked'}
-          onClick={done || st === 'sheet_pending' ? undefined : () => setSheetOpen(true)} />;
+        // More room above and below the land check (13 Nov).
+        return (
+          <div style={{ margin: '16px 0' }}>
+            <IdentityRow title="Land check" checked={done} sub={sub} todo={st === 'sheet_pending' ? 'Waiting' : 'Not checked'}
+              onClick={done || st === 'sheet_pending' ? undefined : () => setSheetOpen(true)} />
+          </div>
+        );
       })()}
       <hr style={line} />
       <section aria-label="Water on your land" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
