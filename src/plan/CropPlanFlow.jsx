@@ -213,16 +213,24 @@ const GROWING = '#7BA05B';
 const UNKNOWN = '#8A94A6';
 // Empty (12 Nov): nothing grows there now, so the plan may use the area at once.
 const EMPTY = { key: 'empty', name: 'Empty', colour: '#5B6472' };
+// What grows now that is not a crop (13 Nov), in a grid above the crops, Empty first. The node leaves such an area out
+// of the plan with this as its reason (plan/engine.COVERS); Empty frees it at once.
+const COVERS = [EMPTY,
+  { key: 'coconut', name: 'Coconut', colour: '#8C6A3F' }, { key: 'neem', name: 'Neem tree', colour: '#4F7A3A' },
+  { key: 'trees', name: 'Other trees', colour: '#3E6B4A' }, { key: 'bushes', name: 'Bushes', colour: '#7A8B4F' },
+  { key: 'buildings', name: 'Buildings', colour: '#9A8F86' }, { key: 'water', name: 'Water', colour: '#4A7FA6' }];
+const LEFT_OUT = new Set(COVERS.filter((c) => c.key !== 'empty').map((c) => c.key));
 /** The map before a plan: what grows now (growingNow), with the crops she set herself (12 Nov) on top, on every screen
  *  until the plan is made. */
 function nowLabelsOf(record, crops = [], growing = {}) {
   const now = growingNow(record, crops);
   const zones = areasOf(record);
-  const list = [...crops, EMPTY];
+  const list = [...crops, ...COVERS];
   return Object.fromEntries(zones.filter((z) => now[z.zone_id] || growing[z.zone_id]).map((z, i) => {
     const c = growing[z.zone_id] && list.find((x) => x.key === growing[z.zone_id]);
     const l = now[z.zone_id] || { text: z.name || `Area ${zones.indexOf(z) + 1}` };
-    return [z.zone_id, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : l];
+    // Still to be set (13 Nov): hatched on the map, so she sees which areas are left.
+    return [z.zone_id, c ? { ...l, sub: `${c.name}, set by you`, colour: c.colour || GROWING, unknown: false } : { ...l, hatch: !!l.unknown }];
   }));
 }
 
@@ -401,6 +409,12 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
     }
+    // An area left out for what stands on it (13 Nov: trees, buildings, water…): named so on the map, in its colour.
+    for (const [z, why] of Object.entries(plan.plan.left_out_reasons || {})) {
+      const cv = COVERS.find((c) => c.key !== 'empty' && LEFT_OUT.has(c.key) && plan.plan.intake?.growing?.[z] === c.key);
+      if (!out[z] && cv) out[z] = { text: cv.name, sub: 'left out', colour: cv.colour };
+      else if (!out[z] && why && why !== 'too small' && why !== 'removed by her') out[z] = { text: why, sub: 'left out' };
+    }
     // The crop in the field now (13 Nov): on its areas in every season that starts before its (estimated) harvest,
     // where the plan has nothing of its own there yet.
     const start = ss[i].start;
@@ -555,7 +569,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // First what grows now (12 Nov): every area the satellite could not identify needs its crop before the plan.
     const now = growingNow(record, catalogue.data?.crops);
     // Barren (12 Nov): nothing grows there now, so the plan may use the area at once.
-    const cropList = [...sortedCrops(catalogue.data?.crops || []), EMPTY];
+    const cropList = sortedCrops(catalogue.data?.crops || []);
     const toSet = Object.keys(now).filter((z) => now[z].unknown && !growing[z]);
     // An empty area can take a crop too (12 Nov): she may have just sown it, which no image shows yet. Optional there;
     // an unidentified area must be set.
@@ -564,7 +578,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const nowLabels = nowLabelsOf(record, catalogue.data?.crops, growing);
     // Any area can be set (12 Nov): hers replaces the satellite's reading; only an unidentified one must be set.
     const settable = (z) => !!z;
-    const growingCount = zoneIds.filter((z) => (growing[z] ? growing[z] !== 'empty' : !!now[z])).length;
+    const growingCount = zoneIds.filter((z) => (growing[z] ? growing[z] !== 'empty' && !LEFT_OUT.has(growing[z]) : !!now[z])).length;
     // Option A (12 Nov, as G2's top block): the record's facts as rows, a line, then the button.
     return (
       <Sheet map={<AreaMap record={record} labels={nowLabels} selected={growArea} onSelect={(z) => setGrowArea(settable(z) ? z : null)} />}
@@ -578,6 +592,10 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {growArea && settable(growArea) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0 8px' }}>
             <span style={{ fontSize: 14, fontWeight: 700 }}>What grows on {nowLabels[growArea]?.text || nameOf(growArea)} now?</span>
+            {/* 13 Nov: no crop (empty, trees, bushes, buildings, water) first, then the crops. */}
+            <CropSelect crops={COVERS} current={growing[growArea]}
+              onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.muted, marginTop: 8 }}>Crops</span>
             <CropSelect crops={cropList} current={growing[growArea]}
               onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
           </div>

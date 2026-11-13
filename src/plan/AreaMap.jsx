@@ -46,6 +46,17 @@ export function useLeaflet() {
 
 /** labels: zone_id → { text, sub, colour } (default "Area n"). The Google satellite map (the same key and loader as
  *  R5–R8 and L2–L4, executive decision 21 Oct); Leaflet/Esri only when Google cannot load. height '100%' fills. */
+/** The hatch for areas still to be set (13 Nov): one hidden SVG pattern in the page, used as `fill: url(#nila-hatch)`. */
+function hatchPattern() {
+  if (document.getElementById('nila-hatch')) return;
+  const box = document.createElement('div');
+  box.setAttribute('aria-hidden', 'true');
+  box.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+  box.innerHTML = '<svg width="0" height="0"><defs><pattern id="nila-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+    + '<rect width="8" height="8" fill="rgba(18,18,18,0.35)"/><rect width="3" height="8" fill="rgba(241,245,249,0.75)"/></pattern></defs></svg>';
+  document.body.appendChild(box);
+}
+
 export default function AreaMap(props) {
   const { ok } = useFieldMapLoaded();
   return ok ? <GoogleAreaMap {...props} /> : <LeafletAreaMap {...props} />;
@@ -175,7 +186,11 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
       if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const faded = !!selected && selected !== z.zone_id;
       const colour = lab.colour || '#ffffff';
-      const layer = L.geoJSON(z.geometry, { style: { color: colour, weight: 1.5, opacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
+      // An area still to be set (13 Nov): hatched, so she sees at once which areas are left (lab.hatch).
+      if (lab.hatch) hatchPattern();
+      const layer = L.geoJSON(z.geometry, { style: lab.hatch
+        ? { color: '#F1F5F9', weight: 2, opacity: faded ? 0.3 : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? 0.3 : 1 }
+        : { color: colour, weight: 1.5, opacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
       layer.addTo(group);
       if (onSelect) layer.on('click', () => onSelect(selected === z.zone_id ? null : z.zone_id));
       if (!lab.hide && !chipsOff) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
