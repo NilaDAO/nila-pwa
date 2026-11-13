@@ -109,8 +109,8 @@ export function useMyShares() {
         const late = !!ft && !drawn && !lapsed && final > 0 && now > final;
         const early = !!ft && !drawn && !lapsed && !late && now < opens;
         const ready = !!ft && !drawn && !lapsed && !late && !early;
-        // Her areas by their field names (13 Nov; was "Area 3 + 4", which says nothing to her): "Nexttowell", or for
-        // areas merged in a season "veryhighyield · 3 + 4"; "Area n" only for a record without names.
+        // Her areas by their field names (13 Nov; was "Area 3 + 4", which says nothing to her): each field once,
+        // "Nexttowell" or "veryhighyield + Nexttowell"; "Area n" only for a record without names.
         const area = areaNames((m.zones || share.zones || [m.zone]).map((z) => p.plan.area_names?.[z] || `Area ${zones.indexOf(z) + 1}`));
         return { ...m, share, ft, drawn, ready, late, early, opens, lapsed, final, area, plan: p };
       }));
@@ -118,12 +118,11 @@ export function useMyShares() {
   });
 }
 
-/** Area names joined, the field said once when they share it: ["veryhighyield · 3", "veryhighyield · 4"] →
- *  "veryhighyield · 3 + 4". */
+/** The fields her areas lie in, each named once (13 Nov): ["veryhighyield · 3", "veryhighyield · 4", "Nexttowell"] →
+ *  "veryhighyield + Nexttowell". The area numbers inside a field are left out: she knows her fields, not their parts. */
 export function areaNames(names) {
-  const parts = names.map((n) => { const i = n.lastIndexOf(' · '); return i > 0 ? [n.slice(0, i), n.slice(i + 3)] : [n, null]; });
-  if (parts.length > 1 && parts.every(([f, k]) => k && f === parts[0][0])) return `${parts[0][0]} · ${parts.map(([, k]) => k).join(' + ')}`;
-  return names.join(' + ');
+  const fields = names.map((n) => { const i = n.lastIndexOf(' · '); return i > 0 ? n.slice(0, i) : n; });
+  return [...new Set(fields)].join(' + ');
 }
 
 /** When a crop agreement opens (25 Oct): a week before the sowing window that holds its planned sowing. On-chain the
