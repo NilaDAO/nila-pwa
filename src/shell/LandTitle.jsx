@@ -135,7 +135,7 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
             <span style={{ color: C.muted }}>Size</span><span style={{ fontWeight: 700 }}>at least 4 m × 4 m</span>
           </div>
-          <p style={muted}>Needed before your open cash passes ₹1 lakh.</p>
+          <p style={muted}>Needed for larger crop agreements.</p>
           <button type="button" onClick={() => placed.mutate()} disabled={placed.isPending || !border}
             style={{ ...btn, background: C.accent, color: C.ink, cursor: 'pointer' }}>
             {placed.isPending ? 'Sending…' : 'I placed the sheet'}
@@ -168,7 +168,7 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
         <span style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>Land title</span>
-          <span style={{ color: C.muted }}>{landId != null ? [farm, `id ${landId}`, `on ${onPolygon ? 'Polygon' : 'Stellar'}`].filter(Boolean).join(' · ') : pending ? 'Being minted' : 'No land title yet'}</span>
+          <span style={{ color: C.muted }}>{landId != null ? [farm, `id ${landId}`, onPolygon ? 'on Polygon' : 'attested'].filter(Boolean).join(' · ') : pending ? 'Being minted' : 'No land title yet'}</span>
         </span>
         <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>{count}</span>
@@ -181,7 +181,7 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
         const sub = st === 'leader_gps' ? 'Checked: your leader took your fields on site'
           : st === 'sheet_found' ? 'Checked: the sheet was seen'
             : st === 'sheet_pending' ? `Waiting for a clear satellite image (sheet placed ${check.data.placed_at})`
-              : 'Needed before your open cash passes ₹1 lakh';
+              : 'Needed for larger crop agreements';
         return <IdentityRow title="Land check" checked={done} sub={sub} todo={st === 'sheet_pending' ? 'Waiting' : 'Not checked'}
           onClick={done || st === 'sheet_pending' ? undefined : () => setSheetOpen(true)} />;
       })()}
@@ -190,8 +190,9 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
         <h2 style={h2}>Water on your land</h2>
         <p style={muted}>No well or bore marked yet. Your crop plan and the water improvements need it.</p>
         {/* DESIGN GAP: A5a (MemberWellForm) is not built, so the button does nothing yet. */}
-        <button type="button" disabled aria-disabled="true" style={{ ...btn, background: C.accent, color: C.ink, opacity: 0.5, cursor: 'default' }}>
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
+        {/* A second button (13 Nov): grey, not the screen's primary action. */}
+        <button type="button" disabled aria-disabled="true" style={{ ...btn, background: C.raised, color: C.text, opacity: 0.5, cursor: 'default' }}>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
           Mark a well or bore
         </button>
       </section>

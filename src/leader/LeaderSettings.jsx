@@ -24,7 +24,8 @@ export function IdentityRow({ checked, onClick, sub = 'Needed for union leaders'
       </span>
       {checked
         ? <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Checked</span>
-        : <span style={{ fontSize: 12, fontWeight: 700, color: C.gold, background: 'rgba(212,166,52,0.15)', borderRadius: R.round, padding: '2px 8px' }}>{todo}</span>}
+        // The chip (13 Nov): on one line, with room above and below its text.
+        : <span style={{ fontSize: 12, fontWeight: 700, color: C.gold, background: 'rgba(212,166,52,0.15)', borderRadius: R.round, padding: '6px 10px', whiteSpace: 'nowrap', flexShrink: 0 }}>{todo}</span>}
       <ChevronIcon color={C.muted} />
     </button>
   );
