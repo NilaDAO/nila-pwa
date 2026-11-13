@@ -895,6 +895,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       <Sheet map={map} landName={name}>
         <Bouncing top={24} bottom={24} label="Your union is making your crop agreements" />
         <p style={{ ...muted, textAlign: 'center' }}>Your crop agreements are being made by your union.{mint.total ? ` ${mint.done || 0} of ${mint.total} made.` : ''}</p>
+        {/* 13 Nov: a failed making is said, never left as a count that does not move (it was "not enough funds"). */}
+        {mint.status === 'failed' && (self || forLand) && (
+          <>
+            <p style={{ color: C.coral, textAlign: 'center', margin: '8px 0 0' }}>Not made: {mint.error || (mint.refused || [])[0]?.error || 'try again'}</p>
+            <Primary onClick={() => mint.run(plan.id)}>Try again</Primary>
+          </>
+        )}
         <button type="button" onClick={() => setStep('plan')} style={{ ...secondaryBtn, width: '100%', flex: 'none', marginTop: 14 }}>See my plan</button>
       </Sheet>
     );

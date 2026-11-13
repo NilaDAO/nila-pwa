@@ -39,6 +39,8 @@ const NODE = [
   [/more than a year ahead/, REASON.SosTooFar],
   [/no Polygon crop code/, 'This crop is not registered yet. Ask your union leader.'],
   [/no open batch/, 'This crop\'s batch is not open yet. Ask your union leader.'],
+  // 13 Nov: the leader's wallet without POL (its top-up refused): the reason the mints failed, said plainly.
+  [/insufficient funds|enough funds/i, 'Your leader wallet has no POL to make them. Try again in a minute; ask Nila if it stays.'],
 ];
 // FoodToken P2 (nila-evm t1/contracts/P2-leader-mint) on top of the P1 ABI.
 const P2 = [
