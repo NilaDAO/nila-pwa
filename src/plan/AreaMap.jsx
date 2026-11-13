@@ -123,9 +123,15 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       rings.forEach((ring) => {
         const path = ring.map(([lng, lat]) => ({ lat, lng }));
         path.forEach((q) => { bounds.extend(q); sx += q.lng; sy += q.lat; k += 1; });
-        const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: colour, fillOpacity: (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1),
+        // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so a dashed accent outline and a faint fill.
+        const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
+          fillOpacity: (lab.hatch ? 0.1 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
-          strokeColor: colour, strokeOpacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
+          strokeColor: colour, strokeOpacity: lab.hatch ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
+        if (lab.hatch) {
+          drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
+            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? 0.3 : 1, strokeColor: '#D4CF5A', strokeWeight: 2, scale: 3 }, offset: '0', repeat: '9px' }] }));
+        }
         if (pick) poly.addListener('click', pick(z.zone_id));
         drawn.current.push(poly);
       });
