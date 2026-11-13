@@ -187,7 +187,7 @@ export default function MemberStatus({ id, go }) {
   // Sync with phone (13 Nov; was an inline white card): a full QR screen like the app's other QRs.
   if (syncing) return <LiteDataQr m={m} inv={inv} onClose={() => setSyncing(false)} />;
   if (scanning) {
-    return <StartHelp member={m.address} label={`${scanning.what} · ${m.label}`} onBack={() => setScanning(false)}
+    return <StartHelp member={m.address} label={m.label} title={scanning.what} onBack={() => setScanning(false)}
       onStarted={() => { const then = scanning.then; setScanning(false); then(); }} />;
   }
   const withQr = (what, then) => () => (helpUntil > Date.now() / 1000 + 10 ? then() : setScanning({ what, then }));

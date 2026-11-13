@@ -491,7 +491,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   }
   if (scanToAccept) {
     return (
-      <StartHelp member={forLand.account} label={forLand.label} onBack={() => setScanToAccept(false)}
+      <StartHelp member={forLand.account} label={forLand.label} title="Accept the crop plan" onBack={() => setScanToAccept(false)}
         onStarted={async () => { setScanToAccept(false); await makeMine(); }} />
     );
   }

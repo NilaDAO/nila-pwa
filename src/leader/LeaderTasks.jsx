@@ -80,7 +80,7 @@ export function HandBackFor({ go }) {
   const [plain, setPlain] = useState(false);
   const until = useSessionUntil(member);
   const back = () => go('tasks');
-  if (!member) return <StartHelp label="Give back vouchers" onBack={back} onStarted={(a) => { setPlain(!sessionUntil(a)); setMember(a); }} />;
+  if (!member) return <StartHelp title="Give back vouchers" onBack={back} onStarted={(a) => { setPlain(!sessionUntil(a)); setMember(a); }} />;
   if (plain) {
     return <DeskCard title="Give back vouchers" onBack={back}>
       <p style={{ color: C.muted, margin: 0 }}>This member uses the app in self mode: the member hands back acres on their own phone, under Machinery.</p>
