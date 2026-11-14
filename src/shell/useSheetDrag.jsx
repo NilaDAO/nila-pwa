@@ -13,8 +13,8 @@ let tabLow = false;
 export const keepLowOnTab = () => { tabLow = lastLow; };
 
 /** resetKey: when it changes the card comes back up (CP10: a picked area). startLow: the card opens lowered (A1 coming
- *  back to the state it was left in, map-central trial). */
-export default function useSheetDrag(onLowered, resetKey, startLow) {
+ *  back to the state it was left in, map-central trial). want: true/false moves the card down/up from the screen. */
+export default function useSheetDrag(onLowered, resetKey, startLow, want) {
   const ref = useRef(null);
   const drag = useRef(null);
   const [off, setOff] = useState(0);
@@ -78,6 +78,9 @@ export default function useSheetDrag(onLowered, resetKey, startLow) {
   const firstKey = useRef(true);
   useEffect(() => { if (firstKey.current) { firstKey.current = false; return; } setOff(0); onLowered?.(false); }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => tell(false), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // want (14 Nov): the screen moves the card itself — true lowers it, false brings it up, undefined leaves it to the
+  // drag line (the field points: down while she moves the map to the pin's Save, up to name the field).
+  useEffect(() => { if (want !== undefined) setLow(want); }, [want]); // eslint-disable-line react-hooks/exhaustive-deps
   // Opening lowered (A1 coming back, or a tab tapped with the card down, 24 Oct): placed down before the first paint,
   // with no movement; the content still loads inside, hidden.
   const [startedLow] = useState(() => { const v = !!(startLow || tabLow); tabLow = false; return v; });

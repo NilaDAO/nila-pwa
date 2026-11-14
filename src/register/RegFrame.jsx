@@ -112,7 +112,7 @@ export const fieldInput = { display: 'block', width: '100%', height: 44, borderR
   fontSize: 16, color: '#F1F5F9', border: 0, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', flexShrink: 0 };
 
 /** R5–R7: the satellite map (FieldMap) once Google Maps is loaded; until then, offline or without a key, the scene. */
-function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect, shapes }) {
+function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect, shapes, pinLabel, onPin }) {
   const { ok } = useFieldMapLoaded();
   const pinY = usePinY(ok && pan);
   // No map (offline, or a key the site is not allowed to use, 28 Oct): "Choose on the map" takes the start spot as the
@@ -128,18 +128,28 @@ function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect,
   return (
     <>
       <FieldMap points={map} me={me} pan={pan} onCenter={onCenter} start={start} selected={selected} onSelect={onSelect} pinY={pinY} shapes={shapes} />
-      {pan && <PanPin y={pinY} />}
+      {pan && <PanPin y={pinY} label={pinLabel} onTap={onPin} />}
     </>
   );
 }
 
-/** Choose on the map: the pin in the middle of the map above the card marks where the point goes (26 Oct). */
-function PanPin({ y }) {
+/** Choose on the map: the pin in the middle of the map above the card marks where the point goes (26 Oct). With a
+ *  label (14 Nov) the pin carries its own Save button, so on a phone the point is saved where she placed it, without
+ *  pulling the card up first (the map moved under her finger and points landed beside their field). */
+function PanPin({ y, label, onTap }) {
+  const top = y != null ? y : '50%';
   return (
-    <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top: y != null ? y : '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 2 }}>
-      <svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="rgba(212,166,52,0.25)" />
-        <circle cx="22" cy="22" r="9" fill="#D4A634" stroke="#121212" strokeWidth="3" /></svg>
-    </div>
+    <>
+      <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top, transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 2 }}>
+        <svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="rgba(212,166,52,0.25)" />
+          <circle cx="22" cy="22" r="9" fill="#D4A634" stroke="#121212" strokeWidth="3" /></svg>
+      </div>
+      {label && (
+        <button type="button" onClick={onTap} style={{ position: 'absolute', left: '50%', top, transform: 'translate(-50%, calc(-100% - 26px))', zIndex: 3,
+          height: 40, padding: '0 18px', borderRadius: 9999, border: 0, background: '#D4CF5A', color: '#121212', fontFamily: 'inherit', fontSize: 14,
+          fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer', boxShadow: 'rgba(0,0,0,0.35) 0 4px 10px 0' }}>{label}</button>
+      )}
+    </>
   );
 }
 
@@ -156,8 +166,10 @@ export function MapStage({ header = 'Mint your land title', children }) {
   const onCenter = useCallback((c) => centre.current?.(c), []);
   const select = useRef(null);
   const onSelect = useCallback((i) => select.current?.(i), []);
+  const pin = useRef(null);
+  const onPin = useCallback(() => pin.current?.(), []);
   const [lowered, setLowered] = useState(false);         // the card dragged down: the info footer slides out
-  const ctx = useMemo(() => ({ setView, centre, select, setLowered, header }), [header]);
+  const ctx = useMemo(() => ({ setView, centre, select, pin, setLowered, header }), [header]);
   // Inside the app's shell (a leader's own points, + Add a point): the card clears the tab bar itself.
   const inShell = !!useStage();
   useShellLook({ flush: true }, inShell);
@@ -167,7 +179,7 @@ export function MapStage({ header = 'Mint your land title', children }) {
         fontFamily: FONT, color: C.text, position: 'relative', overflow: 'hidden' }}>
         <style>{MOTION_CSS}</style>
         <MapOrScene map={view.map} points={view.map.length} me={view.me} start={view.start} shapes={view.shapes} pan={view.pan} onCenter={onCenter}
-          selected={view.selected} onSelect={onSelect} />
+          selected={view.selected} onSelect={onSelect} pinLabel={view.pinLabel} onPin={onPin} />
         <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 160, pointerEvents: 'none',
           background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)' }} />
         <div style={{ height: 92 }} />
@@ -192,30 +204,32 @@ export function MapStage({ header = 'Mint your land title', children }) {
 
 /** A step on the map screen: tells the stage what to show and renders its card (and an optional overlay). Outside a
  *  MapStage it brings its own stage. */
-export function MapFrame({ header, onBack, map = [], me = null, start = null, shapes = null, info = INFO_R5, overlay, pan = false, onCenter, selected = null, onSelect, children }) {
+export function MapFrame({ header, onBack, map = [], me = null, start = null, shapes = null, info = INFO_R5, overlay, pan = false, onCenter, selected = null, onSelect,
+  pinLabel = null, onPin, low, children }) {
+  // pinLabel / onPin (14 Nov): a Save button on the pan pin; low: the step moves the card down (true) or up (false).
   const ctx = useContext(MapCtx);
-  const key = JSON.stringify([header, map, me, start, shapes, info, pan, selected]);
-  useEffect(() => { if (ctx) ctx.setView({ header, map, me, start, shapes, info, pan, selected }); }, [ctx, key]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (ctx) { ctx.centre.current = onCenter; ctx.select.current = onSelect; } }, [ctx, onCenter, onSelect]);
+  const key = JSON.stringify([header, map, me, start, shapes, info, pan, selected, pinLabel]);
+  useEffect(() => { if (ctx) ctx.setView({ header, map, me, start, shapes, info, pan, selected, pinLabel }); }, [ctx, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ctx) { ctx.centre.current = onCenter; ctx.select.current = onSelect; ctx.pin.current = onPin; } }, [ctx, onCenter, onSelect, onPin]);
   const card = (
     <>
       {/* header null: no title in the row, only Back (the leader's own points, 13 Nov) */}
-      <DragCard title={header === null ? null : (header || ctx?.header || 'Mint your land title')} onBack={onBack}>{children}</DragCard>
+      <DragCard title={header === null ? null : (header || ctx?.header || 'Mint your land title')} onBack={onBack} low={low}>{children}</DragCard>
       {overlay}
     </>
   );
   if (ctx) return card;
-  return <MapStage header={header}><StandaloneView view={{ header, map, me, start, shapes, info, pan, selected }} onCenter={onCenter} onSelect={onSelect}>{card}</StandaloneView></MapStage>;
+  return <MapStage header={header}><StandaloneView view={{ header, map, me, start, shapes, info, pan, selected, pinLabel }} onCenter={onCenter} onSelect={onSelect} onPin={onPin}>{card}</StandaloneView></MapStage>;
 }
 
 /** The map card with the standard drag line (map cards): drag down lowers the card — never off the screen, the top
  *  strip stays — and the info footer slides out (the reverse of its slide in); drag up or a tap on the line brings
  *  both back. Releasing snaps to the nearer end. */
-function DragCard({ title, onBack, children }) {
+function DragCard({ title, onBack, low, children }) {
   // The stage is read here, inside its provider: a standalone MapFrame (in the shell) builds the card before its own
   // MapStage exists, so the info footer never heard the card go down (13 Nov).
   const ctx = useContext(MapCtx);
-  const { ref, style, handle } = useSheetDrag((v) => ctx?.setLowered(v));
+  const { ref, style, handle } = useSheetDrag((v) => ctx?.setLowered(v), undefined, false, low);
   // The header is a row inside the card, as on every map card (28 Oct): Back, the title.
   return (
     <div ref={ref} data-reg-card="" style={{ position: 'relative', zIndex: 4, ...style }}>
@@ -236,11 +250,11 @@ function DragCard({ title, onBack, children }) {
   );
 }
 
-function StandaloneView({ view, onCenter, onSelect, children }) {
+function StandaloneView({ view, onCenter, onSelect, onPin, children }) {
   const ctx = useContext(MapCtx);
   const key = JSON.stringify(view);
   useEffect(() => { ctx.setView(view); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { ctx.centre.current = onCenter; ctx.select.current = onSelect; }, [ctx, onCenter, onSelect]);
+  useEffect(() => { ctx.centre.current = onCenter; ctx.select.current = onSelect; ctx.pin.current = onPin; }, [ctx, onCenter, onSelect, onPin]);
   return children;
 }
 
