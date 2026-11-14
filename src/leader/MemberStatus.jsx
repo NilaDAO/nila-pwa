@@ -227,9 +227,11 @@ export default function MemberStatus({ id, go }) {
   // Her fields only (23 Oct): until her record is in, no map at all, never the leader's own fields.
   // Map taps (24 Oct rule): her property again → back to the list (only her property is on G2's map).
   // No record yet: the title's fields, as the Assets map (28 Oct).
-  const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} />
-    // Before the record (13 Nov): the title's fields with their names, not "Area n".
-    : fields.length ? <AreaMap record={{ zones: fields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry, ...(f.name ? { name: f.name } : {}) })) }} onSelect={() => go('members')} />
+  // 14 Nov: her title's fields with their names (as on her land title), not the record's areas; the areas only when
+  // the title has no fields.
+  const titleFields = m.fields?.length ? m.fields : fields;
+  const map = titleFields.length ? <AreaMap record={{ zones: titleFields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry, ...(f.name ? { name: f.name } : {}) })) }} onSelect={() => go('members')} />
+    : m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} />
       // No land (13 Nov: e.g. her title removed): the union's land, as the crop plan's no-title map.
       : <AreaMap record={null} center={unionCentre(members.data)} />;
   const myLands = new Set([m.titleId, ...(m.lands || [])].filter((x) => x != null).map(String));
