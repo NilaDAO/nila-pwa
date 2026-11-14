@@ -267,13 +267,15 @@ function growingNow(record, crops = []) {
   return out;
 }
 
-export default function CropPlanFlow({ forLand, self = false } = {}) {
+export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // A member's plan made by the leader (26 Oct): the member's name on every card, no settings button.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // A member's plan on the leader's phone (14 Nov): every card without its own Back gets one, back where the leader
   // came from (the member's screen or Tasks).
-  const exit = forLand?.onClose;
-  const Sheet = useMemo(() => (forLand ? function MemberSheet(p) { return <BaseSheet {...p} onBack={p.onBack || exit} noSettings />; } : BaseSheet), [!!forLand]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The leader's own land opened from the member list (onExit) gets the same Back.
+  const exit = forLand?.onClose || onExit;
+  const Sheet = useMemo(() => (forLand ? function MemberSheet(p) { return <BaseSheet {...p} onBack={p.onBack || exit} noSettings />; }
+    : exit ? function OwnSheet(p) { return <BaseSheet {...p} onBack={p.onBack || exit} />; } : BaseSheet), [!!forLand, !!exit]); // eslint-disable-line react-hooks/exhaustive-deps
   const s = useNilaSigner();
   const qc = useQueryClient();
   const unionInfo = useUnionInfo();
