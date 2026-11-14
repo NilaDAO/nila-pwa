@@ -357,6 +357,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   // Areas added to a touching area before the plan (14 Nov; area → neighbour), for this plan only; the area tapped.
   const [mergeTo, setMergeTo] = useState({});
   const [pickOut, setPickOut] = useState(null);
+  const [areasOk, setAreasOk] = useState(false);   // 14 Nov: she confirms the areas before Make my crop plan
   // What grows now, first (12 Nov): she sets the crop on every area the satellite could not identify before the plan
   // is made (area → crop key); sent with the intake as `growing`.
   const [growing, setGrowing] = useState({});
@@ -721,7 +722,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // CP7b, her farm business's money now (executive decision 21 Oct). DESIGN GAP: no board. Optional and skippable:
     // skipped = no farm_cash_now at all (the cash flow starts at ₹0; nothing assumes or mentions her farm's money).
     // Then the areas to leave out (5 Nov), the last step before the plan is made.
-    const make = (amount) => { setError(undefined); setCashGiven(amount); setLeftOut(new Set()); setMergeTo({}); setPickOut(null); setStep('leaveout'); };
+    const make = (amount) => { setError(undefined); setCashGiven(amount); setLeftOut(new Set()); setMergeTo({}); setPickOut(null); setAreasOk(false); setStep('leaveout'); };
     const n = Number(farmCash.replace(/[^0-9]/g, ''));
     const given = farmCash.trim() !== '' && Number.isFinite(n);
     return (
@@ -764,7 +765,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     const choose = (z, what) => {
       setLeftOut((x) => { const y = new Set(x); if (what === 'out') y.add(z); else y.delete(z); return y; });
       setMergeTo((m) => { const y = { ...m }; if (what && what !== 'out') y[z] = what; else delete y[z]; return y; });
-      setPickOut(null);
+      setPickOut(null); setAreasOk(false);   // a change asks for the confirm again
     };
     const outLabels = Object.fromEntries(zoneOrder.map((z) => [z, leftOut.has(z)
       ? { text: 'Left out', sub: areaName(z), colour: '#8A94A6' }
@@ -793,17 +794,18 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           </>
         ) : (
           <>
-            <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Leave out or add areas</h1>
-            <p style={{ ...muted, textAlign: 'center' }}>Tap an area, then choose:<br />
-              <b style={{ color: '#F1F5F9' }}>Leave out</b> a house, a shed, a road or a path.<br />
-              <b style={{ color: '#F1F5F9' }}>Add</b> a small area to the area next to it.</p>
+            <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Leave out or merge areas</h1>
+            <p style={{ ...muted, textAlign: 'center' }}>Tap an area, then choose to leave out or add to another area.</p>
             <p style={{ ...muted, textAlign: 'center', margin: '4px 0 0' }}>{decided
               ? [leftOut.size && `${leftOut.size} left out`, Object.keys(mergeTo).length && `${Object.keys(mergeTo).length} added to another area`].filter(Boolean).join(' · ')
               : 'No areas left out'}</p>
           </>
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}
-        <Primary disabled={submit.isPending || all} onClick={make}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
+        {/* Two taps (14 Nov): this screen was easy to click through — first she confirms the areas, then makes the plan. */}
+        {areasOk
+          ? <Primary disabled={submit.isPending || all} onClick={make}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
+          : <Primary disabled={all} onClick={() => { setPickOut(null); setAreasOk(true); }}>Confirm the areas</Primary>}
       </Sheet>
     );
   }
