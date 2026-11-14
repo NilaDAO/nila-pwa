@@ -270,7 +270,10 @@ function growingNow(record, crops = []) {
 export default function CropPlanFlow({ forLand, self = false } = {}) {
   // A member's plan made by the leader (26 Oct): the member's name on every card, no settings button.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const Sheet = useMemo(() => (forLand ? function MemberSheet(p) { return <BaseSheet {...p} noSettings />; } : BaseSheet), [!!forLand]);
+  // A member's plan on the leader's phone (14 Nov): every card without its own Back gets one, back where the leader
+  // came from (the member's screen or Tasks).
+  const exit = forLand?.onClose;
+  const Sheet = useMemo(() => (forLand ? function MemberSheet(p) { return <BaseSheet {...p} onBack={p.onBack || exit} noSettings />; } : BaseSheet), [!!forLand]); // eslint-disable-line react-hooks/exhaustive-deps
   const s = useNilaSigner();
   const qc = useQueryClient();
   const unionInfo = useUnionInfo();
