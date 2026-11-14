@@ -30,6 +30,7 @@ import { assisted, useMyShares } from '../loan/MyShares';
 import RoundButton from '../shell/RoundButton';
 import ReadAloud from './ReadAloud';
 import { RefreshIcon, ScanIcon } from '../shell/icons';
+import { useUnionInfo } from '../shell/SettingsParts';
 import HelpQr from '../loan/HelpQr';
 import StartHelp from '../loan/StartHelp';
 import { useSessionUntil } from '../stellar/session';
@@ -271,6 +272,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const Sheet = useMemo(() => (forLand ? function MemberSheet(p) { return <BaseSheet {...p} noSettings />; } : BaseSheet), [!!forLand]);
   const s = useNilaSigner();
   const qc = useQueryClient();
+  const unionInfo = useUnionInfo();
   const [titleQr, setTitleQr] = useState(false);
   const titles = useLandTitles(forLand ? undefined : s?.evmAddress);
   // A title on Stellar only (the demo writes new titles there, 21 Oct): used when she has none on Polygon.
@@ -512,10 +514,11 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // The leader maps every title (executive decision 3 Nov): a member, in assist or self mode, mints nothing; the leader
     // takes the field points, does the borders and the mint. Only a leader's own title starts here (`self`).
     const helped = !self;
+    const unionRep = unionInfo.rep;   // the union's representative by name (14 Nov: not "your leader")
     // Her help QR with her Polygon address (3 Nov, both modes): the leader scans it on Add a member (L14).
     if (helped && titleQr) {
       return <HelpQr withPolygon onBack={() => setTitleQr(false)}
-        note="Show this to your union leader at the office. Your leader takes your field points, maps your land and mints your land title." />;
+        note={`Show this to ${unionRep || 'your union'} at the office.`} />;
     }
     return (
       <Sheet map={noLandMap} landName="No land title yet" actions={(
@@ -528,7 +531,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {!minting && !openJob ? (
           <NumberedSteps gap={16} items={helped
             ? [<span style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>Tap <ScanIcon color={C.text} size={16} /><b>Scan</b> and show your QR.</span>,
-              'Your union maps your fields and mints your land title.', 'Your leader makes your crop plan with you.']
+              'Your union maps your fields and mints your land title.', `${unionRep || 'Your union'} makes your crop plan with you.`]
             : ['Map your fields and mint your land title.', 'Make your crop plan.']} />
         ) : (
           <p style={muted}>{minting ? 'Your land title is being minted. Your crop plan starts when it is ready.'
