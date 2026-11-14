@@ -805,7 +805,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {/* Two taps (14 Nov): this screen was easy to click through — first she confirms the areas, then makes the plan. */}
         {areasOk
           ? <Primary disabled={submit.isPending || all} onClick={make}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
-          : <Primary disabled={all} onClick={() => { setPickOut(null); setAreasOk(true); }}>Confirm the areas</Primary>}
+          : <button type="button" disabled={all} onClick={() => { setPickOut(null); setAreasOk(true); }}
+            style={{ ...secondaryBtn, flex: 'none', width: '100%', opacity: all ? 0.5 : 1 }}>Confirm the areas</button>}
       </Sheet>
     );
   }
