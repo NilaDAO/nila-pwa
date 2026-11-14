@@ -5,6 +5,8 @@
 // more (→ the desk); Redeem from the plan (her crop agreements not drawn yet; Ready → L11); her record.
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
+import BorderMap from '../border/BorderMap';
+import { useBorderJob } from '../border/hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
@@ -91,6 +93,9 @@ export default function MemberStatus({ id, go }) {
   const desk = useDeskRoom();
   const { data: cfg } = useStellarConfig();
   const found = (members.data || []).find((x) => x.route === id);
+  // No land title yet, a border job open (14 Nov): the job's fields (as on the field-borders screen) on G2's map.
+  const pendingJob = found && !found.titleId && !found.lands?.length ? found.job : null;
+  const border = useBorderJob(pendingJob);
   // While a member's G2 is open the list is asked every 20 s (only changed rows): crop agreements just made show soon (26 Oct).
   const refetchMembers = members.refetch;
   useEffect(() => { const t = setInterval(() => refetchMembers(), 20_000); return () => clearInterval(t); }, [refetchMembers]);
@@ -227,14 +232,20 @@ export default function MemberStatus({ id, go }) {
   // Her fields only (23 Oct): until her record is in, no map at all, never the leader's own fields.
   // Map taps (24 Oct rule): her property again → back to the list (only her property is on G2's map).
   // No record yet: the title's fields, as the Assets map (28 Oct).
-  const map = m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} />
-    // Before the record (13 Nov): the title's fields with their names, not "Area n".
-    : fields.length ? <AreaMap record={{ zones: fields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry, ...(f.name ? { name: f.name } : {}) })) }} onSelect={() => go('members')} />
+  // 14 Nov: her title's fields with their names (as on her land title), not the record's areas; the areas only when
+  // the title has no fields.
+  const titleFields = m.fields?.length ? m.fields : fields;
+  // White borders, a faint fill (outline: fill 0.06).
+  const jobFields = pendingJob && border.data?.fields?.length ? border.data : null;
+  const map = jobFields && !titleFields.length ? <BorderMap fields={jobFields.fields} plan={jobFields.plan} fitBottom={Math.round(window.innerHeight * 0.55)} />
+    : titleFields.length ? <AreaMap record={{ zones: titleFields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry })) }}
+    labels={Object.fromEntries(titleFields.map((f, i) => [f.id || `f${i}`, { text: f.name || `Field ${i + 1}`, colour: '#ffffff', outline: true }]))} onSelect={() => go('members')} />
+    : m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} />
       // No land (13 Nov: e.g. her title removed): the union's land, as the crop plan's no-title map.
       : <AreaMap record={null} center={unionCentre(members.data)} />;
   const myLands = new Set([m.titleId, ...(m.lands || [])].filter((x) => x != null).map(String));
   const waiting = (pendingPlans.data?.plans || []).find((p) => myLands.has(String(p.land_id)));
-  const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>;
+  const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>View the crop plan</button>;
   // Invested (13 Nov): above Join the union before the member has joined (the amount only; actions after joining).
   const investedSection = m.address && (
         <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
@@ -288,13 +299,13 @@ export default function MemberStatus({ id, go }) {
         {m.joined === false && (
           <JoinSteps m={m} onScan={() => setScanning({ what: 'Join the union', then: () => { markJoined(m.address); refetchMembers(); } })} />
         )}
-        {!m.record && <Row k="Status" v={m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
+        {!m.record && <Row k="Status" v={pendingJob ? 'Pending' : m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
         {/* A member without a land title (13 Nov: e.g. hers was removed): a new one. A keypad member: the leader takes her
             points again; the leader's own row: the leader's own points; a smartphone member: L14, the leader scans her QR. */}
         {/* Fields sent, a border job open (13 Nov): G2 opens that task (L2), not a new title. */}
         {!m.titleId && !m.lands?.length && m.job && (
-          <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
-            onClick={() => go(`tasks/border/${m.job}`)}>Open the field borders</button>
+          <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink, margin: '16px 0' }}
+            onClick={() => go(`tasks/border/${m.job}`)}>Finish the land title job</button>
         )}
         {!m.titleId && !m.lands?.length && !m.job && (m.keypadId || m.formerTitle != null) && (
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}

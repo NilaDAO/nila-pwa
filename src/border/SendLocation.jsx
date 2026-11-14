@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
 import { unionCentre } from '../leader/unionMap';
+import { useFieldMapLoaded } from '../register/FieldMap';
 import RegFrame, { Bouncing, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
 const EMPTY = { points: [], farm: '', finish: false };
@@ -67,7 +68,7 @@ const WifiOff = () => (
  *  map (R6's marker: black inside, amber border); the buttons wait until she names it; the name shows on the map as a
  *  chip (A4: tap = selected, accent) and in the list under the name input. Once a name is typed, the primary turns
  *  "Next point" and stores it. "Take a second point": when she cannot stand in the middle of the field, a second point
- *  and the field's point becomes the middle of the two. The name input shows only for a new point or a selected one (then with the remove button next to it).
+ *  and the field's point becomes the middle of the two. The name input shows only for a new point (with × to drop it) or a selected one; a selected chip shows × to remove its point (14 Nov).
  *  "All my fields have a point" ends it (executive decisions 20 Oct). */
 export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shapes = null }) {
   // startAt / shapes (28 Oct): adding points to an open border job starts "Choose on the map" on a point the job
@@ -159,14 +160,22 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
       ? 'Can\'t stand in the center? Take a second point at the opposite edge. Nila uses the middle of the two.'
       : undefined;
   const wait = unnamed || busy;
+  // Choose on the map, on a phone (14 Nov): the card goes down while she moves the map, the pin carries the Save; it
+  // comes up to name the field and goes down again after Next. Same for the opposite point.
+  // With the map loaded the pin is the only Save (14 Nov): no Save button on the card; without the map (offline, the
+  // field scene) the card keeps it.
+  const { ok: mapOk } = useFieldMapLoaded();
+  const onMap = pan && mapOk;
+  const pinning = pan && (!unnamed || second);
+  const pinLabel = pinning && centre && !busy ? (second ? 'Tap to save the opposite point' : 'Tap to save') : null;
+  // The leader's own points (14 Nov): the step is the header row's title, next to Back.
+  const ownTitle = `${pan ? 'Move' : 'Walk'} to your ${n === 0 ? 'first' : 'next'} field`;
   return (
-    <MapFrame header={forName ? `Fields of ${forName}` : null /* own points: only the step's title (13 Nov) */} onBack={onBack} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
-      selected={selected} onSelect={setSelected}>
-      <div style={cardTitle}>{forName
-        ? (n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field')
-        : pan /* Choose on the map (13 Nov) */
-          ? (n === 0 ? 'Move to your first field' : 'Move to the center of your next field')
-          : (n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field')}</div>
+    <MapFrame header={forName ? `Fields of ${forName}` : ownTitle /* own points: the step in the header row (14 Nov) */} onBack={onBack} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pinning /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
+      selected={selected} onSelect={setSelected} pinLabel={pinLabel} onPin={second ? secondPoint : saveHere} low={pinning}>
+      {forName
+        ? <div style={cardTitle}>{n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field'}</div>
+        : <div style={{ ...sheetText, textAlign: 'center' }}>Try to stand in the middle of your field.</div>}
       {!online && (
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', ...sheetText }}>
           <div style={{ width: 20, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><WifiOff /></div>
@@ -179,23 +188,21 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
           : 'Your location is off. Nila needs it to place a point in your field.'}</div>
       )}
       {/* The name input: only for a new point, or for the point she selected (map or list) — then it holds its name
-          (edits go straight in) and the remove button sits next to it. */}
+          (edits go straight in); the selected chip carries the remove ×. */}
       {unnamed && (
-        <input type="text" aria-label="Field name" placeholder="Field name" value={name} maxLength={40} autoFocus
-          onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') storeName(); }} style={fieldInput} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input type="text" aria-label="Field name" placeholder="Field name" value={name} maxLength={40} autoFocus
+            onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') storeName(); }} style={{ ...fieldInput, flex: 1 }} />
+          {/* A point saved by accident (14 Nov): × drops it before it gets a name. */}
+          <button type="button" aria-label="Remove this point" disabled={busy} onClick={() => { remove(n - 1); setSecond(false); setName(''); }}
+            style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 12, border: 0, background: '#1F2733', color: '#E69283', cursor: 'pointer',
+              fontSize: 22, lineHeight: 1, fontFamily: 'inherit' }}>×</button>
+        </div>
       )}
       {!unnamed && selected != null && q.points[selected] && (
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input type="text" aria-label="Field name" placeholder="Field name" maxLength={40} value={q.points[selected].name || ''}
-            onChange={(e) => { const pts = q.points.slice(); pts[selected] = { ...pts[selected], name: e.target.value.slice(0, 40) }; save({ ...q, points: pts }); }}
-            style={{ ...fieldInput, flex: 1 }} />
-          <button type="button" aria-label={`Remove ${q.points[selected].name || 'this point'}`} onClick={() => remove(selected)}
-            style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 12, border: 0, background: '#1F2733', color: '#E69283', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
-          </button>
-        </div>
+        <input type="text" aria-label="Field name" placeholder="Field name" maxLength={40} value={q.points[selected].name || ''}
+          onChange={(e) => { const pts = q.points.slice(); pts[selected] = { ...pts[selected], name: e.target.value.slice(0, 40) }; save({ ...q, points: pts }); }}
+          style={fieldInput} />
       )}
       {q.points.some((p) => p.name) && (
         <div role="list" aria-label="Your fields" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -205,6 +212,12 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
               <button type="button" onClick={() => setSelected(selected === i ? null : i)}
                 style={{ padding: '0 10px', height: 32, border: 0, background: 'transparent', color: 'inherit',
                   fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>{p.name}</button>
+              {/* Tap a field = selected; its × removes the point (14 Nov). */}
+              {selected === i && (
+                <button type="button" aria-label={`Remove ${p.name}`} onClick={() => remove(i)}
+                  style={{ width: 28, height: 32, marginLeft: -6, padding: 0, border: 0, background: 'transparent', color: 'inherit',
+                    fontFamily: 'inherit', fontSize: 18, fontWeight: 700, lineHeight: 1, cursor: 'pointer' }}>×</button>
+              )}
             </span>
           ) : null))}
         </div>
@@ -216,9 +229,11 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
           : 'Walk across to the opposite edge of this field.'}</div>
       )}
       {second
-        ? <button type="button" style={busy || (pan && !centre) ? btnDisabled : btnPrimary} disabled={busy || (pan && !centre)} onClick={secondPoint}>Save the opposite point</button>
+        ? (!onMap && <button type="button" style={busy || (pan && !centre) ? btnDisabled : btnPrimary} disabled={busy || (pan && !centre)} onClick={secondPoint}>Save the opposite point</button>)
         : unnamed && name.trim()
         ? <button type="button" style={btnPrimary} onClick={storeName}>Next point</button>
+        : onMap
+        ? (unnamed && <button type="button" style={btnDisabled} disabled>Next point</button>)
         : (ready
           ? <button type="button" style={wait ? btnDisabled : btnPrimary} disabled={wait} onClick={saveHere}>Save this location</button>
           : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>)}

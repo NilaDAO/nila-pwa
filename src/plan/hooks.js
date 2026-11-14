@@ -115,7 +115,8 @@ export function usePlanJob(jobId) {
 export function useSubmitIntake(landId) {
   const api = usePlanClient();
   // exclude (5 Nov): the areas she left out just before (buildings, roadsides), for this plan only.
-  return useMutation({ mutationFn: ({ intake, trees, wells, exclude }) => api.makePlan(landId, intake, { trees, wells, exclude }) });
+  // merge (14 Nov): areas she added to a touching area, { area: neighbour }, for this plan only.
+  return useMutation({ mutationFn: ({ intake, trees, wells, exclude, merge }) => api.makePlan(landId, intake, { trees, wells, exclude, merge }) });
 }
 
 /** CP11 "I accept": every area of the plan (the node accepts per area). */

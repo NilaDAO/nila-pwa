@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ethers } from 'ethers';
 import { useProvider } from '../hooks/useWallet.ts';
 import { fetchRecordFromIPFS } from '../utils/ipfsCid.ts';
+import { absorbScattered } from './scattered';
 
 const API = process.env.REACT_APP_API_BASE_URL;
 const TITLE_ABI = ['function getCommitment(uint256) view returns (bytes32)',
@@ -90,9 +91,16 @@ export function useFieldRecord(landId, owner, stellarHash) {
   });
 }
 
-/** Areas in a fixed order: "Area n" is the n-th zone by zone id (z0 → Area 1). */
-export const areasOf = (record) => [...(record?.zones || [])]
-  .sort((a, b) => String(a.zone_id).localeCompare(String(b.zone_id), undefined, { numeric: true }));
+/** Areas in a fixed order: "Area n" is the n-th zone by zone id (z0 → Area 1). 14 Nov: a scattered "unknown" area of
+ *  an older record is shared out among the areas its pieces touch (./scattered.js, as the node's plan does). */
+const areasCache = new WeakMap();
+export const areasOf = (record) => {
+  if (record && areasCache.has(record)) return areasCache.get(record);
+  const out = absorbScattered([...(record?.zones || [])]
+    .sort((a, b) => String(a.zone_id).localeCompare(String(b.zone_id), undefined, { numeric: true })));
+  if (record && typeof record === 'object') areasCache.set(record, out);
+  return out;
+};
 
 /** CP2 summary: period, cultivations, areas. */
 export function summarize(record) {

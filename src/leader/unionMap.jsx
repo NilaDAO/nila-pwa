@@ -9,6 +9,7 @@
 //  - harvests: what grows on each area now, from the record (its crop's colour; unidentified in grey).
 // (Crop plan keeps the leader's own property, CropPlanFlow.)
 import { useCallback, useMemo } from 'react';
+import { areasOf } from '../plan/record';
 import AreaMap, { ringsOf } from '../plan/AreaMap';
 import { useCropCatalogue, usePlanClient } from '../plan/hooks';
 import { useNilaSigner } from '../wallet/signer';
@@ -71,7 +72,7 @@ export function useLeaderMap(filter = 'members', fitBottom = 170, on = true) {
     let count = 0;
     const add = (id, geometry, lab) => { if (geometry && !label[id]) { zones.push({ zone_id: id, geometry }); label[id] = lab; } };
     for (const m of all) {
-      const areas = (m.record?.zones || []).filter((z) => z.geometry);
+      const areas = areasOf(m.record).filter((z) => z.geometry);   // 14 Nov: scattered unknown pieces shared out (plan/scattered.js)
       const mine = shares.data?.[m.address]?.shares || [];
       const outline = () => m.places.forEach((p, i) => add(`${m.key}#p${i}`, p.geometry, i ? { hide: true } : { text: m.label }));
       if (!areas.length && !m.places.length) continue;

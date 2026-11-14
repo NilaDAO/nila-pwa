@@ -92,6 +92,28 @@ function chip({ text, sub, acc, soil }, on, faded, clickable) {
 }
 
 export const ringsOf = (g) => (g?.type === 'Polygon' ? [g.coordinates[0]] : g?.type === 'MultiPolygon' ? g.coordinates.map((p) => p[0]) : []);
+// Every polygon with all its rings, holes included (14 Nov: an area inside another is the other's hole).
+export const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
+
+/** Joined areas (14 Nov): an area whose label has `join` (an area she added to a touching one) is drawn as part of
+ *  that area — its colour, one chip, no line between them. The root of each area, and the outline of a group: the
+ *  edges of its rings that no other ring in the group shares (the areas come from one raster, so shared edges match). */
+export function joinRoot(labels, zone) {
+  const seen = new Set([zone]);
+  let z = zone;
+  while (labels[z]?.join && !labels[labels[z].join]?.gone && !seen.has(labels[z].join)) { z = labels[z].join; seen.add(z); }
+  return z;
+}
+function outlineOf(rings) {
+  const key = ([x, y]) => `${x.toFixed(7)},${y.toFixed(7)}`;
+  const count = new Map();
+  const segs = [];
+  rings.forEach((r) => { for (let i = 1; i < r.length; i += 1) {
+    const a = key(r[i - 1]); const b = key(r[i]); const k = a < b ? `${a}|${b}` : `${b}|${a}`;
+    count.set(k, (count.get(k) || 0) + 1); segs.push([k, r[i - 1], r[i]]);
+  } });
+  return segs.filter(([k]) => count.get(k) === 1).map(([, p, q]) => [p, q]);
+}
 
 /** outline: the parcel (record meta.geometry.out), drawn as a dashed white line; areas get their crop colour as fill
  *  and border (board CP10). selected / onSelect: tapping an area or its chip picks it; the others fade. */
@@ -113,37 +135,53 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
     }
     const bounds = new g.LatLngBounds();
     const pick = onSelect ? (z) => () => onSelect(selected === z ? null : z) : null;
-    areasOf(record).forEach((z, i) => {
-      const rings = ringsOf(z.geometry);
+    const all = areasOf(record);
+    const labOf = (z, i) => (labels[z.zone_id] && !labels[z.zone_id].join ? labels[z.zone_id] : { text: z.name || `Area ${i + 1}` });
+    const rootOf = (z) => joinRoot(labels, z.zone_id);
+    all.forEach((z, i) => {
+      if (rootOf(z) !== z.zone_id) return;    // drawn with the area it was added to
+      const group = all.filter((y) => rootOf(y) === z.zone_id);
+      const joined = group.length > 1;
+      const rings = group.flatMap((y) => ringsOf(y.geometry));
       if (!rings.length) return;
-      const lab = labels[z.zone_id] || { text: z.name || `Area ${i + 1}` };
+      const lab = labOf(z, i);
       if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
-      const faded = !!selected && selected !== z.zone_id;
+      const faded = !!selected && !group.some((y) => y.zone_id === selected);
+      // The picked area (14 Nov): a white line around it and a lighter fill, so it stands out on the map.
+      const sel = !!selected && !faded;
       const colour = lab.colour || '#ffffff';
       let sx = 0; let sy = 0; let k = 0;
-      rings.forEach((ring) => {
-        const path = ring.map(([lng, lat]) => ({ lat, lng }));
+      // Joined areas: one outline around the group, no line between its parts.
+      if (joined && !lab.hatch && !lab.dashed) {
+        outlineOf(group.flatMap((y) => polysOf(y.geometry).flat())).forEach(([p, q]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: p[1], lng: p[0] }, { lat: q[1], lng: q[0] }],
+          clickable: false, zIndex: 2, strokeColor: sel ? '#ffffff' : colour, strokeOpacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: sel ? 3 : 1.5 })));
+      }
+      group.forEach((part) => polysOf(part.geometry).forEach((poly0) => {
+        // Its holes as holes (14 Nov): an area inside it is not painted over.
+        const paths = poly0.filter((r) => r.length > 2).map((r) => r.map(([lng, lat]) => ({ lat, lng })));
+        if (!paths.length) return;
+        const path = paths[0];
         path.forEach((q) => { bounds.extend(q); sx += q.lng; sy += q.lat; k += 1; });
-        // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so a dashed accent outline and a faint fill.
-        const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
-          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : 1),
+        // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so an accent outline (solid since 14 Nov) and a faint fill.
+        // 14 Nov: its outline solid in the accent, no longer dashed.
+        const poly = new g.Polygon({ map: m, paths, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
+          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : sel ? 0.5 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
-          strokeColor: colour, strokeOpacity: lab.hatch || lab.dashed ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
+          strokeColor: sel ? '#ffffff' : lab.hatch ? '#D4CF5A' : colour,
+          strokeOpacity: sel ? (joined ? 0 : 1) : lab.hatch ? (faded ? 0.3 : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1),
+          strokeWeight: sel ? 3 : 1.5, zIndex: sel ? 3 : 1 });
         // lab.dashed (13 Nov, the members map): a property's outline as a dashed line.
         if (lab.dashed) {
           drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
             icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? 0.3 : 1, strokeColor: colour, strokeWeight: 2, scale: 3 }, offset: '0', repeat: '10px' }] }));
         }
-        if (lab.hatch) {
-          drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
-            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? 0.3 : 1, strokeColor: '#D4CF5A', strokeWeight: 2, scale: 3 }, offset: '0', repeat: '9px' }] }));
-        }
-        if (pick) poly.addListener('click', pick(z.zone_id));
+        // Each part opens itself (the leave-out step: undo the join); tapRoot (the plan): the area it is part of.
+        if (pick) poly.addListener('click', pick(labels[part.zone_id]?.tapRoot ? z.zone_id : part.zone_id));
         drawn.current.push(poly);
-      });
+      }));
       if (k && !lab.hide && !chipsOff && g.marker?.AdvancedMarkerElement) {   // hide: a shape with no chip (a member's further fields)
         const mk = new g.marker.AdvancedMarkerElement({ map: m, position: { lat: sy / k, lng: sx / k }, gmpClickable: !!pick,
-          title: lab.text, content: chip(lab, selected === z.zone_id, faded, !!pick) });
+          title: lab.text, content: chip(lab, group.some((y) => y.zone_id === selected), faded, !!pick) });
         if (pick) mk.addListener('click', pick(z.zone_id));
         drawn.current.push(mk);
       }
@@ -196,17 +234,21 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
     const group = L.featureGroup().addTo(map);
     areas.forEach((z, i) => {
       if (!z.geometry) return;
-      const lab = labels[z.zone_id] || { text: z.name || `Area ${i + 1}` };
-      if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
-      const faded = !!selected && selected !== z.zone_id;
+      const root = joinRoot(labels, z.zone_id);   // 14 Nov: an added area in its neighbour's style, no label of its own
+      const own = labels[z.zone_id] && !labels[z.zone_id].join ? labels[z.zone_id] : { text: z.name || `Area ${i + 1}` };
+      if (own.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
+      const lab = root === z.zone_id ? own : { ...(labels[root] || {}), hide: true };
+      const tapTo = root !== z.zone_id && labels[z.zone_id]?.tapRoot ? root : z.zone_id;
+      const faded = !!selected && selected !== z.zone_id && joinRoot(labels, selected) !== root;
+      const sel = !!selected && !faded;   // 14 Nov: the picked area, a white line and a lighter fill
       const colour = lab.colour || '#ffffff';
       // An area still to be set (13 Nov): hatched, so she sees at once which areas are left (lab.hatch).
       if (lab.hatch) hatchPattern();
       const layer = L.geoJSON(z.geometry, { style: lab.hatch
         ? { color: '#F1F5F9', weight: 2, opacity: faded ? 0.3 : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? 0.3 : 1 }
-        : { color: colour, weight: 1.5, ...(lab.dashed ? { dashArray: '6 4', weight: 2 } : {}), opacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
+        : { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : sel ? 0.5 : 1) } });
       layer.addTo(group);
-      if (onSelect) layer.on('click', () => onSelect(selected === z.zone_id ? null : z.zone_id));
+      if (onSelect) layer.on('click', () => onSelect(selected === tapTo ? null : tapTo));
       if (!lab.hide && !chipsOff) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
     });
     const out = record?.meta?.geometry?.out;
