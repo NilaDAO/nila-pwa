@@ -37,11 +37,11 @@ const fieldName = (f) => f?.name || `Field ${f?.n}`;
 // inside the card, drag line, clear of the tab bar. It starts at 40 % of the screen.
 const TOP = 0.4;
 
-function Frame({ name, onBack, map, children }) {
+function Frame({ name, onBack, map, full, children }) {
   const top = Math.round(window.innerHeight * TOP);
   const shown = map ? cloneElement(map, { fitBottom: window.innerHeight - top }) : null;
   return (
-    <Sheet map={shown} title={name} onBack={onBack} top={top + 24} noSettings>
+    <Sheet map={shown} title={name} onBack={onBack} top={top + 24} full={full} noSettings>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{children}</div>
     </Sheet>
   );
@@ -309,6 +309,7 @@ function Done({ job, onField, onBack, onAdd }) {
   // 14 Nov: the button is grey (not just inert) until the land has a name.
   const named = !!job.farm || !!farm.trim();
   const off = mint.isPending || !ok.length || !named;
+  const scanView = scanOpen && joined.needed && !st && !plot;
   const startMint = () => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); };
   if (!closed && (minting || (started && (st === 'minted' || st === 'failed' || mint.error)))) {
     const tx = {
@@ -322,9 +323,10 @@ function Done({ job, onField, onBack, onAdd }) {
       onRetry={() => { mint.reset(); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }} />;
   }
   return (
-    <Frame name={memberName(job)} onBack={onBack}
+    // The camera view (14 Nov) opens the card to the full height.
+    <Frame name={memberName(job)} onBack={scanView ? () => setScanOpen(false) : onBack} full={scanView}
       map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} plots={st ? [] : job.plots || []} plotOn={plotId} onPlot={st ? undefined : setPlotId} />}>
-      {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : scanOpen && joined.needed && !st ? (<>
+      {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : scanView ? (<>
         <Head title="Scan the member's QR" sub="The member opens Your QR in the Nila app. Scan it to make the member's account; the land title is minted right after." />
         {joined.busy ? <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Making the member's account…</p>
           : <CameraView key={joined.tries} mode="qr" onText={async (t) => { if (await joined.scan(t)) { setScanOpen(false); startMint(); } }} />}
