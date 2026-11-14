@@ -444,10 +444,8 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       const m = new Date(st.until).toLocaleDateString('en-GB', { month: 'short' });
       out[st.zone] = { text: st.name, sub: `until ${st.estimate ? '~' : ''}${m}`, colour: st.colour, acc: checked.has(st.zone) };
     }
-    // An area she added to a touching one before the plan (14 Nov): it shows its neighbour's crop, "with" that area.
-    for (const [z, to] of Object.entries(plan.plan.merged || {})) {
-      if (out[to]) out[z] = { ...out[to], sub: `with ${areaName(to)}`, acc: checked.has(to) };
-    }
+    // An area she added to a touching one before the plan (14 Nov): drawn as one shape with it, one chip.
+    for (const [z, to] of Object.entries(plan.plan.merged || {})) out[z] = { join: to, tapRoot: true };
     return { ...out, ...Object.fromEntries(gone) };
   }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, pastYear, approved, slotsOn]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
@@ -770,7 +768,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     };
     const outLabels = Object.fromEntries(zoneOrder.map((z) => [z, leftOut.has(z)
       ? { text: 'Left out', sub: areaName(z), colour: '#8A94A6' }
-      : mergeTo[z] ? { text: `Part of ${areaName(finalOf(z))}`, sub: areaName(z) } : { text: areaName(z) }]));
+      : mergeTo[z] ? { join: finalOf(z) } : { text: areaName(z) }]));   // added: one shape with its neighbour (14 Nov)
     const all = zoneOrder.length > 0 && zoneOrder.every(outNow);
     const decided = leftOut.size + Object.keys(mergeTo).length;
     const areas = areasOf(record);
