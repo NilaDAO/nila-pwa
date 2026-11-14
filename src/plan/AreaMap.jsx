@@ -156,18 +156,15 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
         const path = ring.map(([lng, lat]) => ({ lat, lng }));
         path.forEach((q) => { bounds.extend(q); sx += q.lng; sy += q.lat; k += 1; });
         // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so a dashed accent outline and a faint fill.
+        // 14 Nov: its outline solid in the accent, no longer dashed.
         const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
           fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
-          strokeColor: colour, strokeOpacity: lab.hatch || lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
+          strokeColor: lab.hatch ? '#D4CF5A' : colour, strokeOpacity: lab.hatch ? (faded ? 0.3 : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
         // lab.dashed (13 Nov, the members map): a property's outline as a dashed line.
         if (lab.dashed) {
           drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
             icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? 0.3 : 1, strokeColor: colour, strokeWeight: 2, scale: 3 }, offset: '0', repeat: '10px' }] }));
-        }
-        if (lab.hatch) {
-          drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
-            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? 0.3 : 1, strokeColor: '#D4CF5A', strokeWeight: 2, scale: 3 }, offset: '0', repeat: '9px' }] }));
         }
         // Each part opens itself (the leave-out step: undo the join); tapRoot (the plan): the area it is part of.
         if (pick) poly.addListener('click', pick(labels[part.zone_id]?.tapRoot ? z.zone_id : part.zone_id));
