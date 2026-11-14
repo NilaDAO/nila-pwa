@@ -152,10 +152,21 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
     out.push({ key: `standing-${st.crop}`, s0, s1, name: `${st.name}, until ${st.estimate ? '~' : ''}${m}`, fill: st.colour || C.muted,
       ink: lightBg(st.colour) ? C.ink : C.text, faded: true, editable: false, row: {} });
   }
-  for (const se of plan.plan.seasons || []) {
+  // A season's own span (14 Nov): its start to the next season's start (else three months), for a crop that stands
+  // there (no sowing date) and for a season left empty.
+  const ss = plan.plan.seasons || [];
+  const spanOf = (i) => {
+    const st = String(ss[i].start).slice(0, 10);
+    const t = new Date(st); t.setMonth(t.getMonth() + 3);
+    return [st, ss[i + 1]?.start ? String(ss[i + 1].start).slice(0, 10) : t.toISOString().slice(0, 10)];
+  };
+  for (const [i, se] of ss.entries()) {
     for (const r of se.rows.filter((x) => zonesOf(x).includes(zone))) {
-      if (at(r.harvest) <= 0 || at(r.sow) >= 12) continue;
-      const [s0, s1] = clamp(r.sow, r.harvest);
+      // A crop that stands there (sugarcane with no detected end, 14 Nov): no sowing date, drawn over its season and
+      // changeable like any crop (it was not drawn at all).
+      const [from, to] = r.sow ? [r.sow, r.harvest] : spanOf(i);
+      if (at(to) <= 0 || at(from) >= 12) continue;
+      const [s0, s1] = clamp(from, to);
       const pick = picked[se.slot] && cropOf(picked[se.slot]);
       const colour = (pick && pick.colour) || r.colour || C.muted;
       taken.add(se.slot);
@@ -176,6 +187,25 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
     // A soil cover is advice (21 Oct): a crop may be picked in its season instead (28 Oct).
     out.push({ key: `soil-${c.from}`, slot, s0, s1, name: label, fill, ink: C.text, soil: true, cover: c,
       editable: !readOnly && !!slot && !taken.has(slot), row: { slot }, dim: !!slots && !!slot && !slots.has(slot) });
+    if (slot) taken.add(slot);
+  }
+  // A season the plan leaves empty on a planned area (14 Nov): a faint "Empty" bar she can tap to pick a crop.
+  if (plan.plan.proposal?.[zone]) {
+    for (const [i, se] of ss.entries()) {
+      if (taken.has(se.slot)) continue;
+      const [from, to] = spanOf(i);
+      if (at(to) <= 0 || at(from) >= 12) continue;
+      const [s0, s1] = clamp(from, to);
+      // Not over the crop standing now (its faded bar): from its end.
+      const busy = out.filter((it) => it.key.startsWith('standing-')).reduce((m, it) => Math.max(m, it.s1), 0);
+      const e0 = Math.max(s0, busy);
+      if (s1 - e0 < 0.3) continue;
+      const pick = picked[se.slot] && cropOf(picked[se.slot]);
+      out.push({ key: `empty-${se.slot}`, slot: se.slot, s0: e0, s1, name: pick ? pick.name : 'Empty',
+        fill: pick ? pick.colour || C.muted : 'repeating-linear-gradient(45deg, rgba(241,245,249,0.14) 0 3px, transparent 3px 6px)',
+        ink: pick ? (lightBg(pick.colour) ? C.ink : C.text) : C.muted, editable: !readOnly, row: { slot: se.slot },
+        dim: !!slots && !slots.has(se.slot) });
+    }
   }
   return out.sort((a, b) => a.s0 - b.s0);
 }
