@@ -8,6 +8,7 @@ import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { C, FONT, R } from '../shell/tokens';
+import { Steps as NumberedSteps } from '../shell/MessageSlider';   // G2's numbered steps (14 Nov)
 import { KV } from '../loan/AssetParts';
 import { COWS, LAND_ROLE, mergedPlan, qkPlan, useAcceptPlan, useApprovePlan, useCropCatalogue, useCropChain, useCropPlan, useDiscardPlan, useExtendPlan, useLandTitles, usePlanClient, usePlanJob, useRevisePlan, useSubmitIntake } from './hooks';
 import { CheckRow, Choice, Notice, Primary, Section, Sheet, Steps, inr, muted } from './ui';
@@ -58,6 +59,7 @@ function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
   );
 }
 
+const stepBtn = { flex: 'none', width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer', margin: '8px 0' };
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
 function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan', y0, onArea }) {
@@ -523,16 +525,20 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           <span style={{ display: 'flex', animation: busy ? 'nila-spin 900ms linear infinite' : 'none' }}><RefreshIcon color={C.text} /></span>
         </RoundButton>
       )}>
-        <p style={muted}>{minting ? 'Your land title is being minted. Your crop plan starts when it is ready.' : openJob
-          ? (self ? 'Your field points are with the union. Check the borders and mint your land title.' : 'Your field points are with the union. Your leader mints your land title.')
-          : helped ? 'Your leader takes the field points at your farm and mints your land title. Your crop plan starts when it is ready.'
-            : 'Your crop plan starts when your land title is ready.'}</p>
+        {/* No title, nothing under way (14 Nov): three steps, the action in its step, as G2's Join the union. */}
+        {!minting && !openJob ? (
+          <NumberedSteps gap={16} items={helped
+            ? [<>Show your QR to your leader.<button type="button" style={stepBtn} onClick={() => setTitleQr(true)}>Show your QR</button></>,
+              'Your union maps your fields and mints your land title.', 'Your leader makes your crop plan with you.']
+            : [<>Map your fields and mint your land title.<button type="button" style={stepBtn} onClick={() => { window.location.hash = '#/crop/register'; }}>Mint land title</button></>,
+              'Make your crop plan.']} />
+        ) : (
+          <p style={muted}>{minting ? 'Your land title is being minted. Your crop plan starts when it is ready.'
+            : self ? 'Your field points are with the union. Check the borders and mint your land title.' : 'Your field points are with the union. Your leader mints your land title.'}</p>
+        )}
         {(titles.isError || stellarTitles.isError) && <p style={{ ...muted, color: C.coral }}>Your land title could not be loaded.</p>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-          {minting ? null : openJob
-            ? self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>Mint land title</Primary>
-            : helped ? <Primary onClick={() => setTitleQr(true)}>Show your QR</Primary>
-              : <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint land title</Primary>}
+          {!minting && openJob && self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>Mint land title</Primary>}
         </div>
       </Sheet>
     );
