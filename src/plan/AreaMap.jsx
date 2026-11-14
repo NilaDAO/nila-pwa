@@ -155,7 +155,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       group.forEach((part) => ringsOf(part.geometry).forEach((ring) => {
         const path = ring.map(([lng, lat]) => ({ lat, lng }));
         path.forEach((q) => { bounds.extend(q); sx += q.lng; sy += q.lat; k += 1; });
-        // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so a dashed accent outline and a faint fill.
+        // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so an accent outline (solid since 14 Nov) and a faint fill.
         // 14 Nov: its outline solid in the accent, no longer dashed.
         const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
           fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : 1),
