@@ -238,7 +238,7 @@ export default function MemberStatus({ id, go }) {
       : <AreaMap record={null} center={unionCentre(members.data)} />;
   const myLands = new Set([m.titleId, ...(m.lands || [])].filter((x) => x != null).map(String));
   const waiting = (pendingPlans.data?.plans || []).find((p) => myLands.has(String(p.land_id)));
-  const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>Make or open the crop plan</button>;
+  const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>View the crop plan</button>;
   // Invested (13 Nov): above Join the union before the member has joined (the amount only; actions after joining).
   const investedSection = m.address && (
         <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
