@@ -604,6 +604,27 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           <KV k="Areas" v={`${sum.areas}${growingCount ? ` · ${growingCount} growing` : ''}`} />
         </div>
         <hr style={{ height: 1, background: C.raised, border: 0, margin: '16px 0 0' }} />
+        {/* What grows now, checked first (14 Nov): every area with what the satellite read or what was set, each one
+            tap to change, also when nothing is unidentified (banana read on all areas was not changeable from here). */}
+        {!growArea && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0 0' }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>What grows now</span>
+            {zoneIds.map((z) => {
+              const l = nowLabels[z] || {};
+              return (
+                <button key={z} type="button" onClick={() => setGrowArea(z)} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
+                  background: C.raised, border: 0, borderRadius: 12, padding: '12px 16px', color: C.text, fontFamily: FONT, fontSize: 14, cursor: 'pointer' }}>
+                  <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: R.round, background: l.colour || C.muted, flexShrink: 0 }} />
+                  <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                    <b>{l.text || nameOf(z)}</b>
+                    <span style={{ color: l.unknown || l.hatch ? C.coral : C.muted }}>{l.unknown || l.hatch ? 'Not set yet' : l.sub || '—'}</span>
+                  </span>
+                  <span style={{ color: C.muted, fontSize: 13, fontWeight: 700 }}>Change</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         {growArea && settable(growArea) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0 8px' }}>
             <span style={{ fontSize: 14, fontWeight: 700 }}>What grows on {nowLabels[growArea]?.text || nameOf(growArea)} now?</span>
@@ -620,7 +641,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         <Primary disabled={toSet.length > 0} onClick={() => setStep('intro')}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
         {/* Under the button (12 Nov, option B): why it waits. */}
         {!growArea && toSet.length > 0 && (
-          <p role="note" style={{ ...muted, textAlign: 'center', marginTop: 8 }}>Tap the grey areas to set what is growing there at this moment.</p>
+          <p role="note" style={{ ...muted, textAlign: 'center', marginTop: 8 }}>Set what is growing on every area marked "Not set yet".</p>
         )}
       </Sheet>
     );
