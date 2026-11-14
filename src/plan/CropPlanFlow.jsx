@@ -21,6 +21,7 @@ import { areasOf, summarize, useFieldRecord } from './record';
 import { useTitleName } from './hooks';
 import { useStellarTitles } from '../stellar/hooks';
 import AreaMap from './AreaMap';
+import { neighboursOf } from './neighbours';
 import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
 import { AreaCard, CropSelect, PlanChart, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
@@ -353,6 +354,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const [lang, setLang] = useState('ta');   // CP9's language (4 Nov): Tamil when the plan has it
   const [removing, setRemoving] = useState(null);
   const [leftOut, setLeftOut] = useState(() => new Set());   // areas left out before the plan is made (5 Nov)
+  // Areas added to a touching area before the plan (14 Nov; area → neighbour), for this plan only; the area tapped.
+  const [mergeTo, setMergeTo] = useState({});
+  const [pickOut, setPickOut] = useState(null);
   // What grows now, first (12 Nov): she sets the crop on every area the satellite could not identify before the plan
   // is made (area → crop key); sent with the intake as `growing`.
   const [growing, setGrowing] = useState({});
@@ -439,6 +443,10 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
       if (out[st.zone] || !start || st.until <= start) continue;
       const m = new Date(st.until).toLocaleDateString('en-GB', { month: 'short' });
       out[st.zone] = { text: st.name, sub: `until ${st.estimate ? '~' : ''}${m}`, colour: st.colour, acc: checked.has(st.zone) };
+    }
+    // An area she added to a touching one before the plan (14 Nov): it shows its neighbour's crop, "with" that area.
+    for (const [z, to] of Object.entries(plan.plan.merged || {})) {
+      if (out[to]) out[z] = { ...out[to], sub: `with ${areaName(to)}`, acc: checked.has(to) };
     }
     return { ...out, ...Object.fromEntries(gone) };
   }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, pastYear, approved, slotsOn]);
@@ -715,7 +723,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // CP7b, her farm business's money now (executive decision 21 Oct). DESIGN GAP: no board. Optional and skippable:
     // skipped = no farm_cash_now at all (the cash flow starts at ₹0; nothing assumes or mentions her farm's money).
     // Then the areas to leave out (5 Nov), the last step before the plan is made.
-    const make = (amount) => { setError(undefined); setCashGiven(amount); setLeftOut(new Set()); setStep('leaveout'); };
+    const make = (amount) => { setError(undefined); setCashGiven(amount); setLeftOut(new Set()); setMergeTo({}); setPickOut(null); setStep('leaveout'); };
     const n = Number(farmCash.replace(/[^0-9]/g, ''));
     const given = farmCash.trim() !== '' && Number.isFinite(n);
     return (
@@ -740,25 +748,60 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // Leave out areas (executive decision 5 Nov; DESIGN GAP: no board): just before the plan is made, she taps the
     // areas with buildings, a road or a path; they get no crops in this plan. Asked again at every new plan (areas
     // change), sent with this plan only, never stored with her land; her land title keeps its acres.
+    // 14 Nov: a tapped area shows chips — Leave out, or Add to each touching area (its acres count with that area in
+    // this plan, also never stored); Keep it undoes.
+    const finalOf = (z) => { const seen = new Set([z]); let t = mergeTo[z]; while (t && mergeTo[t] && !seen.has(t)) { seen.add(t); t = mergeTo[t]; } return t; };
+    const outNow = (z) => leftOut.has(z) || (mergeTo[z] && leftOut.has(finalOf(z)));   // added to a left-out area: out too
     const make = async () => {
       setError(undefined);
       try {
         const intake = { crops: [...crops], cows: COWS[cows], hard_months: months, land_role: LAND_ROLE[role], growing };
         if (cashGiven != null) intake.farm_cash_now = cashGiven;
-        const r = await submit.mutateAsync({ intake, exclude: [...leftOut] });
+        const exclude = zoneOrder.filter(outNow);
+        const merge = Object.fromEntries(Object.keys(mergeTo).filter((z) => !outNow(z)).map((z) => [z, finalOf(z)]));
+        const r = await submit.mutateAsync({ intake, exclude, merge });
         setJobId(r.job_id); setStep('making');
       } catch (e) { setError(e.message); }
     };
-    const toggle = (z) => z && setLeftOut((x) => { const y = new Set(x); if (y.has(z)) y.delete(z); else y.add(z); return y; });
-    const outLabels = Object.fromEntries(zoneOrder.map((z, i) => [z, leftOut.has(z)
-      ? { text: 'Left out', sub: areaName(z), colour: '#8A94A6' } : { text: areaName(z) }]));
-    const all = zoneOrder.length > 0 && zoneOrder.every((z) => leftOut.has(z));
+    const choose = (z, what) => {
+      setLeftOut((x) => { const y = new Set(x); if (what === 'out') y.add(z); else y.delete(z); return y; });
+      setMergeTo((m) => { const y = { ...m }; if (what && what !== 'out') y[z] = what; else delete y[z]; return y; });
+      setPickOut(null);
+    };
+    const outLabels = Object.fromEntries(zoneOrder.map((z) => [z, leftOut.has(z)
+      ? { text: 'Left out', sub: areaName(z), colour: '#8A94A6' }
+      : mergeTo[z] ? { text: `Part of ${areaName(finalOf(z))}`, sub: areaName(z) } : { text: areaName(z) }]));
+    const all = zoneOrder.length > 0 && zoneOrder.every(outNow);
+    const decided = leftOut.size + Object.keys(mergeTo).length;
+    const areas = areasOf(record);
+    // Touching areas she can add it to: not left out, and not one that is (through others) added to this area.
+    const nbrs = pickOut ? neighboursOf(areas, pickOut).filter((z) => !leftOut.has(z) && z !== pickOut && finalOf(z) !== pickOut) : [];
+    const pill = (on) => ({ height: 36, padding: '0 14px', borderRadius: 9999, border: 0, fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
+      cursor: 'pointer', background: on ? '#D4CF5A' : '#1F2733', color: on ? '#121212' : '#F1F5F9' });
     return (
-      <Sheet map={record ? <AreaMap record={record} labels={outLabels} onSelect={toggle}
+      <Sheet map={record ? <AreaMap record={record} labels={outLabels} selected={pickOut} onSelect={(z) => setPickOut(z)}
         fitBottom={Math.round(window.innerHeight / 2) + 72} /> : map} landName={name} onBack={back('farmcash')}>
-        <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Leave out areas you do not farm</h1>
-        <p style={{ ...muted, textAlign: 'center' }}>Tap an area with a house, a shed, a road or a path. It gets no crops in this plan. Tap it again to keep it.</p>
-        <p style={{ ...muted, textAlign: 'center', margin: '4px 0 0' }}>{leftOut.size ? `${leftOut.size} of ${zoneOrder.length} areas left out` : 'No areas left out'}</p>
+        {pickOut ? (
+          <>
+            <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>{areaName(pickOut)}</h1>
+            <p style={{ ...muted, textAlign: 'center' }}>Leave it out, or add it to the area next to it.</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+              <button type="button" style={pill(leftOut.has(pickOut))} onClick={() => choose(pickOut, leftOut.has(pickOut) ? null : 'out')}>Leave out</button>
+              {nbrs.map((z) => (
+                <button key={z} type="button" style={pill(mergeTo[pickOut] === z)} onClick={() => choose(pickOut, mergeTo[pickOut] === z ? null : z)}>Add to {areaName(z)}</button>
+              ))}
+              {(leftOut.has(pickOut) || mergeTo[pickOut]) && <button type="button" style={pill(false)} onClick={() => choose(pickOut, null)}>Keep it</button>}
+            </div>
+          </>
+        ) : (
+          <>
+            <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Leave out areas you do not farm</h1>
+            <p style={{ ...muted, textAlign: 'center' }}>Tap an area with a house, a shed, a road or a path to leave it out, or add a small area to the area next to it.</p>
+            <p style={{ ...muted, textAlign: 'center', margin: '4px 0 0' }}>{decided
+              ? [leftOut.size && `${leftOut.size} left out`, Object.keys(mergeTo).length && `${Object.keys(mergeTo).length} added to another area`].filter(Boolean).join(' · ')
+              : 'No areas left out'}</p>
+          </>
+        )}
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <Primary disabled={submit.isPending || all} onClick={make}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
       </Sheet>
