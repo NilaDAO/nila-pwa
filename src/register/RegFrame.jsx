@@ -134,21 +134,40 @@ function MapOrScene({ map, points, me, pan, onCenter, start, selected, onSelect,
 }
 
 /** Choose on the map: the pin in the middle of the map above the card marks where the point goes (26 Oct). With a
- *  label (14 Nov) the pin carries its own Save button, so on a phone the point is saved where she placed it, without
- *  pulling the card up first (the map moved under her finger and points landed beside their field). */
+ *  label (14 Nov) the pin itself is the Save: a crosshair whose centre is exactly the point, a soft pulse that says it
+ *  can be tapped, and a small quiet line under it. On a phone the point is saved where she placed it, without pulling
+ *  the card up first (the map moved under her finger and points landed beside their field). */
+const PIN_CSS = `@keyframes nila-pin-pulse{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.25);opacity:0}}
+@media (prefers-reduced-motion: reduce){.nila-pin-pulse{animation:none!important;opacity:0}}`;
 function PanPin({ y, label, onTap }) {
   const top = y != null ? y : '50%';
+  const S = 56;   // the tap target; the point is its exact centre
+  const mark = (
+    <svg width={S} height={S} viewBox="0 0 56 56" aria-hidden="true" style={{ display: 'block', overflow: 'visible' }}>
+      <circle cx="28" cy="28" r="17" fill="rgba(18,18,18,0.18)" stroke="#D4CF5A" strokeWidth="2.5" />
+      {/* crosshair ticks: inside the ring, clear of the centre */}
+      <path d="M28 7v8M28 41v8M7 28h8M41 28h8" stroke="#121212" strokeWidth="4" strokeLinecap="round" />
+      <path d="M28 7v8M28 41v8M7 28h8M41 28h8" stroke="#D4CF5A" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="28" cy="28" r="3.5" fill="#D4CF5A" stroke="#121212" strokeWidth="1.5" />
+    </svg>
+  );
+  if (!label) {
+    return (
+      <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top, transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 2 }}>{mark}</div>
+    );
+  }
   return (
     <>
-      <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top, transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 2 }}>
-        <svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="rgba(212,166,52,0.25)" />
-          <circle cx="22" cy="22" r="9" fill="#D4A634" stroke="#121212" strokeWidth="3" /></svg>
-      </div>
-      {label && (
-        <button type="button" onClick={onTap} style={{ position: 'absolute', left: '50%', top, transform: 'translate(-50%, calc(-100% - 26px))', zIndex: 3,
-          height: 40, padding: '0 18px', borderRadius: 9999, border: 0, background: '#D4CF5A', color: '#121212', fontFamily: 'inherit', fontSize: 14,
-          fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer', boxShadow: 'rgba(0,0,0,0.35) 0 4px 10px 0' }}>{label}</button>
-      )}
+      <style>{PIN_CSS}</style>
+      <button type="button" aria-label={label} onClick={onTap} style={{ position: 'absolute', left: '50%', top, transform: 'translate(-50%, -50%)', zIndex: 3,
+        width: S, height: S, padding: 0, border: 0, background: 'transparent', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
+        <span className="nila-pin-pulse" aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid #D4CF5A',
+          animation: 'nila-pin-pulse 1.8s ease-out infinite', pointerEvents: 'none' }} />
+        {mark}
+      </button>
+      <div aria-hidden="true" style={{ position: 'absolute', left: '50%', top, transform: `translate(-50%, ${S / 2 + 4}px)`, zIndex: 2, pointerEvents: 'none',
+        padding: '2px 8px', borderRadius: 9999, background: 'rgba(18,18,18,0.55)', color: '#F1F5F9', fontSize: 12, fontWeight: 600,
+        lineHeight: '18px', whiteSpace: 'nowrap' }}>{label}</div>
     </>
   );
 }

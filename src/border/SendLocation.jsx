@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
 import { unionCentre } from '../leader/unionMap';
+import { useFieldMapLoaded } from '../register/FieldMap';
 import RegFrame, { Bouncing, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
 const EMPTY = { points: [], farm: '', finish: false };
@@ -161,8 +162,12 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
   const wait = unnamed || busy;
   // Choose on the map, on a phone (14 Nov): the card goes down while she moves the map, the pin carries the Save; it
   // comes up to name the field and goes down again after Next. Same for the opposite point.
+  // With the map loaded the pin is the only Save (14 Nov): no Save button on the card; without the map (offline, the
+  // field scene) the card keeps it.
+  const { ok: mapOk } = useFieldMapLoaded();
+  const onMap = pan && mapOk;
   const pinning = pan && (!unnamed || second);
-  const pinLabel = pinning && centre && !busy ? (second ? 'Save the opposite point' : 'Save here') : null;
+  const pinLabel = pinning && centre && !busy ? (second ? 'Tap to save the opposite point' : 'Tap to save') : null;
   // The leader's own points (14 Nov): the step is the header row's title, next to Back.
   const ownTitle = `${pan ? 'Move' : 'Walk'} to your ${n === 0 ? 'first' : 'next'} field`;
   return (
@@ -224,9 +229,11 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
           : 'Walk across to the opposite edge of this field.'}</div>
       )}
       {second
-        ? <button type="button" style={busy || (pan && !centre) ? btnDisabled : btnPrimary} disabled={busy || (pan && !centre)} onClick={secondPoint}>Save the opposite point</button>
+        ? (!onMap && <button type="button" style={busy || (pan && !centre) ? btnDisabled : btnPrimary} disabled={busy || (pan && !centre)} onClick={secondPoint}>Save the opposite point</button>)
         : unnamed && name.trim()
         ? <button type="button" style={btnPrimary} onClick={storeName}>Next point</button>
+        : onMap
+        ? (unnamed && <button type="button" style={btnDisabled} disabled>Next point</button>)
         : (ready
           ? <button type="button" style={wait ? btnDisabled : btnPrimary} disabled={wait} onClick={saveHere}>Save this location</button>
           : <button type="button" style={btnPrimary} onClick={share}>Share my location</button>)}
