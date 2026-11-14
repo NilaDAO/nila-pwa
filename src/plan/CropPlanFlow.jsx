@@ -623,7 +623,15 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     // Option A (12 Nov, as G2's top block): the record's facts as rows, a line, then the button.
     return (
       <Sheet map={<AreaMap record={record} labels={nowLabels} selected={growArea} onSelect={(z) => setGrowArea(settable(z) ? z : null)} />}
-        landName={name} title={forLand ? 'Field record' : 'Your field record'}>
+        landName={name} title={forLand ? 'Field record' : 'Your field record'}
+        // 14 Nov: with an area picked (map or list), a bar on top steps or swipes to the previous / next area, as the
+        // year bar does; many areas no longer mean scrolling the list for each one.
+        bar={growArea ? (() => {
+          const i = zoneIds.indexOf(growArea);
+          const at2 = (k) => zoneIds[(k + zoneIds.length) % zoneIds.length];
+          return <SlideBar label={nowLabels[growArea]?.text || nameOf(growArea)} prevLabel={`Previous area ${nameOf(at2(i - 1))}`} nextLabel={`Next area ${nameOf(at2(i + 1))}`}
+            onPrev={() => setGrowArea(at2(i - 1))} onNext={() => setGrowArea(at2(i + 1))} />;
+        })() : undefined}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {sum.from && <KV k="Period" v={`${sum.from} – ${sum.to}`} />}
           <KV k="Cultivations" v={sum.cultivations} />
@@ -656,12 +664,14 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
             <span style={{ fontSize: 14, fontWeight: 700 }}>What grows on {nowLabels[growArea]?.text || nameOf(growArea)} now?</span>
             {/* 13 Nov: no crop (empty, trees, bushes, buildings, water) first, then the crops; each under its title. */}
             <span style={{ fontSize: 13, fontWeight: 700, color: C.muted }}>Land covers</span>
+            {/* 14 Nov: a pick keeps the area open (the bar steps to the next one); All areas goes back to the list. */}
             <CropSelect crops={COVERS} current={COVERS.some((c) => c.key === growing[growArea]) ? growing[growArea] : undefined}
-              onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
+              onPick={(key) => setGrowing((g) => ({ ...g, [growArea]: key }))} />
             <span style={{ fontSize: 13, fontWeight: 700, color: C.muted, marginTop: 8 }}>Crops</span>
             {/* A land cover picked is not a crop (13 Nov: the crop grid listed it as an extra chip, "trees"). */}
             <CropSelect crops={cropList} current={COVERS.some((c) => c.key === growing[growArea]) ? undefined : growing[growArea]}
-              onPick={(key) => { setGrowing((g) => ({ ...g, [growArea]: key })); setGrowArea(null); }} />
+              onPick={(key) => setGrowing((g) => ({ ...g, [growArea]: key }))} />
+            <button type="button" onClick={() => setGrowArea(null)} style={{ ...secondaryBtn, flex: 'none', width: '100%', marginTop: 8 }}>All areas</button>
           </div>
         )}
         <Primary disabled={toSet.length > 0} onClick={() => setStep('intro')}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>

@@ -37,7 +37,18 @@ export default function useSheetDrag(onLowered, resetKey, startLow, want) {
   // The tab bar goes compact while the card is down (map-central trial, 'nila-sheet-low').
   const tell = (v) => window.dispatchEvent(new CustomEvent('nila-sheet-low', { detail: v }));
   const loweredAt = useRef(0);
+  // Half open (14 Nov): a third stop with the card's top at the middle of the screen, when the card is tall enough for
+  // it to differ from both ends. At it the card counts as up (not lowered).
+  const atMid = useRef(false);
+  const midOff = () => {
+    const el = ref.current;
+    if (!el) return null;
+    const top = el.getBoundingClientRect().top - offRef.current;
+    const m = Math.round(window.innerHeight * 0.5 - top);
+    return m > 60 && m < maxOff() - 60 ? m : null;
+  };
   const setLow = (v) => {
+    atMid.current = false;
     // Lowering starts from the top of the page, so the card's floor is measured where it will rest.
     if (v && window.scrollY > 0) window.scrollTo(0, 0);
     if (v) loweredAt.current = Date.now();
@@ -49,6 +60,7 @@ export default function useSheetDrag(onLowered, resetKey, startLow, want) {
   useEffect(() => {
     const on = () => {
       if (drag.current || offRef.current <= 0 || Date.now() - loweredAt.current < 500) return;
+      atMid.current = false;
       setOff(0); onLowered?.(false); tell(false);
     };
     window.addEventListener('scroll', on, { capture: true, passive: true });
@@ -76,7 +88,7 @@ export default function useSheetDrag(onLowered, resetKey, startLow, want) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // A new resetKey brings the card back up; not on mount (a card opening lowered stays down).
   const firstKey = useRef(true);
-  useEffect(() => { if (firstKey.current) { firstKey.current = false; return; } setOff(0); onLowered?.(false); }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (firstKey.current) { firstKey.current = false; return; } atMid.current = false; setOff(0); onLowered?.(false); }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => tell(false), []); // eslint-disable-line react-hooks/exhaustive-deps
   // want (14 Nov): the screen moves the card itself — true lowers it, false brings it up, undefined leaves it to the
   // drag line (the field points: down while she moves the map to the pin's Save, up to name the field).
@@ -105,7 +117,12 @@ export default function useSheetDrag(onLowered, resetKey, startLow, want) {
     const d = drag.current; drag.current = null; setMoving(false);
     if (!d) return;
     if (!d.moved) { setLow(off < 24); return; }                // a tap toggles
-    setLow(off > d.max / 2);
+    // Released: to the nearest stop — up, half open (when there is one) or down.
+    const m = midOff();
+    const stops = m == null ? [0, d.max] : [0, m, d.max];
+    const to = stops.reduce((a, b) => (Math.abs(b - off) < Math.abs(a - off) ? b : a));
+    if (to === m && m != null) { atMid.current = true; lastLow = false; setOff(m); onLowered?.(false); tell(false); return; }
+    setLow(to === d.max);
   };
   const style = { transform: `translateY(${off}px)`, transition: moving || instant ? 'none' : `transform 300ms ${EASE}` };
   const handle = (
@@ -117,5 +134,5 @@ export default function useSheetDrag(onLowered, resetKey, startLow, want) {
     </div>
   );
   // low: the card is (being) lowered; a sheet fades its body then, so only the top strip shows (map-central trial).
-  return { ref, style, handle, low: off > 24 && !moving, startedLow };
+  return { ref, style, handle, low: off > 24 && !moving && !atMid.current, startedLow };
 }
