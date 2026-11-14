@@ -399,7 +399,13 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
   const labels = useMemo(() => {
     const ss = plan?.plan?.seasons;
     // Before a plan: what grows now; the areas she left out (the step before the plan, 5 Nov) are not drawn.
-    if (!ss?.length) return { ...nowLabelsOf(record, catalogue.data?.crops, growing), ...Object.fromEntries([...leftOut].map((z) => [z, { gone: true }])) };
+    // 14 Nov: the areas she merged are one shape here too (while the plan is made), as on the leave-out step.
+    if (!ss?.length) {
+      const end = (z) => { const seen = new Set([z]); let t = z; while (mergeTo[t] && !seen.has(mergeTo[t])) { t = mergeTo[t]; seen.add(t); } return t; };
+      return { ...nowLabelsOf(record, catalogue.data?.crops, growing),
+        ...Object.fromEntries(Object.keys(mergeTo).map((z) => [z, leftOut.has(end(z)) ? { gone: true } : { join: end(z) }])),
+        ...Object.fromEntries([...leftOut].map((z) => [z, { gone: true }])) };
+    }
     // A past year on the bar: each area's main crop that year, from the record.
     if (pastYear != null) return pastLabels(record, areasOf(record).map((z) => z.zone_id), pastYear, catalogue.data?.crops);
     // Areas she left out (the step before the plan, or CP10's bin; 5 Nov) are not on the plan's map.
@@ -448,7 +454,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
     // An area she added to a touching one before the plan (14 Nov): drawn as one shape with it, one chip.
     for (const [z, to] of Object.entries(plan.plan.merged || {})) out[z] = { join: to, tapRoot: true };
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, pastYear, approved, slotsOn]);
+  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, mergeTo, pastYear, approved, slotsOn]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
