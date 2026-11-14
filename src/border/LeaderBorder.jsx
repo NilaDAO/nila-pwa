@@ -306,6 +306,9 @@ function Done({ job, onField, onBack, onAdd }) {
   const [closed, setClosed] = useState(false);
   const [started, setStarted] = useState(false);   // the result screens only for a mint asked for here
   const minting = mint.isPending || st === 'minting';
+  // 14 Nov: the button is grey (not just inert) until the land has a name.
+  const named = !!job.farm || !!farm.trim();
+  const off = mint.isPending || !ok.length || !named;
   const startMint = () => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); };
   if (!closed && (minting || (started && (st === 'minted' || st === 'failed' || mint.error)))) {
     const tx = {
@@ -361,8 +364,11 @@ function Done({ job, onField, onBack, onAdd }) {
         </Notice>
       )}
       {!st && (job.polygon
-        ? <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim()) } style={{ ...btn(true), flex: 'none' }}
+        ? <>
+          {!named && <p style={{ margin: 0, fontSize: 13, color: C.muted, textAlign: 'center' }}>Name the land first.</p>}
+          <button type="button" disabled={off} style={{ ...btn(!off), flex: 'none', ...(off ? { color: C.muted, cursor: 'default' } : {}) }}
           onClick={() => (joined.needed ? setScanOpen(true) : startMint())}>{joined.needed ? 'Done' : 'Mint land title'}</button>
+          </>
         : <button type="button" disabled style={{ ...btn(false), flex: 'none', color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: R.round, border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite' }} />
           <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
