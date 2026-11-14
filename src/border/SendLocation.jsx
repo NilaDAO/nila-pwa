@@ -67,7 +67,7 @@ const WifiOff = () => (
  *  map (R6's marker: black inside, amber border); the buttons wait until she names it; the name shows on the map as a
  *  chip (A4: tap = selected, accent) and in the list under the name input. Once a name is typed, the primary turns
  *  "Next point" and stores it. "Take a second point": when she cannot stand in the middle of the field, a second point
- *  and the field's point becomes the middle of the two. The name input shows only for a new point or a selected one (then with the remove button next to it).
+ *  and the field's point becomes the middle of the two. The name input shows only for a new point (with × to drop it) or a selected one; a selected chip shows × to remove its point (14 Nov).
  *  "All my fields have a point" ends it (executive decisions 20 Oct). */
 export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shapes = null }) {
   // startAt / shapes (28 Oct): adding points to an open border job starts "Choose on the map" on a point the job
@@ -179,23 +179,21 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
           : 'Your location is off. Nila needs it to place a point in your field.'}</div>
       )}
       {/* The name input: only for a new point, or for the point she selected (map or list) — then it holds its name
-          (edits go straight in) and the remove button sits next to it. */}
+          (edits go straight in); the selected chip carries the remove ×. */}
       {unnamed && (
-        <input type="text" aria-label="Field name" placeholder="Field name" value={name} maxLength={40} autoFocus
-          onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') storeName(); }} style={fieldInput} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input type="text" aria-label="Field name" placeholder="Field name" value={name} maxLength={40} autoFocus
+            onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') storeName(); }} style={{ ...fieldInput, flex: 1 }} />
+          {/* A point saved by accident (14 Nov): × drops it before it gets a name. */}
+          <button type="button" aria-label="Remove this point" disabled={busy} onClick={() => { remove(n - 1); setSecond(false); setName(''); }}
+            style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 12, border: 0, background: '#1F2733', color: '#E69283', cursor: 'pointer',
+              fontSize: 22, lineHeight: 1, fontFamily: 'inherit' }}>×</button>
+        </div>
       )}
       {!unnamed && selected != null && q.points[selected] && (
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input type="text" aria-label="Field name" placeholder="Field name" maxLength={40} value={q.points[selected].name || ''}
-            onChange={(e) => { const pts = q.points.slice(); pts[selected] = { ...pts[selected], name: e.target.value.slice(0, 40) }; save({ ...q, points: pts }); }}
-            style={{ ...fieldInput, flex: 1 }} />
-          <button type="button" aria-label={`Remove ${q.points[selected].name || 'this point'}`} onClick={() => remove(selected)}
-            style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 12, border: 0, background: '#1F2733', color: '#E69283', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
-          </button>
-        </div>
+        <input type="text" aria-label="Field name" placeholder="Field name" maxLength={40} value={q.points[selected].name || ''}
+          onChange={(e) => { const pts = q.points.slice(); pts[selected] = { ...pts[selected], name: e.target.value.slice(0, 40) }; save({ ...q, points: pts }); }}
+          style={fieldInput} />
       )}
       {q.points.some((p) => p.name) && (
         <div role="list" aria-label="Your fields" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -205,6 +203,12 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
               <button type="button" onClick={() => setSelected(selected === i ? null : i)}
                 style={{ padding: '0 10px', height: 32, border: 0, background: 'transparent', color: 'inherit',
                   fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>{p.name}</button>
+              {/* Tap a field = selected; its × removes the point (14 Nov). */}
+              {selected === i && (
+                <button type="button" aria-label={`Remove ${p.name}`} onClick={() => remove(i)}
+                  style={{ width: 28, height: 32, marginLeft: -6, padding: 0, border: 0, background: 'transparent', color: 'inherit',
+                    fontFamily: 'inherit', fontSize: 18, fontWeight: 700, lineHeight: 1, cursor: 'pointer' }}>×</button>
+              )}
             </span>
           ) : null))}
         </div>
