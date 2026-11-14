@@ -802,11 +802,21 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           </>
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}
-        {/* Two taps (14 Nov): this screen was easy to click through — first she confirms the areas, then makes the plan. */}
-        {areasOk
-          ? <Primary disabled={submit.isPending || all} onClick={make}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
-          : <button type="button" disabled={all} onClick={() => { setPickOut(null); setAreasOk(true); }}
-            style={{ ...secondaryBtn, flex: 'none', width: '100%', opacity: all ? 0.5 : 1 }}>Confirm the areas</button>}
+        {/* Two taps (14 Nov): this screen was easy to click through — first she confirms the areas (grey), then the same
+            button fills with the accent from left to right while its words change to Make my crop plan (one place, so
+            the second tap cannot land on something else). Off with reduced motion. */}
+        <button type="button" disabled={all || (areasOk && submit.isPending)}
+          onClick={areasOk ? make : () => { setPickOut(null); setAreasOk(true); }}
+          style={{ position: 'relative', overflow: 'hidden', width: '100%', height: 44, marginTop: 16, borderRadius: R.button, border: 0,
+            background: C.raised, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer', opacity: all || (areasOk && submit.isPending) ? 0.5 : 1 }}>
+          <style>{'@media (prefers-reduced-motion: reduce){.nila-sweep,.nila-sweep-t{transition:none!important}}'}</style>
+          <span aria-hidden="true" className="nila-sweep" style={{ position: 'absolute', inset: 0, background: C.accent, transformOrigin: 'left center',
+            transform: `scaleX(${areasOk ? 1 : 0})`, transition: 'transform 350ms cubic-bezier(0.2,0.8,0.2,1)' }} />
+          <span className="nila-sweep-t" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: C.text, opacity: areasOk ? 0 : 1, transition: 'opacity 200ms ease' }} aria-hidden={areasOk}>Confirm the areas</span>
+          <span className="nila-sweep-t" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: C.ink, opacity: areasOk ? 1 : 0, transition: 'opacity 200ms ease 150ms' }} aria-hidden={!areasOk}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</span>
+        </button>
       </Sheet>
     );
   }
