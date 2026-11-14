@@ -14,7 +14,7 @@ import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
 import { TxScreens } from '../stellar/TxStatus';
 import { Notice, Sheet } from '../plan/ui';
-import { ScanIcon, TrashIcon } from '../shell/icons';
+import { TrashIcon } from '../shell/icons';
 import { ConfirmCard } from '../shell/SettingsParts';
 import CameraView from '../shell/CameraView';
 import { useNilaSigner } from '../wallet/signer';
@@ -245,7 +245,7 @@ function Check({ job, n, onDone, onBack }) {
 }
 
 /** Before the mint (4 Nov): whether the member's account exists on-chain and names this union. A member holds no XLM,
- *  so her own phone no longer makes it; a member added before then (or whose L14 join failed) shows her help QR here
+ *  so her own phone no longer makes it; a member added before then (or whose L14 join failed) shows her QR here
  *  and this leader's app makes and joins the account (kind 4 / 5 join; the leader's own XLM pays). The leader's own
  *  title, an address that is not a smart account, or a node without the account deployer: no step. */
 function useMemberJoined(job) {
@@ -270,6 +270,7 @@ function useMemberJoined(job) {
       const out = await ensureKeypadAccount(cfg, s, { account: member, first_signer: r.join.signer, set_union: r.join });
       if (!out.union) throw new Error('no union');
       await q.refetch();
+      return true;
     } catch (e) {
       console.error('[L4] account not made or union not set', e);
       setError(e.message === 'no union' ? 'Could not join the account to the union. Try again.' : e.message);
@@ -288,7 +289,8 @@ function Done({ job, onField, onBack, onAdd }) {
   // Whether the member rents the land (13 Nov; kept with the job, not on the public title). The fields' soils are
   // accepted with their shapes on L3.
   const [tenant, setTenant] = useState(false);
-  const [scanOpen, setScanOpen] = useState(false);   // 14 Nov: the camera opens from a button, never by itself
+  // 14 Nov: a member without an account yet: Done opens the camera in its own view; after the scan the mint starts.
+  const [scanOpen, setScanOpen] = useState(false);
   const [plotId, setPlotId] = useState();
   const plot = (job.plots || []).find((p) => p.id === plotId);
   const ok = job.fields.filter((f) => f.state === 'accepted');
@@ -304,6 +306,7 @@ function Done({ job, onField, onBack, onAdd }) {
   const [closed, setClosed] = useState(false);
   const [started, setStarted] = useState(false);   // the result screens only for a mint asked for here
   const minting = mint.isPending || st === 'minting';
+  const startMint = () => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); };
   if (!closed && (minting || (started && (st === 'minted' || st === 'failed' || mint.error)))) {
     const tx = {
       status: st === 'minted' ? 'success' : st === 'failed' || mint.error ? 'failed' : 'pending',
@@ -318,7 +321,13 @@ function Done({ job, onField, onBack, onAdd }) {
   return (
     <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} plots={st ? [] : job.plots || []} plotOn={plotId} onPlot={st ? undefined : setPlotId} />}>
-      {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
+      {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : scanOpen && joined.needed && !st ? (<>
+        <Head title="Scan the member's QR" sub="The member opens Your QR in the Nila app. Scan it to make the member's account; the land title is minted right after." />
+        {joined.busy ? <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Making the member's account…</p>
+          : <CameraView key={joined.tries} mode="qr" onText={async (t) => { if (await joined.scan(t)) { setScanOpen(false); startMint(); } }} />}
+        {joined.error && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{joined.error}</p>}
+        <button type="button" disabled={joined.busy} style={{ ...btn(false), flex: 'none' }} onClick={() => setScanOpen(false)}>Cancel</button>
+      </>) : (<>
       <Head title={`${ok.length} fields · all accepted`} sub={`Total ${total.toFixed(2)} acres`} />
       {job.fields.map((f) => (
         <div key={f.n} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -351,26 +360,9 @@ function Done({ job, onField, onBack, onAdd }) {
           The member opens the app link from the SMS on their phone. The land title is minted to that phone, so minting starts right after.
         </Notice>
       )}
-      {!st && job.polygon && joined.needed && (
-        // DESIGN GAP: no board for this step (4 Nov).
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Head title="Scan the member's help QR" sub="The member's account is not made yet. The member opens Your QR in the Nila app; your phone makes the account, then you mint." />
-          {joined.busy ? <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Making the member's account…</p>
-            : scanOpen ? (
-              <>
-                <CameraView key={joined.tries} mode="qr" onText={joined.scan} />
-                <button type="button" style={{ ...btn(false), flex: 'none' }} onClick={() => setScanOpen(false)}>Cancel</button>
-              </>
-            ) : (
-              <button type="button" style={{ ...btn(true), flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                onClick={() => setScanOpen(true)}><ScanIcon color={C.ink} /> Scan the member's QR</button>
-            )}
-          {joined.error && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{joined.error}</p>}
-        </div>
-      )}
       {!st && (job.polygon
-        ? <button type="button" disabled={mint.isPending || joined.needed || !ok.length || (!job.farm && !farm.trim()) } style={{ ...btn(true), flex: 'none' }}
-          onClick={() => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }}>Mint land title</button>
+        ? <button type="button" disabled={mint.isPending || !ok.length || (!job.farm && !farm.trim()) } style={{ ...btn(true), flex: 'none' }}
+          onClick={() => (joined.needed ? setScanOpen(true) : startMint())}>{joined.needed ? 'Done' : 'Mint land title'}</button>
         : <button type="button" disabled style={{ ...btn(false), flex: 'none', color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: R.round, border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite' }} />
           <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
