@@ -795,8 +795,10 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
           </>
         ) : (
           <>
-            <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Leave out areas you do not farm</h1>
-            <p style={{ ...muted, textAlign: 'center' }}>Tap an area with a house, a shed, a road or a path to leave it out, or add a small area to the area next to it.</p>
+            <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Leave out or add areas</h1>
+            <p style={{ ...muted, textAlign: 'center' }}>Tap an area, then choose:<br />
+              <b style={{ color: '#F1F5F9' }}>Leave out</b> a house, a shed, a road or a path.<br />
+              <b style={{ color: '#F1F5F9' }}>Add</b> a small area to the area next to it.</p>
             <p style={{ ...muted, textAlign: 'center', margin: '4px 0 0' }}>{decided
               ? [leftOut.size && `${leftOut.size} left out`, Object.keys(mergeTo).length && `${Object.keys(mergeTo).length} added to another area`].filter(Boolean).join(' · ')
               : 'No areas left out'}</p>
