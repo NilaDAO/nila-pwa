@@ -29,7 +29,7 @@ import { areaHash } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
 import RoundButton from '../shell/RoundButton';
 import ReadAloud from './ReadAloud';
-import { RefreshIcon } from '../shell/icons';
+import { RefreshIcon, ScanIcon } from '../shell/icons';
 import HelpQr from '../loan/HelpQr';
 import StartHelp from '../loan/StartHelp';
 import { useSessionUntil } from '../stellar/session';
@@ -59,7 +59,6 @@ function Making({ jobId, onDone, onError, label = 'Making your crop plan' }) {
   );
 }
 
-const stepBtn = { flex: 'none', width: '100%', height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer', margin: '8px 0' };
 const secondaryBtn = { flex: 1, height: 44, borderRadius: 12, border: 0, background: C.raised, color: C.text, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer' };
 
 function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan', y0, onArea }) {
@@ -528,10 +527,9 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {/* No title, nothing under way (14 Nov): three steps, the action in its step, as G2's Join the union. */}
         {!minting && !openJob ? (
           <NumberedSteps gap={16} items={helped
-            ? [<>Show your QR to your leader.<button type="button" style={stepBtn} onClick={() => setTitleQr(true)}>Show your QR</button></>,
+            ? [<span>Tap <ScanIcon color={C.text} size={16} /> <b>Scan</b> and show your QR to your leader.</span>,
               'Your union maps your fields and mints your land title.', 'Your leader makes your crop plan with you.']
-            : [<>Map your fields and mint your land title.<button type="button" style={stepBtn} onClick={() => { window.location.hash = '#/crop/register'; }}>Mint land title</button></>,
-              'Make your crop plan.']} />
+            : ['Map your fields and mint your land title.', 'Make your crop plan.']} />
         ) : (
           <p style={muted}>{minting ? 'Your land title is being minted. Your crop plan starts when it is ready.'
             : self ? 'Your field points are with the union. Check the borders and mint your land title.' : 'Your field points are with the union. Your leader mints your land title.'}</p>
@@ -539,6 +537,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {(titles.isError || stellarTitles.isError) && <p style={{ ...muted, color: C.coral }}>Your land title could not be loaded.</p>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
           {!minting && openJob && self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>Mint land title</Primary>}
+          {!minting && !openJob && !helped && <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint land title</Primary>}
         </div>
       </Sheet>
     );
