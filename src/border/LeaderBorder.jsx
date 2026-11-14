@@ -14,7 +14,7 @@ import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
 import { TxScreens } from '../stellar/TxStatus';
 import { Notice, Sheet } from '../plan/ui';
-import { TrashIcon } from '../shell/icons';
+import { ScanIcon, TrashIcon } from '../shell/icons';
 import { ConfirmCard } from '../shell/SettingsParts';
 import CameraView from '../shell/CameraView';
 import { useNilaSigner } from '../wallet/signer';
@@ -288,6 +288,7 @@ function Done({ job, onField, onBack, onAdd }) {
   // Whether the member rents the land (13 Nov; kept with the job, not on the public title). The fields' soils are
   // accepted with their shapes on L3.
   const [tenant, setTenant] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);   // 14 Nov: the camera opens from a button, never by itself
   const [plotId, setPlotId] = useState();
   const plot = (job.plots || []).find((p) => p.id === plotId);
   const ok = job.fields.filter((f) => f.state === 'accepted');
@@ -355,7 +356,15 @@ function Done({ job, onField, onBack, onAdd }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Head title="Scan the member's help QR" sub="The member's account is not made yet. The member opens Your QR in the Nila app; your phone makes the account, then you mint." />
           {joined.busy ? <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Making the member's account…</p>
-            : <CameraView key={joined.tries} mode="qr" onText={joined.scan} />}
+            : scanOpen ? (
+              <>
+                <CameraView key={joined.tries} mode="qr" onText={joined.scan} />
+                <button type="button" style={{ ...btn(false), flex: 'none' }} onClick={() => setScanOpen(false)}>Cancel</button>
+              </>
+            ) : (
+              <button type="button" style={{ ...btn(true), flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                onClick={() => setScanOpen(true)}><ScanIcon color={C.ink} /> Scan the member's QR</button>
+            )}
           {joined.error && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{joined.error}</p>}
         </div>
       )}
