@@ -230,7 +230,9 @@ export default function MemberStatus({ id, go }) {
   // 14 Nov: her title's fields with their names (as on her land title), not the record's areas; the areas only when
   // the title has no fields.
   const titleFields = m.fields?.length ? m.fields : fields;
-  const map = titleFields.length ? <AreaMap record={{ zones: titleFields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry, ...(f.name ? { name: f.name } : {}) })) }} onSelect={() => go('members')} />
+  // White borders, a faint fill (outline: fill 0.06).
+  const map = titleFields.length ? <AreaMap record={{ zones: titleFields.map((f, i) => ({ zone_id: f.id || `f${i}`, geometry: f.geometry })) }}
+    labels={Object.fromEntries(titleFields.map((f, i) => [f.id || `f${i}`, { text: f.name || `Field ${i + 1}`, colour: '#ffffff', outline: true }]))} onSelect={() => go('members')} />
     : m.record ? <AreaMap record={m.record} labels={labels} onSelect={() => go('members')} />
       // No land (13 Nov: e.g. her title removed): the union's land, as the crop plan's no-title map.
       : <AreaMap record={null} center={unionCentre(members.data)} />;
