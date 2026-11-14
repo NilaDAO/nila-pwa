@@ -527,7 +527,7 @@ export default function CropPlanFlow({ forLand, self = false } = {}) {
         {/* No title, nothing under way (14 Nov): three steps, the action in its step, as G2's Join the union. */}
         {!minting && !openJob ? (
           <NumberedSteps gap={16} items={helped
-            ? [<span>Tap <ScanIcon color={C.text} size={16} /> <b>Scan</b> and show your QR to your leader.</span>,
+            ? [<span style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>Tap <ScanIcon color={C.text} size={16} /><b>Scan</b> and show your QR.</span>,
               'Your union maps your fields and mints your land title.', 'Your leader makes your crop plan with you.']
             : ['Map your fields and mint your land title.', 'Make your crop plan.']} />
         ) : (
