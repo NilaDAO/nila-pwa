@@ -305,7 +305,7 @@ export default function MemberStatus({ id, go }) {
         {/* Fields sent, a border job open (13 Nov): G2 opens that task (L2), not a new title. */}
         {!m.titleId && !m.lands?.length && m.job && (
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink, margin: '16px 0' }}
-            onClick={() => go(`tasks/border/${m.job}`)}>Continue</button>
+            onClick={() => go(`tasks/border/${m.job}`)}>Finish the land title job</button>
         )}
         {!m.titleId && !m.lands?.length && !m.job && (m.keypadId || m.formerTitle != null) && (
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
