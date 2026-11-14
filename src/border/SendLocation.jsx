@@ -159,14 +159,14 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
       ? 'Can\'t stand in the center? Take a second point at the opposite edge. Nila uses the middle of the two.'
       : undefined;
   const wait = unnamed || busy;
+  // The leader's own points (14 Nov): the step is the header row's title, next to Back.
+  const ownTitle = `${pan ? 'Move' : 'Walk'} to your ${n === 0 ? 'first' : 'next'} field`;
   return (
-    <MapFrame header={forName ? `Fields of ${forName}` : null /* own points: only the step's title (13 Nov) */} onBack={onBack} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
+    <MapFrame header={forName ? `Fields of ${forName}` : ownTitle /* own points: the step in the header row (14 Nov) */} onBack={onBack} map={q.points} me={pan || unnamed ? null : me /* R7 (26 Oct): while the field is named, only the saved point */} start={me} shapes={shapes} pan={pan && !(unnamed && !second) /* no pin while the field is named, only for its opposite point */} onCenter={setCentre} info={info}
       selected={selected} onSelect={setSelected}>
-      <div style={cardTitle}>{forName
-        ? (n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field')
-        : pan /* Choose on the map (13 Nov) */
-          ? (n === 0 ? 'Move to your first field' : 'Move to the center of your next field')
-          : (n === 0 ? 'Walk to your first field' : 'Walk to the center of your next field')}</div>
+      {forName
+        ? <div style={cardTitle}>{n === 0 ? 'Walk with the member to their first field' : 'Walk to the center of the next field'}</div>
+        : <div style={{ ...sheetText, textAlign: 'center' }}>Try to stand in the middle of your field.</div>}
       {!online && (
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', ...sheetText }}>
           <div style={{ width: 20, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><WifiOff /></div>
