@@ -623,7 +623,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     // Option A (12 Nov, as G2's top block): the record's facts as rows, a line, then the button.
     return (
       <Sheet map={<AreaMap record={record} labels={nowLabels} selected={growArea} onSelect={(z) => setGrowArea(settable(z) ? z : null)} />}
-        landName={name} title={forLand ? 'Field record' : 'Your field record'}
+        landName={name /* 14 Nov: no 'Field record' title under the land's name */}
         // 14 Nov: with an area picked (map or list), a bar on top steps or swipes to the previous / next area, as the
         // year bar does; many areas no longer mean scrolling the list for each one.
         bar={growArea ? (() => {
