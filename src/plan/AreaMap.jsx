@@ -147,12 +147,14 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       const lab = labOf(z, i);
       if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const faded = !!selected && !group.some((y) => y.zone_id === selected);
+      // The picked area (14 Nov): a white line around it and a lighter fill, so it stands out on the map.
+      const sel = !!selected && !faded;
       const colour = lab.colour || '#ffffff';
       let sx = 0; let sy = 0; let k = 0;
       // Joined areas: one outline around the group, no line between its parts.
       if (joined && !lab.hatch && !lab.dashed) {
         outlineOf(group.flatMap((y) => polysOf(y.geometry).flat())).forEach(([p, q]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: p[1], lng: p[0] }, { lat: q[1], lng: q[0] }],
-          clickable: false, zIndex: 2, strokeColor: colour, strokeOpacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 })));
+          clickable: false, zIndex: 2, strokeColor: sel ? '#ffffff' : colour, strokeOpacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: sel ? 3 : 1.5 })));
       }
       group.forEach((part) => polysOf(part.geometry).forEach((poly0) => {
         // Its holes as holes (14 Nov): an area inside it is not painted over.
@@ -163,9 +165,11 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
         // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so an accent outline (solid since 14 Nov) and a faint fill.
         // 14 Nov: its outline solid in the accent, no longer dashed.
         const poly = new g.Polygon({ map: m, paths, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
-          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : 1),
+          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : sel ? 0.5 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
-          strokeColor: lab.hatch ? '#D4CF5A' : colour, strokeOpacity: lab.hatch ? (faded ? 0.3 : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
+          strokeColor: sel ? '#ffffff' : lab.hatch ? '#D4CF5A' : colour,
+          strokeOpacity: sel ? (joined ? 0 : 1) : lab.hatch ? (faded ? 0.3 : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1),
+          strokeWeight: sel ? 3 : 1.5, zIndex: sel ? 3 : 1 });
         // lab.dashed (13 Nov, the members map): a property's outline as a dashed line.
         if (lab.dashed) {
           drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
@@ -236,12 +240,13 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
       const lab = root === z.zone_id ? own : { ...(labels[root] || {}), hide: true };
       const tapTo = root !== z.zone_id && labels[z.zone_id]?.tapRoot ? root : z.zone_id;
       const faded = !!selected && selected !== z.zone_id && joinRoot(labels, selected) !== root;
+      const sel = !!selected && !faded;   // 14 Nov: the picked area, a white line and a lighter fill
       const colour = lab.colour || '#ffffff';
       // An area still to be set (13 Nov): hatched, so she sees at once which areas are left (lab.hatch).
       if (lab.hatch) hatchPattern();
       const layer = L.geoJSON(z.geometry, { style: lab.hatch
         ? { color: '#F1F5F9', weight: 2, opacity: faded ? 0.3 : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? 0.3 : 1 }
-        : { color: colour, weight: 1.5, ...(lab.dashed ? { dashArray: '6 4', weight: 2 } : {}), opacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : 1) } });
+        : { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : sel ? 0.5 : 1) } });
       layer.addTo(group);
       if (onSelect) layer.on('click', () => onSelect(selected === tapTo ? null : tapTo));
       if (!lab.hide && !chipsOff) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
