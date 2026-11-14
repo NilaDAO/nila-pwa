@@ -92,6 +92,8 @@ function chip({ text, sub, acc, soil }, on, faded, clickable) {
 }
 
 export const ringsOf = (g) => (g?.type === 'Polygon' ? [g.coordinates[0]] : g?.type === 'MultiPolygon' ? g.coordinates.map((p) => p[0]) : []);
+// Every polygon with all its rings, holes included (14 Nov: an area inside another is the other's hole).
+export const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
 
 /** Joined areas (14 Nov): an area whose label has `join` (an area she added to a touching one) is drawn as part of
  *  that area — its colour, one chip, no line between them. The root of each area, and the outline of a group: the
@@ -149,15 +151,18 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       let sx = 0; let sy = 0; let k = 0;
       // Joined areas: one outline around the group, no line between its parts.
       if (joined && !lab.hatch && !lab.dashed) {
-        outlineOf(rings).forEach(([p, q]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: p[1], lng: p[0] }, { lat: q[1], lng: q[0] }],
+        outlineOf(group.flatMap((y) => polysOf(y.geometry).flat())).forEach(([p, q]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: p[1], lng: p[0] }, { lat: q[1], lng: q[0] }],
           clickable: false, zIndex: 2, strokeColor: colour, strokeOpacity: (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 })));
       }
-      group.forEach((part) => ringsOf(part.geometry).forEach((ring) => {
-        const path = ring.map(([lng, lat]) => ({ lat, lng }));
+      group.forEach((part) => polysOf(part.geometry).forEach((poly0) => {
+        // Its holes as holes (14 Nov): an area inside it is not painted over.
+        const paths = poly0.filter((r) => r.length > 2).map((r) => r.map(([lng, lat]) => ({ lat, lng })));
+        if (!paths.length) return;
+        const path = paths[0];
         path.forEach((q) => { bounds.extend(q); sx += q.lng; sy += q.lat; k += 1; });
         // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so an accent outline (solid since 14 Nov) and a faint fill.
         // 14 Nov: its outline solid in the accent, no longer dashed.
-        const poly = new g.Polygon({ map: m, paths: path, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
+        const poly = new g.Polygon({ map: m, paths, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
           fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
           strokeColor: lab.hatch ? '#D4CF5A' : colour, strokeOpacity: lab.hatch ? (faded ? 0.3 : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: 1.5 });
