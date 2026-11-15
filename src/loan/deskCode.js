@@ -59,10 +59,9 @@ const bytesOf = (a) => (a.startsWith('C') ? StrKey.decodeContract(a) : StrKey.de
 /** Her phone: kind 'N' (`amount` nIN in stroops), 'W' (her withdrawal, all of it) or 'L' (`token` hex, `cash` stroops,
  *  `hours` units), from `account` (C…, or her G key without smart accounts), signed by her key `signer` (G…).
  *  Returns { qr, until }. */
-export async function signDeskCode({ cfg, account, signer, signHash, kind = 'N', amount, token, cash, hours, ledgers = DESK_TERM, exp: at }) {
+export async function signDeskCode({ cfg, account, signer, signHash, kind = 'N', amount, token, cash, hours, ledgers = DESK_TERM }) {
   const f = { amount: BigInt(amount ?? 0), token, cash: BigInt(cash ?? 0), hours: Number(hours ?? 0) };
-  // `exp` (sign later, 15 Nov): an expiry ledger given, so codes signed together each get their own (it is the nonce).
-  const exp = at || (await server(cfg).getLatestLedger()).sequence + ledgers;
+  const exp = (await server(cfg).getLatestLedger()).sequence + ledgers;
   const sig = Uint8Array.from(await signHash(payload(cfg, invocation(cfg, kind, f, account), exp)));
   const b = new Uint8Array(lenOf(kind)); const d = new DataView(b.buffer);
   b.set(bytesOf(account), 0); b.set(StrKey.decodeEd25519PublicKey(signer), 32);

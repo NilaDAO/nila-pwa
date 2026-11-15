@@ -72,13 +72,6 @@ export function planClient(signer) {
     approve: (planId, decision, reason, note) => call('POST', `/plan/${planId}/approve`, { decision, reason, note }),
     mintList: (planId) => call('GET', `/plan/${planId}/mint`),
     gas: (planId) => call('POST', `/plan/${planId}/gas`, {}),
-    // Sign later (plan 050, 15 Nov): her codes signed ahead; a leader reads them; a machine owner asks for one by her SMS.
-    toSign: () => call('GET', '/plan/to-sign'),
-    storeCodes: (planId, codes) => call('POST', `/plan/${planId}/codes`, { codes }),
-    codesOf: (member) => call('GET', `/plan/codes/${member}`),
-    codesByPhone: (phone) => call('GET', `/plan/codes/phone/${encodeURIComponent(phone)}`),
-    voucherSms: (member, token) => call('POST', `/plan/codes/${member}/${token}/sms`, {}),
-    voucherRelease: (member, token, code) => call('POST', `/plan/codes/${member}/${token}/release`, { code }),
     // P6 / O13: the 8 machine photos of L13 → their hash for machinery.register_machine.
     machinePhotos: (photos) => call('POST', '/machines/photos', { photos }),
     // P10 / O15: the union's loan list (the async list) and C2's event search, one window per tap.

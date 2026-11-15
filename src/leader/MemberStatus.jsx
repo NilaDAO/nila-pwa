@@ -147,9 +147,8 @@ export default function MemberStatus({ id, go }) {
   const helpUntil = useSessionUntil(m?.address);
   const borderApi = useBorderClient();
   // Sign later (plan 050): a member mapped without her phone holds her title on a keyless placeholder (G…, not a smart
-  // account) until her QR is scanned; a crop plan a leader accepted for her waits for her phone's signature.
-  const holder = /^G[A-Z2-7]{55}$/.test(m?.address || '') && m?.joined === false;
-  const toSign = !!m?.plan?.to_sign;
+  // account) until her QR is scanned. A keypad member's is moved when her phone is set up, not by a scan.
+  const holder = /^G[A-Z2-7]{55}$/.test(m?.address || '') && m?.joined === false && !m?.keypadId;
   const labels = useMemo(() => {
     // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
     // A financed share grows too (23 Oct): its draw is the start, whatever the plan's sowing date says.
@@ -303,12 +302,11 @@ export default function MemberStatus({ id, go }) {
         {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
             scan of her help QR sends her signed set_union (StartHelp), which also turns on her recovery. */}
         {m.joined === false && !holder && investedSection}
-        {/* Sign later (plan 050, 15 Nov): her title and crop plan never wait for this scan. The scan joins her account
-            and her phone signs the crop plan a leader accepted for her; a new member's account is paired with the
-            holding address her title was minted to (holder: her placeholder). */}
-        {(m.joined === false || toSign) && (
-          <JoinSteps m={m} holder={holder} toSign={toSign || holder}
-            onScan={() => setScanning({ what: m.joined === false ? 'Join the union' : 'Sign the crop plan', holder, then: () => { if (!holder) markJoined(m.address); refetchMembers(); plan.refetch?.(); } })} />
+        {/* Sign later (plan 050, 15 Nov): her title and crop plan never wait for this scan. The scan joins her account;
+            a new member's account is paired with the holding address her title was minted to (holder: her placeholder). */}
+        {m.joined === false && !(m.keypadId && /^G/.test(m.address || '')) && (
+          <JoinSteps m={m} holder={holder}
+            onScan={() => setScanning({ what: 'Join the union', holder, then: () => { if (!holder) markJoined(m.address); refetchMembers(); } })} />
         )}
         {!m.record && <Row k="Status" v={pendingJob ? 'Pending' : m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
         {/* A member without a land title (13 Nov: e.g. hers was removed): a new one. A keypad member: the leader takes her
@@ -403,14 +401,13 @@ export default function MemberStatus({ id, go }) {
 /** Not joined yet (moved by the operator, 7 Nov; steps 13 Nov): her account holds her title but does not name the union.
  *  The leader picks her phone and follows the steps; the last one is the scan of her QR, which sends her signed
  *  set_union. A keypad phone needs internet only while Nila lite installs. */
-function JoinSteps({ m, holder, toSign, onScan }) {
+function JoinSteps({ m, holder, onScan }) {
   const [phone, setPhone] = useState('smart');      // 'smart' | 'keypad'
   const [moving, setMoving] = useState(false);
   // Buttons in a step keep 8 px above and below (16 / 24 to the text and the next step; 13 Nov).
   const stepBtn = { ...btn(), flex: 'none', width: '100%', margin: '8px 0' };
   const scan = <button type="button" style={stepBtn} onClick={onScan}>Scan the QR</button>;
-  // Sign later (15 Nov): the same scan signs the crop plan.
-  const done = toSign ? 'Scan the QR. Done: the member has joined and signed the crop plan.' : 'Scan the QR. Done: the member has joined.';
+  const done = 'Scan the QR. Done: the member has joined.';
   // A new member (holder) has no account yet: she registers in the app (TEXT TO CONFIRM WITH CARST).
   const open = holder ? 'The member opens the Nila app and registers.' : 'The member opens the Nila app and recovers the account.';
   const steps = phone === 'smart' || holder
@@ -420,7 +417,7 @@ function JoinSteps({ m, holder, toSign, onScan }) {
       'The member opens the SMS and taps QR in the bottom right corner.', <>{done}{scan}</>];
   // A G2 section (13 Nov), not a card: the phone switch, then numbered steps with the action in its step.
   return (
-    <Section title={m.joined === false ? 'Join the union' : 'Sign the crop plan'} right={m.joined === false ? 'Not joined yet' : undefined} gap={20}>
+    <Section title="Join the union" right="Not joined yet" gap={20}>
       {/* The phone switch as Cash ahead's All | Half (13 Nov). A new member (holder) joins on a smartphone first. */}
       {!holder && <Segmented label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad phone']]} />}
       <Steps items={steps} gap={16} />

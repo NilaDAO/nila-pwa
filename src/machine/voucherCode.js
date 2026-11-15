@@ -42,9 +42,8 @@ const payload = (cfg, inv, exp) => hash(xdr.HashIdPreimage.envelopeTypeSorobanAu
 })).toXDR());
 
 /** Her phone: sign claim(union, token, units) valid for `ledgers`; returns { qr, until }. */
-export async function signVoucherCode({ cfg, signer, signHash, token, units, ledgers, exp: at }) {
-  // `exp` (sign later, 15 Nov): an expiry ledger given, so codes signed together each get their own (it is the nonce).
-  const exp = at || (await server(cfg).getLatestLedger()).sequence + ledgers;
+export async function signVoucherCode({ cfg, signer, signHash, token, units, ledgers }) {
+  const exp = (await server(cfg).getLatestLedger()).sequence + ledgers;
   const sig = Uint8Array.from(await signHash(payload(cfg, invocation(cfg, token, units), exp)));
   const b = new Uint8Array(LEN); const d = new DataView(b.buffer);
   b.set(StrKey.decodeEd25519PublicKey(signer), 0); d.setUint32(32, units); d.setUint32(36, exp); b.set(sig, 40);

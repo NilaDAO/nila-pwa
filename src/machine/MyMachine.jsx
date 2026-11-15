@@ -12,7 +12,7 @@
 // no indexer yet); photos are shown as the 8 positions, not the images; the hold switch sits here, not in
 // Settings (A11 #machine); the claim screen has no board.
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { useStellarConfig } from '../stellar/hooks';
 import { readContract, server, sv } from '../stellar/soroban';
@@ -22,9 +22,9 @@ import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { Choice, Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import { Card, CardTitle, KV } from '../loan/AssetParts';
-import { usePlanClient } from '../plan/hooks';
-import PhoneField, { phoneValue } from '../register/PhoneField';
+import CameraView from '../shell/CameraView';
 import { HOLD_REASONS, PARTS, TRACTOR, UNION_PART_BITS, acresText, centi, rateForCrop, readRate, saveJob, shareOfToken, splitOf, ta, typeName, unitsOf, useMyMachine, useOwnerDues, useRates, useUnionSplit } from './hooks';
+import { sessionQrPhone } from '../stellar/session';
 import MapCard from '../shell/MapCard';
 
 const svgT = (size, color) => <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 17h6M4 14V7h7l2 5h6v4M8 7V4" /></svg>;
@@ -111,7 +111,7 @@ export default function MyMachine({ onBack, pick: first }) {
             <span style={muted}>{m.on_hold ? HOLD_REASONS[m.hold_reason] : `${m.acres_per_week} acres a week`}</span>
           </span>
         </div>
-        {!m.on_hold && <Primary disabled={!tx.ready || left === 0} onClick={() => setClaiming(true)}>Send the member a code</Primary>}
+        {!m.on_hold && <Primary disabled={!tx.ready || left === 0} onClick={() => setClaiming(true)}>Scan a voucher code</Primary>}
         <button type="button" disabled={!tx.ready} style={sec}
           onClick={() => (m.on_hold ? call('Available again', 'set_hold', [sv.address(me), sv.u64(m.id), sv.bool(false), sv.u32(0)]) : setHolding(true))}>{m.on_hold ? 'Available again' : 'Put on hold'}</button>
       </Card>
@@ -190,40 +190,14 @@ function Claim({ machine, rate, tractor, onBack }) {
   const [scan, setScan] = useState();
   const [error, setError] = useState();
   const [acres, setAcres] = useState(1);
-  // Sign later (plan 050, 15 Nov; replaces the scan of her voucher QR): she has no phone of her own in the field. The
-  // owner names her by her phone number, the node texts her a code, she reads it to the driver after the work, and
-  // the code releases one voucher signature she signed ahead at the scan of her QR.
-  const api = usePlanClient();
-  const [phone, setPhone] = useState('+91');
-  const [found, setFound] = useState();     // { member, tokens: [{ token, vouchers }] }
-  const [token, setToken] = useState();
-  const [sent, setSent] = useState(false);
-  const [smsCode, setSmsCode] = useState('');
-  const [busy, setBusy] = useState(false);
-  const plain = (e) => (/wrong code/i.test(e.message) ? 'Wrong code' : /new code/i.test(e.message) ? 'Ask for a new code' : e.message);
-  const sendCode = async () => {
-    setError(undefined); setBusy(true);
-    try {
-      let f = found;
-      if (!f) { f = await api.codesByPhone(phoneValue(phone)); setFound(f); }
-      if (!f.tokens.length) throw new Error('No voucher code left for this member.');
-      const t = token || (f.tokens.length === 1 ? f.tokens[0].token : null);
-      if (!t) return;                                   // several crop agreements: the owner picks one first
-      setToken(t);
-      await api.voucherSms(f.member, t);
-      setSent(true);
-    } catch (e) { setError(plain(e)); } finally { setBusy(false); }
-  };
-  const getVoucher = async () => {
-    setError(undefined); setBusy(true);
-    try {
-      const r = await api.voucherRelease(found.member, token, smsCode.trim());
-      await read(r.code);
-    } catch (e) { setError(plain(e)); } finally { setBusy(false); }
-  };
+  const [tries, setTries] = useState(0);     // the camera reads once: a new one after a wrong code
   const read = async (text) => {
     setError(undefined);
     try {
+      // The member's own QR (the one for the office) is not a voucher (27 Oct): say how to make the right one.
+      const phone = sessionQrPhone(text);
+      if (phone === 'keypad') throw new Error('This is the member\'s office QR, not a machine-work QR. On the keypad phone: open Machine work, pick the job, press Show QR, and scan that.');
+      if (phone === 'phone') throw new Error('This is the member\'s office QR, not a machine-work QR. On their phone: Assets → Machine vouchers, pick the job, Make code, and scan that.');
       const c = await parseVoucherCode(cfg, text);
       const v = await readContract(cfg, 'machinery', 'voucher', [sv.address(cfg.union), sv.bytes32(c.token)]);
       if (!v || v.void || v.member !== c.member) throw new Error('This voucher is not open any more.');
@@ -244,7 +218,7 @@ function Claim({ machine, rate, tractor, onBack }) {
       const area = centiAcres > 0 ? centiAcres / 100 : Infinity;
       setScan({ ...c, max, area, price, tractor: tractorNow });
       setAcres(max);   // the share's area, as a rule; the owner can lower it for a part done (27 Oct)
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(e.message); setTries((t) => t + 1); }
   };
   const claim = async () => {
     const out = await tx.run({
@@ -287,21 +261,9 @@ function Claim({ machine, rate, tractor, onBack }) {
     );
   }
   return (
-    <Page title="Send the member a code" onBack={onBack}>
-      {!sent ? (<>
-        <PhoneField id="a13-phone" value={phone} onChange={(v) => { setPhone(v); setFound(); setToken(); }} />
-        {found && found.tokens.length > 1 && found.tokens.map((x) => (
-          <Choice key={x.token} on={token === x.token} onClick={() => setToken(x.token)}>{`Crop agreement · ${acresText(shareOfToken(x.token).centiAcres / 100)}`}</Choice>
-        ))}
-        <Primary disabled={busy || (found && found.tokens.length > 1 && !token)} onClick={sendCode}>Send the member a code</Primary>
-      </>) : (<>
-        <p style={{ ...muted, margin: 0 }}>The member gets a code by SMS. Ask for it when the work is done.</p>
-        <label style={{ display: 'grid', gap: 4, fontSize: 14, color: C.muted }}>Code from the member
-          <input value={smsCode} onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code"
-            style={{ height: 48, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 16px', fontFamily: FONT, fontSize: 16, fontWeight: 700 }} />
-        </label>
-        <Primary disabled={busy || smsCode.length !== 6} onClick={getVoucher}>Get the voucher</Primary>
-      </>)}
+    <Page title="Scan the voucher code" onBack={onBack}>
+      <CameraView key={tries} mode="qr" onText={read} />
+      <p style={{ ...muted, textAlign: 'center' }}>Scan the code on the member's phone after the work.</p>
       {error && <p style={{ color: C.coral, textAlign: 'center' }}>{error}</p>}
     </Page>
   );
