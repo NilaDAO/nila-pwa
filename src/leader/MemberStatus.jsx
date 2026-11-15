@@ -6,7 +6,7 @@
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import BorderMap from '../border/BorderMap';
-import { useBorderJob } from '../border/hooks';
+import { useBorderClient, useBorderJob } from '../border/hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
@@ -40,8 +40,11 @@ import { AssetScreen, Card, QrCircle, Secondary, Stepper } from '../loan/AssetPa
 import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
 import { PersonalName } from '../union/UnionCards';
+import { useContactBook } from '../union/hooks';
 import { useSessionUntil } from '../stellar/session';
 import { markRecover, useInviteLink, useKeypadMembers, useRecoverPhone } from '../keypad/hooks';
+import { formerMember } from './AddMember';
+import { Bouncing } from '../register/RegFrame';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -144,6 +147,12 @@ export default function MemberStatus({ id, go }) {
   const [syncing, setSyncing] = useState(false);   // Sync with phone: its own QR screen (13 Nov)
   const [helpError, setHelpError] = useState();
   const helpUntil = useSessionUntil(m?.address);
+  // The header shows the full name from the leaders' contact book when this phone can read it (15 Nov).
+  const book = useContactBook();
+  const borderApi = useBorderClient();
+  // Sign later (plan 050): a member mapped without her phone holds her title on a keyless placeholder (G…, not a smart
+  // account) until her QR is scanned. A keypad member's is moved when her phone is set up, not by a scan.
+  const holder = /^G[A-Z2-7]{55}$/.test(m?.address || '') && m?.joined === false && !m?.keypadId;
   const labels = useMemo(() => {
     // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
     // A financed share grows too (23 Oct): its draw is the start, whatever the plan's sowing date says.
@@ -194,6 +203,7 @@ export default function MemberStatus({ id, go }) {
   if (syncing) return <LiteDataQr m={m} inv={inv} onClose={() => setSyncing(false)} />;
   if (scanning) {
     return <StartHelp member={m.address} label={m.label} title={scanning.what} onBack={() => setScanning(false)}
+      onPair={scanning.holder ? (account) => borderApi.pairHolder(m.address, account) : undefined}
       onStarted={() => { const then = scanning.then; setScanning(false); then(); }} />;
   }
   const withQr = (what, then) => () => (helpUntil > Date.now() / 1000 + 10 ? then() : setScanning({ what, then }));
@@ -279,7 +289,7 @@ export default function MemberStatus({ id, go }) {
         </Section>
       );
   return (
-    <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings'), busy: refreshing,
+    <MapCard full={false} map={map} header={{ title: (m.address && book.data?.names.get(m.address)?.name) || m.label, onBack: back, onSettings: () => go('settings'), busy: refreshing,
       onRefresh: refresh }}
       style={{ fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5 }}>
       {/* The card's 22 px side padding (MapCard takes the sheet's padding back for screens with cards of their own). */}
@@ -295,11 +305,19 @@ export default function MemberStatus({ id, go }) {
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
             scan of her help QR sends her signed set_union (StartHelp), which also turns on her recovery. */}
-        {m.joined === false && investedSection}
-        {m.joined === false && (
-          <JoinSteps m={m} onScan={() => setScanning({ what: 'Join the union', then: () => { markJoined(m.address); refetchMembers(); } })} />
+        {m.joined === false && !holder && investedSection}
+        {/* Sign later (plan 050, 15 Nov): her title and crop plan never wait for this scan. The scan joins her account;
+            a new member's account is paired with the holding address her title was minted to (holder: her placeholder). */}
+        {m.joined === false && !(m.keypadId && /^G/.test(m.address || '')) && (
+          <JoinSteps m={m} holder={holder}
+            onScan={() => setScanning({ what: 'Join the union', holder, then: () => { if (!holder) markJoined(m.address); refetchMembers(); } })} />
         )}
-        {!m.record && <Row k="Status" v={pendingJob ? 'Pending' : m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
+        {/* A title whose field record is still being built (15 Nov): the crop plan's waiting view (CP1), not a status row. */}
+        {!m.record && !pendingJob && !m.note && (m.titleId || m.lands?.length) ? (<>
+          <Row k="Status" v="Field record pending" />
+          <Bouncing top={24} bottom={24} label="Waiting for the field record" />
+          <p style={{ margin: 0, fontSize: 14, color: C.muted, textAlign: 'center' }}>This can take up to an hour.</p>
+        </>) : !m.record && <Row k="Status" v={pendingJob ? 'Pending' : m.note || 'No land title yet'} />}
         {/* A member without a land title (13 Nov: e.g. hers was removed): a new one. A keypad member: the leader takes her
             points again; the leader's own row: the leader's own points; a smartphone member: L14, the leader scans her QR. */}
         {/* Fields sent, a border job open (13 Nov): G2 opens that task (L2), not a new title. */}
@@ -309,11 +327,23 @@ export default function MemberStatus({ id, go }) {
         )}
         {!m.titleId && !m.lands?.length && !m.job && (m.keypadId || m.formerTitle != null) && (
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
-            onClick={() => go(m.keypadId ? `tasks/member/${m.keypadId}/points` : m.address && m.address === s?.stellarAddress ? 'crop/register' : 'tasks/member')}>Make a new land title</button>
+            onClick={() => {
+              if (m.keypadId) return go(`tasks/member/${m.keypadId}/points`);
+              if (m.address && m.address === s?.stellarAddress) return go('crop/register');
+              // 15 Nov: her Polygon address is known (her last border job): no QR scan, straight to her name and number.
+              // 15 Nov: name and number from the leaders' contact book, else the ones known for her (the list's name may be
+              // the land's). With the contact book's name and a number: no form, straight to the field points.
+              if (m.formerPolygon && m.address) {
+                const c = book.data?.names.get(m.address) || {};
+                const name = c.name || m.name || '';
+                const phone = c.phone || m.phone || '';
+                formerMember({ ...m, name, phone });
+                return go(c.name && phoneOk(phone) ? 'tasks/member/qr/points' : 'tasks/member/qr');
+              }
+              return go('tasks/member');
+            }}>Make a new land title</button>
         )}
       </div>
-      {/* Not joined yet (13 Nov): only the steps to join her; the rest of G2 waits until she has joined. */}
-      {m.joined !== false && (<>
       {waiting && (
         // Her plan waits for a leader's approval (L12): here as in the task list, also for a self-mode member (5 Nov).
         <Section title="Crop plan" right="Waiting for approval">
@@ -380,7 +410,6 @@ export default function MemberStatus({ id, go }) {
         </Section>
       )}
       <Account m={m} inv={inv} go={go} onSync={() => setSyncing(true)} />
-      </>)}
       </div>
     </MapCard>
   );
@@ -389,22 +418,25 @@ export default function MemberStatus({ id, go }) {
 /** Not joined yet (moved by the operator, 7 Nov; steps 13 Nov): her account holds her title but does not name the union.
  *  The leader picks her phone and follows the steps; the last one is the scan of her QR, which sends her signed
  *  set_union. A keypad phone needs internet only while Nila lite installs. */
-function JoinSteps({ m, onScan }) {
+function JoinSteps({ m, holder, onScan }) {
   const [phone, setPhone] = useState('smart');      // 'smart' | 'keypad'
   const [moving, setMoving] = useState(false);
   // Buttons in a step keep 8 px above and below (16 / 24 to the text and the next step; 13 Nov).
   const stepBtn = { ...btn(), flex: 'none', width: '100%', margin: '8px 0' };
   const scan = <button type="button" style={stepBtn} onClick={onScan}>Scan the QR</button>;
-  const steps = phone === 'smart'
-    ? ['The member opens the Nila app and recovers the account.', 'The member taps the scan icon at the bottom: the QR shows.', <>Scan the QR. Done: the member has joined.{scan}</>]
+  const done = 'Scan the QR. Done: the member has joined.';
+  // A new member (holder) has no account yet: she registers in the app (TEXT TO CONFIRM WITH CARST).
+  const open = holder ? 'The member opens the Nila app and registers.' : 'The member opens the Nila app and recovers the account.';
+  const steps = phone === 'smart' || holder
+    ? [open, 'The member taps the scan icon at the bottom: the QR shows.', <>{done}{scan}</>]
     : ['The phone needs internet only while Nila lite installs.',
       <>Send the SMS.<button type="button" style={stepBtn} onClick={() => setMoving(true)}>Move</button></>,
-      'The member opens the SMS and taps QR in the bottom right corner.', <>Scan the QR. Done: the member has joined.{scan}</>];
+      'The member opens the SMS and taps QR in the bottom right corner.', <>{done}{scan}</>];
   // A G2 section (13 Nov), not a card: the phone switch, then numbered steps with the action in its step.
   return (
     <Section title="Join the union" right="Not joined yet" gap={20}>
-      {/* The phone switch as Cash ahead's All | Half (13 Nov). */}
-      <Segmented label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad phone']]} />
+      {/* The phone switch as Cash ahead's All | Half (13 Nov). A new member (holder) joins on a smartphone first. */}
+      {!holder && <Segmented label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad phone']]} />}
       <Steps items={steps} gap={16} />
       {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
     </Section>
@@ -458,7 +490,8 @@ function Account({ m, inv, go, onSync }) {
   const titleId = m.titleId || [...(m.lands || [])][0];
   const p = inv.data;
   const investment = p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
-  const why = m.shares.length ? 'The member has crop agreements.'
+  // 15 Nov: what holds Delete for good (no longer Remove member): crop agreements still to repay, an investment.
+  const why = m.loans.length ? 'The member has crop agreements still to repay.'
     : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
       : investment > 0 ? 'The member has an investment: pay it out first.' : null;
   const recoverOk = rcv.r !== 'pending' && rcv.r !== 'needed';
@@ -494,7 +527,7 @@ function Account({ m, inv, go, onSync }) {
       {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
       {card === 'keypad' && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={close} />}
       {card === 'remove' && <RemoveMember m={m} why={why} titleId={titleId} go={go} onClose={close} />}
-      {card === 'delete' && <DeleteMember m={m} go={go} onClose={close} />}
+      {card === 'delete' && <DeleteMember m={m} why={why} go={go} onClose={close} />}
     </Section>
   );
 }
@@ -644,7 +677,7 @@ function MoveToKeypad({ address, name, phone, onClose }) {
  *  title on Stellar, which ends the membership. Only with no crop agreement and no investment; nIN, USDC and vouchers stay
  *  in the member's wallet. The confirm says what it does, or why it cannot be done now (`why`). */
 /** A member without a land title deleted for good (13 Nov): her row and links on the node; her account stays on-chain. */
-function DeleteMember({ m, go, onClose }) {
+function DeleteMember({ m, why, go, onClose }) {
   const s = useNilaSigner();
   const api = usePlanClient();
   const qc = useQueryClient();
@@ -653,6 +686,12 @@ function DeleteMember({ m, go, onClose }) {
     mutationFn: () => (m.keypadId ? keypadClient(s).remove(m.keypadId) : api.removeFormer(m.address)),
     onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
   });
+  // 15 Nov: crop agreements still to repay or an investment hold this, not Remove member. A new land title lets her
+  // settle them.
+  if (why) {
+    return <ConfirmCard title="Delete member" ok="OK" onCancel={onClose} onOk={onClose}
+      warn={`${why} A member can be deleted only with no crop agreement to repay and no investment. Make the member a new land title to settle them.`} />;
+  }
   return (
     <ConfirmCard title="Delete member" ok={del.isPending ? 'Deleting…' : 'Delete'} okStyle={{ background: C.coral }} okDisabled={del.isPending}
       onCancel={onClose} onOk={() => del.mutate()}
@@ -670,13 +709,13 @@ function RemoveMember({ m, why, titleId, go, onClose }) {
     // 13 Nov: her titles too, so the leader's own crop plan and assets drop a removed own title at once.
     onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); qc.invalidateQueries({ queryKey: ['polygon', 'titles'] }); qc.invalidateQueries({ queryKey: ['stellar', 'titles'] }); go('members'); },
   });
-  return why ? (
-    <ConfirmCard title="Remove member" ok="OK" onCancel={onClose} onOk={onClose}
-      warn={`${why} A member can be removed only with no crop agreement and no investment.`} />
-  ) : (
-    <ConfirmCard title="Remove member" ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending}
+  // 15 Nov: allowed with crop agreements or an investment; the confirm says what stays open (`why`, while it reads).
+  const reading = why === 'Reading the investment…';
+  const after = why && !reading ? ` ${why} The crop agreements are still repaid; an investment stays locked until the member has a new land title.` : '';
+  return (
+    <ConfirmCard title="Remove member" ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending || reading}
       onCancel={onClose} onOk={() => rm.mutate()}
-      warn={`Remove ${m.label} from the union? The land title ${titleId} is burned, which ends the membership; this cannot be undone. nIN, USDC and vouchers stay in the member's wallet. To join again the member needs a new land title.`}>
+      warn={`Remove ${m.label} from the union? The land title ${titleId} is burned; this cannot be undone. The member stays in the members list and can get a new land title. nIN, USDC and vouchers stay in the member's wallet.${after}`}>
       {/* The node's refusal (a 409's detail, 4 Nov) on the card itself. */}
       {rm.error && <Text style={{ color: C.coral }}>{rm.error.message}</Text>}
     </ConfirmCard>

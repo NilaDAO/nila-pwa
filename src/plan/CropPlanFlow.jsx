@@ -33,8 +33,6 @@ import ReadAloud from './ReadAloud';
 import { RefreshIcon, ScanIcon } from '../shell/icons';
 import { useUnionInfo } from '../shell/SettingsParts';
 import HelpQr from '../loan/HelpQr';
-import StartHelp from '../loan/StartHelp';
-import { useSessionUntil } from '../stellar/session';
 import { titlePending, useMyBorderJob } from '../border/hooks';
 import { unionCentre } from '../leader/unionMap';
 import { useUnionMembers } from '../leader/unionMembers';
@@ -189,7 +187,7 @@ function Pending({ map, error }) {
 
 /** `forLand` (26 Oct, assist mode): a leader makes a member's crop plan with the member: the member's land
  *  { landId, recordHash, evm, account, label } instead of the signed-in person's own. Making the plan takes longer than a
- *  5-minute session, so the member's help QR is scanned only at the end, to accept it (CP11). */
+ *  5-minute session; the leader accepts it without her QR (sign later, plan 050). */
 /** Assist mode: the crop plan is made with the leader (26 Oct). */
 function AssistPlan({ map, name, waiting }) {
   const [qr, setQr] = useState(false);
@@ -295,12 +293,10 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   const record = field.data?.record;
   const submit = useSubmitIntake(landId);
   const accept = useAcceptPlan(landId);
-  const sessionUntil = useSessionUntil(forLand?.account);
-  const [scanToAccept, setScanToAccept] = useState(false);
   const mint = useMintCropShares();
   const approve = useApprovePlan();
-  // Assist mode (26 Oct): the leader made the plan, so the member's scan at CP11 is the whole consent: accept, approve
-  // and make the crop agreements in one go (no separate L12). The leader's own plan likewise (29 Oct): the leader's "I accept"
+  // Assist mode: the leader accepts, approves and makes the crop agreements in one go (no separate L12); sign later
+  // (plan 050, 15 Nov): with no scan, her consent is the codes her phone signs at a later scan of her QR (G2). The leader's own plan likewise (29 Oct): the leader's "I accept"
   // approves it and makes the crop agreements. A self-mode member's own plan still waits for a leader (L12).
   const [making, setMaking] = useState(false);
   const [makeError, setMakeError] = useState();
@@ -318,8 +314,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });
     } catch (e) { setError(e.message); }
   };
-  // CP11 for everyone (12 Nov): a member's plan made with the leader also goes through the accept screen and its checks;
-  // the member's QR is scanned there, at "Scan the member's QR and accept" (was 26 Oct: the scan right from CP10).
+  // CP11 for everyone (12 Nov): a member's plan made with the leader also goes through the accept screen and its checks.
   const toTerms = () => setStep('terms');
   const when = useRef(new Date());
   const revise = useRevisePlan();
@@ -509,12 +504,6 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       reason: makeError || (mint.refused || []).map((r) => `${r.crop || 'Crop agreement'}: ${r.error}`).join(' · ') || mint.error || 'Not made' };
     return <TxScreens tx={tx} network="Polygon" onClose={() => { window.location.hash = '#/members'; }}
       onRetry={() => (makeError ? makeMine() : mint.run(plan.id))} />;
-  }
-  if (scanToAccept) {
-    return (
-      <StartHelp member={forLand.account} label={forLand.label} title="Accept the crop plan" onBack={() => setScanToAccept(false)}
-        onStarted={async () => { setScanToAccept(false); await makeMine(); }} />
-    );
   }
   // The Privy login failed (busy, 429): no Stellar wallet, so her titles cannot be read; say so instead of S1's
   // "Loading is slow" until PrivyRoot's next try (1–5 minutes).
@@ -956,8 +945,6 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     // CP11 (board CropPlanTerms): the money chart, the two conditions, read-and-accept. The card scrolls inside.
     const go = async () => {
       setError(undefined);
-      // The leader accepts for the member only in the member's session: scan the help QR first (26 Oct).
-      if (forLand && !(sessionUntil > Date.now() / 1000 + 10)) { setScanToAccept(true); return; }
       if (forLand || self) { await makeMine(); return; }
       try { await accept.mutateAsync(plan); setStep('waiting'); } catch (e) { setError(e.message); }
     };
@@ -1001,7 +988,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
         {error && <p style={{ color: C.coral }}>{error}</p>}
         <button type="button" disabled={!read || accept.isPending} aria-disabled={!read} onClick={go} style={{
           width: '100%', height: 44, border: 0, borderRadius: 12, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, padding: '0 24px', marginTop: 14,
-          color: read ? C.ink : C.muted, background: read ? C.accent : C.raised, cursor: read ? 'pointer' : 'not-allowed' }}>{forLand ? 'Ask the member to show the QR' : 'I accept'}</button>
+          color: read ? C.ink : C.muted, background: read ? C.accent : C.raised, cursor: read ? 'pointer' : 'not-allowed' }}>{forLand ? 'Accept the plan' : 'I accept'}</button>
       </Sheet>
     );
   }

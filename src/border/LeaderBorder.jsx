@@ -4,7 +4,7 @@
 // field accepted or left out → L4 (mint). Data: the node's border job (O16). DESIGN GAP: no member names in the
 // app (the farm name or a short address stands in).
 import { cloneElement, useCallback, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
 import { acres, shapeFor } from './api';
@@ -16,11 +16,6 @@ import { TxScreens } from '../stellar/TxStatus';
 import { Notice, Sheet } from '../plan/ui';
 import { TrashIcon } from '../shell/icons';
 import { ConfirmCard } from '../shell/SettingsParts';
-import CameraView from '../shell/CameraView';
-import { useNilaSigner } from '../wallet/signer';
-import { ensureKeypadAccount, readAccountUnion, useStellarConfig } from '../stellar/hooks';
-import { isDeployed } from '../stellar/soroban';
-import { readSessionQr } from '../stellar/session';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
@@ -244,53 +239,13 @@ function Check({ job, n, onDone, onBack }) {
   );
 }
 
-/** Before the mint (4 Nov): whether the member's account exists on-chain and names this union. A member holds no XLM,
- *  so her own phone no longer makes it; a member added before then (or whose L14 join failed) shows her QR here
- *  and this leader's app makes and joins the account (kind 4 / 5 join; the leader's own XLM pays). The leader's own
- *  title, an address that is not a smart account, or a node without the account deployer: no step. */
-function useMemberJoined(job) {
-  const s = useNilaSigner();
-  const { data: cfg } = useStellarConfig();
-  const member = job.member;
-  const check = !!cfg?.contracts?.account_deployer && /^C[A-Z2-7]{55}$/.test(member || '') && member !== s?.stellarAddress;
-  const q = useQuery({
-    queryKey: ['stellar', 'member-joined', member], enabled: check, staleTime: 15_000,
-    queryFn: async () => (await isDeployed(cfg, member)) && !!(await readAccountUnion(cfg, member).catch(() => null)),
-  });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState();
-  const [tries, setTries] = useState(0);
-  const scan = async (t) => {
-    let r;
-    try { r = readSessionQr(t); } catch (e) { setError(e.message); setTries((x) => x + 1); return; }
-    if (r.member !== member) { setError("This is another member's QR."); setTries((x) => x + 1); return; }
-    if (!r.join) { setError('This QR cannot join the account. The member updates the Nila app and shows the QR again.'); setTries((x) => x + 1); return; }
-    setError(undefined); setBusy(true);
-    try {
-      const out = await ensureKeypadAccount(cfg, s, { account: member, first_signer: r.join.signer, set_union: r.join });
-      if (!out.union) throw new Error('no union');
-      await q.refetch();
-      return true;
-    } catch (e) {
-      console.error('[L4] account not made or union not set', e);
-      setError(e.message === 'no union' ? 'Could not join the account to the union. Try again.' : e.message);
-      setTries((x) => x + 1);
-    } finally { setBusy(false); }
-  };
-  // Not known yet (or no check): the mint is not held back.
-  return { needed: check && q.data === false, busy, error, tries, scan };
-}
-
 /** L4: every field accepted (or left out): mint her land title. */
 function Done({ job, onField, onBack, onAdd }) {
   const mint = useMintLandTitle(job.id);
-  const joined = useMemberJoined(job);
   const [farm, setFarm] = useState('');   // the title's name: hers from R6, else the leader names it here
   // Whether the member rents the land (13 Nov; kept with the job, not on the public title). The fields' soils are
   // accepted with their shapes on L3.
   const [tenant, setTenant] = useState(false);
-  // 14 Nov: a member without an account yet: Done opens the camera in its own view; after the scan the mint starts.
-  const [scanOpen, setScanOpen] = useState(false);
   const [plotId, setPlotId] = useState();
   const plot = (job.plots || []).find((p) => p.id === plotId);
   const ok = job.fields.filter((f) => f.state === 'accepted');
@@ -309,7 +264,6 @@ function Done({ job, onField, onBack, onAdd }) {
   // 14 Nov: the button is grey (not just inert) until the land has a name.
   const named = !!job.farm || !!farm.trim();
   const off = mint.isPending || !ok.length || !named;
-  const scanView = scanOpen && joined.needed && !st && !plot;
   const startMint = () => { setStarted(true); setClosed(false); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); };
   if (!closed && (minting || (started && (st === 'minted' || st === 'failed' || mint.error)))) {
     const tx = {
@@ -323,16 +277,10 @@ function Done({ job, onField, onBack, onAdd }) {
       onRetry={() => { mint.reset(); mint.mutate({ ...(job.farm ? {} : { farm: farm.trim() }), soils, tenant }); }} />;
   }
   return (
-    // The camera view (14 Nov) opens the card to the full height.
-    <Frame name={memberName(job)} onBack={scanView ? () => setScanOpen(false) : onBack} full={scanView}
+    // Sign later (plan 050, 15 Nov): the mint waits for no QR; the member's account joins at a later scan (G2).
+    <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} plots={st ? [] : job.plots || []} plotOn={plotId} onPlot={st ? undefined : setPlotId} />}>
-      {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : scanView ? (<>
-        <Head title="Scan the member's QR" sub="The member opens Your QR in the Nila app. Scan it to make the member's account; the land title is minted right after." />
-        {joined.busy ? <p role="status" style={{ margin: 0, fontSize: 14, color: C.muted }}>Making the member's account…</p>
-          : <CameraView key={joined.tries} mode="qr" onText={async (t) => { if (await joined.scan(t)) { setScanOpen(false); startMint(); } }} />}
-        {joined.error && <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral }}>{joined.error}</p>}
-        <button type="button" disabled={joined.busy} style={{ ...btn(false), flex: 'none' }} onClick={() => setScanOpen(false)}>Cancel</button>
-      </>) : (<>
+      {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
       <Head title={`${ok.length} fields · all accepted`} sub={`Total ${total.toFixed(2)} acres`} />
       {job.fields.map((f) => (
         <div key={f.n} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -369,7 +317,7 @@ function Done({ job, onField, onBack, onAdd }) {
         ? <>
           {!named && <p style={{ margin: 0, fontSize: 13, color: C.muted, textAlign: 'center' }}>Name the land first.</p>}
           <button type="button" disabled={off} style={{ ...btn(!off), flex: 'none', ...(off ? { color: C.muted, cursor: 'default' } : {}) }}
-          onClick={() => (joined.needed ? setScanOpen(true) : startMint())}>{joined.needed ? 'Done' : 'Mint land title'}</button>
+          onClick={startMint}>Mint land title</button>
           </>
         : <button type="button" disabled style={{ ...btn(false), flex: 'none', color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: R.round, border: `2px solid ${C.muted}`, borderTopColor: 'transparent', animation: 'nila-spin 1s linear infinite' }} />

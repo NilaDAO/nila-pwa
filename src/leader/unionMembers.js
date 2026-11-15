@@ -60,7 +60,7 @@ export function markJoined(address) {
 // The list as it was last seen, kept on the phone per account and union (22 Oct): G1 shows it at once on the next open
 // and refreshes it in the background. Only the list fields are kept (no field records), so it stays small.
 const cacheKey = (acct, union) => `nila.members.${union}.${acct}`;
-const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label', 'joined', 'keypadId', 'formerTitle'];
+const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label', 'joined', 'keypadId', 'formerTitle', 'formerPolygon'];
 function readKept(acct, union) {
   try { const v = JSON.parse(localStorage.getItem(cacheKey(acct, union)) || 'null'); return Array.isArray(v) ? v : undefined; } catch { return undefined; }
 }
@@ -90,7 +90,8 @@ function keep(acct, union, list) {
 const finish = (members) => members.map((m) => {
   const lands = [...m.lands].sort((a, b) => a - b);
   const route = m.titleId || lands[0] || m.address || `k${m.key.replace(/^keypad:/, '')}`;
-  return { ...m, lands, route: String(route), label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.address ? short(m.address) : m.phone || 'New member') };
+  return { ...m, lands, route: String(route), // 15 Nov: a member whose title was removed keeps her name, else the removed title's land, never her C address.
+    label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.formerTitle != null ? `Land ${m.formerTitle}` : m.address ? short(m.address) : m.phone || 'New member') };
 }).sort((a, b) => b.loans.some((x) => x.overdue) - a.loans.some((x) => x.overdue) || a.label.localeCompare(b.label));
 
 /** G1's list (22 Oct, lean): the union's titles, keypad members, open border jobs and the loan list, with each loan's
@@ -116,6 +117,7 @@ export function useUnionMembers(api) {
             note: r.note || '', job: r.job, nextHarvest: r.next_harvest || null, shareCounts: r.shares || {},
             seq: r.seq || 0, shareList: r.share_list || [], keypadId: r.keypad_id || undefined,
             formerTitle: r.former_title ?? undefined,   // 13 Nov: her title was burned; she stays in the list
+            formerPolygon: r.former_polygon || undefined,   // 15 Nov: her Polygon address, so a new title needs no QR scan
             // Her account names the union (7 Nov): false for a moved member until the leader scans her help QR; undefined unknown.
             joined: r.joined === false && joinedHere(r.address) ? true : r.joined,
             loans: (r.loans || []).map((l) => ({ token: String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'), left: Number(l.left ?? l.cash ?? 0), overdue: !!l.overdue, due: Number(l.due || 0) })) };
@@ -139,8 +141,9 @@ export function useUnionMembers(api) {
       const border = borderClient(s);
       const [titles, keypad, jobs, loanList] = await Promise.all([
         api.unionTitles().then((r) => r.titles || []).catch(() => []),
-        // Not a smartphone member's recovery row (4 Nov, POST /keypad/recoveries): she is already a row under her account.
-        keypadClient(s).list().then((r) => (r.members || []).filter((k) => !(k.phone_type === 'smartphone' && k.account))).catch(() => []),
+        // Not a smartphone member's row (4 Nov recovery rows; 15 Nov the app-link row of Add a member): she is already a row
+        // under her account or her border job.
+        keypadClient(s).list().then((r) => (r.members || []).filter((k) => k.phone_type !== 'smartphone')).catch(() => []),
         border.jobs().then((r) => r || []).catch(() => []),
         api.unionLoans().then((r) => r.loans || []).catch(() => []),
       ]);
