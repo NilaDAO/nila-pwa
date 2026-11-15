@@ -90,7 +90,8 @@ function keep(acct, union, list) {
 const finish = (members) => members.map((m) => {
   const lands = [...m.lands].sort((a, b) => a - b);
   const route = m.titleId || lands[0] || m.address || `k${m.key.replace(/^keypad:/, '')}`;
-  return { ...m, lands, route: String(route), label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.address ? short(m.address) : m.phone || 'New member') };
+  return { ...m, lands, route: String(route), // 15 Nov: a member whose title was removed keeps her name, else the removed title's land, never her C address.
+    label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.formerTitle != null ? `Land ${m.formerTitle}` : m.address ? short(m.address) : m.phone || 'New member') };
 }).sort((a, b) => b.loans.some((x) => x.overdue) - a.loans.some((x) => x.overdue) || a.label.localeCompare(b.label));
 
 /** G1's list (22 Oct, lean): the union's titles, keypad members, open border jobs and the loan list, with each loan's

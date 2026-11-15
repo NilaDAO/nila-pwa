@@ -40,6 +40,7 @@ import { AssetScreen, Card, QrCircle, Secondary, Stepper } from '../loan/AssetPa
 import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
 import { PersonalName } from '../union/UnionCards';
+import { useContactBook } from '../union/hooks';
 import { useSessionUntil } from '../stellar/session';
 import { markRecover, useInviteLink, useKeypadMembers, useRecoverPhone } from '../keypad/hooks';
 import { formerMember } from './AddMember';
@@ -145,6 +146,8 @@ export default function MemberStatus({ id, go }) {
   const [syncing, setSyncing] = useState(false);   // Sync with phone: its own QR screen (13 Nov)
   const [helpError, setHelpError] = useState();
   const helpUntil = useSessionUntil(m?.address);
+  // The header shows the full name from the leaders' contact book when this phone can read it (15 Nov).
+  const book = useContactBook();
   const borderApi = useBorderClient();
   // Sign later (plan 050): a member mapped without her phone holds her title on a keyless placeholder (G…, not a smart
   // account) until her QR is scanned. A keypad member's is moved when her phone is set up, not by a scan.
@@ -285,7 +288,7 @@ export default function MemberStatus({ id, go }) {
         </Section>
       );
   return (
-    <MapCard full={false} map={map} header={{ title: m.label, onBack: back, onSettings: () => go('settings'), busy: refreshing,
+    <MapCard full={false} map={map} header={{ title: (m.address && book.data?.names.get(m.address)?.name) || m.label, onBack: back, onSettings: () => go('settings'), busy: refreshing,
       onRefresh: refresh }}
       style={{ fontFamily: FONT, color: C.text, fontSize: 14, lineHeight: 1.5 }}>
       {/* The card's 22 px side padding (MapCard takes the sheet's padding back for screens with cards of their own). */}
