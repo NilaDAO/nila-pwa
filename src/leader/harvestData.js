@@ -61,12 +61,13 @@ const half = (d) => (d.getUTCDate() <= 10 ? 0 : d.getUTCDate() <= 20 ? 1 : 2);
 const PART = ['early', 'mid', 'late'];
 
 /** The union's crop agreements by crop, then by harvest (start, mid or end of a month): the H1 rows and an H2 group. */
-export function harvestGroups(members, shares, now = Date.now() / 1000) {
+/** `fodder` (15 Nov): the catalogue's fodder crops, not sold, so not on H1. */
+export function harvestGroups(members, shares, now = Date.now() / 1000, fodder = new Set()) {
   const label = Object.fromEntries((members || []).map((m) => [m.address, m]));
   const crops = {};
   for (const [addr, v] of Object.entries(shares || {})) {
     for (const x of v.shares || []) {
-      if (x.lapsed || !x.harvest) continue;
+      if (x.lapsed || !x.harvest || fodder.has(x.crop_key)) continue;
       const t = Date.parse(`${String(x.harvest).slice(0, 10)}T00:00:00Z`);
       if (t / 1000 < now - 60 * 86400 && !x.loan) continue;        // a harvest long past and settled
       const d = new Date(t);
