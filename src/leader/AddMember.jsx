@@ -205,7 +205,7 @@ const writeScanned = (m) => { try { sessionStorage.setItem(SCANNED, JSON.stringi
 export const scannedNewMember = (m) => writeScanned({ account: m.account, polygon: m.polygon, join: m.join || null });
 /** A member whose land title was removed (15 Nov): her account, Polygon address, name and phone are known, so a new
  *  title starts at her name and number (tasks/member/qr), with no QR scan. */
-export const formerMember = (m) => writeScanned({ account: m.address, polygon: m.formerPolygon, join: null, name: m.name || '', phone: m.phone || '' });
+export const formerMember = (m) => writeScanned({ account: m.address, polygon: m.formerPolygon, join: null, name: m.name || '', phone: m.phone || '', former: true });
 
 /** A scanned smartphone member's account (4 Nov): she holds no XLM, so this leader's app makes it and sends her signed
  *  set_union from her QR (kind 5), the leader's own XLM paying the fee. 'idle' with no join (already made and joined),
@@ -237,7 +237,8 @@ function NewSmartphone({ go }) {
   const ok = name.trim() && phoneOk(phone);
   const next = () => { writeScanned({ ...m, name: name.trim(), phone: phoneValue(phone) }); go('tasks/member/qr/points'); };
   return (
-    <Card title="New member">
+    // An existing member (15 Nov: a new title after a removal): the leader checks what is known, not a new member.
+    <Card title={m.former ? 'Verify the record' : 'New member'}>
       <label style={label} htmlFor="l14-name">Name</label>
       <input id="l14-name" style={field} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
       <label style={label} htmlFor="l14-phone">Phone number</label>
