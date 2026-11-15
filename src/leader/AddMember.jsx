@@ -221,6 +221,9 @@ const writeScanned = (m) => { try { sessionStorage.setItem(SCANNED, JSON.stringi
 
 /** A smartphone member's help QR was scanned (L14 or the Members scan, 29 Oct): { account, polygon, join }. */
 export const scannedNewMember = (m) => writeScanned({ account: m.account, polygon: m.polygon, join: m.join || null });
+/** A member whose land title was removed (15 Nov): her account, Polygon address, name and phone are known, so a new
+ *  title starts at her name and number (tasks/member/qr), with no QR scan. */
+export const formerMember = (m) => writeScanned({ account: m.address, polygon: m.formerPolygon, join: null, name: m.name || '', phone: m.phone || '' });
 
 /** A scanned smartphone member's account (4 Nov): she holds no XLM, so this leader's app makes it and sends her signed
  *  set_union from her QR (kind 5), the leader's own XLM paying the fee. 'idle' with no join (already made and joined),

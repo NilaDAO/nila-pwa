@@ -42,6 +42,7 @@ import StartHelp from '../loan/StartHelp';
 import { PersonalName } from '../union/UnionCards';
 import { useSessionUntil } from '../stellar/session';
 import { markRecover, useInviteLink, useKeypadMembers, useRecoverPhone } from '../keypad/hooks';
+import { formerMember } from './AddMember';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -309,7 +310,13 @@ export default function MemberStatus({ id, go }) {
         )}
         {!m.titleId && !m.lands?.length && !m.job && (m.keypadId || m.formerTitle != null) && (
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
-            onClick={() => go(m.keypadId ? `tasks/member/${m.keypadId}/points` : m.address && m.address === s?.stellarAddress ? 'crop/register' : 'tasks/member')}>Make a new land title</button>
+            onClick={() => {
+              if (m.keypadId) return go(`tasks/member/${m.keypadId}/points`);
+              if (m.address && m.address === s?.stellarAddress) return go('crop/register');
+              // 15 Nov: her Polygon address is known (her last border job): no QR scan, straight to her name and number.
+              if (m.formerPolygon && m.address) { formerMember(m); return go('tasks/member/qr'); }
+              return go('tasks/member');
+            }}>Make a new land title</button>
         )}
       </div>
       {/* Not joined yet (13 Nov): only the steps to join her; the rest of G2 waits until she has joined. */}
@@ -458,7 +465,8 @@ function Account({ m, inv, go, onSync }) {
   const titleId = m.titleId || [...(m.lands || [])][0];
   const p = inv.data;
   const investment = p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
-  const why = m.shares.length ? 'The member has crop agreements.'
+  // 15 Nov: what holds Delete for good (no longer Remove member): crop agreements still to repay, an investment.
+  const why = m.loans.length ? 'The member has crop agreements still to repay.'
     : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
       : investment > 0 ? 'The member has an investment: pay it out first.' : null;
   const recoverOk = rcv.r !== 'pending' && rcv.r !== 'needed';
@@ -494,7 +502,7 @@ function Account({ m, inv, go, onSync }) {
       {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
       {card === 'keypad' && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={close} />}
       {card === 'remove' && <RemoveMember m={m} why={why} titleId={titleId} go={go} onClose={close} />}
-      {card === 'delete' && <DeleteMember m={m} go={go} onClose={close} />}
+      {card === 'delete' && <DeleteMember m={m} why={why} go={go} onClose={close} />}
     </Section>
   );
 }
@@ -644,7 +652,7 @@ function MoveToKeypad({ address, name, phone, onClose }) {
  *  title on Stellar, which ends the membership. Only with no crop agreement and no investment; nIN, USDC and vouchers stay
  *  in the member's wallet. The confirm says what it does, or why it cannot be done now (`why`). */
 /** A member without a land title deleted for good (13 Nov): her row and links on the node; her account stays on-chain. */
-function DeleteMember({ m, go, onClose }) {
+function DeleteMember({ m, why, go, onClose }) {
   const s = useNilaSigner();
   const api = usePlanClient();
   const qc = useQueryClient();
@@ -653,6 +661,12 @@ function DeleteMember({ m, go, onClose }) {
     mutationFn: () => (m.keypadId ? keypadClient(s).remove(m.keypadId) : api.removeFormer(m.address)),
     onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); go('members'); },
   });
+  // 15 Nov: crop agreements still to repay or an investment hold this, not Remove member. A new land title lets her
+  // settle them.
+  if (why) {
+    return <ConfirmCard title="Delete member" ok="OK" onCancel={onClose} onOk={onClose}
+      warn={`${why} A member can be deleted only with no crop agreement to repay and no investment. Make the member a new land title to settle them.`} />;
+  }
   return (
     <ConfirmCard title="Delete member" ok={del.isPending ? 'Deleting…' : 'Delete'} okStyle={{ background: C.coral }} okDisabled={del.isPending}
       onCancel={onClose} onOk={() => del.mutate()}
@@ -670,13 +684,13 @@ function RemoveMember({ m, why, titleId, go, onClose }) {
     // 13 Nov: her titles too, so the leader's own crop plan and assets drop a removed own title at once.
     onSuccess: () => { onClose(); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); qc.invalidateQueries({ queryKey: ['polygon', 'titles'] }); qc.invalidateQueries({ queryKey: ['stellar', 'titles'] }); go('members'); },
   });
-  return why ? (
-    <ConfirmCard title="Remove member" ok="OK" onCancel={onClose} onOk={onClose}
-      warn={`${why} A member can be removed only with no crop agreement and no investment.`} />
-  ) : (
-    <ConfirmCard title="Remove member" ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending}
+  // 15 Nov: allowed with crop agreements or an investment; the confirm says what stays open (`why`, while it reads).
+  const reading = why === 'Reading the investment…';
+  const after = why && !reading ? ` ${why} The crop agreements are still repaid; an investment stays locked until the member has a new land title.` : '';
+  return (
+    <ConfirmCard title="Remove member" ok={rm.isPending ? 'Removing…' : 'Remove'} okStyle={{ background: C.coral }} okDisabled={rm.isPending || reading}
       onCancel={onClose} onOk={() => rm.mutate()}
-      warn={`Remove ${m.label} from the union? The land title ${titleId} is burned, which ends the membership; this cannot be undone. nIN, USDC and vouchers stay in the member's wallet. To join again the member needs a new land title.`}>
+      warn={`Remove ${m.label} from the union? The land title ${titleId} is burned; this cannot be undone. The member stays in the members list and can get a new land title. nIN, USDC and vouchers stay in the member's wallet.${after}`}>
       {/* The node's refusal (a 409's detail, 4 Nov) on the card itself. */}
       {rm.error && <Text style={{ color: C.coral }}>{rm.error.message}</Text>}
     </ConfirmCard>

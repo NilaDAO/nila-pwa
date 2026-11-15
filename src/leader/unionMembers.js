@@ -60,7 +60,7 @@ export function markJoined(address) {
 // The list as it was last seen, kept on the phone per account and union (22 Oct): G1 shows it at once on the next open
 // and refreshes it in the background. Only the list fields are kept (no field records), so it stays small.
 const cacheKey = (acct, union) => `nila.members.${union}.${acct}`;
-const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label', 'joined', 'keypadId', 'formerTitle'];
+const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label', 'joined', 'keypadId', 'formerTitle', 'formerPolygon'];
 function readKept(acct, union) {
   try { const v = JSON.parse(localStorage.getItem(cacheKey(acct, union)) || 'null'); return Array.isArray(v) ? v : undefined; } catch { return undefined; }
 }
@@ -116,6 +116,7 @@ export function useUnionMembers(api) {
             note: r.note || '', job: r.job, nextHarvest: r.next_harvest || null, shareCounts: r.shares || {},
             seq: r.seq || 0, shareList: r.share_list || [], keypadId: r.keypad_id || undefined,
             formerTitle: r.former_title ?? undefined,   // 13 Nov: her title was burned; she stays in the list
+            formerPolygon: r.former_polygon || undefined,   // 15 Nov: her Polygon address, so a new title needs no QR scan
             // Her account names the union (7 Nov): false for a moved member until the leader scans her help QR; undefined unknown.
             joined: r.joined === false && joinedHere(r.address) ? true : r.joined,
             loans: (r.loans || []).map((l) => ({ token: String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'), left: Number(l.left ?? l.cash ?? 0), overdue: !!l.overdue, due: Number(l.due || 0) })) };
