@@ -11,9 +11,38 @@ import MapCard from '../shell/MapCard';
 import { C, FONT } from '../shell/tokens';
 import { NoteBar, QrCircle } from './AssetParts';
 import { AddressCopy, qrCard } from '../shell/WalletQr';
+import { usePlanClient } from '../plan/hooks';
+import { signPlan } from '../plan/signPlan';
 
 // As MyShares' assisted() (not imported: MyShares imports this file).
 const assisted = () => { try { return localStorage.getItem('nila.mode') !== 'self'; } catch { return true; } };
+
+/** Sign later (plan 050, 15 Nov): while her QR shows, her phone asks the node every 10 s whether a leader accepted a
+ *  crop plan for her that waits for her signature (it shows once the leader has scanned this QR); then it signs it.
+ *  undefined (nothing to sign) | 'busy' | 'done' | an error message. */
+function useSignLater(on) {
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const api = usePlanClient();
+  const [state, setState] = useState();
+  useEffect(() => {
+    if (!on || !api || !cfg || !s?.ready || state === 'busy' || state === 'done') return undefined;
+    let stop = false;
+    const look = async () => {
+      const r = await api.toSign().catch(() => null);
+      if (stop || !r?.plans?.length) return;
+      setState('busy');
+      try {
+        for (const p of r.plans) await signPlan({ cfg, api, s, planId: p.plan_id });
+        if (!stop) setState('done');
+      } catch (e) { if (!stop) setState(e.message || 'Not signed. Show the QR again.'); }
+    };
+    look();
+    const t = setInterval(look, 10_000);
+    return () => { stop = true; clearInterval(t); };
+  }, [on, api, cfg, s, state]);
+  return state;
+}
 
 /** `note`: what the leader will do (repay, invest, collect…); `onBack` when opened from a page (not the Scan tab). */
 /** `withPolygon`: carry her Polygon address in any mode (the no-title card, 3 Nov), so a leader can add her (L14). */
@@ -48,6 +77,17 @@ export default function HelpQr({ note, onBack, withPolygon = false } = {}) {
     return () => { lock?.release().catch(() => {}); };
   }, []);
   const over = qr && now > qr.until;
+  const signing = useSignLater(assisted());
+  if (signing === 'busy' || signing === 'done') {
+    return (
+      <MapCard header={{ title: 'Your QR', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}
+        style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <section role="status" style={{ ...qrCard, fontSize: 16, fontWeight: 700 }}>
+          {signing === 'busy' ? 'Signing your crop plan…' : 'Signed. You can close the app.'}
+        </section>
+      </MapCard>
+    );
+  }
   // The map-view standard (26 Oct): a full-height map card with its drag line, the title and settings in its header.
   // Laid out as the account QR (31 Oct): the QR in its card with the address and Copy, a warning card, the note at the
   // bottom.
@@ -66,6 +106,7 @@ export default function HelpQr({ note, onBack, withPolygon = false } = {}) {
         <span style={{ fontSize: 14, lineHeight: 1.5 }}>Whoever scans this can act for you for 5 minutes. Let only a leader of your union scan it, at the union office. Never send a photo of it.</span>
       </section>
       {error && <p style={{ color: C.coral, textAlign: 'center', margin: 0 }}>{error}</p>}
+      {signing && <p style={{ color: C.coral, textAlign: 'center', margin: 0 }}>{signing}</p>}
       <div aria-hidden="true" style={{ height: 120 }} />
       <NoteBar>{over ? 'This QR has expired. Tap the circle for a new one.' : note || 'Show this to your union leader at the office. Your leader can then act for you for 5 minutes: invest, repay, use a crop agreement, start or collect a withdrawal.'}</NoteBar>
     </MapCard>

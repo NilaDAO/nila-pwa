@@ -6,7 +6,7 @@
 // DESIGN GAPs (left out, no data or no call yet): crop health, Batches (the Harvests tab), the lending chart and the
 // repayment outlook, the rate on her investment, Plan next year, refreshing the record.
 import BorderMap from '../border/BorderMap';
-import { useBorderJob } from '../border/hooks';
+import { useBorderClient, useBorderJob } from '../border/hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
@@ -145,6 +145,11 @@ export default function MemberStatus({ id, go }) {
   const [syncing, setSyncing] = useState(false);   // Sync with phone: its own QR screen (13 Nov)
   const [helpError, setHelpError] = useState();
   const helpUntil = useSessionUntil(m?.address);
+  const borderApi = useBorderClient();
+  // Sign later (plan 050): a member mapped without her phone holds her title on a keyless placeholder (G…, not a smart
+  // account) until her QR is scanned; a crop plan a leader accepted for her waits for her phone's signature.
+  const holder = /^G[A-Z2-7]{55}$/.test(m?.address || '') && m?.joined === false;
+  const toSign = !!m?.plan?.to_sign;
   const labels = useMemo(() => {
     // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
     // A financed share grows too (23 Oct): its draw is the start, whatever the plan's sowing date says.
@@ -195,6 +200,7 @@ export default function MemberStatus({ id, go }) {
   if (syncing) return <LiteDataQr m={m} inv={inv} onClose={() => setSyncing(false)} />;
   if (scanning) {
     return <StartHelp member={m.address} label={m.label} title={scanning.what} onBack={() => setScanning(false)}
+      onPair={scanning.holder ? (account) => borderApi.pairHolder(m.address, account) : undefined}
       onStarted={() => { const then = scanning.then; setScanning(false); then(); }} />;
   }
   const withQr = (what, then) => () => (helpUntil > Date.now() / 1000 + 10 ? then() : setScanning({ what, then }));
@@ -296,9 +302,13 @@ export default function MemberStatus({ id, go }) {
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
             scan of her help QR sends her signed set_union (StartHelp), which also turns on her recovery. */}
-        {m.joined === false && investedSection}
-        {m.joined === false && (
-          <JoinSteps m={m} onScan={() => setScanning({ what: 'Join the union', then: () => { markJoined(m.address); refetchMembers(); } })} />
+        {m.joined === false && !holder && investedSection}
+        {/* Sign later (plan 050, 15 Nov): her title and crop plan never wait for this scan. The scan joins her account
+            and her phone signs the crop plan a leader accepted for her; a new member's account is paired with the
+            holding address her title was minted to (holder: her placeholder). */}
+        {(m.joined === false || toSign) && (
+          <JoinSteps m={m} holder={holder} toSign={toSign || holder}
+            onScan={() => setScanning({ what: m.joined === false ? 'Join the union' : 'Sign the crop plan', holder, then: () => { if (!holder) markJoined(m.address); refetchMembers(); plan.refetch?.(); } })} />
         )}
         {!m.record && <Row k="Status" v={pendingJob ? 'Pending' : m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
         {/* A member without a land title (13 Nov: e.g. hers was removed): a new one. A keypad member: the leader takes her
@@ -319,8 +329,6 @@ export default function MemberStatus({ id, go }) {
             }}>Make a new land title</button>
         )}
       </div>
-      {/* Not joined yet (13 Nov): only the steps to join her; the rest of G2 waits until she has joined. */}
-      {m.joined !== false && (<>
       {waiting && (
         // Her plan waits for a leader's approval (L12): here as in the task list, also for a self-mode member (5 Nov).
         <Section title="Crop plan" right="Waiting for approval">
@@ -387,7 +395,6 @@ export default function MemberStatus({ id, go }) {
         </Section>
       )}
       <Account m={m} inv={inv} go={go} onSync={() => setSyncing(true)} />
-      </>)}
       </div>
     </MapCard>
   );
@@ -396,22 +403,26 @@ export default function MemberStatus({ id, go }) {
 /** Not joined yet (moved by the operator, 7 Nov; steps 13 Nov): her account holds her title but does not name the union.
  *  The leader picks her phone and follows the steps; the last one is the scan of her QR, which sends her signed
  *  set_union. A keypad phone needs internet only while Nila lite installs. */
-function JoinSteps({ m, onScan }) {
+function JoinSteps({ m, holder, toSign, onScan }) {
   const [phone, setPhone] = useState('smart');      // 'smart' | 'keypad'
   const [moving, setMoving] = useState(false);
   // Buttons in a step keep 8 px above and below (16 / 24 to the text and the next step; 13 Nov).
   const stepBtn = { ...btn(), flex: 'none', width: '100%', margin: '8px 0' };
   const scan = <button type="button" style={stepBtn} onClick={onScan}>Scan the QR</button>;
-  const steps = phone === 'smart'
-    ? ['The member opens the Nila app and recovers the account.', 'The member taps the scan icon at the bottom: the QR shows.', <>Scan the QR. Done: the member has joined.{scan}</>]
+  // Sign later (15 Nov): the same scan signs the crop plan.
+  const done = toSign ? 'Scan the QR. Done: the member has joined and signed the crop plan.' : 'Scan the QR. Done: the member has joined.';
+  // A new member (holder) has no account yet: she registers in the app (TEXT TO CONFIRM WITH CARST).
+  const open = holder ? 'The member opens the Nila app and registers.' : 'The member opens the Nila app and recovers the account.';
+  const steps = phone === 'smart' || holder
+    ? [open, 'The member taps the scan icon at the bottom: the QR shows.', <>{done}{scan}</>]
     : ['The phone needs internet only while Nila lite installs.',
       <>Send the SMS.<button type="button" style={stepBtn} onClick={() => setMoving(true)}>Move</button></>,
-      'The member opens the SMS and taps QR in the bottom right corner.', <>Scan the QR. Done: the member has joined.{scan}</>];
+      'The member opens the SMS and taps QR in the bottom right corner.', <>{done}{scan}</>];
   // A G2 section (13 Nov), not a card: the phone switch, then numbered steps with the action in its step.
   return (
-    <Section title="Join the union" right="Not joined yet" gap={20}>
-      {/* The phone switch as Cash ahead's All | Half (13 Nov). */}
-      <Segmented label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad phone']]} />
+    <Section title={m.joined === false ? 'Join the union' : 'Sign the crop plan'} right={m.joined === false ? 'Not joined yet' : undefined} gap={20}>
+      {/* The phone switch as Cash ahead's All | Half (13 Nov). A new member (holder) joins on a smartphone first. */}
+      {!holder && <Segmented label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad phone']]} />}
       <Steps items={steps} gap={16} />
       {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
     </Section>

@@ -140,8 +140,9 @@ export function useUnionMembers(api) {
       const border = borderClient(s);
       const [titles, keypad, jobs, loanList] = await Promise.all([
         api.unionTitles().then((r) => r.titles || []).catch(() => []),
-        // Not a smartphone member's recovery row (4 Nov, POST /keypad/recoveries): she is already a row under her account.
-        keypadClient(s).list().then((r) => (r.members || []).filter((k) => !(k.phone_type === 'smartphone' && k.account))).catch(() => []),
+        // Not a smartphone member's row (4 Nov recovery rows; 15 Nov the app-link row of Add a member): she is already a row
+        // under her account or her border job.
+        keypadClient(s).list().then((r) => (r.members || []).filter((k) => k.phone_type !== 'smartphone')).catch(() => []),
         border.jobs().then((r) => r || []).catch(() => []),
         api.unionLoans().then((r) => r.loans || []).catch(() => []),
       ]);

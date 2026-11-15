@@ -21,6 +21,7 @@ import { useUnionMembers } from '../leader/unionMembers';
 import { Card, CardTitle, KV } from './AssetParts';
 import { NIN } from './request';
 import StartHelp from './StartHelp';
+import { readDeskCode } from './deskCode';
 import { useSessionUntil } from '../stellar/session';
 import { capsFor, checkRows, repayAbout, useUnionChecks } from './unionChecks';
 import { usePost } from '../anchor/LeaderLp';
@@ -138,6 +139,10 @@ export function LeaderLoan({ initial }) {
   const bringRoom = useBringRoom();
   const [error, setError] = useState();
   const helpUntil = useSessionUntil(shares.data?.find((x) => x.token_id === pick)?.ft?.member);
+  // Sign later (plan 050, 15 Nov): her take-up signed ahead at the scan of her QR; used instead of a help QR.
+  const pickMember = shares.data?.find((x) => x.token_id === pick)?.ft?.member;
+  const stored = useQuery({ queryKey: ['plan', 'codes', pickMember], enabled: !!api && !!pickMember && pickMember !== s?.stellarAddress,
+    staleTime: 60_000, queryFn: () => api.codesOf(pickMember) });
 
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); window.location.hash = '#/assets'; }} onRetry={() => tx.retry()} />;
   // No session yet (26 Oct: the help QR is the one office QR): the leader scans the member's help QR first, then uses
@@ -177,9 +182,14 @@ export function LeaderLoan({ initial }) {
     ...(checks.data?.blocked || [])];
   // The voucher is debt too (26 Oct): interest on cash and vouchers together.
   const repay = row && rateBp != null ? repayAbout(cash + value, rateBp, new Date(), row.finance.due) : null;
+  // Her stored take-up for this crop agreement (not for more machine work: that takes a new QR), checked here.
+  let takeUp = null;
+  const code = !more && sel && (stored.data?.codes || []).find((c) => c.token === tokenHex(sel.token_id))?.take_up;
+  if (code && cfg) { try { takeUp = readDeskCode(cfg, code); } catch { takeUp = null; } }
   const go = async () => {
     setError(undefined);
     if (!(await askBring())) return;
+    if (takeUp) { setOwn(true); return; }
     setReq({ member: sel.ft.member });
   };
   // Her own share (a leader is a member too, 23 Oct): no QR; she confirms (N10) and signs draw_loan herself.
@@ -197,6 +207,19 @@ export function LeaderLoan({ initial }) {
       invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
     });
     return <ConfirmShare own more={more} cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
+  }
+  if (own && sel && takeUp && !mine) {
+    // The amounts she signed (the plan's): the stored signature covers exactly these.
+    const nm = `${row?.name || sel.crop}`;
+    const ar = areaOf(plan, sel.share);
+    const sCash = Number(takeUp.cash) / Number(NIN);
+    const draw = () => tx.run({
+      label: `Crop agreement ${nm} · for the member`, rows: [['Cash', inr(sCash)], ...(takeUp.hours ? [['Machine vouchers', `${ta(takeUp.hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
+      contractName: 'fund_core', fn: 'draw_loan',
+      args: [sv.address(cfg.union), sv.address(takeUp.member), sv.bytes32(takeUp.token), sv.i128(takeUp.cash), sv.u32(takeUp.hours)],
+      auth: [takeUp.entry], invalidate: [['oracle', 'shares'], ['stellar', 'unionChecks'], ['plan', 'codes']],
+    });
+    return <ConfirmShare forMember cash={sCash} hours={takeUp.hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
   }
   if (own && sel && helping) {
     const nm = `${row?.name || sel.crop}`;
