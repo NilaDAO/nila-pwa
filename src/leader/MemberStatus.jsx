@@ -44,6 +44,7 @@ import { useContactBook } from '../union/hooks';
 import { useSessionUntil } from '../stellar/session';
 import { markRecover, useInviteLink, useKeypadMembers, useRecoverPhone } from '../keypad/hooks';
 import { formerMember } from './AddMember';
+import { Bouncing } from '../register/RegFrame';
 
 const U = 10_000_000;
 const n = (v) => Number(BigInt(v ?? 0)) / U;
@@ -311,7 +312,11 @@ export default function MemberStatus({ id, go }) {
           <JoinSteps m={m} holder={holder}
             onScan={() => setScanning({ what: 'Join the union', holder, then: () => { if (!holder) markJoined(m.address); refetchMembers(); } })} />
         )}
-        {!m.record && <Row k="Status" v={pendingJob ? 'Pending' : m.note || (m.titleId || m.lands?.length ? 'Field record being built' : 'No land title yet')} />}
+        {/* A title whose field record is still being built (15 Nov): the crop plan's waiting view (CP1), not a status row. */}
+        {!m.record && !pendingJob && !m.note && (m.titleId || m.lands?.length) ? (<>
+          <Bouncing top={24} bottom={24} label="Waiting for the field record" />
+          <p style={{ margin: 0, fontSize: 14, color: C.muted, textAlign: 'center' }}>This can take up to an hour.</p>
+        </>) : !m.record && <Row k="Status" v={pendingJob ? 'Pending' : m.note || 'No land title yet'} />}
         {/* A member without a land title (13 Nov: e.g. hers was removed): a new one. A keypad member: the leader takes her
             points again; the leader's own row: the leader's own points; a smartphone member: L14, the leader scans her QR. */}
         {/* Fields sent, a border job open (13 Nov): G2 opens that task (L2), not a new title. */}
