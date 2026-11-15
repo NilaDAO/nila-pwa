@@ -331,7 +331,15 @@ export default function MemberStatus({ id, go }) {
               if (m.keypadId) return go(`tasks/member/${m.keypadId}/points`);
               if (m.address && m.address === s?.stellarAddress) return go('crop/register');
               // 15 Nov: her Polygon address is known (her last border job): no QR scan, straight to her name and number.
-              if (m.formerPolygon && m.address) { formerMember(m); return go('tasks/member/qr'); }
+              // 15 Nov: name and number from the leaders' contact book, else the ones known for her (the list's name may be
+              // the land's). With the contact book's name and a number: no form, straight to the field points.
+              if (m.formerPolygon && m.address) {
+                const c = book.data?.names.get(m.address) || {};
+                const name = c.name || m.name || '';
+                const phone = c.phone || m.phone || '';
+                formerMember({ ...m, name, phone });
+                return go(c.name && phoneOk(phone) ? 'tasks/member/qr/points' : 'tasks/member/qr');
+              }
               return go('tasks/member');
             }}>Make a new land title</button>
         )}
