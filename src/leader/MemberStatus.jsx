@@ -314,6 +314,7 @@ export default function MemberStatus({ id, go }) {
         )}
         {/* A title whose field record is still being built (15 Nov): the crop plan's waiting view (CP1), not a status row. */}
         {!m.record && !pendingJob && !m.note && (m.titleId || m.lands?.length) ? (<>
+          <Row k="Status" v="Field record pending" />
           <Bouncing top={24} bottom={24} label="Waiting for the field record" />
           <p style={{ margin: 0, fontSize: 14, color: C.muted, textAlign: 'center' }}>This can take up to an hour.</p>
         </>) : !m.record && <Row k="Status" v={pendingJob ? 'Pending' : m.note || 'No land title yet'} />}
