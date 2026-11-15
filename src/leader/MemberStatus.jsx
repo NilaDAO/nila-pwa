@@ -311,7 +311,7 @@ export default function MemberStatus({ id, go }) {
           <JoinSteps m={m} holder={holder}
             onScan={() => setScanning({ what: 'Join the union', holder, then: () => { if (!holder) markJoined(m.address); refetchMembers(); } })} />
         )}
-        {!m.record && <Row k="Status" v={pendingJob ? 'Pending' : m.note || (m.titleId || m.lands?.length ? 'Land title made · field record being built' : 'No land title yet')} />}
+        {!m.record && <Row k="Status" v={pendingJob ? 'Pending' : m.note || (m.titleId || m.lands?.length ? 'Field record being built' : 'No land title yet')} />}
         {/* A member without a land title (13 Nov: e.g. hers was removed): a new one. A keypad member: the leader takes her
             points again; the leader's own row: the leader's own points; a smartphone member: L14, the leader scans her QR. */}
         {/* Fields sent, a border job open (13 Nov): G2 opens that task (L2), not a new title. */}
