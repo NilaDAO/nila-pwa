@@ -25,6 +25,8 @@ const pinHtml = (n, on, soil) => {
  */
 /** A field's soil on the map (13 Nov): an earth colour per soil (1 red, 2 black, 3 sandy, 4 clay / tank silt, 5 gravelly),
  *  as on the soil chips. `soils`: field n → soil (the job's, with the one just picked). */
+export const GREY = '#8a8f94';   // other members' land titles (16 Nov)
+const RED = '#e5484d';           // a drawn shape that overlaps one
 export const SOIL_COLOUR = { 1: '#B5562F', 2: '#3A3330', 3: '#D9C38A', 4: '#6F8696', 5: '#9A8C74' };
 
 export default function BorderMap(props) {
@@ -38,7 +40,7 @@ const G_OPTIONS = { mapTypeId: 'satellite', disableDefaultUI: true, zoomControl:
   clickableIcons: false, mapId: '8fa18e8fd7e4c318' };
 
 /** Google: the same drawing rules as below, on the satellite map. */
-function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360, fitBottom, plots = [], plotOn, onPlot, soils = {} }) {
+function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, others = [], red = {}, height = 360, fitBottom, plots = [], plotOn, onPlot, soils = {} }) {
   const map = useRef(null);
   const drawn = useRef([]);
   const fitKey = useRef();
@@ -48,6 +50,13 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
     drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; });
     drawn.current = [];
     const bounds = new g.LatLngBounds(); const focus = new g.LatLngBounds(); let hasFocus = false;
+    // Other members' land titles (16 Nov): grey, under everything; a field's drawn shape that overlaps one: red.
+    const gpaths = (geo) => (geo?.type === 'MultiPolygon' ? geo.coordinates : geo?.type === 'Polygon' ? [geo.coordinates] : [])
+      .map((poly) => (poly[0] || []).map(([lng, lat]) => ({ lat, lng })));
+    others.forEach((o) => drawn.current.push(new g.Polygon({ map: m, paths: gpaths(o.geometry), clickable: false,
+      strokeColor: GREY, strokeOpacity: 0.9, strokeWeight: 1, fillColor: GREY, fillOpacity: 0.45 })));
+    Object.values(red).forEach((geo) => drawn.current.push(new g.Polygon({ map: m, paths: gpaths(geo), clickable: false,
+      strokeColor: RED, strokeOpacity: 1, strokeWeight: 2, fillColor: RED, fillOpacity: 0.4 })));
     fields.forEach((f) => {
       const on = f.n === active;
       const shape = drawing && f.state === 'drawing' ? null
@@ -115,7 +124,7 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
 }
 
 /** Leaflet + Esri: only when Google Maps cannot load. */
-function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, height = 360, plots = [], plotOn, onPlot, soils = {} }) {
+function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawing, onField, others = [], red = {}, height = 360, plots = [], plotOn, onPlot, soils = {} }) {
   const ready = useLeaflet();
   const box = useRef();
   const map = useRef();
@@ -138,6 +147,8 @@ function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawi
     const g = layer.current;
     g.clearLayers();
     const focus = [];
+    others.forEach((o) => L.geoJSON(o.geometry, { style: { color: GREY, weight: 1, fillColor: GREY, fillOpacity: 0.45 }, interactive: false }).addTo(g));
+    Object.values(red).forEach((geo) => L.geoJSON(geo, { style: { color: RED, weight: 2, fillColor: RED, fillOpacity: 0.4 }, interactive: false }).addTo(g));
     fields.forEach((f) => {
       const on = f.n === active;
       const shape = drawing && f.state === 'drawing' ? null
@@ -177,7 +188,7 @@ function LeafletBorderMap({ fields = [], plan = {}, active, shapeOverride, drawi
       const b = focus.length ? focus.reduce((a, x) => a.extend(x), L.latLngBounds(focus[0].getSouthWest(), focus[0].getNorthEast())) : g.getBounds();
       m.fitBounds(b, { padding: [32, 32], maxZoom: 18 });
     }
-  }, [ready, fields, plan, active, shapeOverride, drawing, onField, plots, plotOn, onPlot, JSON.stringify(soils)]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, fields, plan, active, shapeOverride, drawing, onField, plots, plotOn, onPlot, JSON.stringify(soils), others, red]); // eslint-disable-line react-hooks/exhaustive-deps
   return <div ref={box} style={{ height, width: '100%', background: '#25361f' }} aria-label="Satellite map with field shapes" />;
 }
 

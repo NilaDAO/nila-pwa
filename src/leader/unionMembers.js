@@ -38,7 +38,8 @@ const outline = (record) => record?.meta?.geometry?.out
 
 // Her land as on her title (24 Oct, the leader's Assets map): the title's fields from its metadata (the node's `shape`),
 // else the record's fields or areas.
-const addFields = (m, tf) => { if (tf?.fields?.length) m.fields.push(...tf.fields); };
+// land (16 Nov): the title's name on each field, for the border overlap warning ("Overlap with <land>").
+const addFields = (m, tf, land) => { if (tf?.fields?.length) m.fields.push(...tf.fields.map((f) => ({ ...f, land }))); };
 // A title whose field record is not built yet (28 Oct): its place on the map is the title's own outline (else its
 // fields), as the Assets map draws it, so the Members map and G2 show the land too.
 const addTitlePlace = (m, t, tf) => {
@@ -125,7 +126,7 @@ export function useUnionMembers(api) {
             m.lands.add(t.title_id);
             const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
             if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
-            addFields(m, shapeToFields(t.shape) || recordFields(record));
+            addFields(m, shapeToFields(t.shape) || recordFields(record), t.farm || `Land ${t.title_id}`);
             if (!record) addTitlePlace(m, t, shapeToFields(t.shape));
           }));
           return m;
@@ -155,7 +156,7 @@ export function useUnionMembers(api) {
           const m = get(t.holder); m.lands.add(t.title_id); m.name = m.name || t.farm || '';
           const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
           if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
-          addFields(m, shapeToFields(t.shape) || recordFields(record));
+          addFields(m, shapeToFields(t.shape) || recordFields(record), t.farm || `Land ${t.title_id}`);
           if (!record) addTitlePlace(m, t, shapeToFields(t.shape));
         })),
         Promise.all(jobs.map(async (j) => {
