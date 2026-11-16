@@ -8,6 +8,14 @@ export const NO_ANSWER = 'Your wallet did not answer. Check your internet and op
 
 const STALLED = Symbol('stalled');
 
+/** Resolves once isReady() is true (checked every stepMs); an error after maxMs (16 Nov: Privy still logging in). */
+export async function untilReady(isReady, { stepMs = 200, maxMs = 30_000 } = {}) {
+  for (let waited = 0; !isReady(); waited += stepMs) {
+    if (waited >= maxMs) throw new Error(NO_ANSWER);
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
+}
+
 /** ask() → a promise; its answer, else the same ask again after waitMs without one. Errors pass through at once. */
 export async function askAgain(ask, { waitMs = SIGN_WAIT_MS, asks = SIGN_ASKS, label = 'wallet request' } = {}) {
   for (let n = 1; ; n += 1) {

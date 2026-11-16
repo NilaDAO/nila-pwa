@@ -1,4 +1,17 @@
-import { askAgain, NO_ANSWER } from '../askAgain';
+import { askAgain, NO_ANSWER, untilReady } from '../askAgain';
+
+describe('untilReady (sign only once the wallet is logged in, 16 Nov)', () => {
+  test('waits until ready', async () => {
+    let ready = false;
+    setTimeout(() => { ready = true; }, 30);
+    await expect(untilReady(() => ready, { stepMs: 5 })).resolves.toBeUndefined();
+    expect(ready).toBe(true);
+  });
+
+  test('never ready: an error, not a wait for ever', async () => {
+    await expect(untilReady(() => false, { stepMs: 5, maxMs: 20 })).rejects.toThrow(NO_ANSWER);
+  });
+});
 
 const never = () => new Promise(() => {});
 
