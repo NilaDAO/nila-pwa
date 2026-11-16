@@ -29,6 +29,7 @@ import { readAllItems } from '../utils/db';
 import { finishMoveIfDue, setAccountUnion, useAccount, useSetupAccount, useStellarConfig } from '../stellar/hooks';
 import { accountOf, deployerOf } from '../stellar/account';
 import RecoverLink, { linkCode, recoveredAccount, recoveryWaits } from './RecoverLink';
+import { askAgain } from './askAgain';
 
 const APP_ID = process.env.REACT_APP_PRIVY_APP_ID;
 // The one-time key migration (K1): off until the node (K2) and the Lambda (K3) ship with it.
@@ -229,10 +230,12 @@ function SignerBridge({ children }) {
     if (!stellar) throw new Error('no Stellar wallet yet');
     // Privy signs inside its hidden frame; right after a reload it may not be loaded yet ("wallet proxy not
     // initialized", 29 Oct: the help QR is made at once). Wait for it, up to about 15 seconds.
+    // 16 Nov: a request with no answer at all (made while the app loads) is asked again (askAgain.js).
     let signature;
     for (let i = 0; ; i++) {
       try {
-        ({ signature } = await signRawHash({ address: stellar.address, chainType: 'stellar', hash: toHex(hash) }));
+        ({ signature } = await askAgain(() => signRawHash({ address: stellar.address, chainType: 'stellar', hash: toHex(hash) }),
+          { label: 'Stellar signature request' }));
         break;
       } catch (e) {
         if (!/proxy not initiali[sz]ed/i.test(e?.message || '') || i >= 30) throw e;
