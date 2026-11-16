@@ -3,12 +3,12 @@
 // state picks the board: drawing → L2a (#retry-fN when a field is drawn again), ready → L2, a field → L3, every
 // field accepted or left out → L4 (mint). Data: the node's border job (O16). DESIGN GAP: no member names in the
 // app (the farm name or a short address stands in).
-import { cloneElement, useCallback, useState } from 'react';
+import { cloneElement, useCallback, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
 import { acres, shapeFor } from './api';
-import BorderMap, { SOIL_COLOUR, ShapeThumb, soilInk } from './BorderMap';
+import BorderMap, { RED, SOIL_COLOUR, ShapeThumb, soilInk } from './BorderMap';
 import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
@@ -16,6 +16,9 @@ import { TxScreens } from '../stellar/TxStatus';
 import { Notice, Sheet } from '../plan/ui';
 import { TrashIcon } from '../shell/icons';
 import { ConfirmCard } from '../shell/SettingsParts';
+import { usePlanClient } from '../plan/hooks';
+import { useUnionMembers } from '../leader/unionMembers';
+import { overlaps } from './overlap';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
@@ -27,6 +30,31 @@ const DONE = ['accepted', 'left_out', 'inside'];
 const insideText = (f) => `Inside field ${f.inside}`;
 // The name given with the field's point (R6, R7; 12 Nov: it was dropped before the node and the title), else its number.
 const fieldName = (f) => f?.name || `Field ${f?.n}`;
+
+// Other members' land titles near the job (16 Nov): grey on the map; a field whose drawn shape (the fencing output,
+// before the node cuts it) lies more than 20 % on one is red, with "Overlap with <land>". A warning only.
+function useNeighbourLand(job) {
+  const members = useUnionMembers(usePlanClient());
+  return useMemo(() => {
+    // Only titles near the job's points (~400 m): each is drawn as many hatch lines.
+    const pts = (job?.fields || []).map((f) => f.moved || f.point).filter(Boolean);
+    const near = (g) => { const c = (g.type === 'MultiPolygon' ? g.coordinates[0]?.[0] : g.coordinates?.[0]) || [];
+      return c.some(([lng, lat]) => pts.some((p) => Math.abs(p.lat - lat) < 0.004 && Math.abs(p.lng - lng) < 0.004)); };
+    const others = (members.data || []).filter((m) => m.address !== job?.member && m.key !== job?.member)
+      .flatMap((m) => (m.fields || []).filter((f) => f.geometry && near(f.geometry)).map((f) => ({ land: f.land || m.label || m.name, geometry: f.geometry })));
+    const warn = {}; const red = {};
+    // 16 Nov: the field's shape (accepted, else planned) with another member's field over 20 % of it: the node did
+    // not cut it there (one of the two borders may be wrong), so the shape is red with the warning.
+    (job?.fields || []).forEach((f) => {
+      const now = shapeFor(f, job.plan)?.geometry;
+      const l = now ? overlaps(now, others) : [];
+      if (l.length) { warn[f.n] = l; red[f.n] = now; }
+    });
+    return { others, warn, red };
+  }, [members.data, job]);
+}
+const Legend = ({ nb }) => (nb.others.length ? <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>Grey areas are other members' land titles.</p> : null);
+const OverlapNote = ({ lands }) => (lands?.length ? <p role="alert" style={{ margin: 0, fontSize: 14, color: C.coral, fontWeight: 700 }}>Overlap with {lands.join(', ')}</p> : null);
 
 // The map fills the screen behind the card; the card is the app's one map card (plan/ui.jsx Sheet, 28 Oct): header row
 // inside the card, drag line, clear of the tab bar. It starts at 40 % of the screen.
@@ -66,15 +94,17 @@ function SoilPick({ value, onPick }) {
   );
 }
 
-function FieldRow({ f, sub, right, onClick }) {
+function FieldRow({ f, sub, right, onClick, warn }) {
   // A field with its soil chosen (13 Nov): the whole row in the soil's colour, its number on the dark circle.
-  const soil = SOIL_COLOUR[f.soil];
-  const ink = soil ? soilInk(soil) : C.text;
-  const quiet = soil ? { color: ink, opacity: 0.8 } : { color: C.muted };
+  // 16 Nov: a field whose drawn shape overlaps another member's land title: the row red, the warning inside it.
+  const soil = warn?.length ? RED : SOIL_COLOUR[f.soil];
+  const ink = warn?.length ? '#ffffff' : soil ? soilInk(soil) : C.text;
+  const quiet = soil ? { color: ink, opacity: 0.85 } : { color: C.muted };
   return (
     <button type="button" onClick={onClick} disabled={!onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: soil || C.raised, border: 0, borderRadius: 12, padding: '12px 16px', color: ink, fontFamily: FONT, fontSize: 14 }}>
       <span style={{ width: 24, height: 24, borderRadius: R.round, background: C.ink, color: C.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{f.n}</span>
-      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={quiet}>{sub}</span>}</span>
+      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={quiet}>{sub}</span>}
+        {warn?.length > 0 && <b style={{ color: ink }}>Overlap with {warn.join(', ')}</b>}</span>
       {right && <span style={quiet}>{right}</span>}
     </button>
   );
@@ -95,11 +125,13 @@ const AddRow = ({ onClick }) => (
 
 /** L2a: shapes are being drawn (first run, or one field again after None fit). */
 function Fetch({ job, onBack, onAdd }) {
+  const nb = useNeighbourLand(job);
   const again = job.fields.find((f) => f.state === 'drawing' && f.round > 0);
   return (
     <Frame name={memberName(job)} onBack={onBack}
-      map={<BorderMap fields={job.fields} plan={job.plan} drawing active={again?.n} />}>
+      map={<BorderMap fields={job.fields} plan={job.plan} drawing active={again?.n} others={nb.others} />}>
       <Head title={again ? `Drawing field ${again.n} again` : 'Finding field borders'} sub="Drawing shapes, please wait" />
+      <Legend nb={nb} />
       {job.fields.map((f) => (
         <FieldRow key={f.n} f={f} right={f.state === 'drawing' ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.state === 'accepted' ? 'Accepted' : f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : 'Waiting'} />
       ))}
@@ -137,18 +169,22 @@ function Plan({ job, onField, onBack, onAdd }) {
   const open = job.fields.filter((f) => f.state !== 'left_out');
   const [plotId, setPlotId] = useState();
   const plot = (job.plots || []).find((p) => p.id === plotId);
+  const nb = useNeighbourLand(job);
   return (
     <Frame name={memberName(job)} onBack={onBack}
-      map={<BorderMap fields={job.fields} plan={job.plan} onField={onField} plots={job.plots || []} plotOn={plotId} onPlot={setPlotId} />}>
+      map={<BorderMap fields={job.fields} plan={job.plan} onField={onField} plots={job.plots || []} plotOn={plotId} onPlot={setPlotId} others={nb.others} red={nb.red} />}>
       {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
       <Head title={`${open.length} fields · proposed plan`} sub="Tap each field to check and accept it" />
+      <Legend nb={nb} />
       {/* 13 Nov: no "Accept this plan": each field is accepted on its own, with its shape and its soil (L3). */}
       {job.fields.map((f) => {
         const s = shapeFor(f, job.plan);
         const busy = f.state === 'drawing';
-        return <FieldRow key={f.n} f={f} sub={f.state === 'left_out' ? 'Left out' : busy ? 'Drawing the shapes, please wait' : f.state === 'inside' ? insideText(f) : f.state === 'empty' ? 'No shape left: check it' : s ? acres(s.acres) : ''}
-          right={busy ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.accepted ? 'Accepted' : undefined}
-          onClick={f.state === 'left_out' || busy ? undefined : () => onField(f.n)} />;
+        return (<div key={f.n} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <FieldRow f={f} sub={f.state === 'left_out' ? 'Left out' : busy ? 'Drawing the shapes, please wait' : f.state === 'inside' ? insideText(f) : f.state === 'empty' ? 'No shape left: check it' : s ? acres(s.acres) : ''}
+            right={busy ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.accepted ? 'Accepted' : undefined}
+            onClick={f.state === 'left_out' || busy ? undefined : () => onField(f.n)} warn={nb.warn[f.n]} />
+        </div>);
       })}
       <AddRow onClick={onAdd} />
       <button type="button" disabled style={{ ...btn(true), flex: 'none', opacity: 0.5 }}>Mint land title</button>
@@ -171,6 +207,7 @@ function Check({ job, n, onDone, onBack }) {
   const err = accept.error || noneFit.error || remove.error;
   // A tap only selects the shape (executive decision 4 Nov): no preview call to the node; Accept returns the new plan.
   const pick = (id) => setSel(id);
+  const nb = useNeighbourLand(job);
   if (!f) return null;
   // The fencing itself failed (Earth Engine, the satellite tiles): an error screen as N6/N8 (executive decision 21 Oct;
   // no board for this case), her point stays, the leader tries again.
@@ -183,14 +220,18 @@ function Check({ job, n, onDone, onBack }) {
     );
   }
   const chosen = shapes.find((s) => s.id === sel);
+  const pickedLands = chosen?.geometry ? overlaps(chosen.geometry, nb.others) : [];   // the shape being picked (16 Nov)
   const holds = chosen?.holds?.length || 0;
   const soilNow = soil || f.soil || 0;
   const moved = Object.keys(plan || {}).filter((k) => Number(k) !== n && plan[k] !== job.plan?.[k]);
   return (
     <Frame name={memberName(job)} onBack={onBack}
-      map={<BorderMap fields={job.fields} plan={plan} active={n} shapeOverride={sel} onField={() => {}} soils={soilNow ? { [n]: soilNow } : {}} />}>
+      map={<BorderMap fields={job.fields} plan={plan} active={n} shapeOverride={sel} onField={() => {}} soils={soilNow ? { [n]: soilNow } : {}}
+        others={nb.others} red={pickedLands.length ? { [n]: chosen.geometry } : {}} />}>
       {/* 13 Nov: the member's name is in the header already; no second line. */}
       <Head title={fieldName(f)} />
+      <OverlapNote lands={pickedLands} />
+      <Legend nb={nb} />
       <div role="group" aria-label={`Shapes for field ${n}`} style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
         {shapes.map((s, i) => (
           <button key={s.id} type="button" aria-label={`Shape ${i + 1}, ${acres(s.acres)}`} aria-pressed={s.id === sel} onClick={() => pick(s.id)} style={{
@@ -248,6 +289,7 @@ function Done({ job, onField, onBack, onAdd }) {
   const [tenant, setTenant] = useState(false);
   const [plotId, setPlotId] = useState();
   const plot = (job.plots || []).find((p) => p.id === plotId);
+  const nb = useNeighbourLand(job);
   const ok = job.fields.filter((f) => f.state === 'accepted');
   // 13 Nov: the soils shown on the map go with the mint, so the title has them even if the node lost one.
   const soils = Object.fromEntries(ok.filter((f) => f.soil).map((f) => [String(f.n), f.soil]));
@@ -279,13 +321,15 @@ function Done({ job, onField, onBack, onAdd }) {
   return (
     // Sign later (plan 050, 15 Nov): the mint waits for no QR; the member's account joins at a later scan (G2).
     <Frame name={memberName(job)} onBack={onBack}
-      map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} plots={st ? [] : job.plots || []} plotOn={plotId} onPlot={st ? undefined : setPlotId} />}>
+      map={<BorderMap fields={job.fields} plan={job.plan} onField={st ? undefined : onField} plots={st ? [] : job.plots || []} plotOn={plotId} onPlot={st ? undefined : setPlotId}
+        others={st ? [] : nb.others} red={st ? {} : nb.red} />}>
       {plot ? <PlotChoice job={job} plot={plot} onClose={() => setPlotId()} /> : (<>
       <Head title={`${ok.length} fields · all accepted`} sub={`Total ${total.toFixed(2)} acres`} />
+      {!st && <Legend nb={nb} />}
       {job.fields.map((f) => (
         <div key={f.n} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <FieldRow f={f} sub={f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
-            onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} />
+            onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} warn={st ? undefined : nb.warn[f.n]} />
         </div>
       ))}
       {!st && <AddRow onClick={onAdd} />}
