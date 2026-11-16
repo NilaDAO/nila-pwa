@@ -43,14 +43,12 @@ function useNeighbourLand(job) {
     const others = (members.data || []).filter((m) => m.address !== job?.member && m.key !== job?.member)
       .flatMap((m) => (m.fields || []).filter((f) => f.geometry && near(f.geometry)).map((f) => ({ land: f.land || m.label || m.name, geometry: f.geometry })));
     const warn = {}; const red = {};
-    // Flagged while the field's shape now (accepted, else planned) still lies on that land (16 Nov: a shape accepted
-    // clear of it ends the warning).
+    // 16 Nov: the field's shape (accepted, else planned) with another member's field over 20 % of it: the node did
+    // not cut it there (one of the two borders may be wrong), so the shape is red with the warning.
     (job?.fields || []).forEach((f) => {
-      const big = overlaps(f.drawn, others);
-      if (!big.length) return;
       const now = shapeFor(f, job.plan)?.geometry;
-      const still = now ? overlaps(now, others.filter((o) => big.includes(o.land)), 0.02) : big;
-      if (still.length) { warn[f.n] = still; red[f.n] = f.drawn; }
+      const l = now ? overlaps(now, others) : [];
+      if (l.length) { warn[f.n] = l; red[f.n] = now; }
     });
     return { others, warn, red };
   }, [members.data, job]);
@@ -222,16 +220,17 @@ function Check({ job, n, onDone, onBack }) {
     );
   }
   const chosen = shapes.find((s) => s.id === sel);
+  const pickedLands = chosen?.geometry ? overlaps(chosen.geometry, nb.others) : [];   // the shape being picked (16 Nov)
   const holds = chosen?.holds?.length || 0;
   const soilNow = soil || f.soil || 0;
   const moved = Object.keys(plan || {}).filter((k) => Number(k) !== n && plan[k] !== job.plan?.[k]);
   return (
     <Frame name={memberName(job)} onBack={onBack}
       map={<BorderMap fields={job.fields} plan={plan} active={n} shapeOverride={sel} onField={() => {}} soils={soilNow ? { [n]: soilNow } : {}}
-        others={nb.others} red={nb.red[n] ? { [n]: nb.red[n] } : {}} />}>
+        others={nb.others} red={pickedLands.length ? { [n]: chosen.geometry } : {}} />}>
       {/* 13 Nov: the member's name is in the header already; no second line. */}
       <Head title={fieldName(f)} />
-      <OverlapNote lands={nb.warn[n]} />
+      <OverlapNote lands={pickedLands} />
       <Legend nb={nb} />
       <div role="group" aria-label={`Shapes for field ${n}`} style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
         {shapes.map((s, i) => (
