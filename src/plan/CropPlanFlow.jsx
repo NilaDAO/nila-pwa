@@ -162,7 +162,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
           </Notice>
         );
       })()}
-      {lastDue && <p style={muted}>You repay {inr(total.cash + total.interest)} in {seasons.length} parts, each 21 days after its harvest.</p>}
+      {lastDue && <p style={muted}>You repay {inr(total.cash + total.interest)} in {seasons.length} part{seasons.length === 1 ? '' : 's'}, each 21 days after its harvest.</p>}
       </>}
       {/* Her changes are hard rules (21 Oct); only a hard fact refuses one, and anything the node could not read is named. */}
       {p.member_request?.not_followed?.length > 0 && (
