@@ -8,7 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
 import { acres, shapeFor } from './api';
-import BorderMap, { SOIL_COLOUR, ShapeThumb, soilInk } from './BorderMap';
+import BorderMap, { RED, SOIL_COLOUR, ShapeThumb, soilInk } from './BorderMap';
 import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
@@ -88,15 +88,17 @@ function SoilPick({ value, onPick }) {
   );
 }
 
-function FieldRow({ f, sub, right, onClick }) {
+function FieldRow({ f, sub, right, onClick, warn }) {
   // A field with its soil chosen (13 Nov): the whole row in the soil's colour, its number on the dark circle.
-  const soil = SOIL_COLOUR[f.soil];
-  const ink = soil ? soilInk(soil) : C.text;
-  const quiet = soil ? { color: ink, opacity: 0.8 } : { color: C.muted };
+  // 16 Nov: a field whose drawn shape overlaps another member's land title: the row red, the warning inside it.
+  const soil = warn?.length ? RED : SOIL_COLOUR[f.soil];
+  const ink = warn?.length ? '#ffffff' : soil ? soilInk(soil) : C.text;
+  const quiet = soil ? { color: ink, opacity: 0.85 } : { color: C.muted };
   return (
     <button type="button" onClick={onClick} disabled={!onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: soil || C.raised, border: 0, borderRadius: 12, padding: '12px 16px', color: ink, fontFamily: FONT, fontSize: 14 }}>
       <span style={{ width: 24, height: 24, borderRadius: R.round, background: C.ink, color: C.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{f.n}</span>
-      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={quiet}>{sub}</span>}</span>
+      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={quiet}>{sub}</span>}
+        {warn?.length > 0 && <b style={{ color: ink }}>Overlap with {warn.join(', ')}</b>}</span>
       {right && <span style={quiet}>{right}</span>}
     </button>
   );
@@ -175,8 +177,7 @@ function Plan({ job, onField, onBack, onAdd }) {
         return (<div key={f.n} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <FieldRow f={f} sub={f.state === 'left_out' ? 'Left out' : busy ? 'Drawing the shapes, please wait' : f.state === 'inside' ? insideText(f) : f.state === 'empty' ? 'No shape left: check it' : s ? acres(s.acres) : ''}
             right={busy ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.accepted ? 'Accepted' : undefined}
-            onClick={f.state === 'left_out' || busy ? undefined : () => onField(f.n)} />
-          <OverlapNote lands={nb.warn[f.n]} />
+            onClick={f.state === 'left_out' || busy ? undefined : () => onField(f.n)} warn={nb.warn[f.n]} />
         </div>);
       })}
       <AddRow onClick={onAdd} />
@@ -321,8 +322,7 @@ function Done({ job, onField, onBack, onAdd }) {
       {job.fields.map((f) => (
         <div key={f.n} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <FieldRow f={f} sub={f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : acres(shapeFor(f, job.plan)?.acres)} right={f.state === 'accepted' ? 'Accepted' : undefined}
-            onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} />
-          {!st && <OverlapNote lands={nb.warn[f.n]} />}
+            onClick={st || f.state === 'left_out' ? undefined : () => onField(f.n)} warn={st ? undefined : nb.warn[f.n]} />
         </div>
       ))}
       {!st && <AddRow onClick={onAdd} />}

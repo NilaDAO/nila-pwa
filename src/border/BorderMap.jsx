@@ -27,7 +27,7 @@ const pinHtml = (n, on, soil) => {
 /** A field's soil on the map (13 Nov): an earth colour per soil (1 red, 2 black, 3 sandy, 4 clay / tank silt, 5 gravelly),
  *  as on the soil chips. `soils`: field n → soil (the job's, with the one just picked). */
 export const GREY = '#d9dcdf';   // other members' land titles, hatched (16 Nov)
-const RED = '#e5484d';           // a drawn shape that overlaps one
+export const RED = '#e5484d';           // a drawn shape that overlaps one
 export const SOIL_COLOUR = { 1: '#B5562F', 2: '#3A3330', 3: '#D9C38A', 4: '#6F8696', 5: '#9A8C74' };
 
 export default function BorderMap(props) {
