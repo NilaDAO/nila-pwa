@@ -3,7 +3,7 @@
 **Date:** 2026-11-16
 **Severity:** Improvement (speed and neighbours of border jobs)
 **Repo:** nila-sensing (compute/fencing/layers.py), node beat
-**Status:** Todo, not built (Carst, 16 Nov)
+**Status:** Todo, not built (executive decision, 16 Nov)
 
 ## What
 Stored layers (nila-sensing `t1/sensing/stored-layers`) turn a border point inside a prepared block into a lookup:
@@ -12,7 +12,7 @@ demo there is one 1 x 1 km block, prepared by hand. Points outside any block sti
 
 ## What needs to change
 - When a union is admitted, the node prepares the layers for its area: the union's centre and its maximum radius.
-  Carst: the max radius from the union centre is already in the contract. I couldn't find it in nila-soroban
+  The max radius from the union centre is already in the contract. I couldn't find it in nila-soroban
   `roles`; FoodToken has an `isWithinLogisticsRange` flag. Find where the centre and radius live first.
 - **Size:** a 5 km radius is a 10 x 10 km square, about 100 km². At the 16 Nov test rates (1 km² ≈ 10 min on 8 cores,
   590 MB of label rasters, 13.6 MB as compressed vectors):
