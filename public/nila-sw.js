@@ -67,8 +67,9 @@ registerRoute(
 // 5️⃣ SPA navigation fallback → index.html. Not for the keypad app (/lite) and its one-time links (/l/<code>):
 // they are their own small app (O17, P8).
 registerRoute(
-  // Nor for the hosted demo's start page (/start.html, 28 Oct).
-  ({request, url}) => request.mode === 'navigate' && !/^\/(lite|l)(\/|$)/.test(url.pathname) && url.pathname !== '/start.html',
+  // Nor for the hosted demo's start page (/start.html, 28 Oct), nor the NFC tag test (/nfc-test.html, 16 Nov).
+  ({request, url}) => request.mode === 'navigate' && !/^\/(lite|l)(\/|$)/.test(url.pathname) && url.pathname !== '/start.html'
+    && url.pathname !== '/nfc-test.html',   // 16 Nov: the NFC tag test page (Web NFC), its own page
   createHandlerBoundToURL('/index.html'),
 );
 

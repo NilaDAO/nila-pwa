@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NFC tag test</title>
+<style>
+  :root { --bg: #121212; --card: #1e1e1e; --text: #f2f2f2; --muted: #9aa0a6; --accent: #d4cf5a; --bad: #e5484d; --good: #46a758; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, sans-serif; }
+  main { max-width: 480px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 20px; margin: 8px 0 0; }
+  .card { background: var(--card); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  button { height: 48px; border: 0; border-radius: 10px; font: 700 16px system-ui; background: var(--accent); color: #121212; }
+  button.quiet { background: #2c2c2c; color: var(--text); }
+  button:disabled { opacity: .4; }
+  code { word-break: break-all; font-size: 13px; color: var(--accent); }
+  .muted { color: var(--muted); font-size: 14px; }
+  .ok { color: var(--good); font-weight: 700; } .bad { color: var(--bad); font-weight: 700; }
+  #log { font: 12px ui-monospace, monospace; white-space: pre-wrap; color: var(--muted); max-height: 240px; overflow: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>NFC tag test</h1>
+  <div class="card">
+    <div id="support"></div>
+    <div class="muted">Writes a 32-byte secret as one NDEF text record (<code>nila:1:&lt;64 hex&gt;</code>, 71 characters; an NTAG213 holds 144 bytes), then reads it back. Nothing is sent anywhere.</div>
+  </div>
+  <div class="card">
+    <div><b>Secret to write</b></div>
+    <code id="secret"></code>
+    <button class="quiet" id="newSecret">New secret</button>
+    <button id="write">Write to a tag</button>
+    <div id="writeOut" class="muted"></div>
+  </div>
+  <div class="card">
+    <button id="read">Read a tag</button>
+    <div id="readOut" class="muted"></div>
+  </div>
+  <div class="card"><b>Log</b><div id="log"></div></div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const log = (m) => { $('log').textContent = `${new Date().toLocaleTimeString()}  ${m}\n` + $('log').textContent; };
+  const hex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  let secret = '';
+  const fresh = () => { secret = `nila:1:${hex(crypto.getRandomValues(new Uint8Array(32)))}`; $('secret').textContent = secret; };
+  fresh();
+  $('newSecret').onclick = fresh;
+
+  const supported = 'NDEFReader' in window;
+  $('support').innerHTML = `Web NFC: ${supported ? '<span class="ok">available</span>' : '<span class="bad">not available</span>'} · secure page: ${window.isSecureContext ? '<span class="ok">yes</span>' : '<span class="bad">no</span>'}`
+    + (supported ? '' : '<div class="muted">Needs Chrome on Android, NFC switched on, and this page opened as https or localhost (USB port forwarding).</div>');
+  if (!supported) { $('write').disabled = true; $('read').disabled = true; }
+
+  $('write').onclick = async () => {
+    const t0 = performance.now();
+    $('writeOut').textContent = 'Hold the tag to the back of the phone…';
+    try {
+      const w = new NDEFReader();
+      await w.write({ records: [{ recordType: 'text', data: secret }] });
+      const ms = Math.round(performance.now() - t0);
+      $('writeOut').innerHTML = `<span class="ok">Written</span> in ${ms} ms (from tapping the button).`;
+      log(`write ok, ${secret.length} chars, ${ms} ms`);
+    } catch (e) {
+      $('writeOut').innerHTML = `<span class="bad">Not written:</span> ${e.name}: ${e.message}`;
+      log(`write failed: ${e.name}: ${e.message}`);
+    }
+  };
+
+  let reader;
+  $('read').onclick = async () => {
+    const t0 = performance.now();
+    $('readOut').textContent = 'Hold the tag to the back of the phone…';
+    try {
+      reader = reader || new NDEFReader();
+      const ctl = new AbortController();
+      reader.onreadingerror = () => { $('readOut').innerHTML = '<span class="bad">The tag could not be read.</span> Try again, hold it still.'; log('reading error'); };
+      reader.onreading = (ev) => {
+        const ms = Math.round(performance.now() - t0);
+        const texts = ev.message.records.filter((r) => r.recordType === 'text')
+          .map((r) => new TextDecoder(r.encoding || 'utf-8').decode(r.data));
+        const got = texts[0] || '';
+        const same = got === secret;
+        $('readOut').innerHTML = `Read in ${ms} ms · tag ${ev.serialNumber || '(no serial)'}<br><code>${got || '(no text record)'}</code><br>`
+          + (got ? (same ? '<span class="ok">Matches the secret written here.</span>' : '<span class="muted">A different secret than the one shown above.</span>') : '');
+        log(`read ${ev.message.records.length} record(s), serial ${ev.serialNumber}, ${ms} ms, match ${same}`);
+        ctl.abort();
+      };
+      await reader.scan({ signal: ctl.signal });
+      log('scanning…');
+    } catch (e) {
+      $('readOut').innerHTML = `<span class="bad">Cannot read:</span> ${e.name}: ${e.message}`;
+      log(`scan failed: ${e.name}: ${e.message}`);
+    }
+  };
+</script>
+</body>
+</html>
