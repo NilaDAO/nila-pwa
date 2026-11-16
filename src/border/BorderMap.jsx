@@ -3,7 +3,7 @@
 // The Google satellite map, with the same key and loader as the member's R5–R8 map (src/register/FieldMap.jsx,
 // executive decision 21 Oct); the Leaflet/Esri map only when Google Maps cannot load (offline, a refused key).
 import { useEffect, useRef } from 'react';
-import { hatch } from './overlap';
+import { googlePaths, hatch } from './overlap';
 import { GoogleMap } from '@react-google-maps/api';
 import { useFieldMapLoaded } from '../register/FieldMap';
 import { useLeaflet } from '../plan/AreaMap';
@@ -52,8 +52,7 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
     drawn.current = [];
     const bounds = new g.LatLngBounds(); const focus = new g.LatLngBounds(); let hasFocus = false;
     // Other members' land titles (16 Nov): grey, under everything; a field's drawn shape that overlaps one: red.
-    const gpaths = (geo) => (geo?.type === 'MultiPolygon' ? geo.coordinates : geo?.type === 'Polygon' ? [geo.coordinates] : [])
-      .map((poly) => (poly[0] || []).map(([lng, lat]) => ({ lat, lng })));
+    const gpaths = googlePaths;   // every part of a Polygon or MultiPolygon (overlap.js)
     others.forEach((o) => hatch(o.geometry).forEach(([a, b]) => drawn.current.push(new g.Polyline({ map: m, clickable: false,
       path: [{ lat: a[0], lng: a[1] }, { lat: b[0], lng: b[1] }], strokeColor: GREY, strokeOpacity: 0.8, strokeWeight: 1.5 }))));
     Object.values(red).forEach((geo) => drawn.current.push(new g.Polygon({ map: m, paths: gpaths(geo), clickable: false,
@@ -62,22 +61,25 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
       const on = f.n === active;
       const shape = drawing && f.state === 'drawing' ? null
         : on && shapeOverride ? f.shapes?.find((s) => s.id === shapeOverride) : shapeFor(f, plan);
-      const ring = shape?.geometry?.coordinates?.[0];
-      if (ring?.length) {
-        const path = ring.map(([lng, lat]) => ({ lat, lng }));
+      // Every part's outer ring (16 Nov): a MultiPolygon shape was read as one ring of polygons, so Google got
+      // arrays for lat and lng, threw, and the app crashed on that shape tile.
+      const paths = gpaths(shape?.geometry).filter((path) => path.length);
+      if (paths.length) {
         const accepted = !!f.accepted && !on;
         const dashed = !on && !accepted;
         const soil = SOIL_COLOUR[soils[f.n] || f.soil];
-        const poly = new g.Polygon({ map: m, paths: path, clickable: !!onField,
+        const poly = new g.Polygon({ map: m, paths, clickable: !!onField,
           strokeColor: on ? C.accent : '#ffffff', strokeOpacity: dashed ? 0 : 1, strokeWeight: on ? 3 : 2,
           fillColor: soil || (on ? C.accent : '#ffffff'), fillOpacity: soil ? 0.5 : on ? 0.28 : accepted ? 0.08 : 0 });
         if (onField) poly.addListener('click', () => onField(f.n));
         drawn.current.push(poly);
-        if (dashed) {   // dashed white = to check (a dashed polyline over the outline)
-          drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false,
-            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#ffffff', scale: 2 }, offset: '0', repeat: '10px' }] }));
-        }
-        path.forEach((q) => { bounds.extend(q); if (on) { focus.extend(q); hasFocus = true; } });
+        paths.forEach((path) => {
+          if (dashed) {   // dashed white = to check (a dashed polyline over the outline)
+            drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false,
+              icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#ffffff', scale: 2 }, offset: '0', repeat: '10px' }] }));
+          }
+          path.forEach((q) => { bounds.extend(q); if (on) { focus.extend(q); hasFocus = true; } });
+        });
       }
       const p = f.moved || f.point;
       if (p) {
@@ -93,17 +95,16 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
     });
     // Neighbour plots (28 Oct): a thin dotted outline; the one picked in amber. A tap opens its choices.
     plots.forEach((p) => {
-      const ring = p.geometry?.coordinates?.[0];
-      if (!ring?.length) return;
-      const path = ring.map(([lng, lat]) => ({ lat, lng }));
+      const paths = gpaths(p.geometry).filter((path) => path.length);   // every part (16 Nov), as the fields' shapes
+      if (!paths.length) return;
       const on = p.id === plotOn;
-      const poly = new g.Polygon({ map: m, paths: path, clickable: !!onPlot, strokeOpacity: on ? 1 : 0, strokeColor: C.accent, strokeWeight: 2,
+      const poly = new g.Polygon({ map: m, paths, clickable: !!onPlot, strokeOpacity: on ? 1 : 0, strokeColor: C.accent, strokeWeight: 2,
         fillColor: on ? C.accent : '#ffffff', fillOpacity: on ? 0.2 : 0.04 });
       if (onPlot) poly.addListener('click', () => onPlot(p.id));
       drawn.current.push(poly);
       if (!on) {
-        drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false,
-          icons: [{ icon: { path: g.SymbolPath.CIRCLE, fillOpacity: 1, fillColor: '#ffffff', strokeOpacity: 0, scale: 1.5 }, offset: '0', repeat: '8px' }] }));
+        paths.forEach((path) => drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false,
+          icons: [{ icon: { path: g.SymbolPath.CIRCLE, fillOpacity: 1, fillColor: '#ffffff', strokeOpacity: 0, scale: 1.5 }, offset: '0', repeat: '8px' }] })));
       }
     });
     const key = `${active || 'all'}:${fields.length}`;

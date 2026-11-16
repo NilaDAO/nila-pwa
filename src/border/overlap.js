@@ -7,6 +7,10 @@ const GRID = 30;   // GRID x GRID sample points over the shape's box: the share 
 
 const rings = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
 
+/** A Polygon or MultiPolygon as Google Maps paths (16 Nov): each part's outer ring as [{ lat, lng }]. A MultiPolygon
+ *  read as one ring gave Google arrays for lat and lng, and the border map crashed on that shape. */
+export const googlePaths = (g) => rings(g).map((poly) => (poly[0] || []).map(([lng, lat]) => ({ lat, lng })));
+
 function inRing(x, y, ring) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
