@@ -29,6 +29,7 @@ import CropsStep from './CropsStep';
 import { EDIT_TEXT } from './editTexts';
 import { AreaCard, CropSelect, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
+import { seasonsCounted, seasonsOff, seasonsOn, yearSeasons } from './seasonChips';
 import { areaHash } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
 import RoundButton from '../shell/RoundButton';
@@ -84,14 +85,15 @@ const condTicks = (plan, ticks) => {
   return { ids: on, all: on.length === ids.length };
 };
 
-function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan', y0, onArea, ticks = new Set(), onTick }) {
+// 16 Nov: chips (the season chips, as on the approved plan) above the chart; `off` = the season indices whose chip is
+// off: the chart dims them (`slots`, the chips that are on) and the money rows and the table leave them out.
+function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan', y0, onArea, ticks = new Set(), onTick, chips, off, slots }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
-  const seasons = p.seasons || [];
+  // A green manure is its own crop agreement (4 Nov): seed in cash, machine vouchers, repaid with the next crop.
+  const { seasons, gm } = seasonsCounted(p, off);
   // What a season costs is what Nila finances (12 Nov: no ₹10,000 cap anywhere): cash plus machine vouchers.
   const cost = (f) => f.cash + f.voucher_value;
-  // A green manure is its own crop agreement (4 Nov): seed in cash, machine vouchers, repaid with the next crop.
-  const gm = (p.soil_cover || []).filter((c) => c.finance);
   const total = [...seasons, { rows: gm }].reduce((a, s) => {
     const sum = s.rows.reduce((b, r) => ({ cash: b.cash + cost(r.finance), financed: b.financed + r.finance.cash + r.finance.voucher_value, interest: b.interest + r.finance.interest }), { cash: 0, financed: 0, interest: 0 });
     return { cash: a.cash + sum.cash, financed: a.financed + sum.financed, interest: a.interest + sum.interest };
@@ -106,7 +108,8 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
   return (
     <>
       {/* The overview (12 Nov): every area's year on one chart, three money rows, the details folded away. */}
-      <PlanChart plan={plan} record={record} zones={order} areaName={areaName} checked={checked} y0={y0} crops={crops} pending={pending} onArea={onArea} />
+      {chips}
+      <PlanChart plan={plan} record={record} zones={order} areaName={areaName} checked={checked} y0={y0} crops={crops} pending={pending} onArea={onArea} slots={slots} />
       <hr style={{ height: 1, background: C.raised, border: 0, margin: '16px 0 12px' }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {/* 12 Nov: no ₹10,000 cap in the app; what the plan costs is what Nila finances (cash and machine vouchers). */}
@@ -120,7 +123,8 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
       </button>
       {money && <>
       <table style={{ width: '100%', fontSize: 14, marginTop: 8, borderCollapse: 'collapse' }}>
-        {/* Simplified (executive decision 21 Oct): season (its months), use it by, total — no rate column, no repay line, no tabs.
+        {/* Simplified (executive decision 21 Oct): season (its months), use it by, total — no rate column, no repay line.
+            Tabs (16 Nov, reverses "no tabs"): the season chips above the chart filter it, as they filter the money rows.
             "Use it by" (25 Oct): the season's last draw date (no floor any more: a share is usable once made). */}
         <thead><tr style={{ color: C.muted }}><td>Season</td><td>Use it by</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
         <tbody>
@@ -181,7 +185,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
           </Notice>
         );
       })()}
-      {lastDue && <p style={muted}>You repay {inr(total.cash + total.interest)} in {seasons.length} parts, each 21 days after its harvest.</p>}
+      {lastDue && <p style={muted}>You repay {inr(total.cash + total.interest)} in {seasons.length} part{seasons.length === 1 ? '' : 's'}, each 21 days after its harvest.</p>}
       </>}
       {/* Her changes are hard rules (21 Oct); only a hard fact refuses one, and anything the node could not read is named. */}
       {p.member_request?.not_followed?.length > 0 && (
@@ -233,10 +237,30 @@ function AssistPlan({ map, name, waiting }) {
 // satellite reading `current_cycle` (one entry per area); an area without one takes its open cycle in `cycles` (sown,
 // no harvest yet), "since <month>". A crop the reading does not know shows as "Unidentified". An area with neither
 // (harvested, or never read) keeps "Area n". Name and colour from the catalogue when it lists the crop.
-// 13 Nov: the approved plan's season chips. The seasons of the plan year season i is in (indices), and those of them
-// whose chip is on (all when none of this year's is: another year may have other slots).
-const yearSeasons = (ss, i) => ss.map((_, k) => k).filter((k) => planYear(ss[k].start) === planYear(ss[i]?.start));
-const seasonsOn = (ss, i, on) => { const ys = yearSeasons(ss, i); const k = ys.filter((x) => on.has(ss[x].slot)); return k.length ? k : ys; };
+// 13 Nov: the approved plan's season chips (16 Nov: also the plan overview's). The plan year's seasons (season i is in
+// it) as chips, all on at first; at least one stays on. None when the year has one season. `on`: the slots on (shared).
+function SeasonChips({ ss, i, on, setOn }) {
+  const yearIdx = yearSeasons(ss, i);
+  const onIdx = seasonsOn(ss, i, on);
+  const toggleSlot = (slot) => {
+    const left = onIdx.filter((k) => ss[k].slot !== slot);
+    if (left.length === onIdx.length) setOn(new Set([...onIdx.map((k) => ss[k].slot), slot]));
+    else if (left.length) setOn(new Set(left.map((k) => ss[k].slot)));
+  };
+  if (yearIdx.length < 2) return null;
+  return (
+    <div role="group" aria-label="Seasons shown" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+      {yearIdx.map((k) => {
+        const isOn = onIdx.includes(k);
+        return (
+          <button key={k} type="button" aria-pressed={isOn} onClick={() => toggleSlot(ss[k].slot)}
+            style={{ height: 32, padding: '0 14px', borderRadius: R.round, border: 0, background: isOn ? C.accent : C.raised, color: isOn ? C.ink : C.muted,
+              fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{SEASON[ss[k].slot] || `Season ${k - yearIdx[0] + 1}`}</button>
+        );
+      })}
+    </div>
+  );
+}
 const ALL_SLOTS = ['S1', 'S2', 'S3'];
 const words = (k) => String(k).replace(/_/g, ' ');
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -951,6 +975,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
         </div>
       );
     const next = zones.find((z) => z !== area && !checked.has(z));
+    // 16 Nov: the approved plan's season chips here too (the same chips and state); not in a record year.
+    const shown = Math.min(season, Math.max(0, ss.length - 1));
+    const chipsOn = pastYear == null && yearSeasons(ss, shown).length > 1;
     return (
       <Sheet map={map} landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}>
         {area ? (
@@ -965,6 +992,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           <PlanView plan={plan} record={record} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={pickArea}
             crops={catalogue.data?.crops} changing={saving} onCrop={changeCrop} pending={pending} onUpdate={updatePlan}
             ticks={ticks} onTick={(k) => setTicks((t) => { const n = new Set(t); if (n.has(k)) n.delete(k); else n.add(k); return n; })}
+            chips={chipsOn && <SeasonChips ss={ss} i={shown} on={slotsOn} setOn={setSlotsOn} />}
+            off={chipsOn ? seasonsOff(ss, shown, slotsOn) : undefined}
+            slots={chipsOn ? new Set(seasonsOn(ss, shown, slotsOn).map((k) => ss[k].slot)) : undefined}
             />
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}
@@ -1090,25 +1120,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       </div>
     );
     // 13 Nov: the year's seasons as chips (all on at first); at least one stays on. Not in a record year (no plan).
-    const yearIdx = yearSeasons(ss, shown);
     const onIdx = seasonsOn(ss, shown, slotsOn);
-    const toggleSlot = (slot) => {
-      const left = onIdx.filter((k) => ss[k].slot !== slot);
-      if (left.length === onIdx.length) setSlotsOn(new Set([...onIdx.map((k) => ss[k].slot), slot]));
-      else if (left.length) setSlotsOn(new Set(left.map((k) => ss[k].slot)));
-    };
-    const chips = yearIdx.length > 1 && (
-      <div role="group" aria-label="Seasons shown" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-        {yearIdx.map((k) => {
-          const on = onIdx.includes(k);
-          return (
-            <button key={k} type="button" aria-pressed={on} onClick={() => toggleSlot(ss[k].slot)}
-              style={{ height: 32, padding: '0 14px', borderRadius: R.round, border: 0, background: on ? C.accent : C.raised, color: on ? C.ink : C.muted,
-                fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{SEASON[ss[k].slot] || `Season ${k - yearIdx[0] + 1}`}</button>
-          );
-        })}
-      </div>
-    );
+    const chips = <SeasonChips ss={ss} i={shown} on={slotsOn} setOn={setSlotsOn} />;
     const slotsShown = pastYear == null ? new Set(onIdx.map((k) => ss[k].slot)) : undefined;
     // The crop bars (13 Nov, as the draft plan's overview): one lane per area, read-only.
     const zones = Object.keys(plan.plan.proposal || {}).sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
