@@ -248,11 +248,11 @@ function Check({ job, n, onDone, onBack }) {
       {/* 13 Nov: a field is accepted with its shape and its soil (the leader is on the land); the soil goes on the title. */}
       {shapes.length > 0 && <SoilPick value={soilNow} onPick={setSoil} />}
       {/* DESIGN GAP: no board for a field whose every shape overlaps an accepted field (e.g. two points a few metres
-          apart): say so, Accept stays off, None fit draws it again from a moved point. */}
+          apart): say so, Accept stays off, None fit draws it again from its own point (16 Nov: no longer moved). */}
       {shapes.length === 0 && (
         <p role="note" style={{ margin: 0, fontSize: 14, color: C.text }}>{f.state === 'inside'
-          ? `This point lies inside field ${f.inside}, so it is part of that field and the land title can be minted. Is it a field of its own? Press None fit to draw it again from a point a few metres away.`
-          : 'No shape left for this field. Press None fit to draw it again from a point a few metres away.'}</p>
+          ? `This point lies inside field ${f.inside}, so it is part of that field and the land title can be minted. Is it a field of its own? Press None fit to draw it again from its own point.`
+          : 'No shape left for this field. Press None fit to draw it again from its own point.'}</p>
       )}
       {holds > 0 && (
         <Notice kind="warn" title={`This shape covers field ${chosen.holds.join(', ')} too`}>
