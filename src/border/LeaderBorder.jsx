@@ -36,8 +36,12 @@ const fieldName = (f) => f?.name || `Field ${f?.n}`;
 function useNeighbourLand(job) {
   const members = useUnionMembers(usePlanClient());
   return useMemo(() => {
+    // Only titles near the job's points (~400 m): each is drawn as many hatch lines.
+    const pts = (job?.fields || []).map((f) => f.moved || f.point).filter(Boolean);
+    const near = (g) => { const c = (g.type === 'MultiPolygon' ? g.coordinates[0]?.[0] : g.coordinates?.[0]) || [];
+      return c.some(([lng, lat]) => pts.some((p) => Math.abs(p.lat - lat) < 0.004 && Math.abs(p.lng - lng) < 0.004)); };
     const others = (members.data || []).filter((m) => m.address !== job?.member && m.key !== job?.member)
-      .flatMap((m) => (m.fields || []).filter((f) => f.geometry).map((f) => ({ land: f.land || m.label || m.name, geometry: f.geometry })));
+      .flatMap((m) => (m.fields || []).filter((f) => f.geometry && near(f.geometry)).map((f) => ({ land: f.land || m.label || m.name, geometry: f.geometry })));
     const warn = {}; const red = {};
     (job?.fields || []).forEach((f) => { const l = overlaps(f.drawn, others); if (l.length) { warn[f.n] = l; red[f.n] = f.drawn; } });
     return { others, warn, red };

@@ -47,3 +47,35 @@ export function overlaps(drawn, others) {
   }
   return n ? [...hits].filter(([, k]) => k / n > OVERLAP_SHARE).map(([land]) => land) : [];
 }
+
+/** Hatching for a land title (16 Nov): diagonal segments every `spacingM` metres, clipped to the shape (holes
+ *  left open), as [[lat, lng], [lat, lng]] pairs. The map draws them as thin lines: no fill, no border. */
+export function hatch(geometry, spacingM = 4) {
+  const polys = rings(geometry);
+  if (!polys.length) return [];
+  const b = box(geometry);
+  const lat0 = (b[1] + b[3]) / 2;
+  const kx = 111320 * Math.cos((lat0 * Math.PI) / 180); const ky = 110540;   // metres per degree
+  const out = [];
+  polys.forEach((poly) => {
+    // local metres; lines u = x + y = c (45°)
+    const edges = poly.flatMap((ring) => ring.slice(1).map((p, i) => [[ring[i][0] * kx, ring[i][1] * ky], [p[0] * kx, p[1] * ky]]));
+    const us = edges.flatMap(([a, c]) => [a[0] + a[1], c[0] + c[1]]);
+    const [u0, u1] = [Math.min(...us), Math.max(...us)];
+    for (let u = Math.ceil(u0 / spacingM) * spacingM; u <= u1; u += spacingM) {
+      const xs = [];
+      edges.forEach(([a, c]) => {
+        const ua = a[0] + a[1]; const uc = c[0] + c[1];
+        if ((ua > u) === (uc > u)) return;
+        const t = (u - ua) / (uc - ua);
+        xs.push(a[0] + t * (c[0] - a[0]));
+      });
+      xs.sort((p, q) => p - q);
+      for (let i = 0; i + 1 < xs.length; i += 2) {
+        const [xa, xb] = [xs[i], xs[i + 1]];
+        out.push([[(u - xa) / ky, xa / kx], [(u - xb) / ky, xb / kx]]);
+      }
+    }
+  });
+  return out;
+}
