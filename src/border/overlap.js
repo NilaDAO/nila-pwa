@@ -27,8 +27,8 @@ function box(g) {
 
 const touches = (a, b) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
 
-/** The lands (labels) that cover more than OVERLAP_SHARE of the drawn shape. others: [{ land, geometry }]. */
-export function overlaps(drawn, others) {
+/** The lands (labels) that cover more than `share` of the shape. others: [{ land, geometry }]. */
+export function overlaps(drawn, others, share = OVERLAP_SHARE) {
   if (!drawn || !others?.length) return [];
   const b = box(drawn);
   const near = others.filter((o) => o.geometry && touches(b, box(o.geometry)));
@@ -45,7 +45,7 @@ export function overlaps(drawn, others) {
       near.forEach((o) => { if (!seen.has(o.land) && inGeom(x, y, o.geometry)) { seen.add(o.land); hits.set(o.land, (hits.get(o.land) || 0) + 1); } });
     }
   }
-  return n ? [...hits].filter(([, k]) => k / n > OVERLAP_SHARE).map(([land]) => land) : [];
+  return n ? [...hits].filter(([, k]) => k / n > share).map(([land]) => land) : [];
 }
 
 /** Hatching for a land title (16 Nov): diagonal segments every `spacingM` metres, clipped to the shape (holes

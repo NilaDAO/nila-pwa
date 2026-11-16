@@ -43,7 +43,15 @@ function useNeighbourLand(job) {
     const others = (members.data || []).filter((m) => m.address !== job?.member && m.key !== job?.member)
       .flatMap((m) => (m.fields || []).filter((f) => f.geometry && near(f.geometry)).map((f) => ({ land: f.land || m.label || m.name, geometry: f.geometry })));
     const warn = {}; const red = {};
-    (job?.fields || []).forEach((f) => { const l = overlaps(f.drawn, others); if (l.length) { warn[f.n] = l; red[f.n] = f.drawn; } });
+    // Flagged while the field's shape now (accepted, else planned) still lies on that land (16 Nov: a shape accepted
+    // clear of it ends the warning).
+    (job?.fields || []).forEach((f) => {
+      const big = overlaps(f.drawn, others);
+      if (!big.length) return;
+      const now = shapeFor(f, job.plan)?.geometry;
+      const still = now ? overlaps(now, others.filter((o) => big.includes(o.land)), 0.02) : big;
+      if (still.length) { warn[f.n] = still; red[f.n] = f.drawn; }
+    });
     return { others, warn, red };
   }, [members.data, job]);
 }
