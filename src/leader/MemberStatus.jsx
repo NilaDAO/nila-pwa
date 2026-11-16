@@ -425,7 +425,7 @@ function JoinSteps({ m, holder, onScan }) {
   const stepBtn = { ...btn(), flex: 'none', width: '100%', margin: '8px 0' };
   const scan = <button type="button" style={stepBtn} onClick={onScan}>Scan the QR</button>;
   const done = 'Scan the QR. Done: the member has joined.';
-  // A new member (holder) has no account yet: she registers in the app (TEXT TO CONFIRM WITH CARST).
+  // A new member (holder) has no account yet: she registers in the app (text confirmed by Carst, 16 Nov).
   const open = holder ? 'The member opens the Nila app and registers.' : 'The member opens the Nila app and recovers the account.';
   const steps = phone === 'smart' || holder
     ? [open, 'The member taps the scan icon at the bottom: the QR shows.', <>{done}{scan}</>]

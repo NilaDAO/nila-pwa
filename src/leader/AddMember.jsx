@@ -23,6 +23,7 @@ import { useBorderClient, useSendFieldPoints } from '../border/hooks';
 import { PointsStep, clearPoints, readPoints } from '../border/SendLocation';
 import { Loading } from '../register/Boot';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
+import { useBookActions } from '../union/hooks';
 
 const field = { height: 48, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 16px', boxSizing: 'border-box',
   width: '100%', fontFamily: FONT, fontSize: 14, fontWeight: 700, outline: 'none' };
@@ -232,10 +233,17 @@ function NewSmartphone({ go }) {
   const [name, setName] = useState(m?.name || '');
   const [phone, setPhone] = useState(m?.phone || '+91');
   const acct = useScannedAccount(m);
+  const { setName: tag } = useBookActions();
   useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
   if (!m) return null;
   const ok = name.trim() && phoneOk(phone);
-  const next = () => { writeScanned({ ...m, name: name.trim(), phone: phoneValue(phone) }); go('tasks/member/qr/points'); };
+  const next = () => {
+    writeScanned({ ...m, name: name.trim(), phone: phoneValue(phone) });
+    // 16 Nov: an existing member's name and number, as the leader verified them, go to the union's contact book, so
+    // the next new land title for her finds them filled in. Best effort: a phone without the union key skips it.
+    if (m.former && m.account) tag.mutate({ address: m.account, name: name.trim(), phone: phoneValue(phone) }, { onError: () => {} });
+    go('tasks/member/qr/points');
+  };
   return (
     // An existing member (15 Nov: a new title after a removal): the leader checks what is known, not a new member.
     <Card title={m.former ? 'Verify the record' : 'New member'}>
