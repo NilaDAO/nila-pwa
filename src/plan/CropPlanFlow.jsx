@@ -3,6 +3,8 @@
 // boards; DESIGN GAPs: no map yet (P4c), no suggested crops on CP4 (no source), CP9 shows the
 // engine's one explanation text (16 Oct), CP6/CP5 answers mapped to numbers/keys in hooks.js.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStalled } from '../shell/useStalled';
+import ErrorFull from '../shell/ErrorFull';
 import { Bouncing } from '../register/RegFrame';
 import { Loading } from '../register/Boot';
 import { useQueryClient } from '@tanstack/react-query';
@@ -494,6 +496,12 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     return () => clearInterval(t);
   }, [minting]); // eslint-disable-line react-hooks/exhaustive-deps
   const titlesKnown = !!forLand || (!titles.isLoading && (onPolygon || stellarTitles.isFetched));
+  // 16 Nov: never an endless loader: after 30 s "did not load" with Try again (the console names the read).
+  const waitOn = !titlesKnown ? (titles.isLoading ? 'the land title on Polygon' : 'the land title on Stellar')
+    : current.isLoading ? 'the crop plan' : field.isLoading ? 'the field record' : null;
+  const [stalled, retryLoad] = useStalled(waitOn);
+  const stalledScreen = stalled ? <ErrorFull title="The land title did not load" primary="Try again"
+    onPrimary={() => { retryLoad(); titles.refetch(); stellarTitles.refetch(); current.refetch(); field.refetch(); }} /> : null;
   // Plain loading (titles, plan, record not fetched yet) is S1 (executive decision 21 Oct); CP1's pending card is only
   // for a record that is really not there yet.
   if (making) {
@@ -514,7 +522,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       </Sheet>
     );
   }
-  if (!titlesKnown || current.isLoading) return <Loading />;
+  if (!titlesKnown || current.isLoading) return stalledScreen || <Loading />;
   if (titles.data && !titles.data.length && !stellarTitle) {
     const refresh = () => { titles.refetch(); stellarTitles.refetch(); };
     const busy = titles.isFetching || stellarTitles.isFetching;
@@ -584,7 +592,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   if (at === 'record') {
     // CP1 / CP2 (boards CropPlanPending, CropPlanPending-n9mn-kewp). DESIGN GAPs: no "Main issues" (the
     // oracle detects none yet, design Q20), no "Add your trees and water sources" row (A5 not built).
-    if (field.isLoading) return <Loading />;
+    if (field.isLoading) return stalledScreen || <Loading />;
     // The leader with a member (forLand): the member's help QR is already scanned and a 5-minute session would run
     // out long before the record (up to an hour), so an N-board says to try again later and closes itself (28 Oct).
     if (!recordReady && forLand) {

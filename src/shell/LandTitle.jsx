@@ -21,6 +21,8 @@ import { Loading } from '../register/Boot';
 import { IdentityRow } from '../leader/LeaderSettings';
 import { titlePending, useBorderClient, useMyBorderJob } from '../border/hooks';
 import { C, R } from './tokens';
+import ErrorFull from './ErrorFull';
+import { useStalled } from './useStalled';
 
 const LAND_TITLE = process.env.REACT_APP_LAND_TITLE_MAIN;
 const CHAIN_ID = Number(process.env.REACT_APP_CHAIN_ID) || 137;
@@ -120,7 +122,14 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
   const openJob = myJob.data && myJob.data.status !== 'failed' && myJob.data.status !== 'minted' ? myJob.data : null;
   const onTap = tapRule(picked, { open: setPicked, back: () => setPicked(null) });
   // S1 until her title and its record are read (every wait is S1, 21 Oct); the card sits on the map like CP2.
-  if (titles.isLoading || (!onPolygon && !stellarTitles.isFetched) || field.isLoading) return <Loading />;
+  // 16 Nov: never an endless loader: after 30 s "did not load" with Try again (the console names the read).
+  const waitOn = titles.isLoading ? 'the land title on Polygon' : !onPolygon && !stellarTitles.isFetched ? 'the land title on Stellar'
+    : field.isLoading ? 'the field record' : null;
+  const [stalled, retryLoad] = useStalled(waitOn);
+  if (waitOn) {
+    return stalled ? <ErrorFull title="The land title did not load" primary="Try again"
+      onPrimary={() => { retryLoad(); titles.refetch(); stellarTitles.refetch(); field.refetch(); }} /> : <Loading />;
+  }
   const map = shape.record ? <AreaMap record={shape.record} labels={shape.labels} selected={picked} onSelect={onTap}
     fitBottom={bar ? Math.round(window.innerHeight / 2) + 72 : undefined} />
     // No land title yet (4 Nov): the satellite map on the union's land behind the card, as the Crop plan (28 Oct).
