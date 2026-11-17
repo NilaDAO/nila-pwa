@@ -20,6 +20,7 @@ test('sugarcane fills the year: green gram in March has no room', () => {
   const { bars, dropped } = fill(['sugarcane', 'green_gram'], { seasons, cat });
   expect(bars).toHaveLength(1);
   expect(bars[0].whole).toBe(true);
+  expect(iso(bars[0].sow)).toBe('2026-12-01');
   expect(dropped).toEqual(['green_gram']);
   expect(toChanges(bars, seasons)).toEqual({ S1: 'sugarcane', S2: 'sugarcane', S3: 'sugarcane' });
 });
@@ -41,4 +42,12 @@ test('the row as planned: crops after the locked ones, green manure in time orde
     soil_cover: [{ zone: 'z1', kind: 'green_manure', sow: '2027-03-20' }],
   } };
   expect(rowOf(plan, 'z1')).toEqual({ keys: ['green_manure', 'maize'], free0: '2027-01-10', locked: { S1: { crop: 'paddy' } } });
+});
+
+test('sugarcane after maize: sown when the maize is harvested, it runs into the next year', () => {
+  const { bars, dropped } = fill(['maize', 'sugarcane'], { seasons, cat });
+  expect(dropped).toEqual([]);
+  expect(show(bars)).toEqual([['maize', 'S1', '2026-10-01'], ['sugarcane', 'S2', '2027-03-01']]);
+  expect(bars[1].end.getFullYear()).toBe(2028);
+  expect(toChanges(bars, seasons)).toEqual({ S1: 'maize', S2: 'sugarcane', S3: 'sugarcane' });
 });

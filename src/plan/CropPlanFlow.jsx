@@ -1035,7 +1035,6 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
               {rowNote && <p role="note" style={{ margin: 0, color: C.coral, textAlign: 'center' }}>{rowNote}</p>}
               {error && <p style={{ color: C.coral, margin: 0 }}>{error}</p>}
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" disabled={saving} onClick={() => { setRowKeys([]); setRowNote(undefined); }} style={{ ...secondaryBtn }}>Clear the row</button>
                 <button type="button" disabled={saving} onClick={update} style={{ ...secondaryBtn, background: C.accent, color: C.ink, opacity: saving ? 0.5 : 1 }}>{saving ? 'Updating…' : 'Update'}</button>
               </div>
               <button type="button" onClick={stop} style={{ ...secondaryBtn, flex: 'none', width: '100%' }}>Cancel</button>
