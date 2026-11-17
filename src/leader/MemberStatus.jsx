@@ -230,6 +230,19 @@ export default function MemberStatus({ id, go }) {
     const nos = String(x.area ?? '').split(' + ');
     return x.zones.length ? areaNames(x.zones.map((z, i) => zoneName[z] || `Area ${nos.length === x.zones.length ? nos[i] : (areas.findIndex((y) => y.zone_id === z) + 1 || '')}`.trim())) : `Area ${x.area}`;
   };
+  // 17 Nov: what a crop agreement gives to collect: its attested cash (else the plan's) and its vouchers' value (the plan's).
+  const collectLine = (x) => {
+    const p = m.plan?.plan || {};
+    const same = (a, b) => a.length === b.length && a.every((z) => b.includes(z));
+    const sh = (p.shares || []).find((s) => s.crop === x.crop_key && same(s.zones || [s.zone], x.zones));
+    const rows = !sh ? [] : sh.green_manure
+      ? (p.soil_cover || []).filter((c) => c.finance && c.sow === sh.from_date && (sh.zones || [sh.zone]).includes(c.zone))
+      : (p.seasons || []).flatMap((se) => se.rows).filter((r) => r.crop === sh.crop && r.sow === sh.from_date && (r.zones || [r.zone]).some((z) => (sh.zones || [sh.zone]).includes(z)));
+    const cash = x.cash ?? sh?.loan_amount;
+    const vouchers = rows.reduce((a, r) => a + (r.finance?.voucher_value || 0), 0);
+    if (cash == null) return fieldsOf(x);
+    return `${inr(Math.round(cash))} cash${vouchers ? ` + ${inr(Math.round(vouchers))} vouchers` : ''}`;
+  };
   const owed = m.loans.reduce((a, x) => a + (x.left || 0), 0);
   const loan = [...m.loans].sort((a, b) => (a.due || 9e12) - (b.due || 9e12))[0];
   const dueLoan = m.loans.find((x) => x.due && x.due < now);
@@ -388,7 +401,7 @@ export default function MemberStatus({ id, go }) {
                   <span aria-hidden="true" style={{ width: 10, height: 10, flexShrink: 0, borderRadius: R.round, background: x.colour || C.muted }} />
                   <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <span style={{ fontWeight: 700 }}>{x.crop}</span>
-                    <span style={{ color: C.muted }}>{fieldsOf(x)}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
+                    <span style={{ color: C.muted }}>{collectLine(x)}{x.slot ? ` · ${SEASON[x.slot]} ${new Date(x.from * 1000).getFullYear()}` : ''}</span>
                   </span>
                   {st.more && (
                     <button type="button" onClick={() => go(`loan/${x.planId || m.plan?.id}_${x.token}`)} style={{ flexShrink: 0, height: 32, borderRadius: R.button, border: 0, padding: '0 12px',
