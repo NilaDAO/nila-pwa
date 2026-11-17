@@ -148,6 +148,8 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
       const lab = labOf(z, i);
       if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const faded = selected ? !group.some((y) => y.zone_id === selected) : !!focus?.length && !group.some((y) => focus.includes(y.zone_id));
+      // 17 Nov: picked areas on the approved plan: the others nearly vanish, so the picked ones show at once.
+      const FADE = !selected && focus?.length ? 0.06 : 0.3;
       // The picked area (14 Nov): a white line around it and a lighter fill, so it stands out on the map.
       // lab.sel (17 Nov): one of several areas selected at once (the areas step), as the picked area.
       const sel = (!!selected && !faded) || !!lab.sel;   // a focus (17 Nov) only fades the others, no white line
@@ -156,7 +158,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
       // Joined areas: one outline around the group, no line between its parts.
       if (joined && !lab.hatch && !lab.dashed) {
         outlineOf(group.flatMap((y) => polysOf(y.geometry).flat())).forEach(([p, q]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: p[1], lng: p[0] }, { lat: q[1], lng: q[0] }],
-          clickable: false, zIndex: 2, strokeColor: sel ? '#ffffff' : colour, strokeOpacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: sel ? 3 : 1.5 })));
+          clickable: false, zIndex: 2, strokeColor: sel ? '#ffffff' : colour, strokeOpacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), strokeWeight: sel ? 3 : 1.5 })));
       }
       group.forEach((part) => polysOf(part.geometry).forEach((poly0) => {
         // Its holes as holes (14 Nov): an area inside it is not painted over.
@@ -167,15 +169,15 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
         // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so an accent outline (solid since 14 Nov) and a faint fill.
         // 14 Nov: its outline solid in the accent, no longer dashed.
         const poly = new g.Polygon({ map: m, paths, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
-          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : sel ? 0.5 : 1),
+          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? FADE : sel ? 0.5 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
           strokeColor: sel ? '#ffffff' : lab.hatch ? '#D4CF5A' : colour,
-          strokeOpacity: sel ? (joined ? 0 : 1) : lab.hatch ? (faded ? 0.3 : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1),
+          strokeOpacity: sel ? (joined ? 0 : 1) : lab.hatch ? (faded ? FADE : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1),
           strokeWeight: sel ? 3 : 1.5, zIndex: sel ? 3 : 1 });
         // lab.dashed (13 Nov, the members map): a property's outline as a dashed line.
         if (lab.dashed) {
           drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
-            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? 0.3 : 1, strokeColor: colour, strokeWeight: 2, scale: 3 }, offset: '0', repeat: '10px' }] }));
+            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? FADE : 1, strokeColor: colour, strokeWeight: 2, scale: 3 }, offset: '0', repeat: '10px' }] }));
         }
         // Each part opens itself (the leave-out step: undo the join); tapRoot (the plan): the area it is part of.
         if (pick) poly.addListener('click', pick(labels[part.zone_id]?.tapRoot ? z.zone_id : part.zone_id));
@@ -245,13 +247,14 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
       const tapTo = root !== z.zone_id && labels[z.zone_id]?.tapRoot ? root : z.zone_id;
       const faded = selected ? selected !== z.zone_id && joinRoot(labels, selected) !== root
         : !!focus?.length && !focus.includes(z.zone_id) && !focus.some((f) => joinRoot(labels, f) === root);
+      const FADE = !selected && focus?.length ? 0.06 : 0.3;   // 17 Nov: as the Google map
       const sel = (!!selected && !faded) || !!lab.sel;   // a focus (17 Nov) only fades the others, no white line   // 14 Nov: the picked area, a white line and a lighter fill (17 Nov: lab.sel, several)
       const colour = lab.colour || '#ffffff';
       // An area still to be set (13 Nov): hatched, so she sees at once which areas are left (lab.hatch).
       if (lab.hatch) hatchPattern();
       const layer = L.geoJSON(z.geometry, { style: lab.hatch
-        ? { color: '#F1F5F9', weight: 2, opacity: faded ? 0.3 : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? 0.3 : 1 }
-        : { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : sel ? 0.5 : 1) } });
+        ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? FADE : 1 }
+        : { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
       layer.addTo(group);
       if (focus?.length && !faded) focused.push(layer);
       if (onSelect) layer.on('click', () => onSelect(selected === tapTo ? null : tapTo));
