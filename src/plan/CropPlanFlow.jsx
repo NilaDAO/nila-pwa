@@ -426,8 +426,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // The areas card (17 Nov): [down, nonce] — a pick moves it down or up even when it was dragged since.
   const [cardLow, setCardLow] = useState([false, 0]);
   const [picked, setPicked] = useState([]);
-  // Select areas to update (17 Nov): on, the areas selected, the row's crops in order, a note under the row.
-  const [editing, setEditing] = useState(false);
+  // The plan's edit (17 Nov): the areas selected, the row's crops in order, a note under the row.
   const [editSel, setEditSel] = useState([]);
   const [rowKeys, setRowKeys] = useState([]);
   const [rowNote, setRowNote] = useState();   // the areas selected on the map (17 Nov), each a joined area's root
@@ -943,17 +942,10 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     };
     const thisYear = planYears.includes(planYear()) ? planYear() : planYears[0];
     const reset = () => { setPastYear(null); setSeason(Math.max(0, ss.findIndex((x) => planYear(x.start) === thisYear))); };
-    // 17 Nov: the chip above the map that starts Select areas to update.
-    const selectChip = !readOnly && pastYear == null && (
-      <button type="button" onClick={() => { pickArea(null); setEditing(true); setEditSel([]); setRowKeys([]); setCardLow([true, Date.now()]); }}
-        style={{ alignSelf: 'center', height: 32, padding: '0 14px', borderRadius: 16, border: 0, background: 'rgba(18,18,18,0.85)', color: C.accent,
-          fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Select areas to update</button>
-    );
     const bar = area
       ? <SlideBar label={<b>{areaName(area)}</b>} prevLabel="Previous area" nextLabel="Next area" onPrev={() => step1(-1)} onNext={() => step1(1)} />
       : ss.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-          {selectChip}
           {y0 !== thisYear && (
             <button type="button" onClick={reset} style={{ height: 32, padding: '0 14px', borderRadius: 16, border: 0, background: 'rgba(18,18,18,0.85)', color: C.accent,
               fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Back to {yearLabel(null, thisYear)}</button>
@@ -963,12 +955,12 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           </div>
         </div>
       );
-    // Select areas to update (17 Nov, executive decision): as the areas step, she taps one or more areas on the map;
-    // the card shows their year as one row. Each crop tapped fills the next free spot for its own grow length; the
+    // Editing straight away (17 Nov, executive decision): on a draft plan she taps one or more areas on the map (or in
+    // the list) and the card shows their year as one row; nothing to switch on first. Each crop tapped fills the next free spot for its own grow length; the
     // row is sent once with Update (one change per season, per area), then the node recomputes and writes the pros
     // and cons for each area's whole year.
-    if (editing && !readOnly) {
-      const z0 = editSel[0];
+    const editable = !readOnly && pastYear == null;
+    const z0 = editSel[0];
       const bases = Object.fromEntries(editSel.map((z) => [z, rowOf(plan, z)]));
       const free0 = editSel.map((z) => bases[z].free0).filter(Boolean).sort().pop() || null;
       const { bars } = fill(rowKeys, { seasons: ss, cat: names, free0 });
@@ -977,7 +969,6 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
         const next = editSel.includes(z) ? editSel.filter((x) => x !== z) : [...editSel, z];
         if (!editSel.length && next.length) setRowKeys(rowOf(plan, z).keys);
         setEditSel(next); setRowNote(undefined);
-        setCardLow([next.length === 0, Date.now()]);
       };
       const add = (key) => {
         const keys = [...rowKeys, key];
@@ -988,7 +979,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       };
       // The bars are the kept keys in order (a key with no room never enters the row), so bar i is key i.
       const dropAt = (i) => { setRowKeys(rowKeys.filter((_, k) => k !== i)); setRowNote(undefined); };
-      const stop = () => { setEditing(false); setEditSel([]); setRowKeys([]); setRowNote(undefined); setCardLow([false, Date.now()]); };
+      const stop = () => { setEditSel([]); setRowKeys([]); setRowNote(undefined); };
       const update = async () => {
         setError(undefined);
         const changes = Object.fromEntries(editSel.map((z) => [z, toChanges(fill(rowKeys, { seasons: ss, cat: names, free0: bases[z].free0 }).bars, ss, bases[z].locked)]));
@@ -997,6 +988,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           setSaveJob(res.job_id); stop();
         } catch (e) { setError(e.message); }
       };
+    if (editable && z0) {
       const mine = (plan.plan.intake?.crops || []).filter((k) => names[k]);
       const list = [...mine.map((k) => names[k]), GREEN_MANURE, ...sortedCrops(catalogue.data?.crops || []).filter((c) => !mine.includes(c.key))];
       const selLabels = Object.fromEntries(Object.entries(labels).map(([z, l]) => [z, editSel.includes(z) ? { ...l, sel: true } : l]));
@@ -1006,14 +998,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       const axis = slots0 ? Array.from({ length: 12 }, (_, i) => MON1[(slots0.getMonth() + i) % 12]) : [];
       return (
         <Sheet map={record ? <AreaMap record={record} labels={selLabels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72} /> : map}
-          landName={name} onBack={stop} low={cardLow[0]} lowKey={cardLow[1]}>
-          {!z0 ? (
-            <>
-              <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Select areas to update</h1>
-              <p style={{ ...muted, textAlign: 'center' }}>Tap one or more areas on the map.</p>
-              <button type="button" onClick={stop} style={{ ...secondaryBtn, flex: 'none', width: '100%', marginTop: 8 }}>Cancel</button>
-            </>
-          ) : (
+          landName={name} onBack={stop}>
+          {(
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: 0 }}>{editSel.length === 1 ? areaName(z0) : `${editSel.length} areas selected`}</h1>
               {/* The year row: what stands now (fixed), then her crops; a tap on a crop's bar takes it out. */}
@@ -1062,7 +1048,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     const shown = Math.min(season, Math.max(0, ss.length - 1));
     const chipsOn = pastYear == null && yearSeasons(ss, shown).length > 1;
     return (
-      <Sheet map={map} landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}>
+      <Sheet map={editable && record ? <AreaMap record={record} labels={labels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72} /> : map}
+        landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}>
         {area ? (
           <AreaCard plan={plan} zone={area} name={areaName(area)} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
             accepted={checked.has(area)} total={zones.length} readOnly={readOnly} y0={y0}
@@ -1072,7 +1059,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
             picked={pending[area] || {}}
             onRemove={() => setRemoving(area)} />
         ) : (
-          <PlanView plan={plan} record={record} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={pickArea}
+          <PlanView plan={plan} record={record} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={editable ? toggle : pickArea}
             crops={catalogue.data?.crops} changing={saving} pending={pending}
             ticks={ticks} onTick={(k) => setTicks((t) => { const n = new Set(t); if (n.has(k)) n.delete(k); else n.add(k); return n; })}
             chips={chipsOn && <SeasonChips ss={ss} i={shown} on={slotsOn} setOn={setSlotsOn} />}
