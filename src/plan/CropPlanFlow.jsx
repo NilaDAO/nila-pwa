@@ -105,6 +105,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
   const vouchersAll = [...seasons, { rows: gm }].reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.voucher_value || 0), 0), 0);
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance.due)).sort().pop();
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
+  const [wide, setWide] = useState(false);   // 17 Nov: the money table extended
   const sales = seasons.reduce((a, se) => a + se.rows.reduce((b, r) => b + (r.value || 0), 0), 0);
   const order = [...zones].sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
   return (
@@ -131,7 +132,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
           <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
             <thead><tr style={{ color: C.muted, whiteSpace: 'nowrap' }}><td>Season</td><td>Use it by</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
             <tbody>
-              {rowsBy.map(({ s, gmHere, by, cash }) => (
+              {rowsBy.filter(({ s }) => wide || !slots || slots.has(s.slot)).map(({ s, gmHere, by, cash }) => (
                 <tr key={s.slot} style={line}>
                   <td style={{ padding: '8px 0' }}><b style={{ color: slots && slots.has(s.slot) ? C.accent : undefined }}>{SEASON[s.slot]}</b>
                     {gmHere.length > 0 && <><br /><span style={muted}>with green manure, repaid with the next crop</span></>}</td>
@@ -144,13 +145,20 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
                   <td style={{ padding: '8px 0' }} colSpan={3}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount} points off the rate ({rate}%) · trees registered</span></td>
                 </tr>
               )}
-              <tr style={{ ...line, fontWeight: 700 }}><td style={{ padding: '8px 0' }}>Financed</td><td>{day(lastBy)}</td><td style={{ textAlign: 'right' }}>{inr(total.cash)}</td></tr>
-              <tr style={line}><td style={{ padding: '8px 0' }}>of which vouchers</td><td>{vouchersAll ? day(lastBy) : '—'}</td><td style={{ textAlign: 'right' }}>{inr(vouchersAll)}</td></tr>
-              {sales > 0 && <tr style={line}><td style={{ padding: '8px 0' }}>Sales (estimate)</td><td>—</td><td style={{ textAlign: 'right' }}>{inr(sales)}</td></tr>}
+              {wide && <>
+                <tr style={{ ...line, fontWeight: 700 }}><td style={{ padding: '8px 0' }}>Total financed</td><td>{day(lastBy)}</td><td style={{ textAlign: 'right' }}>{inr(total.cash)}</td></tr>
+                <tr style={line}><td style={{ padding: '8px 0' }}>Total vouchers</td><td>{vouchersAll ? day(lastBy) : '—'}</td><td style={{ textAlign: 'right' }}>{inr(vouchersAll)}</td></tr>
+                {sales > 0 && <tr style={line}><td style={{ padding: '8px 0' }}>Total sales (estimate)</td><td>—</td><td style={{ textAlign: 'right' }}>{inr(sales)}</td></tr>}
+              </>}
             </tbody>
           </table>
         );
       })()}
+      {/* 17 Nov: folded, the season on the map only; a small expand lists every season and the totals. */}
+      <button type="button" onClick={() => setWide((v) => !v)} aria-expanded={wide}
+        style={{ marginTop: 8, border: 0, background: 'transparent', padding: 0, color: C.accent, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        {wide ? 'Show less' : 'All seasons and totals ›'}
+      </button>
       {lastDue && <p style={muted}>You repay {inr(total.cash + total.interest)} in {seasons.length} part{seasons.length === 1 ? '' : 's'}, each 21 days after its harvest.</p>}
       {/* Her changes are hard rules (21 Oct); only a hard fact refuses one, and anything the node could not read is named. */}
       {p.member_request?.not_followed?.length > 0 && (
