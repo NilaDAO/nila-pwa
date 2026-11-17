@@ -530,9 +530,12 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // 13 Nov: a tap opens the area's page (every agreement on it that plan year, its standing crop), so an area with only
   // the standing crop or a green manure in the season shown opens too.
   const openShare = useCallback((z) => {
+    // 17 Nov: the area page is the phone's own land's; in a leader's view of a member's plan it waited forever for an
+    // area the leader's land does not have. There a tap only shows that area on the map.
+    if (forLand) { setFocus((f) => (z && !(f && f.length === 1 && f[0] === z) ? [z] : null)); return; }
     const ss = plan?.plan?.seasons || [];
     if (z) window.location.hash = areaHash(z, planYear(ss[Math.min(season, ss.length - 1)]?.start));
-  }, [plan, season]);
+  }, [plan, season, forLand]);
   // Before the field record (CP1, 1 Nov): the land title's field outlines, as on the land title screen (A5).
   const titleShape = fieldsMap(useTitleFields(landId, onPolygon, stellarTitle, null));
   const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} focus={active ? focus : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
