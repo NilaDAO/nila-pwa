@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
+import { gridsOf } from './jobGrid';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' }).replace('Sept', 'Sep');
 // Machine jobs as the board words them ("Weed maize"); the catalogue's `for` text otherwise.
@@ -22,10 +23,10 @@ const IC = {
   cut: 'M3 6a3 3 0 1 0 6 0a3 3 0 1 0-6 0M3 18a3 3 0 1 0 6 0a3 3 0 1 0-6 0M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12',
   harvest: 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.27 6.96 12 12.01l8.73-5.05M12 22.08V12',
   repay: 'M7 17 17 7M7 7h10v10',
+  inputs: 'M10 2v7.31M14 9.3V1.99M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.52 16h12.96',
+  transport: 'M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2M15 18H9M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14M7 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M15 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0',
   cash: 'M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0M6 12h.01M18 12h.01',
 };
-const iconOf = (text) => (/^Receive/.test(text) ? 'cash' : /^Plant/.test(text) ? 'plant' : /^Weed/.test(text) ? 'weed' : /^Cut/.test(text) ? 'cut'
-  : /^Harvest/.test(text) ? 'harvest' : /^Repay/.test(text) ? 'repay' : 'tractor');
 const SLOT = { S1: 'Oct to Feb', S2: 'Mar to May', S3: 'Jun to Aug' };
 
 /** The season she is in today: the last one that has started (the first before any has). */
@@ -69,40 +70,73 @@ export function tasksOf(plan, areaNo, areaName) {
   return out.sort((a, b) => a.date.slice(0, 7).localeCompare(b.date.slice(0, 7)) || (!!b.share - !!a.share) || a.date.localeCompare(b.date));
 }
 
-// To do now: a raised row with the task's area under it; coming up: one plain line (board CropPlanActive).
-function Row({ t, now }) {
+// The job grid (17 Nov, executive decision; replaces To do now and Coming up): per crop in the season shown, a square
+// tile per action. The tile names the action; its look says how it is paid: voucher = yellow border, cash = green
+// fill, self-organised = plain. A tap shows the amount, acres and month under the crop's grid.
+const CASH_FILL = '#2F6B45';
+const look = (kind) => (kind === 'voucher' ? { background: C.raised, border: `2px solid ${C.accent}` }
+  : kind === 'cash' ? { background: CASH_FILL, border: '2px solid transparent' } : { background: C.raised, border: '2px solid transparent' });
+const dayMon = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+function Legend() {
+  const sw = (kind) => <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: 3, boxSizing: 'border-box', ...look(kind) }} />;
   return (
-    <div role="listitem" aria-label={`${t.text}, ${month(t.date)}, ${now ? 'to do' : 'coming up'}`}
-      style={{ display: 'flex', alignItems: now ? 'center' : 'flex-start', gap: 10, borderRadius: 12, fontSize: 14, lineHeight: 1.5,
-        ...(now ? { background: C.raised, padding: '12px 16px' } : { padding: '8px 0' }) }}>
-      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
-        <path d={IC[iconOf(t.text)]} />
-      </svg>
-      <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <span style={{ display: 'flex', gap: 10 }}>
-          <span style={{ flexGrow: 1, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.text}</span>
-          <span style={{ whiteSpace: 'nowrap', color: C.muted }}>{t.when || month(t.date)}</span>
-        </span>
-        {now && t.area && <span style={{ color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.area}</span>}
-      </span>
+    <div style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 12, color: C.muted, flexWrap: 'wrap' }}>
+      {[['voucher', 'Voucher'], ['cash', 'Cash'], ['self', 'Self-organised']].map(([k, t]) => (
+        <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{sw(k)}{t}</span>
+      ))}
     </div>
   );
 }
 
-function Group({ name, items, now, first }) {
-  const [n, setN] = useState(first || items.length);
-  if (!items.length) return null;
+function detailOf(t) {
+  const bits = [t.label];
+  if (t.acres) bits.push(`${Math.round(t.acres * 100) / 100} ac`);
+  if (t.value) bits.push(inr(t.value));
+  if (t.kg) bits.push(`about ${kg(t.kg)}`);
+  if (t.key === 'collect') bits.push(t.done ? 'collected' : t.ready ? 'ready at the union office' : `from ${dayMon(t.date)}${t.until ? `, use it by ${dayMon(t.until)}` : ''}`);
+  else if (t.afterHarvest) bits.push('21 days after your harvest');
+  else if (t.date) bits.push(month(t.date));
+  if (t.kind === 'self' && t.key !== 'repay') bits.push('you organise it');
+  return bits.join(' · ');
+}
+
+function JobGrids({ plan, si, areaNo, areaName, shares }) {
+  const [open, setOpen] = useState(null);
+  const grids = gridsOf(plan, si, { areaNo, areaName, shares });
+  if (!grids.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is sown in this season.</p>;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-      <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>{name}</span>
-      <div role="list" aria-label={name} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.slice(0, n).map((t) => <Row key={t.date + t.text + t.area} t={t} now={now} />)}
-      </div>
-      {/* 13 Nov: the whole property's list, a few at a time. */}
-      {n < items.length && (
-        <button type="button" onClick={() => setN(n + 5)} style={{ alignSelf: 'flex-start', border: 0, background: 'transparent', padding: 0,
-          color: C.accent, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Show more ({items.length - n})</button>
-      )}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>
+      <Legend />
+      {grids.map((g) => {
+        const shown = g.tiles.find((t) => open === `${g.key}|${t.key}`);
+        return (
+          <div key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={{ fontSize: 14 }}><b>{g.crop}</b><span style={{ color: C.muted }}>{g.area ? ` · ${g.area}` : ''}{g.sow ? ` · sown ${dayMon(g.sow)}` : ''}</span></span>
+            <div role="list" aria-label={g.crop} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {g.tiles.map((t) => {
+                const k = `${g.key}|${t.key}`;
+                return (
+                  <button key={t.key} type="button" role="listitem" aria-pressed={open === k} aria-label={detailOf(t)} onClick={() => setOpen(open === k ? null : k)}
+                    style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: 12, boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center', gap: 6, color: C.text, fontFamily: FONT, cursor: 'pointer', padding: 4,
+                      opacity: t.done ? 0.55 : 1, outline: open === k ? `2px solid ${C.text}` : 'none', outlineOffset: 2, ...look(t.kind) }}>
+                    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={t.kind === 'cash' ? C.text : C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d={IC[t.icon] || IC.tractor} />
+                    </svg>
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>{t.label}</span>
+                    {(t.ready || t.done) && (
+                      <span style={{ position: 'absolute', top: 6, right: 6, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999,
+                        background: t.done ? C.ink : C.accent, color: t.done ? C.muted : C.ink }}>{t.done ? '✓' : 'Ready'}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {shown && <span role="status" style={{ fontSize: 13, color: C.muted }}>{detailOf(shown)}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -112,23 +146,12 @@ function Group({ name, items, now, first }) {
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
 export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart, chartTitle = "This year's plan", past = false, seasons, filter }) {
-  const now = today.toISOString().slice(0, 10);
-  const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
-  // One list for the whole property (13 Nov): every season's tasks in date order, not only the season on the bar.
-  // 13 Nov: seasons = the season indices whose chip is on (filter: the chips); only their tasks are listed.
-  const all = tasksOf(plan.plan, areaNo, areaName).filter((t) => !(t.share && byKey[t.share]?.drawn))
-    .filter((t) => !seasons || seasons.has(t.season))
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const ready = (t) => !!(t.share && byKey[t.share]?.ready);
-  const thisMonth = all.filter((t) => ready(t) || (t.date.slice(0, 7) === now.slice(0, 7) && !(t.share && byKey[t.share] && !ready(t))));
-  const later = all.filter((t) => !thisMonth.includes(t) && t.date.slice(0, 7) > now.slice(0, 7));
   const approvedAt = plan.approval?.ts ? new Date(plan.approval.ts * 1000) : null;
   const madeOn = approvedAt && approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return (
     <>
-      {!past && filter}
-      {!past && <Group name="To do now" items={thisMonth} now />}
-      {!past && <Group name="Coming up" items={later} first={4} />}
+      {/* 17 Nov: the job grid of the season shown replaces To do now and Coming up. */}
+      {!past && <JobGrids plan={plan} si={season} areaNo={areaNo} areaName={areaName} shares={shares} />}
       {/* 13 Nov: the whole plan as crop bars, below the tasks, under its own title. */}
       {chart && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16, borderTop: `1px solid ${C.raised}`, paddingTop: 16 }}>
