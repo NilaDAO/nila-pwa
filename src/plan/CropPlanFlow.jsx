@@ -43,6 +43,7 @@ import HelpQr from '../loan/HelpQr';
 import { titlePending, useMyBorderJob } from '../border/hooks';
 import { unionCentre } from '../leader/unionMap';
 import { useUnionMembers } from '../leader/unionMembers';
+import { useContactBook } from '../union/hooks';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -304,6 +305,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // came from (the member's screen or Tasks).
   // The leader's own land opened from the member list (onExit) gets the same Back.
   const exit = forLand?.onClose || onExit;
+  const book = useContactBook({ enabled: !!forLand?.account });   // the leader's book, only for a member's plan
   const Sheet = useMemo(() => (forLand ? function MemberSheet(p) { return <BaseSheet {...p} onBack={p.onBack || exit} noSettings />; }
     : exit ? function OwnSheet(p) { return <BaseSheet {...p} onBack={p.onBack || exit} />; } : BaseSheet), [!!forLand, !!exit]); // eslint-disable-line react-hooks/exhaustive-deps
   const s = useNilaSigner();
@@ -448,7 +450,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   useEffect(() => { if (approved) { setSeason(currentSeason(plan.plan.seasons || [])); setPastYear(null); } }, [planId, approved]); // eslint-disable-line react-hooks/exhaustive-deps
   // Her land's name comes from the land title's metadata (not the record), "Land <id>" only when it has none.
   const titleName = useTitleName(landId, onPolygon, stellarTitle);
-  const name = (forLand && forLand.label) || titleName || (landId != null ? `Land ${landId}` : 'Nila');
+  // 17 Nov: a leader making a member's plan sees the member's name from the leaders' contact book, as on G2.
+  const bookName = book.data?.names.get(forLand?.account)?.name;
+  const name = (forLand && (bookName || forLand.label)) || titleName || (landId != null ? `Land ${landId}` : 'Nila');
   const zoneOrder = useMemo(() => areasOf(record).map((z) => z.zone_id), [record]);
   const areaNo = useCallback((zone) => (zoneOrder.indexOf(zone) + 1) || zone, [zoneOrder]);
   // The area's name from the record (12 Nov: after its field, "field in 3 · 2"), else "Area n".

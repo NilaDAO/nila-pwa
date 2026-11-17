@@ -8,7 +8,7 @@
 // no "Your plan" rows (the crop bars above the card's list show the plan); the plan's date is a muted line at the end.
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { C, FONT, TAB_BAR_HEIGHT } from '../shell/tokens';
+import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
 import { gridsOf, coverGrids } from './jobGrid';
@@ -121,7 +121,9 @@ function detailOf(t) {
 // Where the bottom bar starts (17 Nov): the note sits flush on top of it.
 const barTop = () => {
   const nav = typeof document !== 'undefined' && document.querySelector('nav[aria-label="Main"]');
-  return nav ? Math.max(0, Math.round(window.innerHeight - nav.getBoundingClientRect().top)) : TAB_BAR_HEIGHT;
+  // 17 Nov: no bar on this screen (a leader's view of a member's plan) → 0, the note on the screen's bottom edge.
+  if (!nav || nav.offsetParent === null) return 0;
+  return Math.max(0, Math.round(window.innerHeight - nav.getBoundingClientRect().top));
 };
 // The bar's left and right edges (compact, it has the cards' gutter), so a panel behind it lines up with it.
 const barSides = () => {
@@ -220,7 +222,7 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
         // 17 Nov: behind the bar (nav zIndex 10) and down to the screen's bottom edge, the bar's sides; the text above the bar.
         <button type="button" role="status" onClick={() => setOpen(null)} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0,
           display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
-          padding: `14px 16px ${barTop() + 14}px`, boxSizing: 'border-box',
+          padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
           borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
           <span style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
