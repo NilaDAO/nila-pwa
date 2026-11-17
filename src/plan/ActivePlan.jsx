@@ -12,7 +12,6 @@ import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
 import { gridsOf, coverGrids } from './jobGrid';
-import { Drawer, InfoButton } from './Drawer';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' }).replace('Sept', 'Sep');
 // Machine jobs as the board words them ("Weed maize"); the catalogue's `for` text otherwise.
@@ -80,7 +79,6 @@ export function tasksOf(plan, areaNo, areaName) {
 const VOUCHER_EDGE = C.coral;
 // 17 Nov: the amount is on every tile, so only a voucher has a border.
 const edge = (kind) => (kind === 'voucher' ? `3px solid ${VOUCHER_EDGE}` : '3px solid transparent');
-const dayMon = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 // Text and icon on a crop's colour (17 Nov): black on a light colour, white on a dark one (relative luminance).
 export function inkOn(hex) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
@@ -91,24 +89,6 @@ export function inkOn(hex) {
   return L > 0.18 ? C.ink : '#ffffff';
 }
 
-// The legend behind the info button (17 Nov), in a drawer as the app's other legends: the voucher border, the amount
-// strip, and the crops by colour with their sowing windows.
-function LegendDrawer({ grids, onClose }) {
-  const sw = (style) => <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: 3, boxSizing: 'border-box', flexShrink: 0, ...style }} />;
-  const row = { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 };
-  return (
-    <Drawer title="What the tiles show" onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <span style={row}>{sw({ background: C.raised, border: `2px solid ${VOUCHER_EDGE}` })}Red border: paid with a voucher</span>
-        <span style={row}>{sw({ background: 'rgba(0,0,0,0.45)' })}Collect and Repay: your crop agreement's money; "Cash": paid from it; "Voucher": machine work; "You": you organise it</span>
-        {grids.map((g) => (
-          <span key={g.key} style={row}>{sw({ background: g.colour || C.muted })}
-            <span><b>{g.crop}</b>{g.sow ? ` · sow ${dayMon(g.sow)}${g.until && g.until > g.sow ? ` – ${dayMon(g.until)}` : ''}` : ''}</span></span>
-        ))}
-      </div>
-    </Drawer>
-  );
-}
 
 // A tap shows only what it is worth (17 Nov): the cash or voucher value; self-organised work has none.
 function detailOf(t) {
@@ -145,8 +125,10 @@ export function planMonths(plan, { areaNo, areaName, shares } = {}) {
   // 17 Nov: green manures too, each its own crop agreement.
   const grids = [...ss.map((_, si) => gridsOf(plan, si, { areaNo, areaName, shares }).map((g) => [si, g])).flat(),
     ...coverGrids(plan, { areaNo, areaName, shares }).map((g) => ['gm', g])];
-  const tiles = grids.flatMap(([si, g]) => g.tiles.map((t) => ({ ...t, id: `${si}|${g.key}|${t.key}`, crop: g.crop, colour: g.colour, si })));
   const seasonOf = (ym) => ss.reduce((k, s, i) => (String(s.start).slice(0, 7) <= ym ? i : k), 0);
+  // zones and season (17 Nov): a tapped tile shows its crop's areas on the map, in the season it is sown.
+  const tiles = grids.flatMap(([si, g]) => g.tiles.map((t) => ({ ...t, id: `${si}|${g.key}|${t.key}`, crop: g.crop, colour: g.colour, si,
+    zones: g.zones || [], season: si === 'gm' ? seasonOf(String(g.sow).slice(0, 7)) : si })));
   const out = ss.map((_, si) => ({ si, months: [] }));
   // In time order across the crops; the same day keeps each crop's own order (stable sort).
   for (const t of tiles.filter((x) => x.date).sort((a, b) => String(a.date).slice(0, 10).localeCompare(String(b.date).slice(0, 10)))) {
@@ -159,13 +141,11 @@ export function planMonths(plan, { areaNo, areaName, shares } = {}) {
   return out.filter((sec) => sec.months.length);
 }
 
-function JobGrids({ plan, areaNo, areaName, shares }) {
+function JobGrids({ plan, areaNo, areaName, shares, onTile }) {
   const [open, setOpen] = useState(null);
-  const [legend, setLegend] = useState(false);
   const ss = (plan.plan || plan).seasons || [];
   const secs = planMonths(plan, { areaNo, areaName, shares });
   if (!secs.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is planned yet.</p>;
-  const grids = [...ss.flatMap((_, si) => gridsOf(plan, si, { areaNo, areaName, shares })), ...coverGrids(plan, { areaNo, areaName, shares })];
   const all = secs.flatMap((x) => x.months.flatMap((m) => m.tiles));
   const shown = all.find((t) => t.id === open);
   const tile = (t) => {
@@ -174,7 +154,7 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
     const amount = t.key === 'collect' || t.key === 'repay' ? inr(t.value || 0)
       : t.kind === 'voucher' ? 'Voucher' : t.kind === 'cash' ? 'Cash' : 'You';
     return (
-      <button key={t.id} type="button" role="listitem" aria-pressed={open === t.id} aria-label={detailOf(t)} onClick={() => setOpen(open === t.id ? null : t.id)}
+      <button key={t.id} type="button" role="listitem" aria-pressed={open === t.id} aria-label={detailOf(t)} onClick={() => { const on = open !== t.id; setOpen(on ? t.id : null); onTile?.(on ? t : null); }}
         style={{ position: 'relative', borderRadius: 10, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden',
           color: ink, fontFamily: FONT, cursor: 'pointer', padding: 0, background: t.colour || C.muted, border: edge(t.kind),
           opacity: t.done ? 0.55 : 1, outline: open === t.id ? `2px solid ${C.text}` : 'none', outlineOffset: 2 }}>
@@ -198,7 +178,6 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
   // between seasons; a tap shows what a tile is worth under the grid.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
-      <InfoButton label="What the tiles show" onClick={() => setLegend(true)} />
       {secs.map((sec) => (
         <div key={sec.si} role="group" aria-label={SLOT[ss[sec.si]?.slot] || `Season ${sec.si + 1}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0 2px' }}>
@@ -216,13 +195,12 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
           })}
         </div>
       ))}
-      {legend && <LegendDrawer grids={grids} onClose={() => setLegend(false)} />}
       {/* 17 Nov: the tapped tile's note as an info note on top of the bottom bar, outside the card (the card moves when
           dragged, which would carry a fixed note with it); a tap closes it. */}
       {shown && createPortal(
         // As the registration screens' info footer (R5): a dark panel with rounded top corners, flush on the bar.
         // 17 Nov: behind the bar (nav zIndex 10) and down to the screen's bottom edge, the bar's sides; the text above the bar.
-        <button type="button" role="status" onClick={() => setOpen(null)} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0, pointerEvents: 'auto',
+        <button type="button" role="status" onClick={() => { setOpen(null); onTile?.(null); }} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0, pointerEvents: 'auto',
           display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
           padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
           borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
@@ -245,13 +223,13 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
  *  month; a drawn one is done and not listed. assist: a shared phone, where the leader extends the plan.
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
-export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart, chartTitle = "This year's plan", past = false, seasons, filter }) {
+export default function ActivePlan({ plan, areaNo, areaName, season, shares, onTile, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart, chartTitle = "This year's plan", past = false, seasons, filter }) {
   const approvedAt = plan.approval?.ts ? new Date(plan.approval.ts * 1000) : null;
   const madeOn = approvedAt && approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return (
     <>
       {/* 17 Nov: the whole plan's job grid replaces To do now, Coming up and This year's plan (the bars stay for a record year). */}
-      {!past && <JobGrids plan={plan} areaNo={areaNo} areaName={areaName} shares={shares} />}
+      {!past && <JobGrids plan={plan} areaNo={areaNo} areaName={areaName} shares={shares} onTile={onTile} />}
       {!past && madeOn && <span style={{ display: 'block', marginTop: 12, fontSize: 13, color: C.muted }}>Plan made {madeOn}</span>}
       {chart && past && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16, borderTop: `1px solid ${C.raised}`, paddingTop: 16 }}>

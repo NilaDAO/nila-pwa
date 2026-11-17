@@ -426,6 +426,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   const [ticks, setTicks] = useState(() => new Set());   // the accept screen's checks she has ticked
   // CP10: the season shown (overview), the area picked, and her area accepts until CP11 accepts them on the node.
   const [season, setSeason] = useState(0);
+  const [focus, setFocus] = useState(null);   // 17 Nov: a tapped job tile's areas, shown on the map
   // A plan year before the plan (12 Nov: plan history from the record); null = the plan's years.
   const [pastYear, setPastYear] = useState(null);
   // 13 Nov: the approved plan (CP13) steps back through the record too; any step change leaves either screen, so reset.
@@ -534,7 +535,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   }, [plan, season]);
   // Before the field record (CP1, 1 Nov): the land title's field outlines, as on the land title screen (A5).
   const titleShape = fieldsMap(useTitleFields(landId, onPolygon, stellarTitle, null));
-  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
+  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} focus={active ? focus : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
     fitBottom={pickable ? Math.round(window.innerHeight / 2) + 72 : undefined} />
     : titleShape.record ? <AreaMap record={titleShape.record} labels={titleShape.labels} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
@@ -1212,6 +1213,13 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           chartTitle={pastYear != null ? `${yearLabel(null, pastYear)} · from your record` : y0 === planYear() ? "This year's plan" : `${yearLabel(null, y0)} plan`}
           past={pastYear != null} seasons={pastYear == null ? new Set(onIdx) : undefined}
           plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
+          // 17 Nov: a tapped tile shows its areas on the map, in its season, with the card half open.
+          onTile={(t) => {
+            setFocus(t ? t.zones : null);
+            if (!t) return;
+            if (typeof t.season === 'number') setSeason(t.season);
+            window.dispatchEvent(new Event('nila-sheet-mid'));
+          }}
           canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
           onExtend={async () => {
             setError(undefined);

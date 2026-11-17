@@ -66,6 +66,22 @@ export default function useSheetDrag(onLowered, resetKey, startLow, want, wantKe
     window.addEventListener('scroll', on, { capture: true, passive: true });
     return () => window.removeEventListener('scroll', on, { capture: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 17 Nov: a screen can ask for the half-open stop ('nila-sheet-mid'; the approved plan's job grid, a tapped tile shows
+  // its areas on the map above the card). From the top of the page, so the stop is measured where the card rests.
+  useEffect(() => {
+    const on = () => {
+      if (drag.current) return;
+      loweredAt.current = Date.now();   // the scroll to the top below must not bring the card back up
+      if (window.scrollY > 0) window.scrollTo(0, 0);
+      const m = midOff();
+      if (m == null) return;
+      atMid.current = true;
+      lastLow = false;
+      setOff(m); onLowered?.(false); tell(false);
+    };
+    window.addEventListener('nila-sheet-mid', on);
+    return () => window.removeEventListener('nila-sheet-mid', on);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // The bar's height changes (compact or not): a lowered card is glued to its new top once the bar has moved.
   useEffect(() => {
     let t;
