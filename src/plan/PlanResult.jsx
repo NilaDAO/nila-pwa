@@ -318,17 +318,19 @@ export function ProsCons({ plan, extra = [] }) {
   const items = plan.plan.pros_cons?.items || [];
   const lines = (Array.isArray(extra) ? extra : [extra]).filter(Boolean);
   if (!items.length && !lines.length) return null;
-  const row = { display: 'flex', gap: 8, alignItems: 'flex-start' };
+  // The sign sits in the info icon's column (Notice: 18 px icon, 10 px gap), the text under the title.
+  const row = { display: 'flex', gap: 10, alignItems: 'flex-start', marginLeft: -28 };
+  const sign = { width: 18, flexShrink: 0, textAlign: 'center' };
   return (
     <Notice kind="info" title={EDIT_TEXT.prosCons}>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
         {items.map((it) => (
           <span key={it.kind + it.text} style={row}>
-            <b aria-label={it.kind === 'pro' ? 'Pro' : 'Con'} style={{ width: 10, flexShrink: 0 }}>{it.kind === 'pro' ? EDIT_TEXT.pro : EDIT_TEXT.con}</b>
+            <b aria-label={it.kind === 'pro' ? 'Pro' : 'Con'} style={sign}>{it.kind === 'pro' ? EDIT_TEXT.pro : EDIT_TEXT.con}</b>
             <span>{it.text}</span>
           </span>
         ))}
-        {lines.map((l, i) => <span key={`x${i}`} style={row}><b aria-hidden="true" style={{ width: 10, flexShrink: 0 }}>·</b><span>{l}</span></span>)}
+        {lines.map((l, i) => <span key={`x${i}`} style={row}><b aria-hidden="true" style={sign}>·</b><span>{l}</span></span>)}
       </span>
     </Notice>
   );
