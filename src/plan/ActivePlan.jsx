@@ -12,6 +12,7 @@ import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
 import { gridsOf, coverGrids } from './jobGrid';
+import Segmented from '../shell/Segmented';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' }).replace('Sept', 'Sep');
 // Machine jobs as the board words them ("Weed maize"); the catalogue's `for` text otherwise.
@@ -144,8 +145,16 @@ export function planMonths(plan, { areaNo, areaName, shares, filter } = {}) {
   return out.filter((sec) => sec.months.length);
 }
 
+// 17 Nov: the grid (4 a row) or one scrolling row per month, switched as the Harvests screen's list / calendar.
+const VIEW_KEY = 'nila.plan.jobView';
+const GridIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>;
+const RowIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="8" width="6" height="8" rx="1" /><rect x="9" y="8" width="6" height="8" rx="1" /><rect x="16" y="8" width="6" height="8" rx="1" /></svg>;
+
 function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
   const [open, setOpen] = useState(null);
+  const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'grid'; } catch { return 'grid'; } });
+  const pickView = (v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
+  const asRow = view === 'row';
   const ss = (plan.plan || plan).seasons || [];
   const secs = planMonths(plan, { areaNo, areaName, shares, filter });
   if (!secs.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is planned yet.</p>;
@@ -159,7 +168,7 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
     return (
       <button key={t.id} type="button" role="listitem" aria-pressed={open === t.id} aria-label={detailOf(t)} onClick={() => { const on = open !== t.id; setOpen(on ? t.id : null); onTile?.(on ? t : null); }}
         style={{ position: 'relative', borderRadius: 10, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          color: ink, fontFamily: FONT, cursor: 'pointer', padding: 0, background: t.colour || C.muted, border: edge(t.kind),
+          color: ink, fontFamily: FONT, cursor: 'pointer', padding: 0, background: t.colour || C.muted, border: edge(t.kind), ...(asRow ? { flex: '0 0 76px' } : {}),
           opacity: t.done ? 0.55 : 1, outline: open === t.id ? `2px solid ${C.text}` : 'none', outlineOffset: 2 }}>
         <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '8px 2px 6px', flexGrow: 1 }}>
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -181,6 +190,10 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
   // between seasons; a tap shows what a tile is worth under the grid.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Segmented icon width="hug" label="Grid or row" value={view} onChange={pickView}
+          options={[['grid', <GridIcon key="g" />, 'Grid'], ['row', <RowIcon key="r" />, 'Row']]} />
+      </div>
       {secs.map((sec) => (
         <div key={sec.si} role="group" aria-label={SLOT[ss[sec.si]?.slot] || `Season ${sec.si + 1}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0 2px' }}>
@@ -192,7 +205,9 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
             return (
               <div key={m.ym} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                 <span aria-label={MON_NAME[mi]} style={{ width: 30, flexShrink: 0, fontSize: 13, fontWeight: 700, color: C.muted, paddingTop: 8, textAlign: 'left' }}>{MON_LETTER[mi]}</span>
-                <div role="list" aria-label={MON_NAME[mi]} style={{ flexGrow: 1, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>{m.tiles.map(tile)}</div>
+                <div role="list" aria-label={MON_NAME[mi]} style={asRow
+                  ? { flexGrow: 1, minWidth: 0, display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }
+                  : { flexGrow: 1, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>{m.tiles.map(tile)}</div>
               </div>
             );
           })}
