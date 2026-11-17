@@ -71,10 +71,12 @@ export function tasksOf(plan, areaNo, areaName) {
 }
 
 // The job grid (17 Nov, executive decision; replaces To do now and Coming up): one grid for every crop in the season
-// shown, a square tile per action filled in its crop's colour; the border says how it is paid: voucher = yellow,
-// cash = green, self-organised = none. A tap shows what it is worth.
-const CASH_EDGE = '#4ADE80';
-const edge = (kind) => (kind === 'voucher' ? `3px solid ${C.accent}` : kind === 'cash' ? `3px solid ${CASH_EDGE}` : '3px solid transparent');
+// shown, a small tile per action filled in its crop's colour, in time order left to right, top to bottom; the border
+// says how it is paid: voucher = red, cash = green, self-organised = none; the amount in a darker strip at the bottom. A tap shows what it is worth.
+// The app's red and green (17 Nov): voucher red (coral), cash green.
+const VOUCHER_EDGE = C.coral;
+const CASH_EDGE = '#7BA05B';
+const edge = (kind) => (kind === 'voucher' ? `3px solid ${VOUCHER_EDGE}` : kind === 'cash' ? `3px solid ${CASH_EDGE}` : '3px solid transparent');
 const dayMon = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 // Text and icon on a crop's colour (17 Nov): black on a light colour, white on a dark one (relative luminance).
 export function inkOn(hex) {
@@ -117,6 +119,8 @@ function detailOf(t) {
 
 function JobGrids({ plan, si, areaNo, areaName, shares }) {
   const [open, setOpen] = useState(null);
+  // TRIAL (17 Nov): the tiles as a grid or as one scrolling row, switched here to compare; one goes once chosen.
+  const [asRow, setAsRow] = useState(false);
   const grids = gridsOf(plan, si, { areaNo, areaName, shares });
   if (!grids.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is sown in this season.</p>;
   // In time order across the crops (17 Nov), not crop by crop; the same day keeps each crop's own order (stable sort).
@@ -125,24 +129,42 @@ function JobGrids({ plan, si, areaNo, areaName, shares }) {
   const shown = tiles.find((t) => t.id === open);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-      <Legend grids={grids} />
-      <div role="list" aria-label="Jobs" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-        {tiles.map((t) => (
-          <button key={t.id} type="button" role="listitem" aria-pressed={open === t.id} aria-label={detailOf(t)} onClick={() => setOpen(open === t.id ? null : t.id)}
-            style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: 12, boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: 6, color: inkOn(t.colour || C.muted), fontFamily: FONT, cursor: 'pointer', padding: 4,
-              background: t.colour || C.muted, border: edge(t.kind), opacity: t.done ? 0.55 : 1,
-              outline: open === t.id ? `2px solid ${C.text}` : 'none', outlineOffset: 2 }}>
-            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d={IC[t.icon] || IC.tractor} />
-            </svg>
-            <span style={{ fontSize: 13, fontWeight: 700 }}>{t.label}</span>
-            {(t.ready || t.done) && (
-              <span style={{ position: 'absolute', top: 6, right: 6, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999,
-                background: C.ink, color: t.done ? C.muted : C.accent }}>{t.done ? '✓' : 'Ready'}</span>
-            )}
-          </button>
-        ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+        <Legend grids={grids} />
+        <span role="radiogroup" aria-label="Layout" style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+          {[[false, 'Grid'], [true, 'Row']].map(([v, t]) => (
+            <button key={t} type="button" role="radio" aria-checked={asRow === v} onClick={() => setAsRow(v)} style={{ height: 24, padding: '0 8px', borderRadius: 9999, border: 0,
+              background: asRow === v ? C.accent : C.raised, color: asRow === v ? C.ink : C.muted, fontFamily: FONT, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{t}</button>
+          ))}
+        </span>
+      </div>
+      <div role="list" aria-label="Jobs" style={asRow
+        ? { display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }
+        : { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gridAutoFlow: 'row', gap: 6 }}>
+        {tiles.map((t) => {
+          const ink = inkOn(t.colour || C.muted);
+          const amount = t.value ? inr(t.value) : t.kind === 'self' ? 'You' : '—';
+          return (
+            <button key={t.id} type="button" role="listitem" aria-pressed={open === t.id} aria-label={detailOf(t)} onClick={() => setOpen(open === t.id ? null : t.id)}
+              style={{ position: 'relative', borderRadius: 10, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                color: ink, fontFamily: FONT, cursor: 'pointer', padding: 0, background: t.colour || C.muted, border: edge(t.kind), ...(asRow ? { flex: '0 0 76px' } : {}),
+                opacity: t.done ? 0.55 : 1, outline: open === t.id ? `2px solid ${C.text}` : 'none', outlineOffset: 2 }}>
+              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '8px 2px 6px', flexGrow: 1 }}>
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={IC[t.icon] || IC.tractor} />
+                </svg>
+                <span style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.1 }}>{t.label}</span>
+              </span>
+              {/* The amount in a darker strip at the bottom, as the crop cards' name row. */}
+              <span style={{ background: 'rgba(0,0,0,0.45)', color: '#ffffff', fontSize: 11, fontWeight: 700, padding: '3px 2px', textAlign: 'center', whiteSpace: 'nowrap',
+                overflow: 'hidden', textOverflow: 'ellipsis' }}>{amount}</span>
+              {(t.ready || t.done) && (
+                <span style={{ position: 'absolute', top: 3, right: 3, fontSize: 9, fontWeight: 700, padding: '0 5px', borderRadius: 9999,
+                  background: C.ink, color: t.done ? C.muted : C.accent }}>{t.done ? '✓' : 'Ready'}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
       {shown && <span role="status" style={{ fontSize: 14, color: C.text }}>{detailOf(shown)}</span>}
     </div>
