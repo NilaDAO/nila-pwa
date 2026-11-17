@@ -32,7 +32,7 @@ import { ordered, rowAdvice } from './rowAdvice';
 import { presets } from './areaPresets';
 import { AreaCard, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
-import { seasonsCounted, seasonsOff, seasonsOn, yearSeasons } from './seasonChips';
+import { seasonsCounted, seasonsOff, yearSeasons } from './seasonChips';
 import { areaHash } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
 import RoundButton from '../shell/RoundButton';
@@ -211,24 +211,18 @@ function AssistPlan({ map, name, waiting }) {
 // (harvested, or never read) keeps "Area n". Name and colour from the catalogue when it lists the crop.
 // 13 Nov: the approved plan's season chips (16 Nov: also the plan overview's). The plan year's seasons (season i is in
 // it) as chips, all on at first; at least one stays on. None when the year has one season. `on`: the slots on (shared).
-function SeasonChips({ ss, i, on, setOn }) {
+function SeasonChips({ ss, i, onPick }) {
+  // 17 Nov: one season at a time (the map fills with its crops); small, on the map next to Show labels.
   const yearIdx = yearSeasons(ss, i);
-  const onIdx = seasonsOn(ss, i, on);
-  const toggleSlot = (slot) => {
-    const left = onIdx.filter((k) => ss[k].slot !== slot);
-    if (left.length === onIdx.length) setOn(new Set([...onIdx.map((k) => ss[k].slot), slot]));
-    else if (left.length) setOn(new Set(left.map((k) => ss[k].slot)));
-  };
   if (yearIdx.length < 2) return null;
   return (
-    // 17 Nov: on the map next to Show labels, the same size (no longer in the card).
-    <div role="group" aria-label="Seasons shown" style={{ display: 'contents' }}>
+    <div role="radiogroup" aria-label="Season shown" style={{ display: 'contents' }}>
       {yearIdx.map((k) => {
-        const isOn = onIdx.includes(k);
+        const isOn = k === i;
         return (
-          <button key={k} type="button" aria-pressed={isOn} onClick={() => toggleSlot(ss[k].slot)}
-            style={{ height: 32, padding: '0 12px', borderRadius: R.round, border: 0, background: isOn ? C.accent : 'rgba(18,18,18,0.85)', color: isOn ? C.ink : C.text,
-              fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{SEASON[ss[k].slot] || `Season ${k - yearIdx[0] + 1}`}</button>
+          <button key={k} type="button" role="radio" aria-checked={isOn} onClick={() => onPick(k)}
+            style={{ height: 28, padding: '0 10px', borderRadius: R.round, border: 0, background: isOn ? C.accent : 'rgba(18,18,18,0.85)', color: isOn ? C.ink : C.text,
+              fontFamily: FONT, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{SEASON[ss[k].slot] || `Season ${k - yearIdx[0] + 1}`}</button>
         );
       })}
     </div>
@@ -420,8 +414,6 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   const [season, setSeason] = useState(0);
   // A plan year before the plan (12 Nov: plan history from the record); null = the plan's years.
   const [pastYear, setPastYear] = useState(null);
-  // 13 Nov: the season chips switched on (CP13): they filter the tasks, the map and the bars.
-  const [slotsOn, setSlotsOn] = useState(() => new Set(ALL_SLOTS));
   // 13 Nov: the approved plan (CP13) steps back through the record too; any step change leaves either screen, so reset.
   useEffect(() => { setPastYear(null); }, [step]);
   const [area, setArea] = useState(null);
@@ -469,7 +461,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     const i = Math.min(season, ss.length - 1);
     // 13 Nov: the approved plan shows every season whose chip is on in the year on the bar; an area with crops in more
     // than one shows them joined ("Groundnut → Maize"), in the first crop's colour.
-    const idx = approved ? seasonsOn(ss, i, slotsOn) : [i];
+    const idx = [i];   // 17 Nov: one season at a time, the one whose chip is on
     const per = {};
     for (const k of idx) for (const [z, r] of Object.entries(rowsInSeason(ss, k))) { per[z] = per[z] || []; if (!per[z].includes(r)) per[z].push(r); }
     const rows = Object.fromEntries(Object.entries(per).map(([z, rs]) => [z, rs.length === 1 ? rs[0]
@@ -509,7 +501,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     // An area she added to a touching one before the plan (14 Nov): drawn as one shape with it, one chip.
     for (const [z, to] of Object.entries(plan.plan.merged || {})) out[z] = { join: to, tapRoot: true };
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, mergeTo, pastYear, approved, slotsOn]);
+  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, mergeTo, pastYear, approved]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
@@ -1041,7 +1033,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       <Sheet map={editable && record ? <AreaMap record={record} labels={labels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72}
         chip="Tap areas to change" /> : map}
         landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}
-        tools={!area && chipsOn && <SeasonChips ss={ss} i={shown} on={slotsOn} setOn={setSlotsOn} />}>
+        tools={!area && chipsOn && <SeasonChips ss={ss} i={shown} onPick={setSeason} />}>
         {area ? (
           <AreaCard plan={plan} zone={area} name={areaName(area)} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
             accepted={checked.has(area)} total={zones.length} readOnly={readOnly} y0={y0}
@@ -1054,8 +1046,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           <PlanView plan={plan} record={record} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={editable ? toggle : pickArea}
             crops={catalogue.data?.crops} changing={saving} pending={pending}
             ticks={ticks} onTick={(k) => setTicks((t) => { const n = new Set(t); if (n.has(k)) n.delete(k); else n.add(k); return n; })}
-            off={chipsOn ? seasonsOff(ss, shown, slotsOn) : undefined}
-            slots={chipsOn ? new Set(seasonsOn(ss, shown, slotsOn).map((k) => ss[k].slot)) : undefined}
+            off={chipsOn ? seasonsOff(ss, shown, new Set([ss[shown].slot])) : undefined}
+            slots={chipsOn ? new Set([ss[shown].slot]) : undefined}
             />
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}
@@ -1181,8 +1173,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       </div>
     );
     // 13 Nov: the year's seasons as chips (all on at first); at least one stays on. Not in a record year (no plan).
-    const onIdx = seasonsOn(ss, shown, slotsOn);
-    const chips = <SeasonChips ss={ss} i={shown} on={slotsOn} setOn={setSlotsOn} />;
+    const onIdx = [shown];   // 17 Nov: one season at a time
+    const chips = <SeasonChips ss={ss} i={shown} onPick={setSeason} />;
     const slotsShown = pastYear == null ? new Set(onIdx.map((k) => ss[k].slot)) : undefined;
     // The crop bars (13 Nov, as the draft plan's overview): one lane per area, read-only.
     const zones = Object.keys(plan.plan.proposal || {}).sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
