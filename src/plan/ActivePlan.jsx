@@ -100,7 +100,7 @@ function LegendDrawer({ grids, onClose }) {
     <Drawer title="What the tiles show" onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <span style={row}>{sw({ background: C.raised, border: `2px solid ${VOUCHER_EDGE}` })}Red border: paid with a voucher</span>
-        <span style={row}>{sw({ background: 'rgba(0,0,0,0.45)' })}The amount: cash from your crop agreement; "You": you organise and pay it</span>
+        <span style={row}>{sw({ background: 'rgba(0,0,0,0.45)' })}Collect and Repay: your crop agreement's money; "Cash": paid from it; "Voucher": machine work; "You": you organise it</span>
         {grids.map((g) => (
           <span key={g.key} style={row}>{sw({ background: g.colour || C.muted })}
             <span><b>{g.crop}</b>{g.sow ? ` · sow ${dayMon(g.sow)}${g.until && g.until > g.sow ? ` – ${dayMon(g.until)}` : ''}` : ''}</span></span>
@@ -166,7 +166,9 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
   const shown = all.find((t) => t.id === open);
   const tile = (t) => {
     const ink = inkOn(t.colour || C.muted);
-    const amount = t.value ? inr(t.value) : t.kind === 'self' ? 'You' : '—';
+    // 17 Nov: the amount only on Collect and Repay (the crop agreement's money); the other tiles say how they are paid.
+    const amount = t.key === 'collect' || t.key === 'repay' ? inr(t.value || 0)
+      : t.kind === 'voucher' ? 'Voucher' : t.kind === 'cash' ? 'Cash' : 'You';
     return (
       <button key={t.id} type="button" role="listitem" aria-pressed={open === t.id} aria-label={detailOf(t)} onClick={() => setOpen(open === t.id ? null : t.id)}
         style={{ position: 'relative', borderRadius: 10, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden',
