@@ -49,7 +49,7 @@ export function gridsOf(plan, si, { areaNo = (z) => z, areaName, shares = [] } =
     const owe = Math.round((f.cash || 0) + (f.voucher_value || 0) + (f.interest || 0));
     if (owe && f.due) tiles.push({ key: 'repay', label: 'Repay', kind: 'self', icon: 'repay', value: owe, date: f.due, afterHarvest: true });
     const area = typeof areaNo(r.zone) === 'number' && areaName ? areaLabel(r, areaNo, areaName) : '';
-    out.push({ key: `${r.zone}:${r.crop}`, crop: r.name, area, sow: r.sow, tiles });
+    out.push({ key: `${r.zone}:${r.crop}`, crop: r.name, colour: r.colour, area, sow: r.sow, until: sh?.final_date || null, tiles });
   }
   return out;
 }
