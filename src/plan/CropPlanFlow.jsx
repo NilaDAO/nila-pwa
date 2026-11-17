@@ -146,6 +146,8 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
               )}
               {wide && <>
                 <tr style={{ ...line, fontWeight: 700 }}><td style={{ padding: '8px 0' }}>Total financed</td><td>{day(lastBy)}</td><td style={{ textAlign: 'right' }}>{inr(total.cash)}</td></tr>
+                {/* 17 Nov: the interest Nila charges on it, at the plan's rate (the tree discount included). */}
+                <tr style={line}><td style={{ padding: '8px 0', whiteSpace: 'nowrap' }}>Interest ({rate}%)</td><td>—</td><td style={{ textAlign: 'right' }}>{inr(total.interest)}</td></tr>
                 <tr style={line}><td style={{ padding: '8px 0' }}>Total vouchers</td><td>{vouchersAll ? day(lastBy) : '—'}</td><td style={{ textAlign: 'right' }}>{inr(vouchersAll)}</td></tr>
                 {sales > 0 && <tr style={line}><td style={{ padding: '8px 0' }}>Total sales (estimate)</td><td>—</td><td style={{ textAlign: 'right' }}>{inr(sales)}</td></tr>}
               </>}
