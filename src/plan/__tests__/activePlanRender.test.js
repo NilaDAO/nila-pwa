@@ -33,3 +33,13 @@ test('the tiles are in time order across the crops', () => {
   const names = screen.getAllByRole('listitem').map((b) => b.getAttribute('aria-label').split(' · ').slice(0, 2).join(' '));
   expect(names.slice(0, 2)).toEqual(['Sesame Seed', 'Maize Seed']);
 });
+
+test('the whole plan: one row per month with its letter, a line per season', () => {
+  const two = { ...plan, plan: { ...plan.plan, seasons: [
+    { slot: 'S2', start: '2027-03-01', rows: [{ ...plan.plan.seasons[0].rows[0], sow: '2027-03-05', harvest: '2027-05-20', finance: { seed: 100 } }] },
+    plan.plan.seasons[0]] } };
+  render(<ActivePlan plan={two} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} />);
+  expect(screen.getByRole('group', { name: 'Mar to May' })).toBeTruthy();
+  expect(screen.getByRole('group', { name: 'Jun to Aug' })).toBeTruthy();
+  expect(screen.getByRole('list', { name: 'March' })).toBeTruthy();
+});
