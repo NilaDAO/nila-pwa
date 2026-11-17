@@ -4,8 +4,9 @@
 // field accepted or left out → L4 (mint). Data: the node's border job (O16). DESIGN GAP: no member names in the
 // app (the farm name or a short address stands in).
 import { cloneElement, useCallback, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { C, FONT, R } from '../shell/tokens';
+import { C, FONT, R, SHADOW } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
 import { acres, shapeFor } from './api';
 import BorderMap, { RED, SOIL_COLOUR, ShapeThumb, soilInk } from './BorderMap';
@@ -193,7 +194,47 @@ function Plan({ job, onField, onBack, onAdd }) {
   );
 }
 
-/** L3: pick a shape for one field; Accept locks it, None fit draws it again. */
+// 17 Nov: None fit is the last card of the shape row (a field with a cross), no longer a button. Its sheet asks why:
+// an area recently under construction is drawn again on Google's newer picture (Esri's is older in places), else
+// as before. DESIGN GAP: no board for the card or the sheet yet.
+function NoneFitCard({ onClick, disabled }) {
+  return (
+    <button type="button" aria-label="None fit" disabled={disabled} onClick={onClick} style={{
+      flex: '1 0 72px', minWidth: 0, border: `2px solid ${C.raised}`, borderRadius: 12, background: C.raised, padding: 0,
+      overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', color: C.text, fontFamily: FONT }}>
+      <svg aria-hidden="true" width="72" height="72" viewBox="0 0 72 72" style={{ display: 'block' }}>
+        <rect width="72" height="72" fill="#25361f" />
+        <path d="M18 22 L50 16 L56 46 L24 56 Z" fill="rgba(255,255,255,0.08)" stroke={C.muted} strokeWidth="2" strokeDasharray="4 3" />
+        <path d="M26 26 L46 46 M46 26 L26 46" stroke={C.coral} strokeWidth="4" strokeLinecap="round" />
+      </svg>
+      <span style={{ fontSize: 14, fontWeight: 700, padding: '4px 0 2px' }}>None fit</span>
+    </button>
+  );
+}
+
+function NoneFitSheet({ onPick, onCancel }) {
+  const row = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, width: '100%', padding: '12px 16px',
+    background: C.raised, border: 0, borderRadius: 12, color: C.text, fontFamily: FONT, fontSize: 14, textAlign: 'left', cursor: 'pointer' };
+  return createPortal(
+    <>
+      <div aria-hidden="true" onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.6)' }} />
+      <div role="dialog" aria-modal="true" aria-label="Why don't they fit?" style={{ position: 'fixed', left: 8, right: 8, bottom: 88, zIndex: 21,
+        background: C.ink, borderRadius: 24, boxShadow: SHADOW, padding: '22px 22px 22px', display: 'flex', flexDirection: 'column', gap: 12, fontFamily: FONT, color: C.text }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Why don't they fit?</div>
+        <button type="button" style={row} onClick={() => onPick('google')}>
+          <b>Area recently under construction</b>
+          <span style={{ color: C.muted }}>New buildings, a road, cleared land: drawn again on a newer picture</span>
+        </button>
+        <button type="button" style={row} onClick={() => onPick(null)}>
+          <b>The shapes are wrong</b>
+          <span style={{ color: C.muted }}>Drawn again from the member's point</span>
+        </button>
+        <button type="button" onClick={onCancel} style={{ ...btn(false), flex: 'none' }}>Cancel</button>
+      </div>
+    </>, document.body);
+}
+
+/** L3: pick a shape for one field; Accept locks it, the None fit card draws it again. */
 function Check({ job, n, onDone, onBack }) {
   const f = job.fields.find((x) => x.n === n);
   const shapes = [...(f?.shapes || [])].sort((a, b) => a.score - b.score);
@@ -203,6 +244,7 @@ function Check({ job, n, onDone, onBack }) {
   const plan = job.plan;
   const { accept, noneFit, retry, remove } = useBorderDecision(job.id);
   const [ask, setAsk] = useState(false);   // the delete confirm (1 Nov)
+  const [why, setWhy] = useState(false);   // the None fit sheet (17 Nov)
   const busy = accept.isPending || noneFit.isPending || retry.isPending || remove.isPending;
   const err = accept.error || noneFit.error || remove.error;
   // A tap only selects the shape (executive decision 4 Nov): no preview call to the node; Accept returns the new plan.
@@ -241,6 +283,7 @@ function Check({ job, n, onDone, onBack }) {
             <span style={{ fontSize: 14, fontWeight: 700, padding: '4px 0 2px' }}>{i === 0 ? 'Best' : `${Number(s.acres).toFixed(2)} ac`}</span>
           </button>
         ))}
+        <NoneFitCard disabled={busy} onClick={() => setWhy(true)} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
         <span style={{ color: C.muted }}>Area</span><b>{chosen ? acres(chosen.acres) : '—'}</b>
@@ -267,10 +310,11 @@ function Check({ job, n, onDone, onBack }) {
           style={{ ...btn(false), flex: 'none', width: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
           <TrashIcon color={C.coral} size={20} />
         </button>
-        <button type="button" disabled={busy} style={btn(false)} onClick={() => noneFit.mutate({ field: n }, { onSuccess: onDone })}>None fit</button>
         <button type="button" disabled={busy || !sel || !soilNow} style={{ ...btn(true), opacity: busy || !sel || !soilNow ? 0.4 : 1 }}
           onClick={() => accept.mutate({ field: n, shape: sel, soil: soilNow }, { onSuccess: onDone })}>{accept.isPending ? 'Accepting…' : 'Accept'}</button>
       </div>
+      {why && <NoneFitSheet onCancel={() => setWhy(false)}
+        onPick={(sat) => { setWhy(false); noneFit.mutate({ field: n, sat }, { onSuccess: onDone }); }} />}
       {ask && (
         <ConfirmCard title={`Delete field ${n}`} ok={remove.isPending ? 'Deleting…' : 'Delete'} okStyle={{ background: C.coral }} okDisabled={remove.isPending}
           warn="The field and its point are removed from this land. To add it again, use + Add a point."
