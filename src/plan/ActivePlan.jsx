@@ -7,6 +7,7 @@
 // year bar on top of the card steps plan years; season chips above the tasks filter them (CropPlanFlow, 13 Nov). No title and
 // no "Your plan" rows (the crop bars above the card's list show the plan); the plan's date is a muted line at the end.
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { C, FONT, TAB_BAR_HEIGHT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
@@ -117,6 +118,11 @@ function detailOf(t) {
   return `${t.crop} · ${t.label} · ${t.value ? inr(t.value) : '—'}`;
 }
 
+// Where the bottom bar starts (17 Nov): the note sits right on top of it; without the bar, at the screen's bottom.
+const barTop = () => {
+  const nav = typeof document !== 'undefined' && document.querySelector('nav[aria-label="Main"]');
+  return nav ? Math.max(0, Math.round(window.innerHeight - nav.getBoundingClientRect().top)) + 6 : TAB_BAR_HEIGHT + 6;
+};
 const MON_LETTER = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 const MON_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -195,17 +201,18 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
         </div>
       ))}
       {legend && <LegendDrawer grids={grids} onClose={() => setLegend(false)} />}
-      {/* 17 Nov: the tapped tile's note floats as an info note just above the bottom bar; a tap closes it. */}
-      {shown && (
-        <button type="button" role="status" onClick={() => setOpen(null)} style={{ position: 'fixed', left: 8, right: 8, zIndex: 20,
-          bottom: `calc(env(safe-area-inset-bottom, 0px) + ${TAB_BAR_HEIGHT + 12}px)`, display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left',
+      {/* 17 Nov: the tapped tile's note as an info note on top of the bottom bar, outside the card (the card moves when
+          dragged, which would carry a fixed note with it); a tap closes it. */}
+      {shown && createPortal(
+        <button type="button" role="status" onClick={() => setOpen(null)} style={{ position: 'fixed', left: 8, right: 8, zIndex: 50,
+          bottom: barTop(), display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left',
           background: 'rgba(18,18,18,0.95)', color: C.text, border: 0, borderRadius: 12, padding: '12px 14px', fontFamily: FONT, fontSize: 14, lineHeight: 1.4,
           boxShadow: 'rgba(0,0,0,0.3) 0 6px 16px', cursor: 'pointer' }}>
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
             <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
           </svg>
           <span>{detailOf(shown)}</span>
-        </button>
+        </button>, document.body,
       )}
     </div>
   );
