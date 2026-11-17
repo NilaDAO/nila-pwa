@@ -27,6 +27,7 @@ import { neighboursOf } from './neighbours';
 import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
 import { EDIT_TEXT } from './editTexts';
+import { GREEN_MANURE, fill, rowOf, slotsOf, toChanges } from './yearRow';
 import { presets } from './areaPresets';
 import { AreaCard, CropSelect, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
@@ -264,6 +265,7 @@ function SeasonChips({ ss, i, on, setOn }) {
 }
 const ALL_SLOTS = ['S1', 'S2', 'S3'];
 const words = (k) => String(k).replace(/_/g, ' ');
+const MON1 = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const sinceOf = (d) => (/^\d{4}-\d{2}/.test(d || '') ? `since ${MONTH[Number(d.slice(5, 7)) - 1]}` : undefined);
 // The chip keeps the area's name on top (12 Nov) with the crop under it; every area growing something is filled: a
@@ -423,7 +425,12 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   const [growing, setGrowing] = useState({});
   // The areas card (17 Nov): [down, nonce] — a pick moves it down or up even when it was dragged since.
   const [cardLow, setCardLow] = useState([false, 0]);
-  const [picked, setPicked] = useState([]);   // the areas selected on the map (17 Nov), each a joined area's root
+  const [picked, setPicked] = useState([]);
+  // Select areas to update (17 Nov): on, the areas selected, the row's crops in order, a note under the row.
+  const [editing, setEditing] = useState(false);
+  const [editSel, setEditSel] = useState([]);
+  const [rowKeys, setRowKeys] = useState([]);
+  const [rowNote, setRowNote] = useState();   // the areas selected on the map (17 Nov), each a joined area's root
   const [cashGiven, setCashGiven] = useState(null);   // CP7b's answer, sent with the leave-out step   // the area asked to remove (CP10 confirm)
   const [afterMake, setAfterMake] = useState('why');
   const [jobId, setJobId] = useState();
@@ -642,17 +649,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // made, without a confirm step; the node recomputes the plan by code (no re-plan) and returns its pros and cons and
   // conditions. The pick shows (`pending`) until the new plan is there; picks wait while one is saved.
   const saving = revise.isPending || !!saveJob || Object.keys(pending).length > 0;
-  const changeCrop = async (zone, slot, key) => {
-    const row = (plan?.plan?.seasons || []).find((x) => x.slot === slot)?.rows.find((r) => zonesOf(r).includes(zone));
-    if (row?.crop === key || saving) return;
-    setError(undefined);
-    setPending({ [zone]: { [slot]: key } });
-    try {
-      const res = await revise.mutateAsync({ planId: plan.id, note: '', changes: { [zone]: { [slot]: key } } });
-      setSaveJob(res.job_id);
-    } catch (e) { setError(e.message); setPending({}); }
-  };
-  const updatePlan = () => {};   // nothing waits to be sent any more (16 Nov)
+  // 17 Nov: an edit is the year row of the selected areas, sent once with Update (Select areas to update).
 
   if (at === 'record') {
     // CP1 / CP2 (boards CropPlanPending, CropPlanPending-n9mn-kewp). DESIGN GAPs: no "Main issues" (the
@@ -946,10 +943,17 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     };
     const thisYear = planYears.includes(planYear()) ? planYear() : planYears[0];
     const reset = () => { setPastYear(null); setSeason(Math.max(0, ss.findIndex((x) => planYear(x.start) === thisYear))); };
+    // 17 Nov: the chip above the map that starts Select areas to update.
+    const selectChip = !readOnly && pastYear == null && (
+      <button type="button" onClick={() => { pickArea(null); setEditing(true); setEditSel([]); setRowKeys([]); setCardLow([true, Date.now()]); }}
+        style={{ alignSelf: 'center', height: 32, padding: '0 14px', borderRadius: 16, border: 0, background: 'rgba(18,18,18,0.85)', color: C.accent,
+          fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Select areas to update</button>
+    );
     const bar = area
       ? <SlideBar label={<b>{areaName(area)}</b>} prevLabel="Previous area" nextLabel="Next area" onPrev={() => step1(-1)} onNext={() => step1(1)} />
       : ss.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          {selectChip}
           {y0 !== thisYear && (
             <button type="button" onClick={reset} style={{ height: 32, padding: '0 14px', borderRadius: 16, border: 0, background: 'rgba(18,18,18,0.85)', color: C.accent,
               fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Back to {yearLabel(null, thisYear)}</button>
@@ -959,6 +963,100 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           </div>
         </div>
       );
+    // Select areas to update (17 Nov, executive decision): as the areas step, she taps one or more areas on the map;
+    // the card shows their year as one row. Each crop tapped fills the next free spot for its own grow length; the
+    // row is sent once with Update (one change per season, per area), then the node recomputes and writes the pros
+    // and cons for each area's whole year.
+    if (editing && !readOnly) {
+      const z0 = editSel[0];
+      const bases = Object.fromEntries(editSel.map((z) => [z, rowOf(plan, z)]));
+      const free0 = editSel.map((z) => bases[z].free0).filter(Boolean).sort().pop() || null;
+      const { bars } = fill(rowKeys, { seasons: ss, cat: names, free0 });
+      const toggle = (z) => {
+        if (!z || saving) return;
+        const next = editSel.includes(z) ? editSel.filter((x) => x !== z) : [...editSel, z];
+        if (!editSel.length && next.length) setRowKeys(rowOf(plan, z).keys);
+        setEditSel(next); setRowNote(undefined);
+        setCardLow([next.length === 0, Date.now()]);
+      };
+      const add = (key) => {
+        const keys = [...rowKeys, key];
+        if (fill(keys, { seasons: ss, cat: names, free0 }).dropped.includes(key)) {
+          setRowNote(`No room for ${(names[key] || GREEN_MANURE).name} in this year.`); return;
+        }
+        setRowKeys(keys); setRowNote(undefined);
+      };
+      // The bars are the kept keys in order (a key with no room never enters the row), so bar i is key i.
+      const dropAt = (i) => { setRowKeys(rowKeys.filter((_, k) => k !== i)); setRowNote(undefined); };
+      const stop = () => { setEditing(false); setEditSel([]); setRowKeys([]); setRowNote(undefined); setCardLow([false, Date.now()]); };
+      const update = async () => {
+        setError(undefined);
+        const changes = Object.fromEntries(editSel.map((z) => [z, toChanges(fill(rowKeys, { seasons: ss, cat: names, free0: bases[z].free0 }).bars, ss, bases[z].locked)]));
+        try {
+          const res = await revise.mutateAsync({ planId: plan.id, note: '', changes });
+          setSaveJob(res.job_id); stop();
+        } catch (e) { setError(e.message); }
+      };
+      const mine = (plan.plan.intake?.crops || []).filter((k) => names[k]);
+      const list = [...mine.map((k) => names[k]), GREEN_MANURE, ...sortedCrops(catalogue.data?.crops || []).filter((c) => !mine.includes(c.key))];
+      const selLabels = Object.fromEntries(Object.entries(labels).map(([z, l]) => [z, editSel.includes(z) ? { ...l, sel: true } : l]));
+      const slots0 = slotsOf(ss)[0]?.start;
+      const pos = (d) => (slots0 ? Math.max(0, Math.min(12, (d.getFullYear() - slots0.getFullYear()) * 12 + d.getMonth() - slots0.getMonth() + (d.getDate() - 1) / 31)) : 0);
+      const freeAt = free0 ? pos(new Date(`${free0}T00:00:00`)) : 0;
+      const axis = slots0 ? Array.from({ length: 12 }, (_, i) => MON1[(slots0.getMonth() + i) % 12]) : [];
+      return (
+        <Sheet map={record ? <AreaMap record={record} labels={selLabels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72} /> : map}
+          landName={name} onBack={stop} low={cardLow[0]} lowKey={cardLow[1]}>
+          {!z0 ? (
+            <>
+              <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Select areas to update</h1>
+              <p style={{ ...muted, textAlign: 'center' }}>Tap one or more areas on the map.</p>
+              <button type="button" onClick={stop} style={{ ...secondaryBtn, flex: 'none', width: '100%', marginTop: 8 }}>Cancel</button>
+            </>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: 0 }}>{editSel.length === 1 ? areaName(z0) : `${editSel.length} areas selected`}</h1>
+              {/* The year row: what stands now (fixed), then her crops; a tap on a crop's bar takes it out. */}
+              <div>
+                <div style={{ position: 'relative', height: 40, background: C.raised, borderRadius: 8, overflow: 'hidden' }}>
+                  {freeAt > 0 && <span title="Growing now" style={{ position: 'absolute', left: 0, width: `${(freeAt / 12) * 100}%`, top: 0, bottom: 0,
+                    background: `repeating-linear-gradient(45deg, ${C.muted} 0 3px, transparent 3px 6px)`, opacity: 0.6 }} />}
+                  {bars.map((b, i) => {
+                    const c = names[b.key] || GREEN_MANURE;
+                    const s0 = pos(b.sow); const s1 = Math.max(s0 + 0.3, pos(b.end));
+                    return (
+                      <button key={`${b.key}-${i}`} type="button" aria-label={`Take out ${c.name}`} onClick={() => dropAt(i)} style={{ position: 'absolute',
+                        left: `${(s0 / 12) * 100}%`, width: `calc(${((s1 - s0) / 12) * 100}% - 2px)`, top: 0, bottom: 0, border: 0, borderRadius: 6, padding: '0 6px',
+                        background: c.colour || C.muted, color: C.ink, fontFamily: FONT, fontSize: 12, fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis', cursor: 'pointer', textAlign: 'left' }}>{c.name}</button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', marginTop: 4 }}>{axis.map((m, i) => <span key={i} style={{ flex: 1, textAlign: 'center', fontSize: 11, color: C.muted }}>{m}</span>)}</div>
+              </div>
+              <p style={{ ...muted, margin: 0, textAlign: 'center' }}>Tap a crop to add it to the row.</p>
+              <div role="group" aria-label="Crops" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+                {list.map((c) => (
+                  <button key={c.key} type="button" disabled={saving} onClick={() => add(c.key)} style={{
+                    flex: '0 0 84px', border: `2px solid ${C.raised}`, borderRadius: 12, background: C.raised, padding: 0, overflow: 'hidden',
+                    display: 'flex', flexDirection: 'column', alignItems: 'stretch', color: C.text, fontFamily: FONT, cursor: 'pointer' }}>
+                    <span aria-hidden="true" style={{ height: 40, background: c.colour || C.muted }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, padding: '6px 4px', lineHeight: 1.2, minHeight: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>{c.name}</span>
+                  </button>
+                ))}
+              </div>
+              {rowNote && <p role="note" style={{ margin: 0, color: C.coral, textAlign: 'center' }}>{rowNote}</p>}
+              {error && <p style={{ color: C.coral, margin: 0 }}>{error}</p>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" disabled={saving} onClick={() => { setRowKeys([]); setRowNote(undefined); }} style={{ ...secondaryBtn }}>Clear the row</button>
+                <button type="button" disabled={saving} onClick={update} style={{ ...secondaryBtn, background: C.accent, color: C.ink, opacity: saving ? 0.5 : 1 }}>{saving ? 'Updating…' : 'Update'}</button>
+              </div>
+              <button type="button" onClick={stop} style={{ ...secondaryBtn, flex: 'none', width: '100%' }}>Cancel</button>
+            </div>
+          )}
+        </Sheet>
+      );
+    }
     const next = zones.find((z) => z !== area && !checked.has(z));
     // 16 Nov: the approved plan's season chips here too (the same chips and state); not in a record year.
     const shown = Math.min(season, Math.max(0, ss.length - 1));
@@ -970,12 +1068,12 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
             accepted={checked.has(area)} total={zones.length} readOnly={readOnly} y0={y0}
             nextName={next ? areaName(next) : null} onNext={() => pickArea(next)} onAll={toTerms}
             onAccept={() => { const n = new Set(checked); n.add(area); setChecked(n); pickArea(zones.find((z) => !n.has(z)) || null); }}
-            crops={catalogue.data?.crops} changing={saving} onCrop={(r, key) => changeCrop(area, r.slot, key)}
-            picked={pending[area] || {}} onUpdate={updatePlan}
+            crops={catalogue.data?.crops} changing={saving}
+            picked={pending[area] || {}}
             onRemove={() => setRemoving(area)} />
         ) : (
           <PlanView plan={plan} record={record} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={pickArea}
-            crops={catalogue.data?.crops} changing={saving} onCrop={changeCrop} pending={pending} onUpdate={updatePlan}
+            crops={catalogue.data?.crops} changing={saving} pending={pending}
             ticks={ticks} onTick={(k) => setTicks((t) => { const n = new Set(t); if (n.has(k)) n.delete(k); else n.add(k); return n; })}
             chips={chipsOn && <SeasonChips ss={ss} i={shown} on={slotsOn} setOn={setSlotsOn} />}
             off={chipsOn ? seasonsOff(ss, shown, slotsOn) : undefined}
