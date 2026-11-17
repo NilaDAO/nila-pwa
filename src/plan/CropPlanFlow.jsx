@@ -228,7 +228,6 @@ function SeasonChips({ ss, i, onPick }) {
     </div>
   );
 }
-const ALL_SLOTS = ['S1', 'S2', 'S3'];
 const words = (k) => String(k).replace(/_/g, ' ');
 const MON1 = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -426,7 +425,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     setChecked(new Set(Object.keys(current.data?.accepted || {})));
     if (!keepView.current) { setArea(null); setSeason(0); }
     keepView.current = false;
-    setPastYear(null); setTicks(new Set()); setPending({}); setSlotsOn(new Set(ALL_SLOTS));
+    setPastYear(null); setTicks(new Set()); setPending({});
   }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Approved: the chain as one plan (its seasons and shares, 25 Oct); a waiting extension shows as itself.
   const plan = current.data?.approval?.decision === 'approve' ? mergedPlan(chainQ.data, current.data) : current.data;
