@@ -69,3 +69,18 @@ test('green manures merged into one crop agreement show one Collect and one Repa
   expect(labels.filter((l) => /· Seed/.test(l))).toEqual(['Green manure · Seed · ₹1,500']);
   expect(labels.filter((l) => /· Repay/.test(l)).length).toBe(1);
 });
+
+test('the grid filtered by a season chip and by an area (17 Nov)', () => {
+  const two = { ...plan, plan: { ...plan.plan, seasons: [
+    { slot: 'S2', start: '2027-03-01', rows: [{ ...plan.plan.seasons[0].rows[0], zone: 'z2', crop: 'sesame', name: 'Sesame', sow: '2027-03-05', harvest: '2027-05-20', finance: { seed: 100 } }] },
+    plan.plan.seasons[0]] } };
+  const crops = (f) => {
+    const { unmount } = render(<ActivePlan plan={two} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} filter={f} />);
+    const out = [...new Set(screen.getAllByRole('listitem').map((b) => b.getAttribute('aria-label').split(' · ')[0]))].sort();
+    unmount();
+    return out;
+  };
+  expect(crops({})).toEqual(['Maize', 'Sesame']);
+  expect(crops({ season: 0 })).toEqual(['Sesame']);
+  expect(crops({ zone: 'z1' })).toEqual(['Maize']);
+});

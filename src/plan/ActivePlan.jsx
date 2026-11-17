@@ -120,7 +120,7 @@ const MON_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July'
 
 /** The whole plan's tiles by month (17 Nov): [{ si, months: [{ ym, tiles }] }], a season holding the months from its
  *  start to the next season's (a repayment after the last season stays with it). */
-export function planMonths(plan, { areaNo, areaName, shares } = {}) {
+export function planMonths(plan, { areaNo, areaName, shares, filter } = {}) {
   const ss = (plan.plan || plan).seasons || [];
   // 17 Nov: green manures too, each its own crop agreement.
   const grids = [...ss.map((_, si) => gridsOf(plan, si, { areaNo, areaName, shares }).map((g) => [si, g])).flat(),
@@ -131,7 +131,10 @@ export function planMonths(plan, { areaNo, areaName, shares } = {}) {
     zones: g.zones || [], season: si === 'gm' ? seasonOf(String(g.sow).slice(0, 7)) : si })));
   const out = ss.map((_, si) => ({ si, months: [] }));
   // In time order across the crops; the same day keeps each crop's own order (stable sort).
-  for (const t of tiles.filter((x) => x.date).sort((a, b) => String(a.date).slice(0, 10).localeCompare(String(b.date).slice(0, 10)))) {
+  // 17 Nov: a season chip shows only the crops sown in that season; an area tapped on the map only that area's tiles.
+  const keep = (x) => x.date && (filter?.season == null || x.season === filter.season)
+    && (!filter?.zone || (x.zones || []).includes(filter.zone));
+  for (const t of tiles.filter(keep).sort((a, b) => String(a.date).slice(0, 10).localeCompare(String(b.date).slice(0, 10)))) {
     const ym = String(t.date).slice(0, 7);
     const sec = out[seasonOf(ym)];
     let m = sec.months.find((x) => x.ym === ym);
@@ -141,10 +144,10 @@ export function planMonths(plan, { areaNo, areaName, shares } = {}) {
   return out.filter((sec) => sec.months.length);
 }
 
-function JobGrids({ plan, areaNo, areaName, shares, onTile }) {
+function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
   const [open, setOpen] = useState(null);
   const ss = (plan.plan || plan).seasons || [];
-  const secs = planMonths(plan, { areaNo, areaName, shares });
+  const secs = planMonths(plan, { areaNo, areaName, shares, filter });
   if (!secs.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is planned yet.</p>;
   const all = secs.flatMap((x) => x.months.flatMap((m) => m.tiles));
   const shown = all.find((t) => t.id === open);
@@ -229,7 +232,7 @@ export default function ActivePlan({ plan, areaNo, areaName, season, shares, onT
   return (
     <>
       {/* 17 Nov: the whole plan's job grid replaces To do now, Coming up and This year's plan (the bars stay for a record year). */}
-      {!past && <JobGrids plan={plan} areaNo={areaNo} areaName={areaName} shares={shares} onTile={onTile} />}
+      {!past && <JobGrids plan={plan} areaNo={areaNo} areaName={areaName} shares={shares} onTile={onTile} filter={filter} />}
       {!past && madeOn && <span style={{ display: 'block', marginTop: 12, fontSize: 13, color: C.muted }}>Plan made {madeOn}</span>}
       {chart && past && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16, borderTop: `1px solid ${C.raised}`, paddingTop: 16 }}>

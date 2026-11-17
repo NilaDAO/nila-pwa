@@ -33,7 +33,6 @@ import { presets } from './areaPresets';
 import { AreaCard, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
 import { seasonsCounted, seasonsOff, yearSeasons } from './seasonChips';
-import { areaHash } from '../shell/MapStage';
 import { assisted, useMyShares } from '../loan/MyShares';
 import RoundButton from '../shell/RoundButton';
 import ReadAloud from './ReadAloud';
@@ -427,6 +426,10 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // CP10: the season shown (overview), the area picked, and her area accepts until CP11 accepts them on the node.
   const [season, setSeason] = useState(0);
   const [focus, setFocus] = useState(null);   // 17 Nov: a tapped job tile's areas, shown on the map
+  // 17 Nov: the approved plan's job grid filtered by a tapped season chip (tapped again: all seasons) and by an area
+  // tapped on the map (tapped again: all areas).
+  const [gridSeason, setGridSeason] = useState(null);
+  const [areaPick, setAreaPick] = useState(null);
   // A plan year before the plan (12 Nov: plan history from the record); null = the plan's years.
   const [pastYear, setPastYear] = useState(null);
   // 13 Nov: the approved plan (CP13) steps back through the record too; any step change leaves either screen, so reset.
@@ -532,13 +535,13 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   const openShare = useCallback((z) => {
     // 17 Nov: the area page is the phone's own land's; in a leader's view of a member's plan it waited forever for an
     // area the leader's land does not have. There a tap only shows that area on the map.
-    if (forLand) { setFocus((f) => (z && !(f && f.length === 1 && f[0] === z) ? [z] : null)); return; }
-    const ss = plan?.plan?.seasons || [];
-    if (z) window.location.hash = areaHash(z, planYear(ss[Math.min(season, ss.length - 1)]?.start));
-  }, [plan, season, forLand]);
+    // 17 Nov: a tap on an area filters the job grid to that area (and shows it on the map); tapped again, all areas.
+    setFocus(null);
+    setAreaPick((a) => (z && a !== z ? z : null));
+  }, []);
   // Before the field record (CP1, 1 Nov): the land title's field outlines, as on the land title screen (A5).
   const titleShape = fieldsMap(useTitleFields(landId, onPolygon, stellarTitle, null));
-  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} focus={active ? focus : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
+  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} focus={active ? (areaPick ? [areaPick] : focus) : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
     fitBottom={pickable ? Math.round(window.innerHeight / 2) + 72 : undefined} />
     : titleShape.record ? <AreaMap record={titleShape.record} labels={titleShape.labels} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
@@ -1194,7 +1197,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     );
     // 13 Nov: the year's seasons as chips (all on at first); at least one stays on. Not in a record year (no plan).
     const onIdx = [shown];   // 17 Nov: one season at a time
-    const chips = <SeasonChips ss={ss} i={shown} onPick={setSeason} />;
+    const chips = <SeasonChips ss={ss} i={shown} onPick={(k) => { setSeason(k); setGridSeason((g) => (g === k ? null : k)); }} />;
     const slotsShown = pastYear == null ? new Set(onIdx.map((k) => ss[k].slot)) : undefined;
     // The crop bars (13 Nov, as the draft plan's overview): one lane per area, read-only.
     const zones = Object.keys(plan.plan.proposal || {}).sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
@@ -1216,6 +1219,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           chartTitle={pastYear != null ? `${yearLabel(null, pastYear)} · from your record` : y0 === planYear() ? "This year's plan" : `${yearLabel(null, y0)} plan`}
           past={pastYear != null} seasons={pastYear == null ? new Set(onIdx) : undefined}
           plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
+          filter={{ season: gridSeason, zone: areaPick }}
           // 17 Nov: a tapped tile shows its areas on the map, in its season, with the card half open.
           onTile={(t) => {
             setFocus(t ? t.zones : null);
