@@ -27,7 +27,7 @@ import { neighboursOf } from './neighbours';
 import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
 import { EDIT_TEXT } from './editTexts';
-import { GREEN_MANURE, fill, rowOf, slotsOf, toChanges } from './yearRow';
+import { GREEN_MANURE, fill, rowOf, slotsOf, toChanges, whyNoRoom } from './yearRow';
 import { ordered, rowAdvice } from './rowAdvice';
 import { presets } from './areaPresets';
 import { AreaCard, CropSelect, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
@@ -982,7 +982,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       const add = (key) => {
         const keys = [...rowKeys, key];
         if (fill(keys, { seasons: ss, cat: names, free0 }).dropped.includes(key)) {
-          setRowNote(`No room for ${(names[key] || GREEN_MANURE).name} in this year.`); return;
+          setRowNote(`${(names[key] || GREEN_MANURE).name}: ${whyNoRoom(key, rowKeys, { seasons: ss, cat: names, free0 }).replace(/^./, (x) => x.toLowerCase())}.`); return;
         }
         setRowKeys(keys); setRowNote(undefined);
       };

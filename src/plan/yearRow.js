@@ -89,3 +89,36 @@ export function rowOf(plan, zone) {
   items.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
   return { keys: items.map(([, k]) => k), free0: free ? iso(free) : null, locked };
 }
+
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Sowing months as short ranges in the plan year's order (October first): [12, 1, 2] → "Dec–Feb";
+ *  [2, 3, 6, 7, 12, 1] → "Dec–Mar, Jun–Jul". */
+export function monthRanges(months = []) {
+  const order = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter((m) => months.includes(m));
+  const runs = [];
+  for (const m of order) {
+    const r = runs[runs.length - 1];
+    if (r && (r[1] % 12) + 1 === m) r[1] = m; else runs.push([m, m]);
+  }
+  // A run ending in September joins one starting in October (the year wraps): [9, 10, 11] → "Sep–Nov".
+  if (runs.length > 1 && runs[runs.length - 1][1] === 9 && runs[0][0] === 10) runs[0][0] = runs.pop()[0];
+  return runs.map(([a, b]) => (a === b ? MON3[a - 1] : `${MON3[a - 1]}–${MON3[b - 1]}`)).join(', ');
+}
+
+/** Why a crop has no place after the row `keys` (17 Nov): the field is full, its sowing months are in none of the
+ *  seasons left, or the field is busy until a later month. Null when it fits. */
+export function whyNoRoom(key, keys, { seasons, cat, free0 = null }) {
+  const c = cropOf(key, cat);
+  const now = fill(keys, { seasons, cat, free0 });
+  if (!fill([...keys, key], { seasons, cat, free0 }).dropped.includes(key)) return null;
+  const slots = slotsOf(seasons);
+  const last = now.bars[now.bars.length - 1];
+  const next = last ? slots.findIndex((s) => s.slot === last.slot) + 1 : 0;
+  if (!c || !(c.days > 0)) return 'Field full this year';
+  if ((last && last.whole) || next >= slots.length) return 'Field full this year';
+  const left = slots.slice(next);
+  if (!left.some((s) => s.months.some((m) => (c.sow_months || []).includes(m)))) return `Sown ${monthRanges(c.sow_months)} only`;
+  const free = last ? last.end : day(free0);
+  return free ? `Field busy until ${MON3[free.getMonth()]}` : 'Field full this year';
+}

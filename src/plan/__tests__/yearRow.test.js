@@ -1,4 +1,4 @@
-import { fill, iso, rowOf, toChanges } from '../yearRow';
+import { fill, iso, monthRanges, rowOf, toChanges, whyNoRoom } from '../yearRow';
 
 const seasons = [{ slot: 'S1', start: '2026-10-01' }, { slot: 'S2', start: '2027-03-01' }, { slot: 'S3', start: '2027-06-01' }];
 const cat = {
@@ -50,4 +50,15 @@ test('sugarcane after maize: sown when the maize is harvested, it runs into the 
   expect(show(bars)).toEqual([['maize', 'S1', '2026-10-01'], ['sugarcane', 'S2', '2027-03-01']]);
   expect(bars[1].end.getFullYear()).toBe(2028);
   expect(toChanges(bars, seasons)).toEqual({ S1: 'maize', S2: 'sugarcane', S3: 'sugarcane' });
+});
+
+test('why a crop has no place: field full, its sowing months, or the field busy', () => {
+  const c2 = { ...cat, sesame: { days: 90, sow_months: [2, 3, 6, 7, 12, 1] }, horse_gram: { days: 100, sow_months: [9, 10, 11] },
+    sugarcane: { days: 360, sow_months: [12, 1, 2], whole_year: true } };
+  const o = { seasons, cat: c2, free0: '2026-12-01' };
+  expect(whyNoRoom('sugarcane', ['sesame'], o)).toBe('Sown Dec–Feb only');
+  expect(whyNoRoom('horse_gram', ['sesame'], o)).toBe('Sown Sep–Nov only');
+  expect(whyNoRoom('maize', ['sugarcane'], o)).toBe('Field full this year');
+  expect(whyNoRoom('maize', ['sesame'], o)).toBe(null);
+  expect(monthRanges([2, 3, 6, 7, 12, 1])).toBe('Dec–Mar, Jun–Jul');
 });

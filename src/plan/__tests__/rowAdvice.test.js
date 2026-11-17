@@ -30,6 +30,6 @@ test('paddy after maize warns on the row; no well fades high-water crops; a harv
 
 test('no room is a tag, never a block', () => {
   const a = rowAdvice(list, ['maize', 'black_gram', 'maize'], { seasons, cat });
-  expect(a.tags.banana).toEqual([{ text: 'No room this year', good: false }]);
+  expect(a.tags.banana).toEqual([{ text: 'Field full this year', good: false }]);
   expect(ordered(list, a).map((c) => c.key)).toContain('banana');
 });

@@ -3,7 +3,7 @@
 // still be tapped. The rotation facts come from nila-sensing plan/reference/rules_v1.json (a placeholder until TNAU
 // and the unions confirm it): a pulse before maize, paddy or sorghum is good; a crop after one of its own family
 // tires the soil. Dry months from soil_v1 (Mar–May).
-import { GREEN_MANURE, fill } from './yearRow';
+import { GREEN_MANURE, fill, whyNoRoom } from './yearRow';
 
 export const DRY_MONTHS = [3, 4, 5];
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -22,7 +22,7 @@ export function rowAdvice(list, keys, { seasons, cat, free0 = null, wells, hardM
   for (const c of list) {
     const k = c.key;
     const next = fill([...keys, k], { seasons, cat, free0 });
-    if (next.dropped.includes(k)) { tag(k, 'No room this year', false); faded.add(k); continue; }
+    if (next.dropped.includes(k)) { tag(k, whyNoRoom(k, keys, { seasons, cat, free0 }), false); faded.add(k); continue; }
     const bar = next.bars[next.bars.length - 1];
     if (k === GREEN_MANURE.key) {
       if (DRY_MONTHS.includes(bar.sow.getMonth() + 1)) { tag(k, 'Covers the dry months', true); front.add(k); }
