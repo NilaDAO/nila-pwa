@@ -144,7 +144,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
                 </tr>
               )}
               <tr style={{ ...line, fontWeight: 700 }}><td style={{ padding: '8px 0' }}>Financed</td><td>{day(lastBy)}</td><td style={{ textAlign: 'right' }}>{inr(total.cash)}</td></tr>
-              <tr style={line}><td style={{ padding: '8px 0' }}>of which machine vouchers</td><td>{vouchersAll ? day(lastBy) : '—'}</td><td style={{ textAlign: 'right' }}>{inr(vouchersAll)}</td></tr>
+              <tr style={line}><td style={{ padding: '8px 0' }}>of which vouchers</td><td>{vouchersAll ? day(lastBy) : '—'}</td><td style={{ textAlign: 'right' }}>{inr(vouchersAll)}</td></tr>
               {sales > 0 && <tr style={line}><td style={{ padding: '8px 0' }}>Sales (estimate)</td><td>—</td><td style={{ textAlign: 'right' }}>{inr(sales)}</td></tr>}
             </tbody>
           </table>
@@ -165,7 +165,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
         const vouchers = fin.reduce((a, f) => a + (f.voucher_value || 0), 0);
         if (!hand && !vouchers) return null;
         return <>{hand > 0 && <>{inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates). </>}
-          {vouchers > 0 && <>{inr(vouchers)} in machine vouchers.</>}</>;
+          {vouchers > 0 && <>{inr(vouchers)} in vouchers.</>}</>;
       })()} />
       {!readOnly && <Conditions plan={plan} ticks={ticks} onTick={onTick} />}
       {!readOnly && (Object.keys(pending).length
