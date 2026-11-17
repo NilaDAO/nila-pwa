@@ -997,7 +997,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       const freeAt = free0 ? pos(new Date(`${free0}T00:00:00`)) : 0;
       const axis = slots0 ? Array.from({ length: 12 }, (_, i) => MON1[(slots0.getMonth() + i) % 12]) : [];
       return (
-        <Sheet map={record ? <AreaMap record={record} labels={selLabels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72} /> : map}
+        <Sheet map={record ? <AreaMap record={record} labels={selLabels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72}
+          chip="Tap more areas to change them together" /> : map}
           landName={name} onBack={stop}>
           {(
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1048,7 +1049,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     const shown = Math.min(season, Math.max(0, ss.length - 1));
     const chipsOn = pastYear == null && yearSeasons(ss, shown).length > 1;
     return (
-      <Sheet map={editable && record ? <AreaMap record={record} labels={labels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72} /> : map}
+      <Sheet map={editable && record ? <AreaMap record={record} labels={labels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72}
+        chip="Tap areas to change" /> : map}
         landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}>
         {area ? (
           <AreaCard plan={plan} zone={area} name={areaName(area)} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
