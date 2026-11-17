@@ -380,7 +380,15 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   useEffect(() => {
     const st = saveQ.data?.status;
     if (!saveJob || !st || !['done', 'error', 'failed'].includes(st)) return;
-    if (st === 'done') { keepView.current = true; qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); } else { setError(saveQ.data.error); setPending({}); }
+    // 17 Nov: the year row's edit stays open (Updating…) until the new plan is read, then closes; an error keeps it open.
+    if (st === 'done') {
+      keepView.current = true;
+      Promise.resolve(qc.invalidateQueries({ queryKey: qkPlan.plan(landId) })).finally(() => {
+        setSaveJob(undefined); setEditSel([]); setRowKeys([]); setRowNote(undefined);
+      });
+      return;
+    }
+    setError(saveQ.data.error); setPending({});
     setSaveJob(undefined);
   }, [saveQ.data, saveJob]); // eslint-disable-line react-hooks/exhaustive-deps
   const discard = useDiscardPlan(landId);
@@ -986,7 +994,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
         const changes = Object.fromEntries(editSel.map((z) => [z, toChanges(fill(rowKeys, { seasons: ss, cat: names, free0: bases[z].free0 }).bars, ss, bases[z].locked)]));
         try {
           const res = await revise.mutateAsync({ planId: plan.id, note: '', changes });
-          setSaveJob(res.job_id); stop();
+          setSaveJob(res.job_id);   // the edit closes when the new plan is read (the save job's effect)
         } catch (e) { setError(e.message); }
       };
     if (editable && z0) {
@@ -1047,7 +1055,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
               {error && <p style={{ color: C.coral, margin: 0 }}>{error}</p>}
               {/* 17 Nov: Cancel | Update side by side. */}
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={stop} style={{ ...secondaryBtn }}>Cancel</button>
+                <button type="button" disabled={saving} onClick={stop} style={{ ...secondaryBtn, opacity: saving ? 0.5 : 1 }}>Cancel</button>
                 <button type="button" disabled={saving} onClick={update} style={{ ...secondaryBtn, background: C.accent, color: C.ink, opacity: saving ? 0.5 : 1 }}>{saving ? 'Updating…' : 'Update'}</button>
               </div>
             </div>
