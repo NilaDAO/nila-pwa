@@ -148,7 +148,8 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const faded = !!selected && !group.some((y) => y.zone_id === selected);
       // The picked area (14 Nov): a white line around it and a lighter fill, so it stands out on the map.
-      const sel = !!selected && !faded;
+      // lab.sel (17 Nov): one of several areas selected at once (the areas step), as the picked area.
+      const sel = (!!selected && !faded) || !!lab.sel;
       const colour = lab.colour || '#ffffff';
       let sx = 0; let sy = 0; let k = 0;
       // Joined areas: one outline around the group, no line between its parts.
@@ -181,7 +182,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       }));
       if (k && !lab.hide && !chipsOff && g.marker?.AdvancedMarkerElement) {   // hide: a shape with no chip (a member's further fields)
         const mk = new g.marker.AdvancedMarkerElement({ map: m, position: { lat: sy / k, lng: sx / k }, gmpClickable: !!pick,
-          title: lab.text, content: chip(lab, group.some((y) => y.zone_id === selected), faded, !!pick) });
+          title: lab.text, content: chip(lab, sel, faded, !!pick) });
         if (pick) mk.addListener('click', pick(z.zone_id));
         drawn.current.push(mk);
       }
@@ -240,7 +241,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
       const lab = root === z.zone_id ? own : { ...(labels[root] || {}), hide: true };
       const tapTo = root !== z.zone_id && labels[z.zone_id]?.tapRoot ? root : z.zone_id;
       const faded = !!selected && selected !== z.zone_id && joinRoot(labels, selected) !== root;
-      const sel = !!selected && !faded;   // 14 Nov: the picked area, a white line and a lighter fill
+      const sel = (!!selected && !faded) || !!lab.sel;   // 14 Nov: the picked area, a white line and a lighter fill (17 Nov: lab.sel, several)
       const colour = lab.colour || '#ffffff';
       // An area still to be set (13 Nov): hatched, so she sees at once which areas are left (lab.hatch).
       if (lab.hatch) hatchPattern();
