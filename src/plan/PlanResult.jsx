@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
 import { Notice, inr, muted } from './ui';
+import { EDIT_TEXT } from './editTexts';
 
 export const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
 const SPAN = { S1: 4, S2: 2, S3: 2 };   // months after the season's first month
@@ -170,8 +171,11 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
       const pick = picked[se.slot] && cropOf(picked[se.slot]);
       const colour = (pick && pick.colour) || r.colour || C.muted;
       taken.add(se.slot);
-      out.push({ key: `${se.slot}-${r.crop}`, slot: se.slot, s0, s1, name: pick ? pick.name : r.name, fill: colour,
-        ink: lightBg(colour) ? C.ink : C.text, editable: !readOnly, row: { ...r, slot: se.slot }, dim: !!slots && !slots.has(se.slot) });
+      // A block sown more than 6 weeks ago (16 Nov, the node's plan.locked) is shown locked and cannot be changed.
+      const locked = !!plan.plan.locked?.[zone]?.[se.slot];
+      const name = pick ? pick.name : r.name;
+      out.push({ key: `${se.slot}-${r.crop}`, slot: se.slot, s0, s1, name: locked ? `${name} · ${EDIT_TEXT.locked}` : name, fill: colour,
+        ink: lightBg(colour) ? C.ink : C.text, editable: !readOnly && !locked, locked, row: { ...r, slot: se.slot }, dim: !!slots && !slots.has(se.slot) });
     }
   }
   for (const c of (plan.plan.soil_cover || []).filter((x) => x.zone === zone)) {
@@ -186,7 +190,7 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
       : `repeating-linear-gradient(45deg, ${c.colour || '#7FB069'} 0 3px, rgba(127,176,105,0.25) 3px 6px)`;
     // A soil cover is advice (21 Oct): a crop may be picked in its season instead (28 Oct).
     out.push({ key: `soil-${c.from}`, slot, s0, s1, name: label, fill, ink: C.text, soil: true, cover: c,
-      editable: !readOnly && !!slot && !taken.has(slot), row: { slot }, dim: !!slots && !!slot && !slots.has(slot) });
+      editable: !readOnly && !!slot && !taken.has(slot) && !plan.plan.locked?.[zone]?.[slot], row: { slot }, dim: !!slots && !!slot && !slots.has(slot) });
     if (slot) taken.add(slot);
   }
   // A season the plan leaves empty on a planned area (14 Nov): a faint "Empty" bar she can tap to pick a crop.
@@ -307,6 +311,17 @@ export function CostList({ r, k = 1 }) {
 
 /** crops: the catalogue's crops for the season rows' list; onCrop(row, cropKey): that crop instead on this area in that
  *  row's season; changing: a change is being sent. */
+/** The pros and cons of the last edit (16 Nov, the node's plan.pros_cons, by a small model; none when it is off). */
+export function ProsCons({ plan }) {
+  const items = plan.plan.pros_cons?.items || [];
+  if (!items.length) return null;
+  return (
+    <Notice kind="info" title={EDIT_TEXT.prosCons}>
+      {items.map((it) => <span key={it.kind + it.text} style={{ display: 'block' }}>{it.kind === 'pro' ? EDIT_TEXT.pro : EDIT_TEXT.con} {it.text}</span>)}
+    </Notice>
+  );
+}
+
 export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, picked = {}, onUpdate, acceptLabel = 'Accept the plan', y0, total }) {
   // picked (28 Oct): crops chosen on this area's rows, not sent yet (slot → crop key); the button then reads Update
   // crop plan and sends them all (onUpdate).
@@ -379,6 +394,7 @@ export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, o
       {items.filter((it) => it.soil && it.cover?.kind === 'bare').map((it) => (
         <Notice key={it.key} title="Bare soil in the dry months">You keep this area bare in the dry months: bare soil erodes.</Notice>
       ))}
+      <ProsCons plan={plan} />
       {off.map((r) => (
         <Notice key={`off-${r.crop}`} title={`${r.name}: not in Nila's crop list`}>
           Its yield, costs and sowing months are not checked by Nila, so it gets no loan or voucher.

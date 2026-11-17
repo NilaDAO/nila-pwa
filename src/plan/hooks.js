@@ -102,13 +102,14 @@ export function useExtendPlan(landId) {
   });
 }
 
-/** A plan job: polled every 10 s until done or error (design usePlanJob). */
-export function usePlanJob(jobId) {
+/** A plan job: polled every 10 s until done or error (design usePlanJob). An edit (16 Nov) is code only and
+ *  done in a second or two: polled every 2 s (`every`), only while it runs. */
+export function usePlanJob(jobId, every = 10_000) {
   const api = usePlanClient();
   return useQuery({
     queryKey: qkPlan.job(jobId), enabled: !!api && !!jobId,
     queryFn: () => api.job(jobId),
-    refetchInterval: (q) => (['done', 'error'].includes(q.state.data?.status) ? false : 10_000),
+    refetchInterval: (q) => (['done', 'error'].includes(q.state.data?.status) ? false : every),
   });
 }
 
@@ -124,10 +125,11 @@ export function useAcceptPlan(landId) {
   const api = usePlanClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (plan) => {
+    // conditions (16 Nov): the ids of the plan's conditions the user ticked, sent with every area's accept.
+    mutationFn: async ({ plan, conditions = [] }) => {
       let p = plan;
       for (const zone of Object.keys(plan.plan.proposal)) {
-        if (!plan.accepted?.[zone]) p = await api.accept(plan.id, zone);
+        if (!plan.accepted?.[zone]) p = await api.accept(plan.id, zone, conditions);
       }
       return p;
     },

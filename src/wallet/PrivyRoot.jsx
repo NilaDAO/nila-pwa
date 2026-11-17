@@ -29,6 +29,7 @@ import { readAllItems } from '../utils/db';
 import { finishMoveIfDue, setAccountUnion, useAccount, useSetupAccount, useStellarConfig } from '../stellar/hooks';
 import { accountOf, deployerOf } from '../stellar/account';
 import RecoverLink, { linkCode, recoveredAccount, recoveryWaits } from './RecoverLink';
+import { askAgain, untilReady } from './askAgain';
 
 const APP_ID = process.env.REACT_APP_PRIVY_APP_ID;
 // The one-time key migration (K1): off until the node (K2) and the Lambda (K3) ship with it.
@@ -225,14 +226,23 @@ function SignerBridge({ children }) {
 
   // Stellar: a 64-byte ed25519 signature over a 32-byte hash (Soroban auth entry payload or
   // tx hash). P0 showed this covers Soroban auth entries and SEP-10.
+  // 16 Nov: a signature asked for while Privy is still logging in (a reload on a screen that signs at once, e.g. the
+  // border job) got no answer at all, and asking again did not help. signHash waits until the signers are ready
+  // (signersReady below) and then signs with Privy's current signRawHash.
+  const readyRef = useRef(false);
+  const signRawRef = useRef(signRawHash);
+  signRawRef.current = signRawHash;
   const signHash = useCallback(async (hash) => {
     if (!stellar) throw new Error('no Stellar wallet yet');
+    await untilReady(() => readyRef.current);
     // Privy signs inside its hidden frame; right after a reload it may not be loaded yet ("wallet proxy not
     // initialized", 29 Oct: the help QR is made at once). Wait for it, up to about 15 seconds.
+    // 16 Nov: a request with no answer at all is asked again (askAgain.js), then an error rather than a wait for ever.
     let signature;
     for (let i = 0; ; i++) {
       try {
-        ({ signature } = await signRawHash({ address: stellar.address, chainType: 'stellar', hash: toHex(hash) }));
+        ({ signature } = await askAgain(() => signRawRef.current({ address: stellar.address, chainType: 'stellar', hash: toHex(hash) }),
+          { label: 'Stellar signature request' }));
         break;
       } catch (e) {
         if (!/proxy not initiali[sz]ed/i.test(e?.message || '') || i >= 30) throw e;
@@ -242,7 +252,7 @@ function SignerBridge({ children }) {
     const sig = fromHex(signature);
     if (sig.length !== 64) throw new Error(`signature is ${sig.length} bytes, expected 64`);
     return sig;
-  }, [stellar, signRawHash]);
+  }, [stellar]);
 
   // Polygon: the Privy wallet signs once there is one; the member's own key only before the migration.
   // { address, signMessage(text), signTransaction(tx) → signed raw tx (the caller broadcasts it) }.
@@ -266,6 +276,7 @@ function SignerBridge({ children }) {
   // (during a key change the old user is still there for a moment).
   const sameLogin = !!evm && linkedEvm(user).includes(evm.address.toLowerCase());
   const signersReady = ready && authenticated && sameLogin && !!stellar;
+  readyRef.current = signersReady;
 
   // Her Stellar account (P2): the node sponsors it; it needs no land title (titles stay on Polygon).
   // Made by itself at login for a new wallet (R4). A Polygon wallet ('137') waits for the move:

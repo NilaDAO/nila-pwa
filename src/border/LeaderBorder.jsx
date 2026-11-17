@@ -19,7 +19,7 @@ import { TrashIcon } from '../shell/icons';
 import { ConfirmCard } from '../shell/SettingsParts';
 import { usePlanClient } from '../plan/hooks';
 import { useUnionMembers } from '../leader/unionMembers';
-import { overlaps } from './overlap';
+import { googlePaths, overlaps } from './overlap';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
@@ -39,8 +39,9 @@ function useNeighbourLand(job) {
   return useMemo(() => {
     // Only titles near the job's points (~400 m): each is drawn as many hatch lines.
     const pts = (job?.fields || []).map((f) => f.moved || f.point).filter(Boolean);
-    const near = (g) => { const c = (g.type === 'MultiPolygon' ? g.coordinates[0]?.[0] : g.coordinates?.[0]) || [];
-      return c.some(([lng, lat]) => pts.some((p) => Math.abs(p.lat - lat) < 0.004 && Math.abs(p.lng - lng) < 0.004)); };
+    // Every part of a title (16 Nov): a MultiPolygon was tested by its first part only, so a title whose near part
+    // came later was not hatched.
+    const near = (g) => googlePaths(g).flat().some((q) => pts.some((p) => Math.abs(p.lat - q.lat) < 0.004 && Math.abs(p.lng - q.lng) < 0.004));
     const others = (members.data || []).filter((m) => m.address !== job?.member && m.key !== job?.member)
       .flatMap((m) => (m.fields || []).filter((f) => f.geometry && near(f.geometry)).map((f) => ({ land: f.land || m.label || m.name, geometry: f.geometry })));
     const warn = {}; const red = {};
