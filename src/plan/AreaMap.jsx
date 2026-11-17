@@ -150,7 +150,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
       const faded = selected ? !group.some((y) => y.zone_id === selected) : !!focus?.length && !group.some((y) => focus.includes(y.zone_id));
       // The picked area (14 Nov): a white line around it and a lighter fill, so it stands out on the map.
       // lab.sel (17 Nov): one of several areas selected at once (the areas step), as the picked area.
-      const sel = ((!!selected || !!focus?.length) && !faded) || !!lab.sel;
+      const sel = (!!selected && !faded) || !!lab.sel;   // a focus (17 Nov) only fades the others, no white line
       const colour = lab.colour || '#ffffff';
       let sx = 0; let sy = 0; let k = 0;
       // Joined areas: one outline around the group, no line between its parts.
@@ -244,7 +244,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
       const tapTo = root !== z.zone_id && labels[z.zone_id]?.tapRoot ? root : z.zone_id;
       const faded = selected ? selected !== z.zone_id && joinRoot(labels, selected) !== root
         : !!focus?.length && !focus.includes(z.zone_id) && !focus.some((f) => joinRoot(labels, f) === root);
-      const sel = ((!!selected || !!focus?.length) && !faded) || !!lab.sel;   // 14 Nov: the picked area, a white line and a lighter fill (17 Nov: lab.sel, several)
+      const sel = (!!selected && !faded) || !!lab.sel;   // a focus (17 Nov) only fades the others, no white line   // 14 Nov: the picked area, a white line and a lighter fill (17 Nov: lab.sel, several)
       const colour = lab.colour || '#ffffff';
       // An area still to be set (13 Nov): hatched, so she sees at once which areas are left (lab.hatch).
       if (lab.hatch) hatchPattern();
