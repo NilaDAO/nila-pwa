@@ -118,10 +118,10 @@ function detailOf(t) {
   return `${t.crop} · ${t.label} · ${t.value ? inr(t.value) : '—'}`;
 }
 
-// Where the bottom bar starts (17 Nov): the note sits right on top of it; without the bar, at the screen's bottom.
+// Where the bottom bar starts (17 Nov): the note sits flush on top of it.
 const barTop = () => {
   const nav = typeof document !== 'undefined' && document.querySelector('nav[aria-label="Main"]');
-  return nav ? Math.max(0, Math.round(window.innerHeight - nav.getBoundingClientRect().top)) + 6 : TAB_BAR_HEIGHT + 6;
+  return nav ? Math.max(0, Math.round(window.innerHeight - nav.getBoundingClientRect().top)) : TAB_BAR_HEIGHT;
 };
 const MON_LETTER = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 const MON_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -204,14 +204,16 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
       {/* 17 Nov: the tapped tile's note as an info note on top of the bottom bar, outside the card (the card moves when
           dragged, which would carry a fixed note with it); a tap closes it. */}
       {shown && createPortal(
-        <button type="button" role="status" onClick={() => setOpen(null)} style={{ position: 'fixed', left: 8, right: 8, zIndex: 50,
-          bottom: barTop(), display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left',
-          background: 'rgba(18,18,18,0.95)', color: C.text, border: 0, borderRadius: 12, padding: '12px 14px', fontFamily: FONT, fontSize: 14, lineHeight: 1.4,
-          boxShadow: 'rgba(0,0,0,0.3) 0 6px 16px', cursor: 'pointer' }}>
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
-            <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
-          </svg>
-          <span>{detailOf(shown)}</span>
+        // As the registration screens' info footer (R5): a dark panel with rounded top corners, flush on the bar.
+        <button type="button" role="status" onClick={() => setOpen(null)} style={{ position: 'fixed', left: 8, right: 8, zIndex: 50, bottom: barTop(),
+          display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0, padding: '14px 16px',
+          borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
+          <span style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+            </svg>
+          </span>
+          <span style={{ fontSize: 14, color: '#94A3B8', lineHeight: 1.5, alignSelf: 'center' }}>{detailOf(shown)}</span>
         </button>, document.body,
       )}
     </div>
