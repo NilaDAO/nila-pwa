@@ -40,7 +40,10 @@ export function gridsOf(plan, si, { areaNo = (z) => z, areaName, shares = [] } =
       tiles.push({ key: `m:${m}`, label: actionOf(v.for), kind: 'voucher', icon: 'tractor', acres: v.acres, value: v.value, date: v.when || r.sow });
     }
     for (const [h, v] of Object.entries(f.hand_work || {})) {
-      tiles.push({ key: `h:${h}`, label: actionOf(v.for), kind: 'cash', icon: 'weed', acres: v.acres, value: v.value, date: v.when || r.sow });
+      // Hired work on its machine's date (17 Nov, `when` from the node); a plan made before that: haulage at harvest.
+      const label = actionOf(v.for);
+      tiles.push({ key: `h:${h}`, label, kind: 'cash', icon: label === 'Transport' ? 'transport' : 'weed', acres: v.acres, value: v.value,
+        date: v.when || (label === 'Transport' && r.harvest) || r.sow });
     }
     const labels = new Set(tiles.map((t) => t.label));
     // Harvest labour (17 Nov): lent in cash with the crop (collected at sowing, paid at harvest); in an older plan, hers.
