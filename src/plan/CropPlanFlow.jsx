@@ -530,7 +530,6 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // A share whose sowing is over a year ahead is made later (the node defers it, 25 Oct): it does not hold the plan up.
   const deferredOnly = mint.status === 'partial' && (mint.refused || []).length > 0
     && mint.refused.every((r) => /more than a year ahead|made later/i.test(r.error || ''));
-  const active = approved && (mint.status === 'done' || mint.status === 'partial');
   // 13 Nov: a tap opens the area's page (every agreement on it that plan year, its standing crop), so an area with only
   // the standing crop or a green manure in the season shown opens too.
   const openShare = useCallback((z) => {
@@ -545,7 +544,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   }, []);
   // Before the field record (CP1, 1 Nov): the land title's field outlines, as on the land title screen (A5).
   const titleShape = fieldsMap(useTitleFields(landId, onPolygon, stellarTitle, null));
-  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} focus={active ? (areaPicks.length ? areaPicks : focus) : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
+  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} focus={approved ? (areaPicks.length ? areaPicks : focus) : null} onSelect={pickable ? pickArea : approved ? openShare : undefined}
     fitBottom={pickable ? Math.round(window.innerHeight / 2) + 72 : undefined} />
     : titleShape.record ? <AreaMap record={titleShape.record} labels={titleShape.labels} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
