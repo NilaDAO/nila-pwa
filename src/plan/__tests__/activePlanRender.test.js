@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import ActivePlan from '../ActivePlan';
+import ActivePlan, { inkOn } from '../ActivePlan';
 
 const plan = { approval: { ts: 1795000000 }, plan: {
   seasons: [{ slot: 'S3', start: '2027-06-01', rows: [{
@@ -17,4 +17,9 @@ test('the approved plan renders its job grid and a tap shows the detail', () => 
   expect(screen.getByText(/sow 15 Jun – 31 Jul/)).toBeTruthy();
   fireEvent.click(screen.getByText('Plough'));
   expect(screen.getByRole('status').textContent).toBe('Maize · Plough · ₹2,000');
+});
+
+test('text on a crop colour: black on light, white on dark', () => {
+  expect(inkOn('#E8B33A')).toBe('#121212');   // maize
+  expect(inkOn('#4F7A3A')).toBe('#ffffff');   // a dark green
 });

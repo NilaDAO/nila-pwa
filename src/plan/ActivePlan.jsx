@@ -76,6 +76,15 @@ export function tasksOf(plan, areaNo, areaName) {
 const CASH_EDGE = '#4ADE80';
 const edge = (kind) => (kind === 'voucher' ? `3px solid ${C.accent}` : kind === 'cash' ? `3px solid ${CASH_EDGE}` : '3px solid transparent');
 const dayMon = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+// Text and icon on a crop's colour (17 Nov): black on a light colour, white on a dark one (relative luminance).
+export function inkOn(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return C.text;
+  const n = parseInt(m[1], 16);
+  const lin = (v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return L > 0.18 ? C.ink : '#ffffff';
+}
 
 function Legend({ grids }) {
   const sw = (style) => <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: 3, boxSizing: 'border-box', flexShrink: 0, ...style }} />;
@@ -119,10 +128,10 @@ function JobGrids({ plan, si, areaNo, areaName, shares }) {
         {tiles.map((t) => (
           <button key={t.id} type="button" role="listitem" aria-pressed={open === t.id} aria-label={detailOf(t)} onClick={() => setOpen(open === t.id ? null : t.id)}
             style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: 12, boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: 6, color: C.ink, fontFamily: FONT, cursor: 'pointer', padding: 4,
+              alignItems: 'center', justifyContent: 'center', gap: 6, color: inkOn(t.colour || C.muted), fontFamily: FONT, cursor: 'pointer', padding: 4,
               background: t.colour || C.muted, border: edge(t.kind), opacity: t.done ? 0.55 : 1,
               outline: open === t.id ? `2px solid ${C.text}` : 'none', outlineOffset: 2 }}>
-            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d={IC[t.icon] || IC.tractor} />
             </svg>
             <span style={{ fontSize: 13, fontWeight: 700 }}>{t.label}</span>
