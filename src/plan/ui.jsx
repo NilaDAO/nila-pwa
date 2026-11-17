@@ -13,7 +13,7 @@ import { BackIcon } from '../shell/icons';
 /** actions: round buttons (RoundButton) in the header row, left of Settings (28 Oct: Refresh on the no-title card). */
 /** low / lowKey (17 Nov, the areas step): the screen moves the card down (true) or up (false), as the point collector;
  *  a new lowKey repeats the move after she dragged the card. */
-export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered, noSettings, actions, low, lowKey }) {
+export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered, noSettings, actions, low, lowKey, tools }) {
   const drag = useSheetDrag(onLowered, resetKey, startLow, low, lowKey);   // the drag line as on R5 (all map screens, 21 Oct)
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell the one map behind the tabs
   // (shell/MapStage) draws this sheet's map, so it is never mounted again between screens.
@@ -138,13 +138,19 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
         {/* CP10's season / area bar sits on top of the card and moves with it (board CropPlanQ3-xdlz). */}
         {/* Labels on the map on or off (25 Oct): a small toggle above the card, on map screens with labels. 13 Nov: also
             above a bar (CP10, CP13): labels turned off elsewhere could not be turned on again there, so no chips showed. */}
-        {(bar || (staged && labelled)) && (
+        {(bar || (staged && labelled) || tools) && (
           <div style={{ position: 'absolute', left: 8, right: 8, bottom: 'calc(100% + 12px)', display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
-            {staged && labelled && (
-              <button type="button" aria-pressed={!labelsCtx.off} onClick={labelsCtx.toggle} style={{ alignSelf: 'flex-end', pointerEvents: 'auto', height: 32, borderRadius: R.round, border: 0, padding: '0 12px',
-                background: 'rgba(18,18,18,0.85)', color: C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                {labelsCtx.off ? 'Show labels' : 'Hide labels'}
-              </button>
+            {/* tools (17 Nov): the season chips, in one row with the labels toggle, the same size. */}
+            {((staged && labelled) || tools) && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
+                {tools && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', pointerEvents: 'auto' }}>{tools}</div>}
+                {staged && labelled && (
+                  <button type="button" aria-pressed={!labelsCtx.off} onClick={labelsCtx.toggle} style={{ pointerEvents: 'auto', height: 32, borderRadius: R.round, border: 0, padding: '0 12px',
+                    background: 'rgba(18,18,18,0.85)', color: C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                    {labelsCtx.off ? 'Show labels' : 'Hide labels'}
+                  </button>
+                )}
+              </div>
             )}
             {bar && <div style={{ pointerEvents: 'auto' }}>{bar}</div>}
           </div>

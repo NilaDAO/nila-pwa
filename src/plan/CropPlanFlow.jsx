@@ -2,7 +2,7 @@
 // CP12 waiting for the leader (nila-design boards CropPlanIntro … CropPlanPending-590i). Copy from the
 // boards; DESIGN GAPs: no map yet (P4c), no suggested crops on CP4 (no source), CP9 shows the
 // engine's one explanation text (16 Oct), CP6/CP5 answers mapped to numbers/keys in hooks.js.
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStalled } from '../shell/useStalled';
 import ErrorFull from '../shell/ErrorFull';
 import { Bouncing } from '../register/RegFrame';
@@ -30,7 +30,7 @@ import { EDIT_TEXT } from './editTexts';
 import { GREEN_MANURE, fill, rowOf, slotsOf, toChanges, whyNoRoom } from './yearRow';
 import { ordered, rowAdvice } from './rowAdvice';
 import { presets } from './areaPresets';
-import { AreaCard, CropSelect, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
+import { AreaCard, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
 import { seasonsCounted, seasonsOff, seasonsOn, yearSeasons } from './seasonChips';
 import { areaHash } from '../shell/MapStage';
@@ -90,7 +90,7 @@ const condTicks = (plan, ticks) => {
 
 // 16 Nov: chips (the season chips, as on the approved plan) above the chart; `off` = the season indices whose chip is
 // off: the chart dims them (`slots`, the chips that are on) and the money rows and the table leave them out.
-function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan', y0, onArea, ticks = new Set(), onTick, chips, off, slots }) {
+function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, onCrop, pending = {}, onUpdate, areaNo = (z) => z, areaName = (z) => `Area ${areaNo(z)}`, acceptLabel = 'Accept the plan', y0, onArea, ticks = new Set(), onTick, off, slots }) {
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   // A green manure is its own crop agreement (4 Nov): seed in cash, machine vouchers, repaid with the next crop.
@@ -104,92 +104,53 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
   const vouchersAll = [...seasons, { rows: gm }].reduce((a, s) => a + s.rows.reduce((b, r) => b + (r.finance.voucher_value || 0), 0), 0);
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance.due)).sort().pop();
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
-  const [open, setOpen] = useState(null);   // the season whose areas' crops are open
-  const [money, setMoney] = useState(false); // the money details (12 Nov: folded away under three rows)
   const sales = seasons.reduce((a, se) => a + se.rows.reduce((b, r) => b + (r.value || 0), 0), 0);
   const order = [...zones].sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
   return (
     <>
-      {/* The overview (12 Nov): every area's year on one chart, three money rows, the details folded away. */}
-      {chips}
+      {/* The overview (12 Nov): every area's year on one chart; 17 Nov: one money table (seasons, then the totals). */}
       <PlanChart plan={plan} record={record} zones={order} areaName={areaName} checked={checked} y0={y0} crops={crops} pending={pending} onArea={onArea} slots={slots} />
       <hr style={{ height: 1, background: C.raised, border: 0, margin: '16px 0 12px' }} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {/* 12 Nov: no ₹10,000 cap in the app; what the plan costs is what Nila finances (cash and machine vouchers). */}
-        <KV k="Financed" v={inr(total.cash)} />
-        <KV k="of which machine vouchers" v={inr(vouchersAll)} />
-        {sales > 0 && <KV k="Sales (estimate)" v={inr(sales)} />}
-      </div>
-      <button type="button" onClick={() => setMoney((v) => !v)} aria-expanded={money}
-        style={{ marginTop: 10, border: 0, background: 'transparent', padding: 0, color: C.accent, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-        {money ? 'Hide financed per season' : 'Financed per season ›'}
-      </button>
-      {money && <>
-      <table style={{ width: '100%', fontSize: 14, marginTop: 8, borderCollapse: 'collapse' }}>
-        {/* Simplified (executive decision 21 Oct): season (its months), use it by, total — no rate column, no repay line.
-            Tabs (16 Nov, reverses "no tabs"): the season chips above the chart filter it, as they filter the money rows.
-            "Use it by" (25 Oct): the season's last draw date (no floor any more: a share is usable once made). */}
-        <thead><tr style={{ color: C.muted }}><td>Season</td><td>Use it by</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
-        <tbody>
-          {seasons.map((s) => {
-            // A green manure is counted in the season it grows in (5 Nov), as that season's crops are.
-            const gmHere = gm.filter((c) => (c.slots || [])[0] === s.slot);
-            const cash = [...s.rows, ...gmHere].reduce((a, r) => a + cost(r.finance), 0);
-            // The season's shares: their planned sowing is one of the season's rows' (or green manures') sowing dates.
-            const sows = new Set([...s.rows, ...gmHere].map((r) => r.sow).filter(Boolean));
-            const by = (p.shares || []).filter((sh) => sows.has(sh.from_date) && sh.final_date).map((sh) => sh.final_date).sort().pop();
-            return (
-              <Fragment key={s.slot}>
-              {/* A tap on the season opens its areas' crops (28 Oct, replaces Change my plan): one list per area. */}
-              <tr onClick={!readOnly && onCrop ? () => setOpen(open === s.slot ? null : s.slot) : undefined} aria-expanded={open === s.slot}
-                style={{ borderTop: `1px solid ${C.raised}`, cursor: !readOnly && onCrop ? 'pointer' : 'default', background: open === s.slot ? C.raised : undefined }}>
-                <td style={{ padding: open === s.slot ? '8px 0 8px 10px' : '8px 0', borderRadius: open === s.slot ? '12px 0 0 0' : undefined }}><b>{SEASON[s.slot]}</b>{!readOnly && onCrop && <span style={{ color: C.muted }}> {open === s.slot ? '▴' : '▾'}</span>}
-                  {gmHere.length > 0 && <><br /><span style={muted}>with green manure, repaid with the next crop</span></>}</td>
-                <td>{by ? new Date(by).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</td>
-                <td style={{ textAlign: 'right', paddingRight: open === s.slot ? 10 : 0, borderRadius: open === s.slot ? '0 12px 0 0' : undefined }}>{inr(cash)}</td>
-              </tr>
-              {open === s.slot && (
-                // The season row itself grows (28 Oct): its areas' crops in the same raised box, no list over the map.
-                <tr style={{ background: C.raised }}><td colSpan={3} style={{ padding: '0 10px 10px', borderRadius: '0 0 12px 12px' }}>
-                  {[...zones].sort((a, b) => Number(areaNo(a)) - Number(areaNo(b))).map((z) => {
-                    const r = s.rows.find((x) => zonesOf(x).includes(z));
-                    // A block sown more than 6 weeks ago (16 Nov) is shown locked and cannot be changed.
-                    const locked = !!p.locked?.[z]?.[s.slot];
-                    return <CropSelect key={z} label={locked ? `${areaName(z)} · ${EDIT_TEXT.locked}` : areaName(z)} crops={sortedCrops(crops)} current={pending[z]?.[s.slot] || r?.crop} currentName={r?.name}
-                      disabled={changing || locked} onPick={(key) => onCrop(z, s.slot, key)} />;
-                  })}
-                </td></tr>
-              )}
-              </Fragment>
-            );
-          })}
-          {p.trees?.discount > 0 && (
-            <tr style={{ borderTop: `1px solid ${C.raised}` }}>
-              <td style={{ padding: '8px 0' }} colSpan={3}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount} points off the rate ({rate}%) · trees registered</span></td>
-            </tr>
-          )}
-          <tr style={{ borderTop: `1px solid ${C.raised}`, fontWeight: 700 }}>
-            <td style={{ padding: '8px 0' }} colSpan={2}>Total financed</td>
-            <td style={{ textAlign: 'right' }}>{inr(total.cash)}</td>
-          </tr>
-        </tbody>
-      </table>
+      {/* 17 Nov: one table — each season with its use-by date, then financed, machine vouchers and sales, each with the
+          last use-by date; the season chips on the map filter it. No ₹10,000 cap (12 Nov): what Nila finances is shown. */}
       {(() => {
-        // What the totals hold (executive decision 21 Oct): hand or hired work (no union machine) is paid in cash; machine
-        // hours are vouchers. Both are in the totals above.
-        const rows = seasons.flatMap((s) => s.rows.map((r) => r.finance));
-        const hand = rows.reduce((a, f) => a + (f.hand_work_cash || 0), 0);
-        const vouchers = rows.reduce((a, f) => a + (f.voucher_value || 0), 0);
-        if (!hand && !vouchers) return null;
+        const rowsBy = seasons.map((s) => {
+          // A green manure is counted in the season it grows in (5 Nov), as that season's crops are.
+          const gmHere = gm.filter((c) => (c.slots || [])[0] === s.slot);
+          const all = [...s.rows, ...gmHere];
+          const sows = new Set(all.map((r) => r.sow).filter(Boolean));
+          // "Use it by" (25 Oct): the season's last draw date, from its shares' planned sowing.
+          const by = (p.shares || []).filter((sh) => sows.has(sh.from_date) && sh.final_date).map((sh) => sh.final_date).sort().pop();
+          return { s, gmHere, by, cash: all.reduce((x, r) => x + cost(r.finance), 0) };
+        });
+        const lastBy = rowsBy.map((r) => r.by).filter(Boolean).sort().pop();
+        const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—');
+        const line = { borderTop: `1px solid ${C.raised}` };
         return (
-          <Notice kind="info" title="What the totals include">
-            {hand > 0 && <>{inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates). </>}
-            {vouchers > 0 && <>{inr(vouchers)} in machine vouchers.</>}
-          </Notice>
+          <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
+            <thead><tr style={{ color: C.muted }}><td>Season</td><td>Use it by</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
+            <tbody>
+              {rowsBy.map(({ s, gmHere, by, cash }) => (
+                <tr key={s.slot} style={line}>
+                  <td style={{ padding: '8px 0' }}><b>{SEASON[s.slot]}</b>
+                    {gmHere.length > 0 && <><br /><span style={muted}>with green manure, repaid with the next crop</span></>}</td>
+                  <td>{day(by)}</td>
+                  <td style={{ textAlign: 'right' }}>{inr(cash)}</td>
+                </tr>
+              ))}
+              {p.trees?.discount > 0 && (
+                <tr style={line}>
+                  <td style={{ padding: '8px 0' }} colSpan={3}><b>Tree discount</b><br /><span style={muted}>{p.trees.discount} points off the rate ({rate}%) · trees registered</span></td>
+                </tr>
+              )}
+              <tr style={{ ...line, fontWeight: 700 }}><td style={{ padding: '8px 0' }}>Financed</td><td>{day(lastBy)}</td><td style={{ textAlign: 'right' }}>{inr(total.cash)}</td></tr>
+              <tr style={line}><td style={{ padding: '8px 0' }}>of which machine vouchers</td><td>{vouchersAll ? day(lastBy) : '—'}</td><td style={{ textAlign: 'right' }}>{inr(vouchersAll)}</td></tr>
+              {sales > 0 && <tr style={line}><td style={{ padding: '8px 0' }}>Sales (estimate)</td><td>—</td><td style={{ textAlign: 'right' }}>{inr(sales)}</td></tr>}
+            </tbody>
+          </table>
         );
       })()}
       {lastDue && <p style={muted}>You repay {inr(total.cash + total.interest)} in {seasons.length} part{seasons.length === 1 ? '' : 's'}, each 21 days after its harvest.</p>}
-      </>}
       {/* Her changes are hard rules (21 Oct); only a hard fact refuses one, and anything the node could not read is named. */}
       {p.member_request?.not_followed?.length > 0 && (
         <Notice title="Not followed">{p.member_request.not_followed.map((n) => (n.zone
@@ -197,7 +158,15 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
           : n.why || n.reason || JSON.stringify(n))).join('; ')}</Notice>
       )}
       {/* The pros and cons of the last edit (16 Nov, Haiku; none when it is off), then its conditions to tick. */}
-      <ProsCons plan={plan} />
+      {/* 17 Nov: what the totals include (hand or hired work in cash, machine vouchers) in the same box. */}
+      <ProsCons plan={plan} extra={(() => {
+        const fin = seasons.flatMap((s) => s.rows.map((r) => r.finance));
+        const hand = fin.reduce((a, f) => a + (f.hand_work_cash || 0), 0);
+        const vouchers = fin.reduce((a, f) => a + (f.voucher_value || 0), 0);
+        if (!hand && !vouchers) return null;
+        return <>{hand > 0 && <>{inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates). </>}
+          {vouchers > 0 && <>{inr(vouchers)} in machine vouchers.</>}</>;
+      })()} />
       {!readOnly && <Conditions plan={plan} ticks={ticks} onTick={onTick} />}
       {!readOnly && (Object.keys(pending).length
         ? <Primary disabled={changing} onClick={onUpdate}>{changing ? 'Updating…' : 'Update crop plan'}</Primary>
@@ -252,12 +221,13 @@ function SeasonChips({ ss, i, on, setOn }) {
   };
   if (yearIdx.length < 2) return null;
   return (
-    <div role="group" aria-label="Seasons shown" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+    // 17 Nov: on the map next to Show labels, the same size (no longer in the card).
+    <div role="group" aria-label="Seasons shown" style={{ display: 'contents' }}>
       {yearIdx.map((k) => {
         const isOn = onIdx.includes(k);
         return (
           <button key={k} type="button" aria-pressed={isOn} onClick={() => toggleSlot(ss[k].slot)}
-            style={{ height: 32, padding: '0 14px', borderRadius: R.round, border: 0, background: isOn ? C.accent : C.raised, color: isOn ? C.ink : C.muted,
+            style={{ height: 32, padding: '0 12px', borderRadius: R.round, border: 0, background: isOn ? C.accent : 'rgba(18,18,18,0.85)', color: isOn ? C.ink : C.text,
               fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{SEASON[ss[k].slot] || `Season ${k - yearIdx[0] + 1}`}</button>
         );
       })}
@@ -1070,7 +1040,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     return (
       <Sheet map={editable && record ? <AreaMap record={record} labels={labels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72}
         chip="Tap areas to change" /> : map}
-        landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}>
+        landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}
+        tools={!area && chipsOn && <SeasonChips ss={ss} i={shown} on={slotsOn} setOn={setSlotsOn} />}>
         {area ? (
           <AreaCard plan={plan} zone={area} name={areaName(area)} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
             accepted={checked.has(area)} total={zones.length} readOnly={readOnly} y0={y0}
@@ -1083,7 +1054,6 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           <PlanView plan={plan} record={record} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={editable ? toggle : pickArea}
             crops={catalogue.data?.crops} changing={saving} pending={pending}
             ticks={ticks} onTick={(k) => setTicks((t) => { const n = new Set(t); if (n.has(k)) n.delete(k); else n.add(k); return n; })}
-            chips={chipsOn && <SeasonChips ss={ss} i={shown} on={slotsOn} setOn={setSlotsOn} />}
             off={chipsOn ? seasonsOff(ss, shown, slotsOn) : undefined}
             slots={chipsOn ? new Set(seasonsOn(ss, shown, slotsOn).map((k) => ss[k].slot)) : undefined}
             />
@@ -1218,7 +1188,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     const zones = Object.keys(plan.plan.proposal || {}).sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
     const made = mint.status === 'done' || mint.status === 'partial' || deferredOnly;
     return (
-      <Sheet map={map} landName={name} bar={bar}>
+      <Sheet map={map} landName={name} bar={bar} tools={pastYear == null && chips}>
         {!made && mint.status !== 'failed' && (
           <p role="status" style={{ ...muted, margin: '0 0 12px' }}>Your crop agreements are being made{mint.total ? `: ${mint.done || 0} of ${mint.total}` : ''}.</p>
         )}
@@ -1232,7 +1202,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
         {/* A row opens its area's page (13 Nov), as a tap on its area on the map. */}
         <ActivePlan chart={<PlanChart plan={plan} record={record} zones={zones} areaName={areaName} checked={new Set()} y0={y0} crops={catalogue.data?.crops} onArea={pastYear == null ? openShare : undefined} slots={slotsShown} />}
           chartTitle={pastYear != null ? `${yearLabel(null, pastYear)} · from your record` : y0 === planYear() ? "This year's plan" : `${yearLabel(null, y0)} plan`}
-          past={pastYear != null} filter={chips} seasons={pastYear == null ? new Set(onIdx) : undefined}
+          past={pastYear != null} seasons={pastYear == null ? new Set(onIdx) : undefined}
           plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
           canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
           onExtend={async () => {

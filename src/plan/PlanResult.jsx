@@ -312,12 +312,14 @@ export function CostList({ r, k = 1 }) {
 /** crops: the catalogue's crops for the season rows' list; onCrop(row, cropKey): that crop instead on this area in that
  *  row's season; changing: a change is being sent. */
 /** The pros and cons of the last edit (16 Nov, the node's plan.pros_cons, by a small model; none when it is off). */
-export function ProsCons({ plan }) {
+/** 17 Nov: `extra` (what the totals include, by code) joins the same box, after the pros and cons. */
+export function ProsCons({ plan, extra }) {
   const items = plan.plan.pros_cons?.items || [];
-  if (!items.length) return null;
+  if (!items.length && !extra) return null;
   return (
     <Notice kind="info" title={EDIT_TEXT.prosCons}>
       {items.map((it) => <span key={it.kind + it.text} style={{ display: 'block' }}>{it.kind === 'pro' ? EDIT_TEXT.pro : EDIT_TEXT.con} {it.text}</span>)}
+      {extra && <span style={{ display: 'block', marginTop: items.length ? 8 : 0 }}>{extra}</span>}
     </Notice>
   );
 }
