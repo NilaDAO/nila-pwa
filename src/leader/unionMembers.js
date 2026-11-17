@@ -236,7 +236,8 @@ export function useUnionShares(api, { fresh } = {}) {
             zones: x.zones || [], harvest: x.harvest, kg: x.kg, slot: x.slot, from, final, drawn, loan, lapsed,
             ready: !drawn && !lapsed && now >= from,
             // The harvest the oracle reported for a financed share (fund_core maturity, 25 Oct: H2's harvested dots).
-            harvested: Number(ft?.loan?.maturity_ts || 0), crop_key: x.crop, state: x.state };
+            harvested: Number(ft?.loan?.maturity_ts || 0), crop_key: x.crop, state: x.state,
+            cash: ft ? n(ft.amount) : null };   // the attested cash to collect (17 Nov, G2's row)
         });
         by[m.address] = { planId: shares.find((x) => x.ready)?.planId || shares[shares.length - 1]?.planId, shares };
       }

@@ -120,7 +120,7 @@ export function BasisList({ basis }) {
     const parts = g.names.map((n) => byName[n]).filter(Boolean);
     const lines = parts.map(say);
     if (g.problems) lines.push(rec.length ? `Problems: ${rec.join(' ')}` : 'No problems found in your record.');
-    if (g.vouchers) lines.push(`Machine vouchers: ${basis.vouchers?.used ? 'used' : 'not used'}. ${basis.vouchers?.why || ''}`.trim());
+    if (g.vouchers) lines.push(`Vouchers: ${basis.vouchers?.used ? 'used' : 'not used'}. ${basis.vouchers?.why || ''}`.trim());
     const core = g.core ? parts.filter((i) => g.core.includes(i.name)) : parts;
     const used = (g.all ? core.length > 0 && core.every((i) => i.used) : core.some((i) => i.used)) || (g.vouchers && basis.vouchers?.used);
     // A gap that makes the money look better than it is (harvest costs not counted) is a warning, not a dash.

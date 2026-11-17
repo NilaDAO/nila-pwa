@@ -119,7 +119,8 @@ function outlineOf(rings) {
  *  and border (board CP10). selected / onSelect: tapping an area or its chip picks it; the others fade. */
 /** center ({ lat, lng }): where the map looks when there is no record to draw (26 Oct: a leader's filter with nothing
  *  in it shows the union's land, never a black screen). */
-function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, fitBottom, fitSide = 40, center, chipsOff = false }) {
+// focus (17 Nov): several areas shown at once (a tapped job tile's areas): they stand out, the others fade, the map fits them.
+function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, focus = null, onSelect, fitBottom, fitSide = 40, center, chipsOff = false }) {
   const map = useRef(null);
   const drawn = useRef([]);
   const fitted = useRef(null);
@@ -146,15 +147,18 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       if (!rings.length) return;
       const lab = labOf(z, i);
       if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
-      const faded = !!selected && !group.some((y) => y.zone_id === selected);
+      const faded = selected ? !group.some((y) => y.zone_id === selected) : !!focus?.length && !group.some((y) => focus.includes(y.zone_id));
+      // 17 Nov: picked areas on the approved plan: the others nearly vanish, so the picked ones show at once.
+      const FADE = !selected && focus?.length ? 0.06 : 0.3;
       // The picked area (14 Nov): a white line around it and a lighter fill, so it stands out on the map.
-      const sel = !!selected && !faded;
+      // lab.sel (17 Nov): one of several areas selected at once (the areas step), as the picked area.
+      const sel = (!!selected && !faded) || !!lab.sel;   // a focus (17 Nov) only fades the others, no white line
       const colour = lab.colour || '#ffffff';
       let sx = 0; let sy = 0; let k = 0;
       // Joined areas: one outline around the group, no line between its parts.
       if (joined && !lab.hatch && !lab.dashed) {
         outlineOf(group.flatMap((y) => polysOf(y.geometry).flat())).forEach(([p, q]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: p[1], lng: p[0] }, { lat: q[1], lng: q[0] }],
-          clickable: false, zIndex: 2, strokeColor: sel ? '#ffffff' : colour, strokeOpacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), strokeWeight: sel ? 3 : 1.5 })));
+          clickable: false, zIndex: 2, strokeColor: sel ? '#ffffff' : colour, strokeOpacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), strokeWeight: sel ? 3 : 1.5 })));
       }
       group.forEach((part) => polysOf(part.geometry).forEach((poly0) => {
         // Its holes as holes (14 Nov): an area inside it is not painted over.
@@ -165,15 +169,15 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
         // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so an accent outline (solid since 14 Nov) and a faint fill.
         // 14 Nov: its outline solid in the accent, no longer dashed.
         const poly = new g.Polygon({ map: m, paths, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
-          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? 0.3 : sel ? 0.5 : 1),
+          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? FADE : sel ? 0.5 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
           strokeColor: sel ? '#ffffff' : lab.hatch ? '#D4CF5A' : colour,
-          strokeOpacity: sel ? (joined ? 0 : 1) : lab.hatch ? (faded ? 0.3 : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1),
+          strokeOpacity: sel ? (joined ? 0 : 1) : lab.hatch ? (faded ? FADE : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1),
           strokeWeight: sel ? 3 : 1.5, zIndex: sel ? 3 : 1 });
         // lab.dashed (13 Nov, the members map): a property's outline as a dashed line.
         if (lab.dashed) {
           drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
-            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? 0.3 : 1, strokeColor: colour, strokeWeight: 2, scale: 3 }, offset: '0', repeat: '10px' }] }));
+            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: faded ? FADE : 1, strokeColor: colour, strokeWeight: 2, scale: 3 }, offset: '0', repeat: '10px' }] }));
         }
         // Each part opens itself (the leave-out step: undo the join); tapRoot (the plan): the area it is part of.
         if (pick) poly.addListener('click', pick(labels[part.zone_id]?.tapRoot ? z.zone_id : part.zone_id));
@@ -181,7 +185,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       }));
       if (k && !lab.hide && !chipsOff && g.marker?.AdvancedMarkerElement) {   // hide: a shape with no chip (a member's further fields)
         const mk = new g.marker.AdvancedMarkerElement({ map: m, position: { lat: sy / k, lng: sx / k }, gmpClickable: !!pick,
-          title: lab.text, content: chip(lab, group.some((y) => y.zone_id === selected), faded, !!pick) });
+          title: lab.text, content: chip(lab, sel, faded, !!pick) });
         if (pick) mk.addListener('click', pick(z.zone_id));
         drawn.current.push(mk);
       }
@@ -195,14 +199,15 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
     // A picked area: the map centres on it (CP10, 21 Oct); none picked: all her areas.
     const pickedArea = selected && areasOf(record).find((z) => z.zone_id === selected);
     let target = bounds;
-    if (pickedArea) {
+    const focused = !pickedArea && focus?.length ? areasOf(record).filter((z) => focus.includes(z.zone_id)) : [];
+    if (pickedArea || focused.length) {
       const b = new g.LatLngBounds();
-      ringsOf(pickedArea.geometry).forEach((ring) => ring.forEach(([lng, lat]) => b.extend({ lat, lng })));
+      (pickedArea ? [pickedArea] : focused).forEach((a) => ringsOf(a.geometry).forEach((ring) => ring.forEach(([lng, lat]) => b.extend({ lat, lng }))));
       if (!b.isEmpty()) target = b;
     }
     // Which land, not only which report (13 Nov): a record without a report hash gave every land the same key, so the
     // map stayed on a member's land (G2) when the leader's crop plan opened.
-    const fitKey = `${record?.land_id ?? ''}:${record?.report_hash_bytes32 || record?.report_hash || ''}:${fitBottom || ''}:${selected || ''}`;
+    const fitKey = `${record?.land_id ?? ''}:${record?.report_hash_bytes32 || record?.report_hash || ''}:${fitBottom || ''}:${selected || ''}:${(focus || []).join('+')}`;
     if (!target.isEmpty() && fitted.current !== fitKey) {
       fitted.current = fitKey;
       // Her areas sit in the part above the card (the card covers the lower part of the screen).
@@ -210,7 +215,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
       m.fitBounds(target, full ? { top: 80, left: fitSide, right: fitSide, bottom: fitBottom ?? Math.round(window.innerHeight * 0.6) } : 16);
     }
   };
-  useEffect(draw, [record, labels, selected, onSelect, height, fitBottom, center, chipsOff]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(draw, [record, labels, selected, focus, onSelect, height, fitBottom, center, chipsOff]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { drawn.current.forEach((x) => { if (x.setMap) x.setMap(null); else x.map = null; }); }, []);
   return (
     <div style={{ height, width: '100%', background: '#25361f' }} aria-label="Map of your areas">
@@ -220,7 +225,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, onS
   );
 }
 
-function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, onSelect, center, chipsOff = false }) {
+function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, focus = null, onSelect, fitBottom, center, chipsOff = false }) {
   const box = useRef();
   const ready = useLeaflet();
   useEffect(() => {
@@ -232,6 +237,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
     if (!record) { map.setView([center.lat, center.lng], 14); return () => map.remove(); }
     const areas = areasOf(record);
     const group = L.featureGroup().addTo(map);
+    const focused = [];
     areas.forEach((z, i) => {
       if (!z.geometry) return;
       const root = joinRoot(labels, z.zone_id);   // 14 Nov: an added area in its neighbour's style, no label of its own
@@ -239,23 +245,28 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, on
       if (own.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const lab = root === z.zone_id ? own : { ...(labels[root] || {}), hide: true };
       const tapTo = root !== z.zone_id && labels[z.zone_id]?.tapRoot ? root : z.zone_id;
-      const faded = !!selected && selected !== z.zone_id && joinRoot(labels, selected) !== root;
-      const sel = !!selected && !faded;   // 14 Nov: the picked area, a white line and a lighter fill
+      const faded = selected ? selected !== z.zone_id && joinRoot(labels, selected) !== root
+        : !!focus?.length && !focus.includes(z.zone_id) && !focus.some((f) => joinRoot(labels, f) === root);
+      const FADE = !selected && focus?.length ? 0.06 : 0.3;   // 17 Nov: as the Google map
+      const sel = (!!selected && !faded) || !!lab.sel;   // a focus (17 Nov) only fades the others, no white line   // 14 Nov: the picked area, a white line and a lighter fill (17 Nov: lab.sel, several)
       const colour = lab.colour || '#ffffff';
       // An area still to be set (13 Nov): hatched, so she sees at once which areas are left (lab.hatch).
       if (lab.hatch) hatchPattern();
       const layer = L.geoJSON(z.geometry, { style: lab.hatch
-        ? { color: '#F1F5F9', weight: 2, opacity: faded ? 0.3 : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? 0.3 : 1 }
-        : { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : sel ? 0.5 : 1) } });
+        ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? FADE : 1 }
+        : { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
       layer.addTo(group);
+      if (focus?.length && !faded) focused.push(layer);
       if (onSelect) layer.on('click', () => onSelect(selected === tapTo ? null : tapTo));
       if (!lab.hide && !chipsOff) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
     });
     const out = record?.meta?.geometry?.out;
     if (out) L.geoJSON(out, { interactive: false, style: { color: '#F1F5F9', weight: 1.5, dashArray: '6 4', fill: false } }).addTo(map);
-    if (group.getLayers().length) map.fitBounds(group.getBounds(), { padding: [16, 16] });
+    // 17 Nov: focused areas (a tapped tile or areas tapped on the map): the map zooms to them, above the half-open card.
+    if (focused.length) map.fitBounds(L.featureGroup(focused).getBounds(), { paddingTopLeft: [24, 80], paddingBottomRight: [24, fitBottom ?? Math.round(window.innerHeight * 0.55)] });
+    else if (group.getLayers().length) map.fitBounds(group.getBounds(), { padding: [16, 16] });
     return () => map.remove();
-  }, [ready, record, labels, selected, onSelect, center, chipsOff]);
+  }, [ready, record, labels, selected, focus, onSelect, fitBottom, center, chipsOff]);
   return (
     <>
       <style>{`.nila-area-label{background:${C.ink};color:${C.text};border:0;border-radius:9999px;padding:2px 8px;font:700 11px Inter,system-ui,sans-serif;box-shadow:none;text-align:center}.nila-area-label:before{display:none}`}</style>

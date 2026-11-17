@@ -14,7 +14,7 @@ export const keepLowOnTab = () => { tabLow = lastLow; };
 
 /** resetKey: when it changes the card comes back up (CP10: a picked area). startLow: the card opens lowered (A1 coming
  *  back to the state it was left in, map-central trial). want: true/false moves the card down/up from the screen. */
-export default function useSheetDrag(onLowered, resetKey, startLow, want) {
+export default function useSheetDrag(onLowered, resetKey, startLow, want, wantKey) {
   const ref = useRef(null);
   const drag = useRef(null);
   const [off, setOff] = useState(0);
@@ -66,6 +66,22 @@ export default function useSheetDrag(onLowered, resetKey, startLow, want) {
     window.addEventListener('scroll', on, { capture: true, passive: true });
     return () => window.removeEventListener('scroll', on, { capture: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 17 Nov: a screen can ask for the half-open stop ('nila-sheet-mid'; the approved plan's job grid, a tapped tile shows
+  // its areas on the map above the card). From the top of the page, so the stop is measured where the card rests.
+  useEffect(() => {
+    const on = () => {
+      if (drag.current) return;
+      loweredAt.current = Date.now();   // the scroll to the top below must not bring the card back up
+      if (window.scrollY > 0) window.scrollTo(0, 0);
+      const m = midOff();
+      if (m == null) return;
+      atMid.current = true;
+      lastLow = false;
+      setOff(m); onLowered?.(false); tell(false);
+    };
+    window.addEventListener('nila-sheet-mid', on);
+    return () => window.removeEventListener('nila-sheet-mid', on);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // The bar's height changes (compact or not): a lowered card is glued to its new top once the bar has moved.
   useEffect(() => {
     let t;
@@ -92,7 +108,8 @@ export default function useSheetDrag(onLowered, resetKey, startLow, want) {
   useEffect(() => () => tell(false), []); // eslint-disable-line react-hooks/exhaustive-deps
   // want (14 Nov): the screen moves the card itself — true lowers it, false brings it up, undefined leaves it to the
   // drag line (the field points: down while she moves the map to the pin's Save, up to name the field).
-  useEffect(() => { if (want !== undefined) setLow(want); }, [want]); // eslint-disable-line react-hooks/exhaustive-deps
+  // wantKey (17 Nov): a new key repeats the move, also when `want` is unchanged (the card was dragged meanwhile).
+  useEffect(() => { if (want !== undefined) setLow(want); }, [want, wantKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Opening lowered (A1 coming back, or a tab tapped with the card down, 24 Oct): placed down before the first paint,
   // with no movement; the content still loads inside, hidden.
   const [startedLow] = useState(() => { const v = !!(startLow || tabLow); tabLow = false; return v; });

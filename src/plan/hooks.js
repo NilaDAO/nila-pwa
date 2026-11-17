@@ -8,7 +8,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { getCatalogue, planClient } from './api';
 
 export const qkPlan = {
-  catalogue: () => ['oracle', 'catalogue'],
+  catalogue: () => ['oracle', 'catalogue', 2],   // 2 (17 Nov): with grow days and sowing months
   plan: (landId) => ['oracle', 'plan', landId],
   job: (jobId) => ['oracle', 'planJob', jobId],
   titles: (addr) => ['polygon', 'titles', addr],
