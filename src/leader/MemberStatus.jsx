@@ -329,7 +329,8 @@ export default function MemberStatus({ id, go }) {
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
             onClick={() => {
               if (m.keypadId) return go(`tasks/member/${m.keypadId}/points`);
-              if (m.address && m.address === s?.stellarAddress) return go('crop/register');
+              // 17 Nov: the leader's own row (her own title removed) no longer goes to her own registration (the new-member
+              // screens, Anand on land 8): like any former member, Verify the record below.
               // 15 Nov: her Polygon address is known (her last border job): no QR scan, straight to her name and number.
               // 15 Nov: name and number from the leaders' contact book, else the ones known for her (the list's name may be
               // the land's). With the contact book's name and a number: no form, straight to the field points.
