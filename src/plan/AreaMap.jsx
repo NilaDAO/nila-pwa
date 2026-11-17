@@ -223,7 +223,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
   );
 }
 
-function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, focus = null, onSelect, center, chipsOff = false }) {
+function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, focus = null, onSelect, fitBottom, center, chipsOff = false }) {
   const box = useRef();
   const ready = useLeaflet();
   useEffect(() => {
@@ -235,6 +235,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
     if (!record) { map.setView([center.lat, center.lng], 14); return () => map.remove(); }
     const areas = areasOf(record);
     const group = L.featureGroup().addTo(map);
+    const focused = [];
     areas.forEach((z, i) => {
       if (!z.geometry) return;
       const root = joinRoot(labels, z.zone_id);   // 14 Nov: an added area in its neighbour's style, no label of its own
@@ -252,12 +253,15 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
         ? { color: '#F1F5F9', weight: 2, opacity: faded ? 0.3 : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? 0.3 : 1 }
         : { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? 0.3 : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? 0.3 : sel ? 0.5 : 1) } });
       layer.addTo(group);
+      if (focus?.length && !faded) focused.push(layer);
       if (onSelect) layer.on('click', () => onSelect(selected === tapTo ? null : tapTo));
       if (!lab.hide && !chipsOff) layer.bindTooltip(labelEl(lab.text, lab.sub), { permanent: true, direction: 'center', className: 'nila-area-label' });
     });
     const out = record?.meta?.geometry?.out;
     if (out) L.geoJSON(out, { interactive: false, style: { color: '#F1F5F9', weight: 1.5, dashArray: '6 4', fill: false } }).addTo(map);
-    if (group.getLayers().length) map.fitBounds(group.getBounds(), { padding: [16, 16] });
+    // 17 Nov: focused areas (a tapped tile or areas tapped on the map): the map zooms to them, above the half-open card.
+    if (focused.length) map.fitBounds(L.featureGroup(focused).getBounds(), { paddingTopLeft: [24, 80], paddingBottomRight: [24, fitBottom ?? Math.round(window.innerHeight * 0.55)] });
+    else if (group.getLayers().length) map.fitBounds(group.getBounds(), { padding: [16, 16] });
     return () => map.remove();
   }, [ready, record, labels, selected, focus, onSelect, center, chipsOff]);
   return (

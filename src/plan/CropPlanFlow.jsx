@@ -224,14 +224,15 @@ function AssistPlan({ map, name, waiting }) {
 // (harvested, or never read) keeps "Area n". Name and colour from the catalogue when it lists the crop.
 // 13 Nov: the approved plan's season chips (16 Nov: also the plan overview's). The plan year's seasons (season i is in
 // it) as chips, all on at first; at least one stays on. None when the year has one season. `on`: the slots on (shared).
-function SeasonChips({ ss, i, onPick }) {
+// on (17 Nov, approved plan): the chip shown on, or null for none (the whole plan); else the season `i`.
+function SeasonChips({ ss, i, on, onPick }) {
   // 17 Nov: one season at a time (the map fills with its crops); on the map in one line with Show labels, its size.
   const yearIdx = yearSeasons(ss, i);
   if (yearIdx.length < 2) return null;
   return (
     <div role="radiogroup" aria-label="Season shown" style={{ display: 'contents' }}>
       {yearIdx.map((k) => {
-        const isOn = k === i;
+        const isOn = k === (on === undefined ? i : on);
         return (
           <button key={k} type="button" role="radio" aria-checked={isOn} onClick={() => onPick(k)}
             style={{ height: 32, padding: '0 12px', borderRadius: R.round, border: 0, background: isOn ? C.accent : 'rgba(18,18,18,0.85)', color: isOn ? C.ink : C.text,
@@ -426,10 +427,10 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // CP10: the season shown (overview), the area picked, and her area accepts until CP11 accepts them on the node.
   const [season, setSeason] = useState(0);
   const [focus, setFocus] = useState(null);   // 17 Nov: a tapped job tile's areas, shown on the map
-  // 17 Nov: the approved plan's job grid filtered by a tapped season chip (tapped again: all seasons) and by an area
-  // tapped on the map (tapped again: all areas).
+  // 17 Nov: the approved plan's job grid filtered by a tapped season chip (none on: the whole plan; tapped again: off)
+  // and by the areas tapped on the map (several; tapped again: off).
   const [gridSeason, setGridSeason] = useState(null);
-  const [areaPick, setAreaPick] = useState(null);
+  const [areaPicks, setAreaPicks] = useState([]);
   // A plan year before the plan (12 Nov: plan history from the record); null = the plan's years.
   const [pastYear, setPastYear] = useState(null);
   // 13 Nov: the approved plan (CP13) steps back through the record too; any step change leaves either screen, so reset.
@@ -535,13 +536,16 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   const openShare = useCallback((z) => {
     // 17 Nov: the area page is the phone's own land's; in a leader's view of a member's plan it waited forever for an
     // area the leader's land does not have. There a tap only shows that area on the map.
-    // 17 Nov: a tap on an area filters the job grid to that area (and shows it on the map); tapped again, all areas.
+    // 17 Nov: a tap on an area adds it to the job grid's filter and the map zooms to the areas picked (card half open);
+    // tapped again, it comes off.
+    if (!z) return;
     setFocus(null);
-    setAreaPick((a) => (z && a !== z ? z : null));
+    setAreaPicks((a) => (a.includes(z) ? a.filter((x) => x !== z) : [...a, z]));
+    window.dispatchEvent(new Event('nila-sheet-mid'));
   }, []);
   // Before the field record (CP1, 1 Nov): the land title's field outlines, as on the land title screen (A5).
   const titleShape = fieldsMap(useTitleFields(landId, onPolygon, stellarTitle, null));
-  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} focus={active ? (areaPick ? [areaPick] : focus) : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
+  const map = record ? <AreaMap record={record} labels={labels} selected={pickable ? area : null} focus={active ? (areaPicks.length ? areaPicks : focus) : null} onSelect={pickable ? pickArea : active ? openShare : undefined}
     fitBottom={pickable ? Math.round(window.innerHeight / 2) + 72 : undefined} />
     : titleShape.record ? <AreaMap record={titleShape.record} labels={titleShape.labels} /> : null;
   const names = useMemo(() => Object.fromEntries((catalogue.data?.crops || []).map((c) => [c.key, c])), [catalogue.data]);
@@ -1197,7 +1201,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     );
     // 13 Nov: the year's seasons as chips (all on at first); at least one stays on. Not in a record year (no plan).
     const onIdx = [shown];   // 17 Nov: one season at a time
-    const chips = <SeasonChips ss={ss} i={shown} onPick={(k) => { setSeason(k); setGridSeason((g) => (g === k ? null : k)); }} />;
+    const chips = <SeasonChips ss={ss} i={shown} on={gridSeason} onPick={(k) => { setSeason(k); setGridSeason((g) => (g === k ? null : k)); }} />;
     const slotsShown = pastYear == null ? new Set(onIdx.map((k) => ss[k].slot)) : undefined;
     // The crop bars (13 Nov, as the draft plan's overview): one lane per area, read-only.
     const zones = Object.keys(plan.plan.proposal || {}).sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
@@ -1219,7 +1223,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           chartTitle={pastYear != null ? `${yearLabel(null, pastYear)} · from your record` : y0 === planYear() ? "This year's plan" : `${yearLabel(null, y0)} plan`}
           past={pastYear != null} seasons={pastYear == null ? new Set(onIdx) : undefined}
           plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
-          filter={{ season: gridSeason, zone: areaPick }}
+          filter={{ season: gridSeason, zones: areaPicks }}
           // 17 Nov: a tapped tile shows its areas on the map, in its season, with the card half open.
           onTile={(t) => {
             setFocus(t ? t.zones : null);

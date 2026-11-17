@@ -82,5 +82,6 @@ test('the grid filtered by a season chip and by an area (17 Nov)', () => {
   };
   expect(crops({})).toEqual(['Maize', 'Sesame']);
   expect(crops({ season: 0 })).toEqual(['Sesame']);
-  expect(crops({ zone: 'z1' })).toEqual(['Maize']);
+  expect(crops({ zones: ['z1'] })).toEqual(['Maize']);
+  expect(crops({ zones: ['z1', 'z2'] })).toEqual(['Maize', 'Sesame']);
 });

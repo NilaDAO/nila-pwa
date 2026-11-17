@@ -132,9 +132,9 @@ export function planMonths(plan, { areaNo, areaName, shares, filter } = {}) {
     zones: g.zones || [], season: si === 'gm' ? seasonOf(String(g.sow).slice(0, 7)) : si })));
   const out = ss.map((_, si) => ({ si, months: [] }));
   // In time order across the crops; the same day keeps each crop's own order (stable sort).
-  // 17 Nov: a season chip shows only the crops sown in that season; an area tapped on the map only that area's tiles.
+  // 17 Nov: a season chip shows only the crops sown in that season; areas tapped on the map only their tiles.
   const keep = (x) => x.date && (filter?.season == null || x.season === filter.season)
-    && (!filter?.zone || (x.zones || []).includes(filter.zone));
+    && (!filter?.zones?.length || (x.zones || []).some((z) => filter.zones.includes(z)));
   for (const t of tiles.filter(keep).sort((a, b) => String(a.date).slice(0, 10).localeCompare(String(b.date).slice(0, 10)))) {
     const ym = String(t.date).slice(0, 7);
     const sec = out[seasonOf(ym)];
