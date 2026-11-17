@@ -94,7 +94,8 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
   const p = plan.plan;
   const zones = Object.keys(p.proposal);
   // A green manure is its own crop agreement (4 Nov): seed in cash, machine vouchers, repaid with the next crop.
-  const { seasons, gm } = seasonsCounted(p, off);
+  // 17 Nov: the money table always holds every season and the whole plan's totals; the season on the map is marked.
+  const { seasons, gm } = seasonsCounted(p);
   // What a season costs is what Nila finances (12 Nov: no ₹10,000 cap anywhere): cash plus machine vouchers.
   const cost = (f) => f.cash + f.voucher_value;
   const total = [...seasons, { rows: gm }].reduce((a, s) => {
@@ -128,11 +129,11 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
         const line = { borderTop: `1px solid ${C.raised}` };
         return (
           <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
-            <thead><tr style={{ color: C.muted }}><td>Season</td><td>Use it by</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
+            <thead><tr style={{ color: C.muted, whiteSpace: 'nowrap' }}><td>Season</td><td>Use it by</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
             <tbody>
               {rowsBy.map(({ s, gmHere, by, cash }) => (
                 <tr key={s.slot} style={line}>
-                  <td style={{ padding: '8px 0' }}><b>{SEASON[s.slot]}</b>
+                  <td style={{ padding: '8px 0' }}><b style={{ color: slots && slots.has(s.slot) ? C.accent : undefined }}>{SEASON[s.slot]}</b>
                     {gmHere.length > 0 && <><br /><span style={muted}>with green manure, repaid with the next crop</span></>}</td>
                   <td>{day(by)}</td>
                   <td style={{ textAlign: 'right' }}>{inr(cash)}</td>
