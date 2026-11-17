@@ -28,6 +28,7 @@ import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
 import { EDIT_TEXT } from './editTexts';
 import { GREEN_MANURE, fill, rowOf, slotsOf, toChanges } from './yearRow';
+import { ordered, rowAdvice } from './rowAdvice';
 import { presets } from './areaPresets';
 import { AreaCard, CropSelect, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
 import ActivePlan, { currentSeason } from './ActivePlan';
@@ -991,6 +992,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     if (editable && z0) {
       const mine = (plan.plan.intake?.crops || []).filter((k) => names[k]);
       const list = [...mine.map((k) => names[k]), GREEN_MANURE, ...sortedCrops(catalogue.data?.crops || []).filter((c) => !mine.includes(c.key))];
+      // Advice by code (17 Nov): tags, faded and advised crops, one sentence; every crop can still be tapped.
+      const advice = rowAdvice(list, rowKeys, { seasons: ss, cat: names, free0, wells: plan.plan.inputs?.wells, hardMonths: plan.plan.intake?.hard_months || [] });
+      const shownList = ordered(list, advice);
       const selLabels = Object.fromEntries(Object.entries(labels).map(([z, l]) => [z, editSel.includes(z) ? { ...l, sel: true } : l]));
       const slots0 = slotsOf(ss)[0]?.start;
       const pos = (d) => (slots0 ? Math.max(0, Math.min(12, (d.getFullYear() - slots0.getFullYear()) * 12 + d.getMonth() - slots0.getMonth() + (d.getDate() - 1) / 31)) : 0);
@@ -1021,16 +1025,23 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
                 </div>
                 <div style={{ display: 'flex', marginTop: 4 }}>{axis.map((m, i) => <span key={i} style={{ flex: 1, textAlign: 'center', fontSize: 11, color: C.muted }}>{m}</span>)}</div>
               </div>
+              {advice.sentence && <p role="note" style={{ margin: 0, textAlign: 'center', fontSize: 14 }}>{advice.sentence}</p>}
               <p style={{ ...muted, margin: 0, textAlign: 'center' }}>Tap a crop to add it to the row.</p>
               <div role="group" aria-label="Crops" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-                {list.map((c) => (
-                  <button key={c.key} type="button" disabled={saving} onClick={() => add(c.key)} style={{
-                    flex: '0 0 84px', border: `2px solid ${C.raised}`, borderRadius: 12, background: C.raised, padding: 0, overflow: 'hidden',
-                    display: 'flex', flexDirection: 'column', alignItems: 'stretch', color: C.text, fontFamily: FONT, cursor: 'pointer' }}>
-                    <span aria-hidden="true" style={{ height: 40, background: c.colour || C.muted }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, padding: '6px 4px', lineHeight: 1.2, minHeight: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>{c.name}</span>
-                  </button>
-                ))}
+                {shownList.map((c) => {
+                  const dim = advice.faded.has(c.key); const good = advice.front.has(c.key) && !dim;
+                  return (
+                    <button key={c.key} type="button" disabled={saving} onClick={() => add(c.key)} style={{
+                      flex: '0 0 92px', border: `2px solid ${good ? C.accent : C.raised}`, borderRadius: 12, background: C.raised, padding: 0, overflow: 'hidden',
+                      display: 'flex', flexDirection: 'column', alignItems: 'stretch', color: C.text, fontFamily: FONT, cursor: 'pointer', opacity: dim ? 0.45 : 1 }}>
+                      <span aria-hidden="true" style={{ height: 32, background: c.colour || C.muted }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, padding: '6px 4px 2px', lineHeight: 1.2, textAlign: 'center' }}>{c.name}</span>
+                      {(advice.tags[c.key] || []).map((t) => (
+                        <span key={t.text} style={{ fontSize: 10, lineHeight: 1.2, padding: '0 4px 4px', textAlign: 'center', color: t.good ? C.accent : C.muted }}>{t.text}</span>
+                      ))}
+                    </button>
+                  );
+                })}
               </div>
               {rowNote && <p role="note" style={{ margin: 0, color: C.coral, textAlign: 'center' }}>{rowNote}</p>}
               {error && <p style={{ color: C.coral, margin: 0 }}>{error}</p>}
