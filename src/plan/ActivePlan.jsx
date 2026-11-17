@@ -119,7 +119,9 @@ function JobGrids({ plan, si, areaNo, areaName, shares }) {
   const [open, setOpen] = useState(null);
   const grids = gridsOf(plan, si, { areaNo, areaName, shares });
   if (!grids.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is sown in this season.</p>;
-  const tiles = grids.flatMap((g) => g.tiles.map((t) => ({ ...t, id: `${g.key}|${t.key}`, crop: g.crop, colour: g.colour })));
+  // In time order across the crops (17 Nov), not crop by crop; the same day keeps each crop's own order (stable sort).
+  const tiles = grids.flatMap((g) => g.tiles.map((t) => ({ ...t, id: `${g.key}|${t.key}`, crop: g.crop, colour: g.colour })))
+    .sort((a, b) => String(a.date || '9999').slice(0, 10).localeCompare(String(b.date || '9999').slice(0, 10)));
   const shown = tiles.find((t) => t.id === open);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>

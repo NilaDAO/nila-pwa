@@ -23,3 +23,12 @@ test('text on a crop colour: black on light, white on dark', () => {
   expect(inkOn('#E8B33A')).toBe('#121212');   // maize
   expect(inkOn('#4F7A3A')).toBe('#ffffff');   // a dark green
 });
+
+test('the tiles are in time order across the crops', () => {
+  const two = { ...plan, plan: { ...plan.plan, seasons: [{ ...plan.plan.seasons[0], rows: [
+    { ...plan.plan.seasons[0].rows[0], zone: 'z1', sow: '2027-07-01', harvest: '2027-10-20' },
+    { ...plan.plan.seasons[0].rows[0], zone: 'z2', crop: 'sesame', name: 'Sesame', sow: '2027-06-10', harvest: '2027-09-10', finance: { seed: 100 } }] }] } };
+  render(<ActivePlan plan={two} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} />);
+  const names = screen.getAllByRole('listitem').map((b) => b.getAttribute('aria-label').split(' · ').slice(0, 2).join(' '));
+  expect(names.slice(0, 2)).toEqual(['Sesame Seed', 'Maize Seed']);
+});
