@@ -54,3 +54,38 @@ export function gridsOf(plan, si, { areaNo = (z) => z, areaName, shares = [] } =
   }
   return out;
 }
+
+/** A green manure's tiles (17 Nov): its own crop agreement — Collect, Seed, its machine work in the week it is done
+ *  (sowing, turning in), hired work, Turn in (hers) when no machine does it, Repay with the next crop. Same shape as
+ *  gridsOf's grids. */
+export function coverGrids(plan, { areaNo = (z) => z, areaName, shares = [] } = {}) {
+  const p = plan.plan || plan;
+  const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
+  const out = [];
+  for (const c of (p.soil_cover || []).filter((x) => x.finance && x.kind === 'green_manure' && x.sow)) {
+    const f = c.finance;
+    const tiles = [];
+    const sh = (p.shares || []).find((x) => x.green_manure && (x.zones || [x.zone]).includes(c.zone) && x.from_date === c.sow);
+    if (sh) {
+      const st = byKey[sh.key] || {};
+      tiles.push({ key: 'collect', label: 'Collect', kind: 'cash', icon: 'cash', value: sh.loan_amount || 0, date: sh.from_date,
+        until: sh.final_date, ready: !!st.ready, done: !!st.drawn });
+    }
+    if (f.seed) tiles.push({ key: 'seed', label: 'Seed', kind: 'cash', icon: 'plant', value: f.seed, date: c.sow });
+    const weeks = f.machine_weeks || [];
+    weeks.forEach((w, i) => {
+      const m = (f.machines || {})[w.machine] || {};
+      const value = m.acres ? Math.round((m.value || 0) * (w.acres / m.acres)) : m.value;
+      tiles.push({ key: `w:${i}`, label: w.slot === 'cover_turn_in' ? 'Turn in' : actionOf(m.for), kind: 'voucher', icon: 'tractor', acres: w.acres, value, date: w.when });
+    });
+    for (const [h, v] of Object.entries(f.hand_work || {})) {
+      tiles.push({ key: `h:${h}`, label: actionOf(v.for), kind: 'cash', icon: 'weed', acres: v.acres, value: v.value, date: c.sow });
+    }
+    if (c.turn_in && !weeks.some((w) => w.slot === 'cover_turn_in')) tiles.push({ key: 'turn_in', label: 'Turn in', kind: 'self', icon: 'plant', value: null, date: c.turn_in });
+    const owe = Math.round((f.cash || 0) + (f.voucher_value || 0) + (f.interest || 0));
+    if (owe && f.due) tiles.push({ key: 'repay', label: 'Repay', kind: 'self', icon: 'repay', value: owe, date: f.due, afterHarvest: true });
+    const area = typeof areaNo(c.zone) === 'number' && areaName ? areaLabel(c, areaNo, areaName) : '';
+    out.push({ key: `${c.zone}:gm:${c.cover}`, crop: 'Green manure', colour: c.colour, area, sow: c.sow, until: sh?.final_date || null, tiles });
+  }
+  return out;
+}

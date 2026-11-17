@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import { C, FONT, TAB_BAR_HEIGHT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
-import { gridsOf } from './jobGrid';
+import { gridsOf, coverGrids } from './jobGrid';
 import { Drawer, InfoButton } from './Drawer';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' }).replace('Sept', 'Sep');
@@ -138,8 +138,10 @@ const MON_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July'
  *  start to the next season's (a repayment after the last season stays with it). */
 export function planMonths(plan, { areaNo, areaName, shares } = {}) {
   const ss = (plan.plan || plan).seasons || [];
-  const tiles = ss.flatMap((_, si) => gridsOf(plan, si, { areaNo, areaName, shares })
-    .flatMap((g) => g.tiles.map((t) => ({ ...t, id: `${si}|${g.key}|${t.key}`, crop: g.crop, colour: g.colour, si }))));
+  // 17 Nov: green manures too, each its own crop agreement.
+  const grids = [...ss.map((_, si) => gridsOf(plan, si, { areaNo, areaName, shares }).map((g) => [si, g])).flat(),
+    ...coverGrids(plan, { areaNo, areaName, shares }).map((g) => ['gm', g])];
+  const tiles = grids.flatMap(([si, g]) => g.tiles.map((t) => ({ ...t, id: `${si}|${g.key}|${t.key}`, crop: g.crop, colour: g.colour, si })));
   const seasonOf = (ym) => ss.reduce((k, s, i) => (String(s.start).slice(0, 7) <= ym ? i : k), 0);
   const out = ss.map((_, si) => ({ si, months: [] }));
   // In time order across the crops; the same day keeps each crop's own order (stable sort).
@@ -159,7 +161,7 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
   const ss = (plan.plan || plan).seasons || [];
   const secs = planMonths(plan, { areaNo, areaName, shares });
   if (!secs.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is planned yet.</p>;
-  const grids = ss.flatMap((_, si) => gridsOf(plan, si, { areaNo, areaName, shares }));
+  const grids = [...ss.flatMap((_, si) => gridsOf(plan, si, { areaNo, areaName, shares })), ...coverGrids(plan, { areaNo, areaName, shares })];
   const all = secs.flatMap((x) => x.months.flatMap((m) => m.tiles));
   const shown = all.find((t) => t.id === open);
   const tile = (t) => {

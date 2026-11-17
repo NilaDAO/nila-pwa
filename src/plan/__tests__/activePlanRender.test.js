@@ -43,3 +43,15 @@ test('the whole plan: one row per month with its letter, a line per season', () 
   expect(screen.getByRole('group', { name: 'Jun to Aug' })).toBeTruthy();
   expect(screen.getByRole('list', { name: 'March' })).toBeTruthy();
 });
+
+test('a green manure has its own tiles in the grid (17 Nov)', () => {
+  const gm = { ...plan, plan: { ...plan.plan,
+    soil_cover: [{ zone: 'z1', kind: 'green_manure', cover: 'sunnhemp', colour: '#8FA36B', sow: '2027-04-01', turn_in: '2027-05-31',
+      finance: { seed: 750, cash: 750, voucher_value: 0, interest: 100, due: '2027-10-29', machines: {}, machine_weeks: [] } }],
+    shares: [...plan.plan.shares, { key: 'g1', zone: 'z1', zones: ['z1'], green_manure: true, from_date: '2027-04-01', final_date: '2027-04-30', loan_amount: 750 }] } };
+  render(<ActivePlan plan={gm} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} />);
+  const labels = screen.getAllByRole('listitem').map((b) => b.getAttribute('aria-label'));
+  expect(labels.some((l) => /^Green manure · Seed/.test(l))).toBe(true);
+  expect(labels.some((l) => /^Green manure · Turn in/.test(l))).toBe(true);
+  expect(labels.filter((l) => /^Green manure · (Collect|Repay)/.test(l)).length).toBe(2);
+});
