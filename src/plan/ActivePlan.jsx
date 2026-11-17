@@ -123,7 +123,8 @@ const barTop = () => {
   const nav = typeof document !== 'undefined' && document.querySelector('nav[aria-label="Main"]');
   return nav ? Math.max(0, Math.round(window.innerHeight - nav.getBoundingClientRect().top)) : TAB_BAR_HEIGHT;
 };
-const MON_LETTER = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+// 17 Nov: three letters (Jan, Nov), not one (J, N), so a month reads at a glance.
+const MON_LETTER = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MON_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 /** The whole plan's tiles by month (17 Nov): [{ si, months: [{ ym, tiles }] }], a season holding the months from its
@@ -193,7 +194,7 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
             const mi = Number(m.ym.slice(5, 7)) - 1;
             return (
               <div key={m.ym} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                <span aria-label={MON_NAME[mi]} style={{ width: 14, flexShrink: 0, fontSize: 13, fontWeight: 700, color: C.muted, paddingTop: 8, textAlign: 'center' }}>{MON_LETTER[mi]}</span>
+                <span aria-label={MON_NAME[mi]} style={{ width: 30, flexShrink: 0, fontSize: 13, fontWeight: 700, color: C.muted, paddingTop: 8, textAlign: 'left' }}>{MON_LETTER[mi]}</span>
                 <div role="list" aria-label={MON_NAME[mi]} style={{ flexGrow: 1, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>{m.tiles.map(tile)}</div>
               </div>
             );
