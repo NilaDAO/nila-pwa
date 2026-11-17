@@ -212,7 +212,7 @@ function AssistPlan({ map, name, waiting }) {
 // 13 Nov: the approved plan's season chips (16 Nov: also the plan overview's). The plan year's seasons (season i is in
 // it) as chips, all on at first; at least one stays on. None when the year has one season. `on`: the slots on (shared).
 function SeasonChips({ ss, i, onPick }) {
-  // 17 Nov: one season at a time (the map fills with its crops); small, on the map next to Show labels.
+  // 17 Nov: one season at a time (the map fills with its crops); on the map in one line with Show labels, its size.
   const yearIdx = yearSeasons(ss, i);
   if (yearIdx.length < 2) return null;
   return (
@@ -221,8 +221,8 @@ function SeasonChips({ ss, i, onPick }) {
         const isOn = k === i;
         return (
           <button key={k} type="button" role="radio" aria-checked={isOn} onClick={() => onPick(k)}
-            style={{ height: 28, padding: '0 10px', borderRadius: R.round, border: 0, background: isOn ? C.accent : 'rgba(18,18,18,0.85)', color: isOn ? C.ink : C.text,
-              fontFamily: FONT, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{SEASON[ss[k].slot] || `Season ${k - yearIdx[0] + 1}`}</button>
+            style={{ height: 32, padding: '0 12px', borderRadius: R.round, border: 0, background: isOn ? C.accent : 'rgba(18,18,18,0.85)', color: isOn ? C.ink : C.text,
+              fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{SEASON[ss[k].slot] || `Season ${k - yearIdx[0] + 1}`}</button>
         );
       })}
     </div>

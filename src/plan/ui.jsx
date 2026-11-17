@@ -142,8 +142,8 @@ export function Sheet({ title, children, landName, onBack, map, bar, resetKey, s
           <div style={{ position: 'absolute', left: 8, right: 8, bottom: 'calc(100% + 12px)', display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
             {/* tools (17 Nov): the season chips, in one row with the labels toggle, the same size. */}
             {((staged && labelled) || tools) && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
-                {tools && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', pointerEvents: 'auto' }}>{tools}</div>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
+                {tools && <div style={{ display: 'flex', alignItems: 'center', gap: 8, pointerEvents: 'auto' }}>{tools}</div>}
                 {staged && labelled && (
                   <button type="button" aria-pressed={!labelsCtx.off} onClick={labelsCtx.toggle} style={{ pointerEvents: 'auto', height: 32, borderRadius: R.round, border: 0, padding: '0 12px',
                     background: 'rgba(18,18,18,0.85)', color: C.text, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
