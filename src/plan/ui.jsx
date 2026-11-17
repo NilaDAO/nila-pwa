@@ -11,8 +11,10 @@ import { BackIcon } from '../shell/icons';
  *  sideways swipe on the card (A4/A5's ‹ asset › bar). */
 /** full (map-central): the card takes the whole screen height, rising from where A1's card stands. */
 /** actions: round buttons (RoundButton) in the header row, left of Settings (28 Oct: Refresh on the no-title card). */
-export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered, noSettings, actions }) {
-  const drag = useSheetDrag(onLowered, resetKey, startLow);   // the drag line as on R5 (all map screens, 21 Oct)
+/** low / lowKey (17 Nov, the areas step): the screen moves the card down (true) or up (false), as the point collector;
+ *  a new lowKey repeats the move after she dragged the card. */
+export function Sheet({ title, children, landName, onBack, map, bar, resetKey, scroll, head: ownHead, top, onSwipe, full, startLow, onLowered, noSettings, actions, low, lowKey }) {
+  const drag = useSheetDrag(onLowered, resetKey, startLow, low, lowKey);   // the drag line as on R5 (all map screens, 21 Oct)
   // DEVIATION (executive decision 21 Oct, map-central trial): in the map-central shell the one map behind the tabs
   // (shell/MapStage) draws this sheet's map, so it is never mounted again between screens.
   const stage = useStage();

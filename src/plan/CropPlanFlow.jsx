@@ -422,7 +422,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // What grows now, first (12 Nov): she sets the crop on every area the satellite could not identify before the plan
   // is made (area → crop key); sent with the intake as `growing`.
   const [growing, setGrowing] = useState({});
-  const [growArea, setGrowArea] = useState(null);
+  // The areas card (17 Nov): [down, nonce] — a pick moves it down or up even when it was dragged since.
+  const [cardLow, setCardLow] = useState([false, 0]);
   const [cashGiven, setCashGiven] = useState(null);   // CP7b's answer, sent with the leave-out step   // the area asked to remove (CP10 confirm)
   const [afterMake, setAfterMake] = useState('why');
   const [jobId, setJobId] = useState();
@@ -668,78 +669,20 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     }
     if (!recordReady) return <Pending map={map} error={field.error} />;
     const sum = summarize(record);
-    // First what grows now (12 Nov): every area the satellite could not identify needs its crop before the plan.
     const now = growingNow(record, catalogue.data?.crops);
-    // Barren (12 Nov): nothing grows there now, so the plan may use the area at once.
-    const cropList = sortedCrops(catalogue.data?.crops || []);
-    const toSet = Object.keys(now).filter((z) => now[z].unknown && !growing[z]);
-    // An empty area can take a crop too (12 Nov): she may have just sown it, which no image shows yet. Optional there;
-    // an unidentified area must be set.
     const zoneIds = areasOf(record).map((z) => z.zone_id);
-    const nameOf = (z) => areasOf(record).find((x) => x.zone_id === z)?.name || `Area ${zoneIds.indexOf(z) + 1}`;
-    const nowLabels = nowLabelsOf(record, catalogue.data?.crops, growing);
-    // Any area can be set (12 Nov): hers replaces the satellite's reading; only an unidentified one must be set.
-    const settable = (z) => !!z;
-    const growingCount = zoneIds.filter((z) => (growing[z] ? growing[z] !== 'empty' && !LEFT_OUT.has(growing[z]) : !!now[z])).length;
-    // Option A (12 Nov, as G2's top block): the record's facts as rows, a line, then the button.
+    const growingCount = zoneIds.filter((z) => !!now[z]).length;
+    // Option A (12 Nov, as G2's top block): the record's facts as rows, then the button. 17 Nov: what grows now is
+    // set on the areas screen, the last step before the plan (one screen with leave out and merge).
     return (
-      <Sheet map={<AreaMap record={record} labels={nowLabels} selected={growArea} onSelect={(z) => setGrowArea(settable(z) ? z : null)} />}
-        landName={name /* 14 Nov: no 'Field record' title under the land's name */}
-        // 14 Nov: with an area picked (map or list), a bar on top steps or swipes to the previous / next area, as the
-        // year bar does; many areas no longer mean scrolling the list for each one.
-        bar={growArea ? (() => {
-          const i = zoneIds.indexOf(growArea);
-          const at2 = (k) => zoneIds[(k + zoneIds.length) % zoneIds.length];
-          return <SlideBar label={nowLabels[growArea]?.text || nameOf(growArea)} prevLabel={`Previous area ${nameOf(at2(i - 1))}`} nextLabel={`Next area ${nameOf(at2(i + 1))}`}
-            onPrev={() => setGrowArea(at2(i - 1))} onNext={() => setGrowArea(at2(i + 1))} />;
-        })() : undefined}>
+      <Sheet map={<AreaMap record={record} labels={nowLabelsOf(record, catalogue.data?.crops, growing)} />}
+        landName={name /* 14 Nov: no 'Field record' title under the land's name */}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {sum.from && <KV k="Period" v={`${sum.from} – ${sum.to}`} />}
           <KV k="Cultivations" v={sum.cultivations} />
           <KV k="Areas" v={`${sum.areas}${growingCount ? ` · ${growingCount} growing` : ''}`} />
         </div>
-        <hr style={{ height: 1, background: C.raised, border: 0, margin: '16px 0 0' }} />
-        {/* What grows now, checked first (14 Nov): every area with what the satellite read or what was set, each one
-            tap to change, also when nothing is unidentified (banana read on all areas was not changeable from here). */}
-        {!growArea && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0 0' }}>
-            <span style={{ fontSize: 14, fontWeight: 700 }}>What grows now</span>
-            {zoneIds.map((z) => {
-              const l = nowLabels[z] || {};
-              return (
-                <button key={z} type="button" onClick={() => setGrowArea(z)} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
-                  background: C.raised, border: 0, borderRadius: 12, padding: '12px 16px', color: C.text, fontFamily: FONT, fontSize: 14, cursor: 'pointer' }}>
-                  <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: R.round, background: l.colour || C.muted, flexShrink: 0 }} />
-                  <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-                    <b>{l.text || nameOf(z)}</b>
-                    <span style={{ color: l.unknown || l.hatch ? C.coral : C.muted }}>{l.unknown || l.hatch ? 'Not set yet' : l.sub || '—'}</span>
-                  </span>
-                  <span style={{ color: C.muted, fontSize: 13, fontWeight: 700 }}>Change</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        {growArea && settable(growArea) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0 8px' }}>
-            <span style={{ fontSize: 14, fontWeight: 700 }}>What grows on {nowLabels[growArea]?.text || nameOf(growArea)} now?</span>
-            {/* 13 Nov: no crop (empty, trees, bushes, buildings, water) first, then the crops; each under its title. */}
-            <span style={{ fontSize: 13, fontWeight: 700, color: C.muted }}>Land covers</span>
-            {/* 14 Nov: a pick keeps the area open (the bar steps to the next one); All areas goes back to the list. */}
-            <CropSelect crops={COVERS} current={COVERS.some((c) => c.key === growing[growArea]) ? growing[growArea] : undefined}
-              onPick={(key) => setGrowing((g) => ({ ...g, [growArea]: key }))} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: C.muted, marginTop: 8 }}>Crops</span>
-            {/* A land cover picked is not a crop (13 Nov: the crop grid listed it as an extra chip, "trees"). */}
-            <CropSelect crops={cropList} current={COVERS.some((c) => c.key === growing[growArea]) ? undefined : growing[growArea]}
-              onPick={(key) => setGrowing((g) => ({ ...g, [growArea]: key }))} />
-            <button type="button" onClick={() => setGrowArea(null)} style={{ ...secondaryBtn, flex: 'none', width: '100%', marginTop: 8 }}>All areas</button>
-          </div>
-        )}
-        <Primary disabled={toSet.length > 0} onClick={() => setStep('intro')}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
-        {/* Under the button (12 Nov, option B): why it waits. */}
-        {!growArea && toSet.length > 0 && (
-          <p role="note" style={{ ...muted, textAlign: 'center', marginTop: 8 }}>Set what is growing on every area marked "Not set yet".</p>
-        )}
+        <Primary onClick={() => setStep('intro')}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</Primary>
       </Sheet>
     );
   }
@@ -804,7 +747,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     // CP7b, her farm business's money now (executive decision 21 Oct). DESIGN GAP: no board. Optional and skippable:
     // skipped = no farm_cash_now at all (the cash flow starts at ₹0; nothing assumes or mentions her farm's money).
     // Then the areas to leave out (5 Nov), the last step before the plan is made.
-    const make = (amount) => { setError(undefined); setCashGiven(amount); setLeftOut(new Set()); setMergeTo({}); setPickOut(null); setAreasOk(false); setStep('leaveout'); };
+    const make = (amount) => { setError(undefined); setCashGiven(amount); setLeftOut(new Set()); setMergeTo({}); setPickOut(null); setAreasOk(false); setCardLow([false, Date.now()]); setStep('leaveout'); };
     const n = Number(farmCash.replace(/[^0-9]/g, ''));
     const given = farmCash.trim() !== '' && Number.isFinite(n);
     return (
@@ -826,13 +769,17 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     );
   }
   if (at === 'leaveout') {
-    // Leave out areas (executive decision 5 Nov; DESIGN GAP: no board): just before the plan is made, she taps the
-    // areas with buildings, a road or a path; they get no crops in this plan. Asked again at every new plan (areas
-    // change), sent with this plan only, never stored with her land; her land title keeps its acres.
-    // 14 Nov: a tapped area shows chips — Leave out, or Add to each touching area (its acres count with that area in
-    // this plan, also never stored); Keep it undoes.
+    // Your areas (17 Nov, one screen, the last step before the plan): what grows now (12 Nov), leave out (5 Nov) and
+    // add to a touching area (14 Nov) are set here together. A tap on an area raises the card with its picks; a pick
+    // lowers it again so the map shows the next area to set, as the point collector does; with nothing left to set
+    // the card comes up with the button. Left out and merged are sent with this plan only, never stored with her land.
     const finalOf = (z) => { const seen = new Set([z]); let t = mergeTo[z]; while (t && mergeTo[t] && !seen.has(t)) { seen.add(t); t = mergeTo[t]; } return t; };
     const outNow = (z) => leftOut.has(z) || (mergeTo[z] && leftOut.has(finalOf(z)));   // added to a left-out area: out too
+    const now = growingNow(record, catalogue.data?.crops);
+    const cropList = sortedCrops(catalogue.data?.crops || []);
+    // An area the satellite could not identify must be set, unless she leaves it out or adds it to another area.
+    const toSet = zoneOrder.filter((z) => now[z]?.unknown && !growing[z] && !outNow(z) && !mergeTo[z]);
+    const nowLabels = nowLabelsOf(record, catalogue.data?.crops, growing);
     const make = async () => {
       setError(undefined);
       try {
@@ -844,53 +791,70 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
         setJobId(r.job_id); setStep('making');
       } catch (e) { setError(e.message); }
     };
+    // After a pick: down to the map while an area is still to be set, else up with the button.
+    const done = (left) => { setPickOut(null); setAreasOk(false); setCardLow([left.length > 0, Date.now()]); };
     const choose = (z, what) => {
-      setLeftOut((x) => { const y = new Set(x); if (what === 'out') y.add(z); else y.delete(z); return y; });
-      setMergeTo((m) => { const y = { ...m }; if (what && what !== 'out') y[z] = what; else delete y[z]; return y; });
-      setPickOut(null); setAreasOk(false);   // a change asks for the confirm again
+      const out = new Set(leftOut); if (what === 'out') out.add(z); else out.delete(z);
+      const to = { ...mergeTo }; if (what && what !== 'out') to[z] = what; else delete to[z];
+      setLeftOut(out); setMergeTo(to);
+      done(toSet.filter((x) => x !== z));
     };
+    const grow = (z, key) => {
+      setGrowing((g) => ({ ...g, [z]: key }));
+      // A crop she grows now joins her crops (the crops question came before this screen).
+      if (cropList.some((c) => c.key === key)) setCrops((c) => new Set([...c, key]));
+      done(toSet.filter((x) => x !== z));
+    };
+    const open = (z) => { setPickOut(z); setCardLow([false, Date.now()]); };
     const outLabels = Object.fromEntries(zoneOrder.map((z) => [z, leftOut.has(z)
       ? { text: 'Left out', sub: areaName(z), colour: '#8A94A6' }
-      : mergeTo[z] ? { join: finalOf(z) } : { text: areaName(z) }]));   // added: one shape with its neighbour (14 Nov)
+      : mergeTo[z] ? { join: finalOf(z) } : nowLabels[z] || { text: areaName(z) }]));   // added: one shape with its neighbour (14 Nov)
     const all = zoneOrder.length > 0 && zoneOrder.every(outNow);
-    const decided = leftOut.size + Object.keys(mergeTo).length;
     const areas = areasOf(record);
     // Touching areas she can add it to: not left out, and not one that is (through others) added to this area.
     const nbrs = pickOut ? neighboursOf(areas, pickOut).filter((z) => !leftOut.has(z) && z !== pickOut && finalOf(z) !== pickOut) : [];
     const pill = (on) => ({ height: 36, padding: '0 14px', borderRadius: 9999, border: 0, fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
       cursor: 'pointer', background: on ? '#D4CF5A' : '#1F2733', color: on ? '#121212' : '#F1F5F9' });
+    const g = pickOut && growing[pickOut];
+    const isCover = COVERS.some((c) => c.key === g);
+    const summary = [leftOut.size && `${leftOut.size} left out`, Object.keys(mergeTo).length && `${Object.keys(mergeTo).length} added to another area`,
+      toSet.length && `${toSet.length} not set yet`].filter(Boolean).join(' · ');
     return (
-      <Sheet map={record ? <AreaMap record={record} labels={outLabels} selected={pickOut} onSelect={(z) => setPickOut(z)}
-        fitBottom={Math.round(window.innerHeight / 2) + 72} /> : map} landName={name} onBack={back('farmcash')}>
+      <Sheet map={record ? <AreaMap record={record} labels={outLabels} selected={pickOut} onSelect={(z) => (z ? open(z) : setPickOut(null))}
+        fitBottom={Math.round(window.innerHeight / 2) + 72} /> : map} landName={name} onBack={pickOut ? () => setPickOut(null) : back('farmcash')}
+        low={cardLow[0]} lowKey={cardLow[1]}>
         {pickOut ? (
-          <>
-            <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>{areaName(pickOut)}</h1>
-            <p style={{ ...muted, textAlign: 'center' }}>Leave it out, or add it to the area next to it.</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: 0 }}>{areaName(pickOut)}</h1>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>What grows here now?</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.muted }}>Land covers</span>
+            <CropSelect crops={COVERS} current={isCover ? g : undefined} onPick={(key) => grow(pickOut, key)} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.muted, marginTop: 8 }}>Crops</span>
+            <CropSelect crops={cropList} current={isCover ? undefined : g} onPick={(key) => grow(pickOut, key)} />
+            <span style={{ fontSize: 14, fontWeight: 700, marginTop: 8 }}>Or leave it out of the plan</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               <button type="button" style={pill(leftOut.has(pickOut))} onClick={() => choose(pickOut, leftOut.has(pickOut) ? null : 'out')}>Leave out</button>
               {nbrs.map((z) => (
                 <button key={z} type="button" style={pill(mergeTo[pickOut] === z)} onClick={() => choose(pickOut, mergeTo[pickOut] === z ? null : z)}>Add to {areaName(z)}</button>
               ))}
               {(leftOut.has(pickOut) || mergeTo[pickOut]) && <button type="button" style={pill(false)} onClick={() => choose(pickOut, null)}>Keep it</button>}
             </div>
-          </>
+          </div>
         ) : (
           <>
-            <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Leave out or merge areas</h1>
-            <p style={{ ...muted, textAlign: 'center' }}>Tap an area, then choose to leave out or add to another area.</p>
-            <p style={{ ...muted, textAlign: 'center', margin: '4px 0 0' }}>{decided
-              ? [leftOut.size && `${leftOut.size} left out`, Object.keys(mergeTo).length && `${Object.keys(mergeTo).length} added to another area`].filter(Boolean).join(' · ')
-              : 'No areas left out'}</p>
+            <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Your areas</h1>
+            <p style={{ ...muted, textAlign: 'center' }}>Tap an area on the map: set what grows there now, leave it out, or add it to the area next to it.</p>
+            {summary && <p style={{ ...muted, textAlign: 'center', margin: '4px 0 0', color: toSet.length ? C.coral : C.muted }}>{summary}</p>}
           </>
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}
-        {/* Two taps (14 Nov): this screen was easy to click through — first she confirms the areas (grey), then the same
-            button fills with the accent from left to right while its words change to Make my crop plan (one place, so
-            the second tap cannot land on something else). Off with reduced motion. */}
-        <button type="button" disabled={all || (areasOk && submit.isPending)}
-          onClick={areasOk ? make : () => { setPickOut(null); setAreasOk(true); }}
+        {/* Two taps (14 Nov): first she confirms the areas (grey), then the same button fills with the accent while its
+            words change to Make my crop plan. Off with reduced motion. Waits while an area is not set yet. */}
+        {!pickOut && (
+        <button type="button" disabled={all || toSet.length > 0 || (areasOk && submit.isPending)}
+          onClick={areasOk ? make : () => setAreasOk(true)}
           style={{ position: 'relative', overflow: 'hidden', width: '100%', height: 44, marginTop: 16, borderRadius: R.button, border: 0,
-            background: C.raised, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer', opacity: all || (areasOk && submit.isPending) ? 0.5 : 1 }}>
+            background: C.raised, fontWeight: 700, fontSize: 14, fontFamily: FONT, cursor: 'pointer', opacity: all || toSet.length > 0 || (areasOk && submit.isPending) ? 0.5 : 1 }}>
           <style>{'@media (prefers-reduced-motion: reduce){.nila-sweep,.nila-sweep-t{transition:none!important}}'}</style>
           <span aria-hidden="true" className="nila-sweep" style={{ position: 'absolute', inset: 0, background: C.accent, transformOrigin: 'left center',
             transform: `scaleX(${areasOk ? 1 : 0})`, transition: 'transform 350ms cubic-bezier(0.2,0.8,0.2,1)' }} />
@@ -899,6 +863,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           <span className="nila-sweep-t" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: C.ink, opacity: areasOk ? 1 : 0, transition: 'opacity 200ms ease 150ms' }} aria-hidden={!areasOk}>{forLand ? 'Make the crop plan' : 'Make my crop plan'}</span>
         </button>
+        )}
       </Sheet>
     );
   }
