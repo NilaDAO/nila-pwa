@@ -22,7 +22,8 @@ export function borderClient(signer) {
     preview: (id, field, shape) => call('POST', `/border/job/${id}/preview`, { field, shape }),
     // 13 Nov: the field's soil (1–5) is accepted with its shape.
     accept: (id, field, shape, soil) => call('POST', `/border/job/${id}/decide`, { field, action: 'accept', shape, ...(soil ? { soil } : {}) }).then(jobOf),
-    noneFit: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit' }).then(jobOf),
+    // 17 Nov: sat 'google' = the area was recently under construction: drawn again on Google's newer picture.
+    noneFit: (id, field, sat) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit', ...(sat ? { sat } : {}) }).then(jobOf),
     remove: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'delete' }).then(jobOf),   // 1 Nov
     retry: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'retry' }).then(jobOf),
     acceptPlan: (id, soil) => call('POST', `/border/job/${id}/decide`, { field: 0, action: 'accept_plan', ...(soil ? { soil } : {}) }).then(jobOf),
