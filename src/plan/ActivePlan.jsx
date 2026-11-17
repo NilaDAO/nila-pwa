@@ -123,6 +123,13 @@ const barTop = () => {
   const nav = typeof document !== 'undefined' && document.querySelector('nav[aria-label="Main"]');
   return nav ? Math.max(0, Math.round(window.innerHeight - nav.getBoundingClientRect().top)) : TAB_BAR_HEIGHT;
 };
+// The bar's left and right edges (compact, it has the cards' gutter), so a panel behind it lines up with it.
+const barSides = () => {
+  const nav = typeof document !== 'undefined' && document.querySelector('nav[aria-label="Main"]');
+  if (!nav) return { left: 0, right: 0 };
+  const r = nav.getBoundingClientRect();
+  return { left: Math.round(r.left), right: Math.max(0, Math.round(window.innerWidth - r.right)) };
+};
 // 17 Nov: three letters (Jan, Nov), not one (J, N), so a month reads at a glance.
 const MON_LETTER = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MON_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -206,8 +213,10 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
           dragged, which would carry a fixed note with it); a tap closes it. */}
       {shown && createPortal(
         // As the registration screens' info footer (R5): a dark panel with rounded top corners, flush on the bar.
-        <button type="button" role="status" onClick={() => setOpen(null)} style={{ position: 'fixed', left: 8, right: 8, zIndex: 50, bottom: barTop(),
-          display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0, padding: '14px 16px',
+        // 17 Nov: behind the bar (nav zIndex 10) and down to the screen's bottom edge, the bar's sides; the text above the bar.
+        <button type="button" role="status" onClick={() => setOpen(null)} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0,
+          display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
+          padding: `14px 16px ${barTop() + 14}px`, boxSizing: 'border-box',
           borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
           <span style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
