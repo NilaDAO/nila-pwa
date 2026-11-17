@@ -263,7 +263,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
     if (focused.length) map.fitBounds(L.featureGroup(focused).getBounds(), { paddingTopLeft: [24, 80], paddingBottomRight: [24, fitBottom ?? Math.round(window.innerHeight * 0.55)] });
     else if (group.getLayers().length) map.fitBounds(group.getBounds(), { padding: [16, 16] });
     return () => map.remove();
-  }, [ready, record, labels, selected, focus, onSelect, center, chipsOff]);
+  }, [ready, record, labels, selected, focus, onSelect, fitBottom, center, chipsOff]);
   return (
     <>
       <style>{`.nila-area-label{background:${C.ink};color:${C.text};border:0;border-radius:9999px;padding:2px 8px;font:700 11px Inter,system-ui,sans-serif;box-shadow:none;text-align:center}.nila-area-label:before{display:none}`}</style>
