@@ -106,7 +106,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
   const lastDue = seasons.flatMap((s) => s.rows.map((r) => r.finance.due)).sort().pop();
   const rate = (p.trees?.effective_rate_bp ?? 1250) / 100;
   const [wide, setWide] = useState(false);   // 17 Nov: the money table extended
-  const sales = seasons.reduce((a, se) => a + se.rows.reduce((b, r) => b + (r.value || 0), 0), 0);
+  const sales = seasons.reduce((a, se) => a + se.rows.reduce((b, r) => b + (r.net_value ?? r.value ?? 0), 0), 0);
   const order = [...zones].sort((a, b) => Number(areaNo(a)) - Number(areaNo(b)));
   return (
     <>

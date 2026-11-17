@@ -43,7 +43,8 @@ export function gridsOf(plan, si, { areaNo = (z) => z, areaName, shares = [] } =
       tiles.push({ key: `h:${h}`, label: actionOf(v.for), kind: 'cash', icon: 'weed', acres: v.acres, value: v.value, date: v.when || r.sow });
     }
     const labels = new Set(tiles.map((t) => t.label));
-    if (r.harvest && !labels.has('Harvest')) tiles.push({ key: 'harvest', label: 'Harvest', kind: 'self', icon: 'harvest', value: f.harvest_cost ?? null, date: r.harvest, kg: r.kg });
+    // Harvest labour (17 Nov): lent in cash with the crop (collected at sowing, paid at harvest); in an older plan, hers.
+    if (r.harvest && !labels.has('Harvest')) tiles.push({ key: 'harvest', label: 'Harvest', kind: f.harvest_financed ? 'cash' : 'self', icon: 'harvest', value: f.harvest_cost ?? null, date: r.harvest, kg: r.kg });
     if (r.harvest && !labels.has('Transport')) tiles.push({ key: 'transport', label: 'Transport', kind: 'self', icon: 'transport', value: null, date: r.harvest });
     // Repay: what this crop's agreement comes to, 21 days after its harvest.
     const owe = Math.round((f.cash || 0) + (f.voucher_value || 0) + (f.interest || 0));

@@ -289,7 +289,9 @@ export function CostList({ r, k = 1 }) {
     ...Object.values(f.machines || {}).map((m) => [m.for.replace(/^./, (c) => c.toUpperCase()), `${(m.acres * k).toFixed(2)} acres${m.acres ? ` · ${inr(Math.round(m.value / m.acres))}/acre` : ''} · voucher`, n(m.value)]),
     ...Object.values(f.hand_work || {}).map((m) => [`${m.for.replace(/^./, (c) => c.toUpperCase())}, hired`, `${(m.acres * k).toFixed(2)} acres · ${inr(m.rate_inr_acre)}/acre · no union machine`, n(m.value)]),
   ].filter(Boolean);
-  if (f.harvest_cost) lines.push(['Harvest work and transport', `${ac.toFixed(2)} acres${per(f.harvest_cost)} · paid by you`, n(f.harvest_cost)]);
+  // 17 Nov: harvest labour lent in cash with the crop (older plans: hers, with transport).
+  if (f.harvest_cost) lines.push(f.harvest_financed ? ['Harvest labour', `${ac.toFixed(2)} acres${per(f.harvest_cost)} · cash`, n(f.harvest_cost)]
+    : ['Harvest work and transport', `${ac.toFixed(2)} acres${per(f.harvest_cost)} · paid by you`, n(f.harvest_cost)]);
   const total = lines.reduce((a, l) => a + l[2], 0);
   const row = (a, b, v, bold) => (
     <div key={a} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, lineHeight: 1.4, fontWeight: bold ? 700 : 400 }}>
@@ -305,6 +307,9 @@ export function CostList({ r, k = 1 }) {
       {row('Cost', f.own_cost ? 'not financed: you pay it yourself (fodder crop)' : null, inr(total), true)}
       {f.interest ? row('Interest', `${((f.interest / Math.max(1, (f.cash || 0) + (f.voucher_value || 0))) * 100).toFixed(1)}% of the loan, sowing to repayment`, inr(n(f.interest))) : null}
       {r.kg > 0 && row('Sale (estimate)', `${fmtKg(r.kg * k)} × ${inr(Math.round(r.value / r.kg))}/kg`, inr(n(r.value)), true)}
+      {/* 17 Nov: bags, loading, commission and market fee come off the sale. */}
+      {r.kg > 0 && r.market_cost > 0 && row('Bags, loading and market fees', `${Math.round((r.market_cost / Math.max(1, r.value)) * 100)}% of the sale`, `− ${inr(n(r.market_cost))}`)}
+      {r.kg > 0 && r.market_cost > 0 && row('You receive', null, inr(n(r.net_value)), true)}
     </div>
   );
 }
@@ -353,10 +358,11 @@ export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, o
   const share = (r) => (zonesOf(r).length < 2 || !own || !r.acres ? 1 : own / r.acres);
   const rows = seasons.flatMap((se) => se.rows.filter((r) => zonesOf(r).includes(zone)).map((r) => ({ ...r, k: share(r) })));
   const acres = own ?? rows[0]?.acres ?? 0;
-  const sales = Math.round(rows.reduce((a, r) => a + (r.value || 0) * r.k, 0));
+  // What she receives (17 Nov): the sale less bags, loading and market fees.
+  const sales = Math.round(rows.reduce((a, r) => a + (r.net_value ?? r.value ?? 0) * r.k, 0));
   // Her cost of the crops: what the plan finances, what she pays herself (fodder's inputs) and the harvest cost.
   const cost = Math.round(rows.reduce((a, r) => a + ((r.finance?.cash || 0) + (r.finance?.voucher_value || 0) + (r.finance?.own_cost || 0)
-    + (r.finance?.harvest_cost || 0)) * r.k, 0));
+    + (r.finance?.harvest_financed ? 0 : r.finance?.harvest_cost || 0)) * r.k, 0));   // lent harvest labour is in cash (17 Nov)
   const items = laneOf(plan, zone, { y0: year, picked, cropOf, readOnly: readOnly || !onCrop, record, crops });
   const openItem = items.find((it) => it.key === open);
   const covers = items.filter((it) => it.soil && it.cover && it.cover.kind !== 'bare');
