@@ -56,36 +56,61 @@ export function gridsOf(plan, si, { areaNo = (z) => z, areaName, shares = [] } =
 }
 
 /** A green manure's tiles (17 Nov): its own crop agreement — Collect, Seed, its machine work in the week it is done
- *  (sowing, turning in), hired work, Turn in (hers) when no machine does it, Repay with the next crop. Same shape as
- *  gridsOf's grids. */
+ *  (sowing, turning in), hired work, Turn in (hers) when no machine does it, Repay with the next crop. Areas the node
+ *  merged into one agreement (same green manure, same sowing day, repaid with the same next crop) are one grid, their
+ *  amounts added up, as merged crops are one row. Same shape as gridsOf's grids. */
 export function coverGrids(plan, { areaNo = (z) => z, areaName, shares = [] } = {}) {
   const p = plan.plan || plan;
   const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
-  const out = [];
+  const groups = new Map();
   for (const c of (p.soil_cover || []).filter((x) => x.finance && x.kind === 'green_manure' && x.sow)) {
-    const f = c.finance;
+    const sh = (p.shares || []).find((x) => x.green_manure && (x.zones || [x.zone]).includes(c.zone) && x.from_date === c.sow && (!x.crop || x.crop === c.cover));
+    const k = sh?.key || `${c.zone}:gm:${c.cover}:${c.sow}`;
+    if (!groups.has(k)) groups.set(k, { sh, covers: [] });
+    groups.get(k).covers.push(c);
+  }
+  const out = [];
+  for (const [k, { sh, covers }] of groups) {
+    const c0 = covers[0];
+    const sum = (f) => covers.reduce((a, c) => a + (f(c.finance) || 0), 0);
     const tiles = [];
-    const sh = (p.shares || []).find((x) => x.green_manure && (x.zones || [x.zone]).includes(c.zone) && x.from_date === c.sow);
     if (sh) {
       const st = byKey[sh.key] || {};
       tiles.push({ key: 'collect', label: 'Collect', kind: 'cash', icon: 'cash', value: sh.loan_amount || 0, date: sh.from_date,
         until: sh.final_date, ready: !!st.ready, done: !!st.drawn });
     }
-    if (f.seed) tiles.push({ key: 'seed', label: 'Seed', kind: 'cash', icon: 'plant', value: f.seed, date: c.sow });
-    const weeks = f.machine_weeks || [];
-    weeks.forEach((w, i) => {
-      const m = (f.machines || {})[w.machine] || {};
-      const value = m.acres ? Math.round((m.value || 0) * (w.acres / m.acres)) : m.value;
-      tiles.push({ key: `w:${i}`, label: w.slot === 'cover_turn_in' ? 'Turn in' : actionOf(m.for), kind: 'voucher', icon: 'tractor', acres: w.acres, value, date: w.when });
-    });
-    for (const [h, v] of Object.entries(f.hand_work || {})) {
-      tiles.push({ key: `h:${h}`, label: actionOf(v.for), kind: 'cash', icon: 'weed', acres: v.acres, value: v.value, date: c.sow });
+    const seed = sum((f) => f.seed);
+    if (seed) tiles.push({ key: 'seed', label: 'Seed', kind: 'cash', icon: 'plant', value: seed, date: c0.sow });
+    // Machine work: one tile per machine and week, the areas' acres and values added up.
+    const work = new Map();
+    for (const c of covers) {
+      for (const w of c.finance.machine_weeks || []) {
+        const m = (c.finance.machines || {})[w.machine] || {};
+        const value = m.acres ? Math.round((m.value || 0) * (w.acres / m.acres)) : (m.value || 0);
+        const wk = `${w.slot}|${w.machine}|${w.when}`;
+        const t = work.get(wk) || { key: `w:${wk}`, label: w.slot === 'cover_turn_in' ? 'Turn in' : actionOf(m.for), kind: 'voucher', icon: 'tractor', acres: 0, value: 0, date: w.when };
+        t.acres += w.acres; t.value += value;
+        work.set(wk, t);
+      }
     }
-    if (c.turn_in && !weeks.some((w) => w.slot === 'cover_turn_in')) tiles.push({ key: 'turn_in', label: 'Turn in', kind: 'self', icon: 'plant', value: null, date: c.turn_in });
-    const owe = Math.round((f.cash || 0) + (f.voucher_value || 0) + (f.interest || 0));
-    if (owe && f.due) tiles.push({ key: 'repay', label: 'Repay', kind: 'self', icon: 'repay', value: owe, date: f.due, afterHarvest: true });
-    const area = typeof areaNo(c.zone) === 'number' && areaName ? areaLabel(c, areaNo, areaName) : '';
-    out.push({ key: `${c.zone}:gm:${c.cover}`, crop: 'Green manure', colour: c.colour, area, sow: c.sow, until: sh?.final_date || null, tiles });
+    tiles.push(...work.values());
+    const hand = new Map();
+    for (const c of covers) {
+      for (const [h, v] of Object.entries(c.finance.hand_work || {})) {
+        const t = hand.get(h) || { key: `h:${h}`, label: actionOf(v.for), kind: 'cash', icon: 'weed', acres: 0, value: 0, date: c0.sow };
+        t.acres += v.acres || 0; t.value += v.value || 0;
+        hand.set(h, t);
+      }
+    }
+    tiles.push(...hand.values());
+    const turned = covers.some((c) => (c.finance.machine_weeks || []).some((w) => w.slot === 'cover_turn_in'));
+    if (c0.turn_in && !turned) tiles.push({ key: 'turn_in', label: 'Turn in', kind: 'self', icon: 'plant', value: null, date: c0.turn_in });
+    const owe = Math.round(sum((f) => (f.cash || 0) + (f.voucher_value || 0) + (f.interest || 0)));
+    const due = c0.finance.due;
+    if (owe && due) tiles.push({ key: 'repay', label: 'Repay', kind: 'self', icon: 'repay', value: owe, date: due, afterHarvest: true });
+    const zones = covers.map((c) => c.zone);
+    const area = typeof areaNo(c0.zone) === 'number' && areaName ? areaLabel({ zones }, areaNo, areaName) : '';
+    out.push({ key: `gm:${k}`, crop: 'Green manure', colour: c0.colour, area, sow: c0.sow, until: sh?.final_date || null, tiles });
   }
   return out;
 }

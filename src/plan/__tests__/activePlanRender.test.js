@@ -55,3 +55,15 @@ test('a green manure has its own tiles in the grid (17 Nov)', () => {
   expect(labels.some((l) => /^Green manure · Turn in/.test(l))).toBe(true);
   expect(labels.filter((l) => /^Green manure · (Collect|Repay)/.test(l)).length).toBe(2);
 });
+
+test('green manures merged into one crop agreement show one Collect and one Repay (17 Nov)', () => {
+  const c = (zone) => ({ zone, kind: 'green_manure', cover: 'sunnhemp', colour: '#8FA36B', sow: '2027-04-01', turn_in: '2027-05-31',
+    finance: { seed: 500, cash: 500, voucher_value: 0, interest: 50, due: '2027-10-29', machines: {}, machine_weeks: [] } });
+  const gm = { ...plan, plan: { ...plan.plan, soil_cover: [c('z1'), c('z2'), c('z3')],
+    shares: [...plan.plan.shares, { key: 'g1', crop: 'sunnhemp', zone: 'z1', zones: ['z1', 'z2', 'z3'], green_manure: true, from_date: '2027-04-01', final_date: '2027-04-30', loan_amount: 1500 }] } };
+  render(<ActivePlan plan={gm} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} />);
+  const labels = screen.getAllByRole('listitem').map((b) => b.getAttribute('aria-label')).filter((l) => /^Green manure/.test(l));
+  expect(labels.filter((l) => /· Collect/.test(l))).toEqual(['Green manure · Collect · ₹1,500']);
+  expect(labels.filter((l) => /· Seed/.test(l))).toEqual(['Green manure · Seed · ₹1,500']);
+  expect(labels.filter((l) => /· Repay/.test(l)).length).toBe(1);
+});
