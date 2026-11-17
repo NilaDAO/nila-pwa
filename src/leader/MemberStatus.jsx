@@ -489,7 +489,9 @@ function Account({ m, inv, go, onSync }) {
   const rcv = useRecovery(m.address);
   const titleId = m.titleId || [...(m.lands || [])][0];
   const p = inv.data;
-  const investment = p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
+  // 17 Nov: a member with no Stellar account yet (just added, e.g. keypad link not opened) has no investment: her
+  // read never starts, and waiting for it left Delete on "Reading the investment…" with only OK for good.
+  const investment = !m.address ? 0 : p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
   // 15 Nov: what holds Delete for good (no longer Remove member): crop agreements still to repay, an investment.
   const why = m.loans.length ? 'The member has crop agreements still to repay.'
     : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
