@@ -312,14 +312,24 @@ export function CostList({ r, k = 1 }) {
 /** crops: the catalogue's crops for the season rows' list; onCrop(row, cropKey): that crop instead on this area in that
  *  row's season; changing: a change is being sent. */
 /** The pros and cons of the last edit (16 Nov, the node's plan.pros_cons, by a small model; none when it is off). */
-/** 17 Nov: `extra` (what the totals include, by code) joins the same box, after the pros and cons. */
-export function ProsCons({ plan, extra }) {
+/** 17 Nov: `extra` (lines by code: what the totals include, green manure) joins the same box, after the pros and
+ *  cons. Each pro, con and line is its own item, apart from the next. */
+export function ProsCons({ plan, extra = [] }) {
   const items = plan.plan.pros_cons?.items || [];
-  if (!items.length && !extra) return null;
+  const lines = (Array.isArray(extra) ? extra : [extra]).filter(Boolean);
+  if (!items.length && !lines.length) return null;
+  const row = { display: 'flex', gap: 8, alignItems: 'flex-start' };
   return (
     <Notice kind="info" title={EDIT_TEXT.prosCons}>
-      {items.map((it) => <span key={it.kind + it.text} style={{ display: 'block' }}>{it.kind === 'pro' ? EDIT_TEXT.pro : EDIT_TEXT.con} {it.text}</span>)}
-      {extra && <span style={{ display: 'block', marginTop: items.length ? 8 : 0 }}>{extra}</span>}
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+        {items.map((it) => (
+          <span key={it.kind + it.text} style={row}>
+            <b aria-label={it.kind === 'pro' ? 'Pro' : 'Con'} style={{ width: 10, flexShrink: 0 }}>{it.kind === 'pro' ? EDIT_TEXT.pro : EDIT_TEXT.con}</b>
+            <span>{it.text}</span>
+          </span>
+        ))}
+        {lines.map((l, i) => <span key={`x${i}`} style={row}><b aria-hidden="true" style={{ width: 10, flexShrink: 0 }}>·</b><span>{l}</span></span>)}
+      </span>
     </Notice>
   );
 }

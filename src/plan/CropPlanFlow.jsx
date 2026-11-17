@@ -123,7 +123,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
           const sows = new Set(all.map((r) => r.sow).filter(Boolean));
           // "Use it by" (25 Oct): the season's last draw date, from its shares' planned sowing.
           const by = (p.shares || []).filter((sh) => sows.has(sh.from_date) && sh.final_date).map((sh) => sh.final_date).sort().pop();
-          return { s, gmHere, by, cash: all.reduce((x, r) => x + cost(r.finance), 0) };
+          return { s, by, cash: all.reduce((x, r) => x + cost(r.finance), 0) };
         });
         const lastBy = rowsBy.map((r) => r.by).filter(Boolean).sort().pop();
         const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—');
@@ -132,10 +132,9 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
           <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
             <thead><tr style={{ color: C.muted, whiteSpace: 'nowrap' }}><td>Season</td><td>Use it by</td><td style={{ textAlign: 'right' }}>Total</td></tr></thead>
             <tbody>
-              {rowsBy.filter(({ s }) => wide || !slots || slots.has(s.slot)).map(({ s, gmHere, by, cash }) => (
+              {rowsBy.filter(({ s }) => wide || !slots || slots.has(s.slot)).map(({ s, by, cash }) => (
                 <tr key={s.slot} style={line}>
-                  <td style={{ padding: '8px 0' }}><b style={{ color: slots && slots.has(s.slot) ? C.accent : undefined }}>{SEASON[s.slot]}</b>
-                    {gmHere.length > 0 && <><br /><span style={{ ...muted, whiteSpace: 'nowrap' }}>+ green manure</span></>}</td>
+                  <td style={{ padding: '8px 0' }}><b style={{ color: slots && slots.has(s.slot) ? C.accent : undefined }}>{SEASON[s.slot]}</b></td>
                   <td>{day(by)}</td>
                   <td style={{ textAlign: 'right' }}>{inr(cash)}</td>
                 </tr>
@@ -168,13 +167,16 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
       )}
       {/* The pros and cons of the last edit (16 Nov, Haiku; none when it is off), then its conditions to tick. */}
       {/* 17 Nov: what the totals include (hand or hired work in cash, machine vouchers) in the same box. */}
+      {/* 17 Nov: lines by code in the same box: what the totals include, and the green manure's own agreement. */}
       <ProsCons plan={plan} extra={(() => {
         const fin = seasons.flatMap((s) => s.rows.map((r) => r.finance));
         const hand = fin.reduce((a, f) => a + (f.hand_work_cash || 0), 0);
         const vouchers = fin.reduce((a, f) => a + (f.voucher_value || 0), 0);
-        if (!hand && !vouchers) return null;
-        return <>{hand > 0 && <>{inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates). </>}
-          {vouchers > 0 && <>{inr(vouchers)} in vouchers.</>}</>;
+        return [
+          hand > 0 && `${inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates).`,
+          vouchers > 0 && `${inr(vouchers)} in vouchers.`,
+          gm.length > 0 && 'Green manure is its own crop agreement, repaid with the next crop.',
+        ];
       })()} />
       {!readOnly && <Conditions plan={plan} ticks={ticks} onTick={onTick} />}
       {!readOnly && (Object.keys(pending).length
