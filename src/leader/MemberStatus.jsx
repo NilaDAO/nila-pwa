@@ -329,7 +329,8 @@ export default function MemberStatus({ id, go }) {
           <button type="button" style={{ ...btn(), flex: 'none', width: '100%', background: C.accent, color: C.ink }}
             onClick={() => {
               if (m.keypadId) return go(`tasks/member/${m.keypadId}/points`);
-              if (m.address && m.address === s?.stellarAddress) return go('crop/register');
+              // 17 Nov: the leader's own row (her own title removed) no longer goes to her own registration (the new-member
+              // screens, Anand on land 8): like any former member, Verify the record below.
               // 15 Nov: her Polygon address is known (her last border job): no QR scan, straight to her name and number.
               // 15 Nov: name and number from the leaders' contact book, else the ones known for her (the list's name may be
               // the land's). With the contact book's name and a number: no form, straight to the field points.
@@ -425,7 +426,7 @@ function JoinSteps({ m, holder, onScan }) {
   const stepBtn = { ...btn(), flex: 'none', width: '100%', margin: '8px 0' };
   const scan = <button type="button" style={stepBtn} onClick={onScan}>Scan the QR</button>;
   const done = 'Scan the QR. Done: the member has joined.';
-  // A new member (holder) has no account yet: she registers in the app (text confirmed by Carst, 16 Nov).
+  // A new member (holder) has no account yet: she registers in the app (text confirmed, executive decision 16 Nov).
   const open = holder ? 'The member opens the Nila app and registers.' : 'The member opens the Nila app and recovers the account.';
   const steps = phone === 'smart' || holder
     ? [open, 'The member taps the scan icon at the bottom: the QR shows.', <>{done}{scan}</>]
@@ -489,7 +490,9 @@ function Account({ m, inv, go, onSync }) {
   const rcv = useRecovery(m.address);
   const titleId = m.titleId || [...(m.lands || [])][0];
   const p = inv.data;
-  const investment = p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
+  // 17 Nov: a member with no Stellar account yet (just added, e.g. keypad link not opened) has no investment: her
+  // read never starts, and waiting for it left Delete on "Reading the investment…" with only OK for good.
+  const investment = !m.address ? 0 : p ? n(p.invested) + n(p.pending_shares) + n(p.claimable_shares) : null;
   // 15 Nov: what holds Delete for good (no longer Remove member): crop agreements still to repay, an investment.
   const why = m.loans.length ? 'The member has crop agreements still to repay.'
     : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
