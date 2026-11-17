@@ -11,6 +11,7 @@ import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
 import { gridsOf } from './jobGrid';
+import { Drawer, InfoButton } from './Drawer';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' }).replace('Sept', 'Sep');
 // Machine jobs as the board words them ("Weed maize"); the catalogue's `for` text otherwise.
@@ -73,10 +74,10 @@ export function tasksOf(plan, areaNo, areaName) {
 // The job grid (17 Nov, executive decision; replaces To do now and Coming up): one grid for every crop in the season
 // shown, a small tile per action filled in its crop's colour, in time order left to right, top to bottom; the border
 // says how it is paid: voucher = red, cash = green, self-organised = none; the amount in a darker strip at the bottom. A tap shows what it is worth.
-// The app's red and green (17 Nov): voucher red (coral), cash green.
+// The app's red (17 Nov): a voucher's border.
 const VOUCHER_EDGE = C.coral;
-const CASH_EDGE = '#7BA05B';
-const edge = (kind) => (kind === 'voucher' ? `3px solid ${VOUCHER_EDGE}` : kind === 'cash' ? `3px solid ${CASH_EDGE}` : '3px solid transparent');
+// 17 Nov: the amount is on every tile, so only a voucher has a border.
+const edge = (kind) => (kind === 'voucher' ? `3px solid ${VOUCHER_EDGE}` : '3px solid transparent');
 const dayMon = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 // Text and icon on a crop's colour (17 Nov): black on a light colour, white on a dark one (relative luminance).
 export function inkOn(hex) {
@@ -88,24 +89,22 @@ export function inkOn(hex) {
   return L > 0.18 ? C.ink : '#ffffff';
 }
 
-function Legend({ grids }) {
-  const sw = (style) => <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: 3, boxSizing: 'border-box', flexShrink: 0, ...style }} />;
-  const row = { display: 'flex', gap: 14, alignItems: 'center', fontSize: 12, color: C.muted, flexWrap: 'wrap' };
+// The legend behind the info button (17 Nov), in a drawer as the app's other legends: the voucher border, the amount
+// strip, and the crops by colour with their sowing windows.
+function LegendDrawer({ grids, onClose }) {
+  const sw = (style) => <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: 3, boxSizing: 'border-box', flexShrink: 0, ...style }} />;
+  const row = { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={row}>
-        {[['voucher', 'Voucher'], ['cash', 'Cash'], ['self', 'Self-organised']].map(([k, t]) => (
-          <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{sw({ background: C.raised, border: k === 'self' ? `1px solid ${C.muted}` : edge(k).replace('3px', '2px') })}{t}</span>
-        ))}
-      </div>
-      {/* The crops by colour, each with its sowing window (no field names). */}
-      <div style={row}>
+    <Drawer title="What the tiles show" onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <span style={row}>{sw({ background: C.raised, border: `2px solid ${VOUCHER_EDGE}` })}Red border: paid with a voucher</span>
+        <span style={row}>{sw({ background: 'rgba(0,0,0,0.45)' })}The amount: cash from your crop agreement; "You": you organise and pay it</span>
         {grids.map((g) => (
-          <span key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{sw({ background: g.colour || C.muted })}
-            <span><b style={{ color: C.text }}>{g.crop}</b>{g.sow ? ` · sow ${dayMon(g.sow)}${g.until && g.until > g.sow ? ` – ${dayMon(g.until)}` : ''}` : ''}</span></span>
+          <span key={g.key} style={row}>{sw({ background: g.colour || C.muted })}
+            <span><b>{g.crop}</b>{g.sow ? ` · sow ${dayMon(g.sow)}${g.until && g.until > g.sow ? ` – ${dayMon(g.until)}` : ''}` : ''}</span></span>
         ))}
       </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -121,6 +120,7 @@ function JobGrids({ plan, si, areaNo, areaName, shares }) {
   const [open, setOpen] = useState(null);
   // TRIAL (17 Nov): the tiles as a grid or as one scrolling row, switched here to compare; one goes once chosen.
   const [asRow, setAsRow] = useState(false);
+  const [legend, setLegend] = useState(false);
   const grids = gridsOf(plan, si, { areaNo, areaName, shares });
   if (!grids.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is sown in this season.</p>;
   // In time order across the crops (17 Nov), not crop by crop; the same day keeps each crop's own order (stable sort).
@@ -129,8 +129,8 @@ function JobGrids({ plan, si, areaNo, areaName, shares }) {
   const shown = tiles.find((t) => t.id === open);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-        <Legend grids={grids} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <InfoButton label="What the tiles show" onClick={() => setLegend(true)} />
         <span role="radiogroup" aria-label="Layout" style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
           {[[false, 'Grid'], [true, 'Row']].map(([v, t]) => (
             <button key={t} type="button" role="radio" aria-checked={asRow === v} onClick={() => setAsRow(v)} style={{ height: 24, padding: '0 8px', borderRadius: 9999, border: 0,
@@ -166,6 +166,7 @@ function JobGrids({ plan, si, areaNo, areaName, shares }) {
           );
         })}
       </div>
+      {legend && <LegendDrawer grids={grids} onClose={() => setLegend(false)} />}
       {shown && <span role="status" style={{ fontSize: 14, color: C.text }}>{detailOf(shown)}</span>}
     </div>
   );
