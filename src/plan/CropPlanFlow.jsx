@@ -1034,10 +1034,11 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
               </div>
               {rowNote && <p role="note" style={{ margin: 0, color: C.coral, textAlign: 'center' }}>{rowNote}</p>}
               {error && <p style={{ color: C.coral, margin: 0 }}>{error}</p>}
+              {/* 17 Nov: Cancel | Update side by side. */}
               <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={stop} style={{ ...secondaryBtn }}>Cancel</button>
                 <button type="button" disabled={saving} onClick={update} style={{ ...secondaryBtn, background: C.accent, color: C.ink, opacity: saving ? 0.5 : 1 }}>{saving ? 'Updating…' : 'Update'}</button>
               </div>
-              <button type="button" onClick={stop} style={{ ...secondaryBtn, flex: 'none', width: '100%' }}>Cancel</button>
             </div>
           )}
         </Sheet>
