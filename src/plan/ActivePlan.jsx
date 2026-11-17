@@ -122,8 +122,10 @@ function detailOf(t) {
 const barTop = () => {
   const nav = typeof document !== 'undefined' && document.querySelector('nav[aria-label="Main"]');
   // 17 Nov: no bar on this screen (a leader's view of a member's plan) → 0, the note on the screen's bottom edge.
-  if (!nav || nav.offsetParent === null) return 0;
-  return Math.max(0, Math.round(window.innerHeight - nav.getBoundingClientRect().top));
+  // (offsetParent is always null for a fixed element, so the bar's own box decides.)
+  const r = nav && nav.getBoundingClientRect();
+  if (!r || !r.height) return 0;
+  return Math.max(0, Math.round(window.innerHeight - r.top));
 };
 // The bar's left and right edges (compact, it has the cards' gutter), so a panel behind it lines up with it.
 const barSides = () => {
@@ -220,7 +222,7 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
       {shown && createPortal(
         // As the registration screens' info footer (R5): a dark panel with rounded top corners, flush on the bar.
         // 17 Nov: behind the bar (nav zIndex 10) and down to the screen's bottom edge, the bar's sides; the text above the bar.
-        <button type="button" role="status" onClick={() => setOpen(null)} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0,
+        <button type="button" role="status" onClick={() => setOpen(null)} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0, pointerEvents: 'auto',
           display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
           padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
           borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
@@ -230,7 +232,10 @@ function JobGrids({ plan, areaNo, areaName, shares }) {
             </svg>
           </span>
           <span style={{ fontSize: 14, color: '#94A3B8', lineHeight: 1.5, alignSelf: 'center' }}>{detailOf(shown)}</span>
-        </button>, document.body,
+        </button>,
+        // 17 Nov: in the bar's own layer (the shell, its own stacking context), so zIndex 9 lies under the bar's 10; on
+        // document.body it covered the bar.
+        document.querySelector('nav[aria-label="Main"]')?.parentElement || document.body,
       )}
     </div>
   );
