@@ -14,6 +14,7 @@ test('the approved plan renders its job grid and a tap shows the detail', () => 
   render(<ActivePlan plan={plan} areaNo={() => 1} areaName={() => 'A · 1'} season={0} shares={[{ share: 'k1', ready: true }]} />);
   expect(screen.getByText('Plough')).toBeTruthy();
   expect(screen.getByText('Ready')).toBeTruthy();
+  expect(screen.getByText(/Sow 15 Jun – 31 Jul/)).toBeTruthy();
   fireEvent.click(screen.getByText('Plough'));
-  expect(screen.getByRole('status').textContent).toMatch(/Plough · 1 ac/);
+  expect(screen.getByRole('status').textContent).toBe('Plough · ₹2,000');
 });

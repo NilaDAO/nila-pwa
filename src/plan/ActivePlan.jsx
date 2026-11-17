@@ -89,54 +89,55 @@ function Legend() {
   );
 }
 
+// A tap shows only what it is worth (17 Nov): the cash or voucher value; self-organised work has none.
 function detailOf(t) {
-  const bits = [t.label];
-  if (t.acres) bits.push(`${Math.round(t.acres * 100) / 100} ac`);
-  if (t.value) bits.push(inr(t.value));
-  if (t.kg) bits.push(`about ${kg(t.kg)}`);
-  if (t.key === 'collect') bits.push(t.done ? 'collected' : t.ready ? 'ready at the union office' : `from ${dayMon(t.date)}${t.until ? `, use it by ${dayMon(t.until)}` : ''}`);
-  else if (t.afterHarvest) bits.push('21 days after your harvest');
-  else if (t.date) bits.push(month(t.date));
-  if (t.kind === 'self' && t.key !== 'repay') bits.push('you organise it');
-  return bits.join(' · ');
+  if (t.key === 'collect') return `${t.label} · ${inr(t.value)}${t.done ? ' · collected' : t.ready ? ' · ready at the union office' : ''}`;
+  if (t.key === 'repay') return `${t.label} · ${inr(t.value)} · 21 days after your harvest`;
+  if (t.kind === 'self') return `${t.label} · you organise it`;
+  return `${t.label} · ${t.value ? inr(t.value) : '—'}`;
 }
 
 function JobGrids({ plan, si, areaNo, areaName, shares }) {
   const [open, setOpen] = useState(null);
+  const [pick, setPick] = useState(0);
   const grids = gridsOf(plan, si, { areaNo, areaName, shares });
   if (!grids.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is sown in this season.</p>;
+  // One crop at a time (17 Nov): with more than one, small chips pick the crop; no field names, the sowing window.
+  const g = grids[Math.min(pick, grids.length - 1)];
+  const shown = g.tiles.find((t) => open === t.key);
+  const collect = g.tiles.find((t) => t.key === 'collect');
+  const sowWin = g.sow ? `Sow ${dayMon(g.sow)}${collect?.until && collect.until > g.sow ? ` – ${dayMon(collect.until)}` : ''}` : '';
+  const chip = (on) => ({ height: 32, padding: '0 12px', borderRadius: 9999, border: 0, background: on ? C.accent : C.raised, color: on ? C.ink : C.text,
+    fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' });
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
       <Legend />
-      {grids.map((g) => {
-        const shown = g.tiles.find((t) => open === `${g.key}|${t.key}`);
-        return (
-          <div key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span style={{ fontSize: 14 }}><b>{g.crop}</b><span style={{ color: C.muted }}>{g.area ? ` · ${g.area}` : ''}{g.sow ? ` · sown ${dayMon(g.sow)}` : ''}</span></span>
-            <div role="list" aria-label={g.crop} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-              {g.tiles.map((t) => {
-                const k = `${g.key}|${t.key}`;
-                return (
-                  <button key={t.key} type="button" role="listitem" aria-pressed={open === k} aria-label={detailOf(t)} onClick={() => setOpen(open === k ? null : k)}
-                    style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: 12, boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', justifyContent: 'center', gap: 6, color: C.text, fontFamily: FONT, cursor: 'pointer', padding: 4,
-                      opacity: t.done ? 0.55 : 1, outline: open === k ? `2px solid ${C.text}` : 'none', outlineOffset: 2, ...look(t.kind) }}>
-                    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={t.kind === 'cash' ? C.text : C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d={IC[t.icon] || IC.tractor} />
-                    </svg>
-                    <span style={{ fontSize: 13, fontWeight: 700 }}>{t.label}</span>
-                    {(t.ready || t.done) && (
-                      <span style={{ position: 'absolute', top: 6, right: 6, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999,
-                        background: t.done ? C.ink : C.accent, color: t.done ? C.muted : C.ink }}>{t.done ? '✓' : 'Ready'}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            {shown && <span role="status" style={{ fontSize: 13, color: C.muted }}>{detailOf(shown)}</span>}
-          </div>
-        );
-      })}
+      {grids.length > 1 && (
+        <div role="radiogroup" aria-label="Crop" style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
+          {grids.map((x, i) => (
+            <button key={x.key} type="button" role="radio" aria-checked={x === g} onClick={() => { setPick(i); setOpen(null); }} style={chip(x === g)}>{x.crop}</button>
+          ))}
+        </div>
+      )}
+      <span style={{ fontSize: 14 }}>{grids.length === 1 && <b>{g.crop} · </b>}<span style={{ color: C.muted }}>{sowWin}</span></span>
+      <div role="list" aria-label={g.crop} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        {g.tiles.map((t) => (
+          <button key={t.key} type="button" role="listitem" aria-pressed={open === t.key} aria-label={detailOf(t)} onClick={() => setOpen(open === t.key ? null : t.key)}
+            style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: 12, boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 6, color: C.text, fontFamily: FONT, cursor: 'pointer', padding: 4,
+              opacity: t.done ? 0.55 : 1, outline: open === t.key ? `2px solid ${C.text}` : 'none', outlineOffset: 2, ...look(t.kind) }}>
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={t.kind === 'cash' ? C.text : C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d={IC[t.icon] || IC.tractor} />
+            </svg>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>{t.label}</span>
+            {(t.ready || t.done) && (
+              <span style={{ position: 'absolute', top: 6, right: 6, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999,
+                background: t.done ? C.ink : C.accent, color: t.done ? C.muted : C.ink }}>{t.done ? '✓' : 'Ready'}</span>
+            )}
+          </button>
+        ))}
+      </div>
+      {shown && <span role="status" style={{ fontSize: 14, color: C.text }}>{detailOf(shown)}</span>}
     </div>
   );
 }
