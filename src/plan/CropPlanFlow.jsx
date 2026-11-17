@@ -135,7 +135,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
               {rowsBy.filter(({ s }) => wide || !slots || slots.has(s.slot)).map(({ s, gmHere, by, cash }) => (
                 <tr key={s.slot} style={line}>
                   <td style={{ padding: '8px 0' }}><b style={{ color: slots && slots.has(s.slot) ? C.accent : undefined }}>{SEASON[s.slot]}</b>
-                    {gmHere.length > 0 && <><br /><span style={muted}>with green manure, repaid with the next crop</span></>}</td>
+                    {gmHere.length > 0 && <><br /><span style={{ ...muted, whiteSpace: 'nowrap' }}>+ green manure</span></>}</td>
                   <td>{day(by)}</td>
                   <td style={{ textAlign: 'right' }}>{inr(cash)}</td>
                 </tr>
