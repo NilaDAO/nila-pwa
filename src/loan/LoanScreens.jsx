@@ -199,6 +199,8 @@ export function LeaderLoan({ initial }) {
   const colour = row?.colour || (sel?.share.green_manure ? (plan.plan.soil_cover || []).find((c) => zones.includes(c.zone) && c.colour)?.colour : null) || C.accent;
   // No chips on these areas: the card's title names the crop (a chip per area repeated it four times).
   const mapLabels = Object.fromEntries(zones.map((z) => [z, { text: '', colour, hide: true }]));
+  // 18 Nov: an area the plan joined to another (plan.merged, e.g. D · 3 into D · 4) is drawn as part of it, as on the plan.
+  for (const [z, to] of Object.entries(plan?.plan?.merged || {})) if (!zones.includes(z)) mapLabels[z] = { join: to };
   const rec = planRecord.data?.record || holder?.record;
   const memberMap = rec ? <AreaMap record={rec} labels={mapLabels} focus={zones.length ? zones : null} fitBottom={Math.round(window.innerHeight * 0.5)} /> : <span />;
   const title = (member && book.data?.names.get(member)?.name) || holder?.label || holder?.name || `Land ${plan.land_id}`;
