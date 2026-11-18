@@ -17,6 +17,7 @@ import { Primary, inr, muted } from '../plan/ui';
 import { C, FONT, R } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
 import AreaMap from '../plan/AreaMap';
+import { useFieldRecord } from '../plan/record';
 import { useUnionMembers } from '../leader/unionMembers';
 import { Card, CardTitle, KV } from './AssetParts';
 import { NIN } from './request';
@@ -94,6 +95,9 @@ export function LeaderLoan({ initial }) {
   const plan = plans.data?.approval?.decision === 'approve' ? plans.data : undefined;
   const holder = unionList.data?.find((m) => m.lands.includes(Number(plan?.land_id)));
   const book = useContactBook();
+  // 18 Nov: the field record the plan was made on (its area ids are the plan's), not the title's newest record: after a
+  // Redo the newest one has other ids and none of the agreement's areas were found on the map.
+  const planRecord = useFieldRecord(plan?.land_id, undefined, plan ? (plan.plan?.record_hash || plan.record_hash || '') : undefined);
   const shares = useQuery({
     queryKey: ['oracle', 'shares', planId], enabled: !!plan && !!cfg,
     queryFn: async () => {
@@ -188,7 +192,11 @@ export function LeaderLoan({ initial }) {
   // name from the leaders' contact book, else the farm's.
   const member = sel?.ft?.member;
   const zones = sel ? (sel.share.zones || [sel.share.zone]).filter(Boolean) : [];
-  const memberMap = holder?.record ? <AreaMap record={holder.record} focus={zones.length ? zones : null} fitBottom={Math.round(window.innerHeight * 0.5)} /> : <span />;
+  // Its areas filled in the crop's colour (green manure: its own), the others faded.
+  const colour = row?.colour || (sel?.share.green_manure ? (plan.plan.soil_cover || []).find((c) => zones.includes(c.zone) && c.colour)?.colour : null) || C.accent;
+  const mapLabels = Object.fromEntries(zones.map((z) => [z, { text: row?.name || '', colour }]));
+  const rec = planRecord.data?.record || holder?.record;
+  const memberMap = rec ? <AreaMap record={rec} labels={mapLabels} focus={zones.length ? zones : null} fitBottom={Math.round(window.innerHeight * 0.5)} /> : <span />;
   const title = (member && book.data?.names.get(member)?.name) || holder?.label || holder?.name || `Land ${plan.land_id}`;
   if (counting && member) {
     return <PhotoCount name={`Invest · ${title}`} target={invest || 0} verb="Invest" desk={desk.data}
