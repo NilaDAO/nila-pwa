@@ -145,11 +145,14 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
       const joined = group.length > 1;
       const rings = group.flatMap((y) => ringsOf(y.geometry));
       if (!rings.length) return;
-      const lab = labOf(z, i);
+      let lab = labOf(z, i);
       if (lab.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       const faded = selected ? !group.some((y) => y.zone_id === selected) : !!focus?.length && !group.some((y) => focus.includes(y.zone_id));
       // 17 Nov: picked areas on the approved plan: the others nearly vanish, so the picked ones show at once.
       const FADE = !selected && focus?.length ? 0.06 : 0.3;
+      // 18 Nov: a focused area with nothing on it in the season shown (or no labels at all, the take-up screen) is
+      // filled in the accent, so a tap or the crop agreement's areas show at once against the faded others.
+      if (!selected && focus?.length && !faded && (!lab.colour || lab.outline)) lab = { ...lab, colour: lab.colour || '#D4CF5A', outline: false };
       // The picked area (14 Nov): a white line around it and a lighter fill, so it stands out on the map.
       // lab.sel (17 Nov): one of several areas selected at once (the areas step), as the picked area.
       const sel = (!!selected && !faded) || !!lab.sel;   // a focus (17 Nov) only fades the others, no white line
@@ -243,11 +246,14 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
       const root = joinRoot(labels, z.zone_id);   // 14 Nov: an added area in its neighbour's style, no label of its own
       const own = labels[z.zone_id] && !labels[z.zone_id].join ? labels[z.zone_id] : { text: z.name || `Area ${i + 1}` };
       if (own.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
-      const lab = root === z.zone_id ? own : { ...(labels[root] || {}), hide: true };
+      let lab = root === z.zone_id ? own : { ...(labels[root] || {}), hide: true };
       const tapTo = root !== z.zone_id && labels[z.zone_id]?.tapRoot ? root : z.zone_id;
       const faded = selected ? selected !== z.zone_id && joinRoot(labels, selected) !== root
         : !!focus?.length && !focus.includes(z.zone_id) && !focus.some((f) => joinRoot(labels, f) === root);
       const FADE = !selected && focus?.length ? 0.06 : 0.3;   // 17 Nov: as the Google map
+      // 18 Nov: a focused area with nothing on it in the season shown (or no labels at all, the take-up screen) is
+      // filled in the accent, so a tap or the crop agreement's areas show at once against the faded others.
+      if (!selected && focus?.length && !faded && (!lab.colour || lab.outline)) lab = { ...lab, colour: lab.colour || '#D4CF5A', outline: false };
       const sel = (!!selected && !faded) || !!lab.sel;   // a focus (17 Nov) only fades the others, no white line   // 14 Nov: the picked area, a white line and a lighter fill (17 Nov: lab.sel, several)
       const colour = lab.colour || '#ffffff';
       // An area still to be set (13 Nov): hatched, so she sees at once which areas are left (lab.hatch).
