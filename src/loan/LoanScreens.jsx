@@ -358,12 +358,11 @@ export function LeaderLoan({ initial }) {
             {!needsInvest && (
               <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || (more && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{more ? (mine ? 'Add the machine work' : helping ? 'Add the machine work for the member' : "Scan the member's QR") : mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's QR"}</Primary>
             )}
+            {/* 18 Nov: the notes inside the card, under the button, so they move with the card. */}
+            {notes.length > 0 && <InfoFooter inline text={notes.map((n) => <span key={n} style={{ display: 'block' }}>{n}</span>)} />}
           </>
         )}
       </Card>
-      {/* Room under the card for the info panel, so its last rows can be scrolled above it. */}
-      {notes.length > 0 && <div aria-hidden="true" style={{ height: 160 }} />}
-      {notes.length > 0 && <InfoFooter text={notes.map((n) => <span key={n} style={{ display: 'block' }}>{n}</span>)} onClose={() => { setError(undefined); setNoPhotos(false); }} />}
     </MapCard>
   );
 }
