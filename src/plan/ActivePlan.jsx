@@ -123,7 +123,10 @@ export function planMonths(plan, { areaNo, areaName, shares, filter } = {}) {
   // zones and season (17 Nov): a tapped tile shows its crop's areas on the map, in the season it is sown.
   const tiles = grids.flatMap(([si, g]) => g.tiles.map((t) => ({ ...t, id: `${si}|${g.key}|${t.key}`, crop: g.crop, colour: g.colour, si,
     zones: g.zones || [], season: si === 'gm' ? seasonOf(String(g.sow).slice(0, 7)) : si, seasons: g.seasons })));
-  const out = ss.map((_, si) => ({ si, months: [] }));
+  // 18 Nov: a section is the real season of each date in its plan year (Jan–Feb belongs to Oct–Feb; was: everything
+  // after the plan's last season start fell under that season, so a Jan harvest showed under Jun–Aug), in date order.
+  const slotOf = (m) => (m >= 10 || m <= 2 ? 'S1' : m <= 5 ? 'S2' : 'S3');
+  const out = [];
   // In time order across the crops; the same day keeps each crop's own order (stable sort).
   // 17 Nov: a season chip shows only the crops sown in that season; areas tapped on the map only their tiles.
   const keep = (x) => x.date && (filter?.season == null || (x.seasons?.length ? x.seasons : [x.season]).includes(filter.season))
@@ -132,12 +135,16 @@ export function planMonths(plan, { areaNo, areaName, shares, filter } = {}) {
   const day = (t) => String(t.date).slice(0, 10);
   for (const t of tiles.filter(keep).sort((a, b) => day(a).localeCompare(day(b)) || (b.key === 'turn_in') - (a.key === 'turn_in'))) {
     const ym = String(t.date).slice(0, 7);
-    const sec = out[seasonOf(ym)];
+    const y = Number(ym.slice(0, 4)); const mo = Number(ym.slice(5, 7));
+    const ay = mo >= 10 ? y : y - 1;   // the plan year (Oct–Sep) the date is in
+    const key = `${ay}:${slotOf(mo)}`;
+    let sec = out.find((x) => x.key === key);
+    if (!sec) { sec = { key, si: key, slot: slotOf(mo), ay, months: [] }; out.push(sec); }
     let m = sec.months.find((x) => x.ym === ym);
     if (!m) { m = { ym, tiles: [] }; sec.months.push(m); }
     m.tiles.push(t);
   }
-  return out.filter((sec) => sec.months.length);
+  return out;
 }
 
 // 17 Nov: the grid (4 a row) or one scrolling row per month, switched as the Harvests screen's list / calendar.
@@ -150,7 +157,6 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
   const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'grid'; } catch { return 'grid'; } });
   const pickView = (v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
   const asRow = view === 'row';
-  const ss = (plan.plan || plan).seasons || [];
   const secs = planMonths(plan, { areaNo, areaName, shares, filter });
   if (!secs.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is planned yet.</p>;
   const all = secs.flatMap((x) => x.months.flatMap((m) => m.tiles));
@@ -189,10 +195,14 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
         <Segmented icon width="hug" label="Grid or row" value={view} onChange={pickView}
           options={[['grid', <GridIcon key="g" />, 'Grid'], ['row', <RowIcon key="r" />, 'Row']]} />
       </div>
-      {secs.map((sec) => (
-        <div key={sec.si} role="group" aria-label={SLOT[ss[sec.si]?.slot] || `Season ${sec.si + 1}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {secs.map((sec, k) => (
+        <div key={sec.key} role="group" aria-label={`${SLOT[sec.slot]} ${sec.ay}–${String((sec.ay + 1) % 100).padStart(2, '0')}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* 18 Nov: a year break where the plan year changes ("2027–28"). */}
+          {(k === 0 || secs[k - 1].ay !== sec.ay) && (
+            <span style={{ fontSize: 14, fontWeight: 700, color: C.text, margin: k === 0 ? '0' : '14px 0 0' }}>{`${sec.ay}–${String((sec.ay + 1) % 100).padStart(2, '0')}`}</span>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0 2px' }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, whiteSpace: 'nowrap' }}>{SEASON_SHORT[ss[sec.si]?.slot] || `Season ${sec.si + 1}`}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, whiteSpace: 'nowrap' }}>{SEASON_SHORT[sec.slot]}</span>
             <span aria-hidden="true" style={{ flexGrow: 1, height: 1, background: C.raised }} />
           </div>
           {sec.months.map((m) => {

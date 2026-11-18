@@ -41,9 +41,12 @@ test('the whole plan: one row per month with its letter, a line per season', () 
     { slot: 'S2', start: '2027-03-01', rows: [{ ...plan.plan.seasons[0].rows[0], sow: '2027-03-05', harvest: '2027-05-20', finance: { seed: 100 } }] },
     plan.plan.seasons[0]] } };
   render(<ActivePlan plan={two} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} />);
-  expect(screen.getByRole('group', { name: 'Mar to May' })).toBeTruthy();
-  expect(screen.getByRole('group', { name: 'Jun to Aug' })).toBeTruthy();
+  expect(screen.getByRole('group', { name: 'Mar to May 2026–27' })).toBeTruthy();
+  expect(screen.getByRole('group', { name: 'Jun to Aug 2026–27' })).toBeTruthy();
   expect(screen.getByRole('list', { name: 'March' })).toBeTruthy();
+  // 18 Nov: the maize harvest (8 Oct 2027) is in the next plan year, under its own year heading, in Oct–Feb.
+  expect(screen.getByText('2027–28')).toBeTruthy();
+  expect(screen.getByRole('group', { name: 'Oct to Feb 2027–28' })).toBeTruthy();
 });
 
 test('a green manure has its own tiles in the grid (17 Nov)', () => {
