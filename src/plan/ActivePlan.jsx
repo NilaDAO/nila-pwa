@@ -6,7 +6,7 @@
 // As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month; the
 // year bar on top of the card steps plan years; season chips above the tasks filter them (CropPlanFlow, 13 Nov). No title and
 // no "Your plan" rows (the crop bars above the card's list show the plan); the plan's date is a muted line at the end.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
@@ -224,8 +224,16 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
  *  down to the screen's bottom edge, outside the card (the card moves when dragged). A tap closes it. tone 'warn': coral. */
 export function InfoFooter({ text, onClose, tone }) {
   const ink = tone === 'warn' ? C.coral : '#94A3B8';
+  // 18 Nov: the card dragged down (nila-sheet-low) takes the panel down with it, behind the bar; back up, it returns.
+  const [low, setLow] = useState(false);
+  useEffect(() => {
+    const on = (e) => setLow(!!e.detail);
+    window.addEventListener('nila-sheet-low', on);
+    return () => window.removeEventListener('nila-sheet-low', on);
+  }, []);
   return createPortal(
-    <button type="button" role="status" onClick={onClose} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0, pointerEvents: 'auto',
+    <button type="button" role="status" aria-hidden={low || undefined} onClick={onClose} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0,
+      pointerEvents: low ? 'none' : 'auto', transform: low ? 'translateY(100%)' : 'none', transition: 'transform 200ms ease',
       display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
       padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
       borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
