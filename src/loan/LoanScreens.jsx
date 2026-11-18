@@ -299,7 +299,8 @@ export function LeaderLoan({ initial }) {
     // 18 Nov: a voucher added for a machine the union does not have.
     ...types.filter((t) => !owned.includes(t)).map((t) => `Your union has no ${typeName(t).toLowerCase()} for this voucher.`),
     ...blockedNoGate,
-    ...(rows[0]?.[2] ? [cfg?.anchor_url ? `Not enough cash at the office: your LPs are asked to bring ${inr(gap)} when you ${mine ? 'get the cash' : 'show the QR'}.` : 'Not enough cash at the office for this crop agreement yet.'] : []),
+    // A bring is only promised when the LPs can bring something (18 Nov: it said "bring ₹0").
+    ...(rows[0]?.[2] ? [cfg?.anchor_url && gap > 0 ? `Not enough cash at the office: your LPs are asked to bring ${inr(gap)} when you ${mine ? 'get the cash' : 'show the QR'}.` : 'Not enough cash at the office for this crop agreement yet.'] : []),
     ...(checks.isError ? ['Could not read the union. Try again.'] : []),
     ...(noPhotos ? ['The photos were not saved, so the cash was not recorded. Count again.'] : []),
     ...(error ? [error] : []),
@@ -318,7 +319,8 @@ export function LeaderLoan({ initial }) {
             <CardTitle right={more ? <span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>Cash received</span> : null}>{name}</CardTitle>
             {more && <span style={muted}>Add machine work to this crop agreement: owed from today, with interest, like the vouchers you got with the cash.</span>}
             {/* 18 Nov: up to what the crop agreement asks, even when the union cannot lend it all now: then in red. */}
-            {checks.data && !more && <Stepper label="Cash" value={cash} set={setCash} step={100}
+            {/* Above it, the first − goes straight to what the union can lend now (18 Nov). */}
+            {checks.data && !more && <Stepper label="Cash" value={cash} set={(v) => setCash(cash > caps.cash && v < cash ? caps.cash : v)} step={100}
               max={Math.max(caps.cash, Math.round(sel.ft ? Number(BigInt(sel.ft.amount ?? 0) / NIN) : sel.share.loan_amount || 0))} fmt={inr} tone={cash > caps.cash ? C.coral : undefined} />}
             {checks.data && types.map((t) => {
               const h = mach[t] || 0;
