@@ -53,7 +53,11 @@ export function gridsOf(plan, si, { areaNo = (z) => z, areaName, shares = [] } =
     const owe = Math.round((f.cash || 0) + (f.voucher_value || 0) + (f.interest || 0));
     if (owe && f.due) tiles.push({ key: 'repay', label: 'Repay', kind: 'self', icon: 'repay', value: owe, date: f.due, afterHarvest: true });
     const area = typeof areaNo(r.zone) === 'number' && areaName ? areaLabel(r, areaNo, areaName) : '';
-    out.push({ key: `${r.zone}:${r.crop}`, crop: r.name, colour: r.colour, area, zones: r.zones || [r.zone], sow: r.sow, until: sh?.final_date || null, tiles });
+    // 18 Nov: every season the crop grows in (a whole-year crop runs on), for the season chips.
+    const zs = r.zones || [r.zone];
+    const seasons = (p.seasons || []).map((s2, k) => (s2.rows.some((x) => x.crop === r.crop && (x.zones || [x.zone]).some((z) => zs.includes(z))
+      && (x.sow === r.sow || x.continues)) ? k : -1)).filter((k) => k >= 0);
+    out.push({ key: `${r.zone}:${r.crop}`, crop: r.name, colour: r.colour, area, zones: zs, seasons, sow: r.sow, until: sh?.final_date || null, tiles });
   }
   return out;
 }
@@ -113,7 +117,8 @@ export function coverGrids(plan, { areaNo = (z) => z, areaName, shares = [] } = 
     if (owe && due) tiles.push({ key: 'repay', label: 'Repay', kind: 'self', icon: 'repay', value: owe, date: due, afterHarvest: true });
     const zones = covers.map((c) => c.zone);
     const area = typeof areaNo(c0.zone) === 'number' && areaName ? areaLabel({ zones }, areaNo, areaName) : '';
-    out.push({ key: `gm:${k}`, crop: 'Green manure', colour: c0.colour, area, zones, sow: c0.sow, until: sh?.final_date || null, tiles });
+    const seasons = (p.seasons || []).map((s2, i) => (covers.some((c) => (c.slots || []).includes(s2.slot)) ? i : -1)).filter((i) => i >= 0);
+    out.push({ key: `gm:${k}`, crop: 'Green manure', colour: c0.colour, area, zones, seasons, sow: c0.sow, until: sh?.final_date || null, tiles });
   }
   return out;
 }

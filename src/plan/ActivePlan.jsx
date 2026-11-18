@@ -6,7 +6,7 @@
 // As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month; the
 // year bar on top of the card steps plan years; season chips above the tasks filter them (CropPlanFlow, 13 Nov). No title and
 // no "Your plan" rows (the crop bars above the card's list show the plan); the plan's date is a muted line at the end.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
@@ -108,13 +108,6 @@ const barTop = () => {
   if (!r || !r.height) return 0;
   return Math.max(0, Math.round(window.innerHeight - r.top));
 };
-// The bar's left and right edges (compact, it has the cards' gutter), so a panel behind it lines up with it.
-const barSides = () => {
-  const nav = typeof document !== 'undefined' && document.querySelector('nav[aria-label="Main"]');
-  if (!nav) return { left: 0, right: 0 };
-  const r = nav.getBoundingClientRect();
-  return { left: Math.round(r.left), right: Math.max(0, Math.round(window.innerWidth - r.right)) };
-};
 // 17 Nov: three letters (Jan, Nov), not one (J, N), so a month reads at a glance.
 const MON_LETTER = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MON_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -129,20 +122,29 @@ export function planMonths(plan, { areaNo, areaName, shares, filter } = {}) {
   const seasonOf = (ym) => ss.reduce((k, s, i) => (String(s.start).slice(0, 7) <= ym ? i : k), 0);
   // zones and season (17 Nov): a tapped tile shows its crop's areas on the map, in the season it is sown.
   const tiles = grids.flatMap(([si, g]) => g.tiles.map((t) => ({ ...t, id: `${si}|${g.key}|${t.key}`, crop: g.crop, colour: g.colour, si,
-    zones: g.zones || [], season: si === 'gm' ? seasonOf(String(g.sow).slice(0, 7)) : si })));
-  const out = ss.map((_, si) => ({ si, months: [] }));
+    zones: g.zones || [], season: si === 'gm' ? seasonOf(String(g.sow).slice(0, 7)) : si, seasons: g.seasons })));
+  // 18 Nov: a section is the real season of each date in its plan year (Jan–Feb belongs to Oct–Feb; was: everything
+  // after the plan's last season start fell under that season, so a Jan harvest showed under Jun–Aug), in date order.
+  const slotOf = (m) => (m >= 10 || m <= 2 ? 'S1' : m <= 5 ? 'S2' : 'S3');
+  const out = [];
   // In time order across the crops; the same day keeps each crop's own order (stable sort).
   // 17 Nov: a season chip shows only the crops sown in that season; areas tapped on the map only their tiles.
-  const keep = (x) => x.date && (filter?.season == null || x.season === filter.season)
+  const keep = (x) => x.date && (filter?.season == null || (x.seasons?.length ? x.seasons : [x.season]).includes(filter.season))
     && (!filter?.zones?.length || (x.zones || []).some((z) => filter.zones.includes(z)));
-  for (const t of tiles.filter(keep).sort((a, b) => String(a.date).slice(0, 10).localeCompare(String(b.date).slice(0, 10)))) {
+  // On the same day a green manure's Turn in comes first: the next crop's work follows it (18 Nov).
+  const day = (t) => String(t.date).slice(0, 10);
+  for (const t of tiles.filter(keep).sort((a, b) => day(a).localeCompare(day(b)) || (b.key === 'turn_in') - (a.key === 'turn_in'))) {
     const ym = String(t.date).slice(0, 7);
-    const sec = out[seasonOf(ym)];
+    const y = Number(ym.slice(0, 4)); const mo = Number(ym.slice(5, 7));
+    const ay = mo >= 10 ? y : y - 1;   // the plan year (Oct–Sep) the date is in
+    const key = `${ay}:${slotOf(mo)}`;
+    let sec = out.find((x) => x.key === key);
+    if (!sec) { sec = { key, si: key, slot: slotOf(mo), ay, months: [] }; out.push(sec); }
     let m = sec.months.find((x) => x.ym === ym);
     if (!m) { m = { ym, tiles: [] }; sec.months.push(m); }
     m.tiles.push(t);
   }
-  return out.filter((sec) => sec.months.length);
+  return out;
 }
 
 // 17 Nov: the grid (4 a row) or one scrolling row per month, switched as the Harvests screen's list / calendar.
@@ -155,7 +157,6 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
   const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'grid'; } catch { return 'grid'; } });
   const pickView = (v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
   const asRow = view === 'row';
-  const ss = (plan.plan || plan).seasons || [];
   const secs = planMonths(plan, { areaNo, areaName, shares, filter });
   if (!secs.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is planned yet.</p>;
   const all = secs.flatMap((x) => x.months.flatMap((m) => m.tiles));
@@ -194,10 +195,14 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
         <Segmented icon width="hug" label="Grid or row" value={view} onChange={pickView}
           options={[['grid', <GridIcon key="g" />, 'Grid'], ['row', <RowIcon key="r" />, 'Row']]} />
       </div>
-      {secs.map((sec) => (
-        <div key={sec.si} role="group" aria-label={SLOT[ss[sec.si]?.slot] || `Season ${sec.si + 1}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {secs.map((sec, k) => (
+        <div key={sec.key} role="group" aria-label={`${SLOT[sec.slot]} ${sec.ay}–${String((sec.ay + 1) % 100).padStart(2, '0')}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* 18 Nov: a year break where the plan year changes ("2027–28"). */}
+          {(k === 0 || secs[k - 1].ay !== sec.ay) && (
+            <span style={{ fontSize: 14, fontWeight: 700, color: C.text, margin: k === 0 ? '0' : '14px 0 0' }}>{`${sec.ay}–${String((sec.ay + 1) % 100).padStart(2, '0')}`}</span>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0 2px' }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, whiteSpace: 'nowrap' }}>{SEASON_SHORT[ss[sec.si]?.slot] || `Season ${sec.si + 1}`}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, whiteSpace: 'nowrap' }}>{SEASON_SHORT[sec.slot]}</span>
             <span aria-hidden="true" style={{ flexGrow: 1, height: 1, background: C.raised }} />
           </div>
           {sec.months.map((m) => {
@@ -213,27 +218,83 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
           })}
         </div>
       ))}
-      {/* 17 Nov: the tapped tile's note as an info note on top of the bottom bar, outside the card (the card moves when
-          dragged, which would carry a fixed note with it); a tap closes it. */}
-      {shown && createPortal(
-        // As the registration screens' info footer (R5): a dark panel with rounded top corners, flush on the bar.
-        // 17 Nov: behind the bar (nav zIndex 10) and down to the screen's bottom edge, the bar's sides; the text above the bar.
-        <button type="button" role="status" onClick={() => { setOpen(null); onTile?.(null); }} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0, pointerEvents: 'auto',
-          display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
-          padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
-          borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
-          <span style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
-            </svg>
-          </span>
-          <span style={{ fontSize: 14, color: '#94A3B8', lineHeight: 1.5, alignSelf: 'center' }}>{detailOf(shown)}</span>
-        </button>,
-        // 17 Nov: in the bar's own layer (the shell, its own stacking context), so zIndex 9 lies under the bar's 10; on
-        // document.body it covered the bar.
-        document.querySelector('nav[aria-label="Main"]')?.parentElement || document.body,
-      )}
+      {/* 17 Nov: the tapped tile's note as an info note on top of the bottom bar, outside the card; a tap closes it. */}
+      {shown && <InfoFooter text={detailOf(shown)} onClose={() => { setOpen(null); onTile?.(null); }} />}
     </div>
+  );
+}
+
+/** A short note on top of the bottom bar, as the registration screens' info footer (R5): a dark panel with rounded top
+ *  corners, behind the bar (in the bar's own layer, zIndex 9 under its 10) and down to the screen's bottom edge, outside
+ *  the card. 18 Nov (executive decision, every info area): like the registration footer it slides down out of sight
+ *  (450 ms) while the card is lowered — dragged down, or half way — and slides back up when the card is all the way up.
+ *  A tap closes it. tone 'warn': coral. */
+const REG_EASE = 'cubic-bezier(0.2,0.8,0.2,1)';
+export function InfoFooter({ text, onClose, tone }) {
+  const ink = tone === 'warn' ? C.coral : '#94A3B8';
+  const [down, setDown] = useState(true);
+  const [, setTick] = useState(0);
+  const box = useRef(null);
+  // 18 Nov: the card's bottom padding grows by the panel's height while it is shown, so the card's last row (a button)
+  // can be scrolled above it instead of being covered.
+  useEffect(() => {
+    const card = document.querySelector('.cp-sheet');
+    const el = box.current;
+    if (!card || !el || typeof ResizeObserver === 'undefined') return undefined;
+    const base = card.style.paddingBottom;
+    const fit = () => { card.style.paddingBottom = `calc(104px + ${Math.ceil(el.getBoundingClientRect().height)}px)`; };
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    fit();
+    return () => { ro.disconnect(); card.style.paddingBottom = base; };
+  }, []);
+  useEffect(() => {
+    let low = false;
+    let raf = 0;
+    // The card is up when its top is in the upper part of the screen; half way (or lower) it counts as lowered.
+    const check = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const card = document.querySelector('.cp-sheet');
+        const top = card ? card.getBoundingClientRect().top : 0;
+        setDown(low || top > window.innerHeight * 0.4);
+        setTick((n) => n + 1);   // the bar's size and sides, measured again
+      });
+    };
+    const onLow = (e) => { low = !!e.detail; check(); };
+    let t;
+    const onBar = () => { check(); clearTimeout(t); t = setTimeout(check, 260); };
+    check();
+    const late = setTimeout(check, 500);   // after the card's own opening animation
+    window.addEventListener('scroll', check, { capture: true, passive: true });
+    window.addEventListener('resize', check);
+    window.addEventListener('nila-sheet-low', onLow);
+    window.addEventListener('nila-sheet-mid', check);
+    window.addEventListener('nila-tabbar', onBar);
+    return () => {
+      cancelAnimationFrame(raf); clearTimeout(t); clearTimeout(late);
+      window.removeEventListener('scroll', check, { capture: true });
+      window.removeEventListener('resize', check);
+      window.removeEventListener('nila-sheet-low', onLow);
+      window.removeEventListener('nila-sheet-mid', check);
+      window.removeEventListener('nila-tabbar', onBar);
+    };
+  }, []);
+  return createPortal(
+    <button ref={box} type="button" role="status" aria-hidden={down || undefined} onClick={onClose} style={{ position: 'fixed', left: 8, right: 8, zIndex: 9, bottom: 0,
+      pointerEvents: down ? 'none' : 'auto', transform: down ? 'translateY(110%)' : 'translateY(0)',
+      transition: `transform 450ms ${REG_EASE}`,
+      display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
+      padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
+      borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
+      <span style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+        </svg>
+      </span>
+      <span style={{ fontSize: 14, color: ink, lineHeight: 1.5, alignSelf: 'center' }}>{text}</span>
+    </button>,
+    document.querySelector('nav[aria-label="Main"]')?.parentElement || document.body,
   );
 }
 

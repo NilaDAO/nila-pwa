@@ -31,7 +31,7 @@ import { GREEN_MANURE, fill, rowOf, slotsOf, toChanges, whyNoRoom } from './year
 import { ordered, rowAdvice } from './rowAdvice';
 import { presets } from './areaPresets';
 import { AreaCard, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
-import ActivePlan, { currentSeason } from './ActivePlan';
+import ActivePlan, { currentSeason, InfoFooter } from './ActivePlan';
 import { seasonsCounted, seasonsOff, yearSeasons } from './seasonChips';
 import { assisted, useMyShares } from '../loan/MyShares';
 import RoundButton from '../shell/RoundButton';
@@ -491,15 +491,28 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     const slotNow = ss[idx[0]].slot;
     const pickedHere = (z) => pending[z]?.[slotNow] && (catalogue.data?.crops || []).find((c) => c.key === pending[z][slotNow]);
     // A merged row (same crop on several areas, 21 Oct): its harvest on the first area's chip, "with Area n" on the others.
+    // 18 Nov: one label per crop agreement: a row over several areas is labelled on its first area only; its other areas
+    // keep the crop's colour without a chip (was "with B" on each).
     const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, pickedHere(z) ? { text: pickedHere(z).name, sub: 'changed',
-      colour: pickedHere(z).colour, acc: false } : { text: r.name,
-      sub: r.off_catalogue ? 'not in the crop list' : z !== zonesOf(r)[0] ? `with ${areaName(zonesOf(r)[0])}` : fmtKg(r.kg),
+      colour: pickedHere(z).colour, acc: false } : z !== zonesOf(r)[0] ? { text: r.name, colour: r.colour, acc: checked.has(z), hide: true } : { text: r.name,
+      // 18 Nov: a whole-year crop running on into a later season shows the yield of its sowing row (its own row has 0).
+      sub: r.off_catalogue ? 'not in the crop list' : fmtKg(r.continues ? (ss.flatMap((x) => x.rows).find((x) => x.crop === r.crop && !x.continues
+        && zonesOf(x).some((zz) => zonesOf(r).includes(zz)))?.kg ?? r.kg) : r.kg),
       colour: r.colour, acc: checked.has(z) }]));
     // An area with no crop that season but a pick for it.
     for (const z of Object.keys(pending)) if (!out[z] && pickedHere(z)) out[z] = { text: pickedHere(z).name, sub: 'changed', colour: pickedHere(z).colour };
     // A soil cover in this season (no bare soil in the dry months, 21 Oct), where no crop is on the area then.
     for (const c of plan.plan.soil_cover || []) {
-      if (out[c.zone] || !idx.some((k) => (c.slots || []).includes(ss[k].slot))) continue;
+      if (!idx.some((k) => (c.slots || []).includes(ss[k].slot))) continue;
+      // 18 Nov: a green manure before the crop on the same area in this season: both, in order ("Green manure → Sugarcane").
+      if (out[c.zone]) {
+        if (c.kind === 'green_manure' && rows[c.zone] && c.sow && rows[c.zone].sow && c.sow < rows[c.zone].sow && !out[c.zone].join && out[c.zone].hide) {
+          out[c.zone] = { ...out[c.zone], stripe: c.colour };   // the agreement's other areas: stripes, no chip
+        } else if (c.kind === 'green_manure' && rows[c.zone] && c.sow && rows[c.zone].sow && c.sow < rows[c.zone].sow && !out[c.zone].join) {
+          out[c.zone] = { ...out[c.zone], text: `Green manure → ${out[c.zone].text}`, stripe: c.colour };
+        }
+        continue;
+      }
       const short = c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/ \(.*\)$/, '');
       out[c.zone] = { text: c.kind === 'bare' ? 'Bare soil' : short.charAt(0).toUpperCase() + short.slice(1),
         sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',
@@ -522,7 +535,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     // An area she added to a touching one before the plan (14 Nov): drawn as one shape with it, one chip.
     for (const [z, to] of Object.entries(plan.plan.merged || {})) out[z] = { join: to, tapRoot: true };
     return { ...out, ...Object.fromEntries(gone) };
-  }, [plan, season, checked, areaName, pending, catalogue.data, record, growing, leftOut, mergeTo, pastYear, approved]);
+  }, [plan, season, checked, pending, catalogue.data, record, growing, leftOut, mergeTo, pastYear, approved]);
   const pickable = step === 'plan' || (step == null && plan?.status === 'draft');
   const pickArea = useCallback((z) => { setArea(z); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
   // CP10 keeps her areas above its season / area bar (the card starts lower there, Sheet `bar`).
@@ -1039,7 +1052,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
                   );
                 })}
               </div>
-              {rowNote && <p role="note" style={{ margin: 0, color: C.coral, textAlign: 'center' }}>{rowNote}</p>}
+              {/* 18 Nov: the warning in the info panel on top of the bottom bar, not in the card. */}
+              {rowNote && <InfoFooter tone="warn" text={rowNote} onClose={() => setRowNote(undefined)} />}
               {error && <p style={{ color: C.coral, margin: 0 }}>{error}</p>}
               {/* 17 Nov: Cancel | Update side by side. */}
               <div style={{ display: 'flex', gap: 8 }}>
@@ -1223,12 +1237,12 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           past={pastYear != null} seasons={pastYear == null ? new Set(onIdx) : undefined}
           plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
           filter={{ season: gridSeason, zones: areaPicks }}
-          // 17 Nov: a tapped tile shows its areas on the map, in its season, with the card half open.
+          // 17 Nov: a tapped tile shows its areas on the map, in its season.
           onTile={(t) => {
             setFocus(t ? t.zones : null);
             if (!t) return;
             if (typeof t.season === 'number') setSeason(t.season);
-            window.dispatchEvent(new Event('nila-sheet-mid'));
+            // 18 Nov: the card no longer drops half way on a tile tap (it moved the screen under her finger).
           }}
           canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
           onExtend={async () => {

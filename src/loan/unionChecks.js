@@ -65,6 +65,8 @@ export function useUnionChecks(member) {
         enforceToken: !!uc.enforce_token_amount,
         onHand: num(atHand) + num(treasury),
         rateBp: Number(uc.rate_bp),
+        // 18 Nov: what the member still has to invest before a crop agreement (the gate), in whole rupees.
+        gateShort: Math.max(0, Math.ceil(num(BigInt(uc.gate ?? 0) - BigInt(pos?.invested ?? 0)))),
         blocked,
       };
     },

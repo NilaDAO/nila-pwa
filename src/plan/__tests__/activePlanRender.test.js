@@ -17,7 +17,7 @@ test('the approved plan renders its job grid and a tap shows the detail', () => 
   const tapped = [];
   render(<ActivePlan plan={plan} areaNo={() => 1} areaName={() => 'A · 1'} season={0} shares={[]} onTile={(t) => tapped.push(t)} />);
   fireEvent.click(screen.getAllByText('Plough')[1]);
-  expect(screen.getByRole('status').textContent).toBe('Maize · Plough · ₹2,000');
+  expect(screen.getByRole('status', { hidden: true }).textContent).toBe('Maize · Plough · ₹2,000');
   // 17 Nov: the tap hands its areas and season to the screen (map focus, season chip).
   expect(tapped[0]).toMatchObject({ zones: ['z1'], season: 0 });
 });
@@ -41,9 +41,12 @@ test('the whole plan: one row per month with its letter, a line per season', () 
     { slot: 'S2', start: '2027-03-01', rows: [{ ...plan.plan.seasons[0].rows[0], sow: '2027-03-05', harvest: '2027-05-20', finance: { seed: 100 } }] },
     plan.plan.seasons[0]] } };
   render(<ActivePlan plan={two} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} />);
-  expect(screen.getByRole('group', { name: 'Mar to May' })).toBeTruthy();
-  expect(screen.getByRole('group', { name: 'Jun to Aug' })).toBeTruthy();
+  expect(screen.getByRole('group', { name: 'Mar to May 2026–27' })).toBeTruthy();
+  expect(screen.getByRole('group', { name: 'Jun to Aug 2026–27' })).toBeTruthy();
   expect(screen.getByRole('list', { name: 'March' })).toBeTruthy();
+  // 18 Nov: the maize harvest (8 Oct 2027) is in the next plan year, under its own year heading, in Oct–Feb.
+  expect(screen.getByText('2027–28')).toBeTruthy();
+  expect(screen.getByRole('group', { name: 'Oct to Feb 2027–28' })).toBeTruthy();
 });
 
 test('a green manure has its own tiles in the grid (17 Nov)', () => {
@@ -84,4 +87,22 @@ test('the grid filtered by a season chip and by an area (17 Nov)', () => {
   expect(crops({ season: 0 })).toEqual(['Sesame']);
   expect(crops({ zones: ['z1'] })).toEqual(['Maize']);
   expect(crops({ zones: ['z1', 'z2'] })).toEqual(['Maize', 'Sesame']);
+});
+
+test('a whole-year crop is in the grid under every season it grows in; Turn in before the next crop on the same day (18 Nov)', () => {
+  const row = { zone: 'z1', crop: 'sugarcane_plant', name: 'Sugarcane', sow: '2027-01-17', harvest: '2028-01-12', kg: 1000,
+    finance: { cash: 100, voucher_value: 0, interest: 10, due: '2028-02-02', hand_work: { plough: { for: 'ploughing', acres: 1, value: 50, when: '2027-01-17' } } } };
+  const p = { ...plan, plan: { seasons: [
+    { slot: 'S1', start: '2026-10-01', rows: [row] },
+    { slot: 'S2', start: '2027-03-01', rows: [{ ...row, continues: true }] },
+    { slot: 'S3', start: '2027-06-01', rows: [{ ...row, continues: true }] }],
+  soil_cover: [{ zone: 'z1', kind: 'green_manure', cover: 'sunnhemp', colour: '#8FA36B', sow: '2026-11-18', turn_in: '2027-01-17', slots: ['S1'],
+    finance: { seed: 500, cash: 500, voucher_value: 0, interest: 50, due: '2028-02-02', machines: {}, machine_weeks: [] } }], shares: [] } };
+  const { unmount } = render(<ActivePlan plan={p} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} filter={{ season: 1 }} />);
+  expect(screen.getAllByRole('listitem').map((b) => b.getAttribute('aria-label').split(' · ')[0])).toContain('Sugarcane');
+  unmount();
+  render(<ActivePlan plan={p} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} />);
+  const jan = screen.getAllByRole('list', { name: 'January' })[0];
+  const labels = [...jan.querySelectorAll('[role=listitem]')].map((b) => b.getAttribute('aria-label').split(' · ').slice(0, 2).join(' '));
+  expect(labels.indexOf('Green manure Turn in')).toBeLessThan(labels.indexOf('Sugarcane Plough'));
 });
