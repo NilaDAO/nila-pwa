@@ -1233,12 +1233,12 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           past={pastYear != null} seasons={pastYear == null ? new Set(onIdx) : undefined}
           plan={plan} areaNo={areaNo} areaName={areaName} season={shown} shares={myShares.data} assist={!self && assisted()}
           filter={{ season: gridSeason, zones: areaPicks }}
-          // 17 Nov: a tapped tile shows its areas on the map, in its season, with the card half open.
+          // 17 Nov: a tapped tile shows its areas on the map, in its season.
           onTile={(t) => {
             setFocus(t ? t.zones : null);
             if (!t) return;
             if (typeof t.season === 'number') setSeason(t.season);
-            window.dispatchEvent(new Event('nila-sheet-mid'));
+            // 18 Nov: the card no longer drops half way on a tile tap (it moved the screen under her finger).
           }}
           canExtend={chainQ.data?.pending ? [] : chainQ.data?.can_extend || []} extending={extend.isPending} extendError={error}
           onExtend={async () => {
