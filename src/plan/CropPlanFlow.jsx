@@ -31,7 +31,7 @@ import { GREEN_MANURE, fill, rowOf, slotsOf, toChanges, whyNoRoom } from './year
 import { ordered, rowAdvice } from './rowAdvice';
 import { presets } from './areaPresets';
 import { AreaCard, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
-import ActivePlan, { currentSeason } from './ActivePlan';
+import ActivePlan, { currentSeason, InfoFooter } from './ActivePlan';
 import { seasonsCounted, seasonsOff, yearSeasons } from './seasonChips';
 import { assisted, useMyShares } from '../loan/MyShares';
 import RoundButton from '../shell/RoundButton';
@@ -1039,7 +1039,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
                   );
                 })}
               </div>
-              {rowNote && <p role="note" style={{ margin: 0, color: C.coral, textAlign: 'center' }}>{rowNote}</p>}
+              {/* 18 Nov: the warning in the info panel on top of the bottom bar, not in the card. */}
+              {rowNote && <InfoFooter tone="warn" text={rowNote} onClose={() => setRowNote(undefined)} />}
               {error && <p style={{ color: C.coral, margin: 0 }}>{error}</p>}
               {/* 17 Nov: Cancel | Update side by side. */}
               <div style={{ display: 'flex', gap: 8 }}>

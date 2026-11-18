@@ -34,22 +34,28 @@ const cropOf = (key, cat) => (key === GREEN_MANURE.key ? GREEN_MANURE : cat[key]
 
 /** The row from the crops tapped, in order: { bars: [{ key, slot, whole, sow, end }], dropped: [key] }. A crop with
  *  no room left in the year (or no grow days) is dropped. `free0`: the day the field is free (a crop standing now). */
-export function fill(keys, { seasons, cat, free0 = null }) {
+export function fill(keys, { seasons, cat, free0 = null, today = null }) {
   const slots = slotsOf(seasons);
   const bars = []; const dropped = [];
   let free = day(free0); let next = 0;
+  const t0 = today ? new Date(today.getFullYear(), today.getMonth(), today.getDate()) : (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); })();
   for (const key of keys) {
     const c = cropOf(key, cat);
     if (!c || !(c.days > 0) || next >= slots.length) { dropped.push(key); continue; }
+    const gm = key === GREEN_MANURE.key;
     let placed = false;
     for (let i = next; i < slots.length; i += 1) {
-      const sow = sowDate(c, slots[i], free);
+      // 18 Nov: a green manure is sown from today at the earliest (it is planned now, not back in October).
+      const from = gm && (!free || t0 > free) ? t0 : free;
+      const sow = sowDate(c, slots[i], from);
       if (!sow) continue;
       const end = addDays(sow, c.days);
       // A whole-year crop (17 Nov) holds every season after it is sown and runs on into the next year (sugarcane
       // after maize); nothing comes after it on the row.
       bars.push({ key, slot: slots[i].slot, whole: !!c.whole_year, sow, end });
-      free = end; next = c.whole_year ? slots.length : i + 1; placed = true;
+      // 18 Nov: a green manure does not take its season: the next crop may follow in the same season once it is
+      // ploughed in (green manure Oct–Nov, then sugarcane from December).
+      free = end; next = c.whole_year ? slots.length : gm ? i : i + 1; placed = true;
       break;
     }
     if (!placed) dropped.push(key);
@@ -64,7 +70,11 @@ export function toChanges(bars, seasons, locked = {}) {
   const out = {};
   seasons.forEach((s, i) => {
     if (locked[s.slot]) return;
-    out[s.slot] = whole && i >= from ? whole.key : (bars.find((b) => b.slot === s.slot)?.key ?? null);
+    const here = bars.filter((b) => b.slot === s.slot);
+    const crop = whole && i >= from ? whole.key : (here.find((b) => b.key !== GREEN_MANURE.key)?.key ?? null);
+    const gmFirst = crop && here.some((b) => b.key === GREEN_MANURE.key) && (!whole || i === from || crop !== whole.key);
+    // 18 Nov: a green manure before a crop in the same season goes to the node as "green_manure+<crop>".
+    out[s.slot] = gmFirst ? `${GREEN_MANURE.key}+${crop}` : crop ?? (here.length ? GREEN_MANURE.key : null);
   });
   return out;
 }
@@ -114,7 +124,7 @@ export function whyNoRoom(key, keys, { seasons, cat, free0 = null }) {
   if (!fill([...keys, key], { seasons, cat, free0 }).dropped.includes(key)) return null;
   const slots = slotsOf(seasons);
   const last = now.bars[now.bars.length - 1];
-  const next = last ? slots.findIndex((s) => s.slot === last.slot) + 1 : 0;
+  const next = last ? slots.findIndex((s) => s.slot === last.slot) + (last.key === GREEN_MANURE.key ? 0 : 1) : 0;
   if (!c || !(c.days > 0)) return 'Field full this year';
   if ((last && last.whole) || next >= slots.length) return 'Field full this year';
   const left = slots.slice(next);

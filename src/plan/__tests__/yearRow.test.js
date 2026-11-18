@@ -62,3 +62,16 @@ test('why a crop has no place: field full, its sowing months, or the field busy'
   expect(whyNoRoom('maize', ['sesame'], o)).toBe(null);
   expect(monthRanges([2, 3, 6, 7, 12, 1])).toBe('Dec–Mar, Jun–Jul');
 });
+
+test('green manure then sugarcane in the same season (18 Nov)', () => {
+  const seasons = [{ slot: 'S1', start: '2026-10-01' }, { slot: 'S2', start: '2027-03-01' }, { slot: 'S3', start: '2027-06-01' }];
+  const cat = { sugarcane_plant: { name: 'Sugarcane', days: 360, sow_months: [12, 1, 2], whole_year: true } };
+  const today = new Date(2026, 10, 18);
+  const { bars, dropped } = fill(['green_manure', 'sugarcane_plant'], { seasons, cat, today });
+  expect(dropped).toEqual([]);
+  expect(bars.map((b) => [b.key, b.slot])).toEqual([['green_manure', 'S1'], ['sugarcane_plant', 'S1']]);
+  expect(iso(bars[0].sow)).toBe('2026-11-18');
+  expect(bars[1].sow >= bars[0].end).toBe(true);
+  expect(toChanges(bars, seasons)).toEqual({ S1: 'green_manure+sugarcane_plant', S2: 'sugarcane_plant', S3: 'sugarcane_plant' });
+  expect(whyNoRoom('sugarcane_plant', ['green_manure'], { seasons, cat, today })).toBe(null);
+});

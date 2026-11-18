@@ -213,27 +213,30 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
           })}
         </div>
       ))}
-      {/* 17 Nov: the tapped tile's note as an info note on top of the bottom bar, outside the card (the card moves when
-          dragged, which would carry a fixed note with it); a tap closes it. */}
-      {shown && createPortal(
-        // As the registration screens' info footer (R5): a dark panel with rounded top corners, flush on the bar.
-        // 17 Nov: behind the bar (nav zIndex 10) and down to the screen's bottom edge, the bar's sides; the text above the bar.
-        <button type="button" role="status" onClick={() => { setOpen(null); onTile?.(null); }} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0, pointerEvents: 'auto',
-          display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
-          padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
-          borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
-          <span style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
-            </svg>
-          </span>
-          <span style={{ fontSize: 14, color: '#94A3B8', lineHeight: 1.5, alignSelf: 'center' }}>{detailOf(shown)}</span>
-        </button>,
-        // 17 Nov: in the bar's own layer (the shell, its own stacking context), so zIndex 9 lies under the bar's 10; on
-        // document.body it covered the bar.
-        document.querySelector('nav[aria-label="Main"]')?.parentElement || document.body,
-      )}
+      {/* 17 Nov: the tapped tile's note as an info note on top of the bottom bar, outside the card; a tap closes it. */}
+      {shown && <InfoFooter text={detailOf(shown)} onClose={() => { setOpen(null); onTile?.(null); }} />}
     </div>
+  );
+}
+
+/** A short note on top of the bottom bar (17 Nov; 18 Nov also the year row's warning): as the registration screens' info
+ *  footer (R5), a dark panel with rounded top corners, behind the bar (in the bar's own layer, zIndex 9 under its 10) and
+ *  down to the screen's bottom edge, outside the card (the card moves when dragged). A tap closes it. tone 'warn': coral. */
+export function InfoFooter({ text, onClose, tone }) {
+  const ink = tone === 'warn' ? C.coral : '#94A3B8';
+  return createPortal(
+    <button type="button" role="status" onClick={onClose} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0, pointerEvents: 'auto',
+      display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
+      padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
+      borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
+      <span style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+        </svg>
+      </span>
+      <span style={{ fontSize: 14, color: ink, lineHeight: 1.5, alignSelf: 'center' }}>{text}</span>
+    </button>,
+    document.querySelector('nav[aria-label="Main"]')?.parentElement || document.body,
   );
 }
 
