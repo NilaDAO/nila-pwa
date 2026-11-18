@@ -6,7 +6,7 @@
 // As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month; the
 // year bar on top of the card steps plan years; season chips above the tasks filter them (CropPlanFlow, 13 Nov). No title and
 // no "Your plan" rows (the crop bars above the card's list show the plan); the plan's date is a muted line at the end.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
@@ -107,13 +107,6 @@ const barTop = () => {
   const r = nav && nav.getBoundingClientRect();
   if (!r || !r.height) return 0;
   return Math.max(0, Math.round(window.innerHeight - r.top));
-};
-// The bar's left and right edges (compact, it has the cards' gutter), so a panel behind it lines up with it.
-const barSides = () => {
-  const nav = typeof document !== 'undefined' && document.querySelector('nav[aria-label="Main"]');
-  if (!nav) return { left: 0, right: 0 };
-  const r = nav.getBoundingClientRect();
-  return { left: Math.round(r.left), right: Math.max(0, Math.round(window.innerWidth - r.right)) };
 };
 // 17 Nov: three letters (Jan, Nov), not one (J, N), so a month reads at a glance.
 const MON_LETTER = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -229,6 +222,20 @@ export function InfoFooter({ text, onClose, tone }) {
   const ink = tone === 'warn' ? C.coral : '#94A3B8';
   const [down, setDown] = useState(true);
   const [, setTick] = useState(0);
+  const box = useRef(null);
+  // 18 Nov: the card's bottom padding grows by the panel's height while it is shown, so the card's last row (a button)
+  // can be scrolled above it instead of being covered.
+  useEffect(() => {
+    const card = document.querySelector('.cp-sheet');
+    const el = box.current;
+    if (!card || !el || typeof ResizeObserver === 'undefined') return undefined;
+    const base = card.style.paddingBottom;
+    const fit = () => { card.style.paddingBottom = `calc(104px + ${Math.ceil(el.getBoundingClientRect().height)}px)`; };
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    fit();
+    return () => { ro.disconnect(); card.style.paddingBottom = base; };
+  }, []);
   useEffect(() => {
     let low = false;
     let raf = 0;
@@ -262,9 +269,9 @@ export function InfoFooter({ text, onClose, tone }) {
     };
   }, []);
   return createPortal(
-    <button type="button" role="status" aria-hidden={down || undefined} onClick={onClose} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0,
+    <button ref={box} type="button" role="status" aria-hidden={down || undefined} onClick={onClose} style={{ position: 'fixed', left: 8, right: 8, zIndex: 9, bottom: 0,
       pointerEvents: down ? 'none' : 'auto', transform: down ? 'translateY(110%)' : 'translateY(0)',
-      transition: `transform 450ms ${REG_EASE}, left 200ms ease, right 200ms ease, padding 200ms ease`,
+      transition: `transform 450ms ${REG_EASE}`,
       display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
       padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
       borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
