@@ -63,6 +63,8 @@ function stateOf(x, loans) {
   if (loan) return loan.overdue ? { label: 'Overdue', bg: 'rgba(230,146,131,0.18)', fg: C.coral } : { label: 'Financed', bg: C.ink, fg: C.muted, more };
   if (x.drawn) return { label: 'Repaid', bg: C.ink, fg: C.text };
   if (x.lapsed) return { label: 'Not used · lapsed', bg: C.ink, fg: C.muted };   // past its last draw date (25 Oct)
+  // 18 Nov: held until her land is checked (open cash above ₹1 lakh): listed, no Get the cash.
+  if (x.held === 'land_check') return { label: 'Land check first', bg: 'rgba(230,146,131,0.18)', fg: C.coral };
   if (x.ready) return { take: true };
   return { label: fromLabel(x.from), bg: C.ink, fg: C.muted };
 }
