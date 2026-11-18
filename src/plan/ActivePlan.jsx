@@ -226,14 +226,19 @@ export function InfoFooter({ text, onClose, tone }) {
   const ink = tone === 'warn' ? C.coral : '#94A3B8';
   // 18 Nov: the card dragged down (nila-sheet-low) takes the panel down with it, behind the bar; back up, it returns.
   const [low, setLow] = useState(false);
+  // 18 Nov: the bar goes compact on a scroll down (a pill, a gutter on its sides): measured again once it has moved.
+  const [, setTick] = useState(0);
   useEffect(() => {
     const on = (e) => setLow(!!e.detail);
+    let t;
+    const bar = () => { clearTimeout(t); setTick((n) => n + 1); t = setTimeout(() => setTick((n) => n + 1), 260); };
     window.addEventListener('nila-sheet-low', on);
-    return () => window.removeEventListener('nila-sheet-low', on);
+    window.addEventListener('nila-tabbar', bar);
+    return () => { clearTimeout(t); window.removeEventListener('nila-sheet-low', on); window.removeEventListener('nila-tabbar', bar); };
   }, []);
   return createPortal(
     <button type="button" role="status" aria-hidden={low || undefined} onClick={onClose} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0,
-      pointerEvents: low ? 'none' : 'auto', transform: low ? 'translateY(100%)' : 'none', transition: 'transform 200ms ease',
+      pointerEvents: low ? 'none' : 'auto', transform: low ? 'translateY(100%)' : 'none', transition: 'transform 200ms ease, left 200ms ease, right 200ms ease, padding 200ms ease',
       display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
       padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
       borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
