@@ -1,0 +1,77 @@
+import { fill, iso, monthRanges, rowOf, toChanges, whyNoRoom } from '../yearRow';
+
+const seasons = [{ slot: 'S1', start: '2026-10-01' }, { slot: 'S2', start: '2027-03-01' }, { slot: 'S3', start: '2027-06-01' }];
+const cat = {
+  sugarcane: { days: 330, sow_months: [12, 1, 2, 3], whole_year: true },
+  black_gram: { days: 75, sow_months: [10, 11, 12, 2, 3, 6, 7] },
+  green_gram: { days: 70, sow_months: [3, 6, 7] },
+  maize: { days: 115, sow_months: [6, 7, 10, 11, 1, 2] },
+};
+const show = (bars) => bars.map((b) => [b.key, b.slot, iso(b.sow)]);
+
+test('black gram, green manure, maize follow each other, one per season', () => {
+  const { bars, dropped } = fill(['black_gram', 'green_manure', 'maize'], { seasons, cat });
+  expect(dropped).toEqual([]);
+  expect(show(bars)).toEqual([['black_gram', 'S1', '2026-10-01'], ['green_manure', 'S2', '2027-03-01'], ['maize', 'S3', '2027-06-01']]);
+  expect(toChanges(bars, seasons)).toEqual({ S1: 'black_gram', S2: 'green_manure', S3: 'maize' });
+});
+
+test('sugarcane fills the year: green gram in March has no room', () => {
+  const { bars, dropped } = fill(['sugarcane', 'green_gram'], { seasons, cat });
+  expect(bars).toHaveLength(1);
+  expect(bars[0].whole).toBe(true);
+  expect(iso(bars[0].sow)).toBe('2026-12-01');
+  expect(dropped).toEqual(['green_gram']);
+  expect(toChanges(bars, seasons)).toEqual({ S1: 'sugarcane', S2: 'sugarcane', S3: 'sugarcane' });
+});
+
+test('a crop is sown only once the field is free, and locked seasons are not sent', () => {
+  const { bars } = fill(['maize'], { seasons, cat, free0: '2027-01-15' });
+  expect(show(bars)).toEqual([['maize', 'S1', '2027-01-15']]);
+  expect(toChanges(bars, seasons, { S1: { crop: 'paddy' } })).toEqual({ S2: null, S3: null });
+});
+
+test('the row as planned: crops after the locked ones, green manure in time order', () => {
+  const plan = { plan: {
+    seasons: [
+      { slot: 'S1', start: '2026-10-01', rows: [{ zone: 'z1', crop: 'paddy', sow: '2026-09-01', harvest: '2027-01-10' }] },
+      { slot: 'S2', start: '2027-03-01', rows: [] },
+      { slot: 'S3', start: '2027-06-01', rows: [{ zone: 'z1', crop: 'maize', sow: '2027-06-01' }] },
+    ],
+    locked: { z1: { S1: { crop: 'paddy' } } },
+    soil_cover: [{ zone: 'z1', kind: 'green_manure', sow: '2027-03-20' }],
+  } };
+  expect(rowOf(plan, 'z1')).toEqual({ keys: ['green_manure', 'maize'], free0: '2027-01-10', locked: { S1: { crop: 'paddy' } } });
+});
+
+test('sugarcane after maize: sown when the maize is harvested, it runs into the next year', () => {
+  const { bars, dropped } = fill(['maize', 'sugarcane'], { seasons, cat });
+  expect(dropped).toEqual([]);
+  expect(show(bars)).toEqual([['maize', 'S1', '2026-10-01'], ['sugarcane', 'S2', '2027-03-01']]);
+  expect(bars[1].end.getFullYear()).toBe(2028);
+  expect(toChanges(bars, seasons)).toEqual({ S1: 'maize', S2: 'sugarcane', S3: 'sugarcane' });
+});
+
+test('why a crop has no place: field full, its sowing months, or the field busy', () => {
+  const c2 = { ...cat, sesame: { days: 90, sow_months: [2, 3, 6, 7, 12, 1] }, horse_gram: { days: 100, sow_months: [9, 10, 11] },
+    sugarcane: { days: 360, sow_months: [12, 1, 2], whole_year: true } };
+  const o = { seasons, cat: c2, free0: '2026-12-01' };
+  expect(whyNoRoom('sugarcane', ['sesame'], o)).toBe('Sown Dec–Feb only');
+  expect(whyNoRoom('horse_gram', ['sesame'], o)).toBe('Sown Sep–Nov only');
+  expect(whyNoRoom('maize', ['sugarcane'], o)).toBe('Field full this year');
+  expect(whyNoRoom('maize', ['sesame'], o)).toBe(null);
+  expect(monthRanges([2, 3, 6, 7, 12, 1])).toBe('Dec–Mar, Jun–Jul');
+});
+
+test('green manure then sugarcane in the same season (18 Nov)', () => {
+  const seasons = [{ slot: 'S1', start: '2026-10-01' }, { slot: 'S2', start: '2027-03-01' }, { slot: 'S3', start: '2027-06-01' }];
+  const cat = { sugarcane_plant: { name: 'Sugarcane', days: 360, sow_months: [12, 1, 2], whole_year: true } };
+  const today = new Date(2026, 10, 18);
+  const { bars, dropped } = fill(['green_manure', 'sugarcane_plant'], { seasons, cat, today });
+  expect(dropped).toEqual([]);
+  expect(bars.map((b) => [b.key, b.slot])).toEqual([['green_manure', 'S1'], ['sugarcane_plant', 'S1']]);
+  expect(iso(bars[0].sow)).toBe('2026-11-18');
+  expect(bars[1].sow >= bars[0].end).toBe(true);
+  expect(toChanges(bars, seasons)).toEqual({ S1: 'green_manure+sugarcane_plant', S2: 'sugarcane_plant', S3: 'sugarcane_plant' });
+  expect(whyNoRoom('sugarcane_plant', ['green_manure'], { seasons, cat, today })).toBe(null);
+});

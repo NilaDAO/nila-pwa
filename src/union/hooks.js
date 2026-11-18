@@ -30,12 +30,12 @@ export function useUnionSigners() {
 
 /** { state, names, nodeFp, myFp }: state 'none' (no key anywhere: make one), 'scan' (the union has a key, this phone
  *  not), 'mismatch' (this phone's key is not the union's), 'ok'. names: Map address → { name, phone }. */
-export function useContactBook() {
+export function useContactBook({ enabled = true } = {}) {
   const call = useCall();
   const { data: cfg } = useStellarConfig();
   const union = cfg?.union;
   return useQuery({
-    queryKey: ['union', 'book', union], enabled: !!call && !!union, staleTime: 60_000, refetchOnWindowFocus: true,
+    queryKey: ['union', 'book', union], enabled: enabled && !!call && !!union, staleTime: 60_000, refetchOnWindowFocus: true,
     queryFn: async () => {
       const key = loadKey(union);
       const myFp = key ? await fingerprint(key) : null;

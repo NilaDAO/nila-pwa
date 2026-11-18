@@ -64,7 +64,8 @@ export function planClient(signer) {
     chain: (landId) => call('GET', `/plan/land/${landId}/chain`),
     extend: (planId) => call('POST', `/plan/${planId}/extend`, {}),
     plan: (planId) => call('GET', `/plan/${planId}`),
-    accept: (planId, zone) => call('POST', `/plan/${planId}/accept`, { zone }),
+    // conditions (16 Nov): the ids of an edited plan's conditions the user ticked; the node refuses the accept without all.
+    accept: (planId, zone, conditions = []) => call('POST', `/plan/${planId}/accept`, { zone, conditions }),
     pendingApprovals: () => call('GET', '/plan/approvals/pending'),
     approvedPlans: () => call('GET', '/plan/approvals/approved'),
     discard: (planId) => call('POST', `/plan/${planId}/discard`, {}),

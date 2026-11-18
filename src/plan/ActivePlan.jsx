@@ -6,10 +6,13 @@
 // As the board (21 Oct): a group without items is not shown; a coming-up row is one line — icon, task, month; the
 // year bar on top of the card steps plan years; season chips above the tasks filter them (CropPlanFlow, 13 Nov). No title and
 // no "Your plan" rows (the crop bars above the card's list show the plan); the plan's date is a muted line at the end.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
+import { gridsOf, coverGrids } from './jobGrid';
+import Segmented from '../shell/Segmented';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' }).replace('Sept', 'Sep');
 // Machine jobs as the board words them ("Weed maize"); the catalogue's `for` text otherwise.
@@ -22,11 +25,12 @@ const IC = {
   cut: 'M3 6a3 3 0 1 0 6 0a3 3 0 1 0-6 0M3 18a3 3 0 1 0 6 0a3 3 0 1 0-6 0M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12',
   harvest: 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.27 6.96 12 12.01l8.73-5.05M12 22.08V12',
   repay: 'M7 17 17 7M7 7h10v10',
+  inputs: 'M10 2v7.31M14 9.3V1.99M8.5 2h7M14 9.3a6.5 6.5 0 1 1-4 0M5.52 16h12.96',
+  transport: 'M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2M15 18H9M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14M7 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M15 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0',
   cash: 'M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0M6 12h.01M18 12h.01',
 };
-const iconOf = (text) => (/^Receive/.test(text) ? 'cash' : /^Plant/.test(text) ? 'plant' : /^Weed/.test(text) ? 'weed' : /^Cut/.test(text) ? 'cut'
-  : /^Harvest/.test(text) ? 'harvest' : /^Repay/.test(text) ? 'repay' : 'tractor');
 const SLOT = { S1: 'Oct to Feb', S2: 'Mar to May', S3: 'Jun to Aug' };
+const SEASON_SHORT = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
 
 /** The season she is in today: the last one that has started (the first before any has). */
 export function currentSeason(seasons, today = new Date()) {
@@ -69,41 +73,228 @@ export function tasksOf(plan, areaNo, areaName) {
   return out.sort((a, b) => a.date.slice(0, 7).localeCompare(b.date.slice(0, 7)) || (!!b.share - !!a.share) || a.date.localeCompare(b.date));
 }
 
-// To do now: a raised row with the task's area under it; coming up: one plain line (board CropPlanActive).
-function Row({ t, now }) {
-  return (
-    <div role="listitem" aria-label={`${t.text}, ${month(t.date)}, ${now ? 'to do' : 'coming up'}`}
-      style={{ display: 'flex', alignItems: now ? 'center' : 'flex-start', gap: 10, borderRadius: 12, fontSize: 14, lineHeight: 1.5,
-        ...(now ? { background: C.raised, padding: '12px 16px' } : { padding: '8px 0' }) }}>
-      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
-        <path d={IC[iconOf(t.text)]} />
-      </svg>
-      <span style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <span style={{ display: 'flex', gap: 10 }}>
-          <span style={{ flexGrow: 1, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.text}</span>
-          <span style={{ whiteSpace: 'nowrap', color: C.muted }}>{t.when || month(t.date)}</span>
+// The job grid (17 Nov, executive decision; replaces To do now and Coming up): one grid for every crop in the season
+// shown, a small tile per action filled in its crop's colour, in time order left to right, top to bottom; the border
+// says how it is paid: voucher = red, cash = green, self-organised = none; the amount in a darker strip at the bottom. A tap shows what it is worth.
+// The app's red (17 Nov): a voucher's border.
+const VOUCHER_EDGE = C.coral;
+// 17 Nov: the amount is on every tile, so only a voucher has a border.
+const edge = (kind) => (kind === 'voucher' ? `3px solid ${VOUCHER_EDGE}` : '3px solid transparent');
+// Text and icon on a crop's colour (17 Nov): black on a light colour, white on a dark one (relative luminance).
+export function inkOn(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return C.text;
+  const n = parseInt(m[1], 16);
+  const lin = (v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return L > 0.18 ? C.ink : '#ffffff';
+}
+
+
+// A tap shows only what it is worth (17 Nov): the cash or voucher value; self-organised work has none.
+function detailOf(t) {
+  if (t.key === 'collect') return `${t.crop} · ${t.label} · ${inr(t.value)}${t.done ? ' · collected' : t.ready ? ' · ready at the union office' : ''}`;
+  if (t.key === 'repay') return `${t.crop} · ${t.label} · ${inr(t.value)} · 21 days after your harvest`;
+  if (t.kind === 'self') return `${t.crop} · ${t.label} · you organise it`;
+  return `${t.crop} · ${t.label} · ${t.value ? inr(t.value) : '—'}`;
+}
+
+// Where the bottom bar starts (17 Nov): the note sits flush on top of it.
+const barTop = () => {
+  const nav = typeof document !== 'undefined' && document.querySelector('nav[aria-label="Main"]');
+  // 17 Nov: no bar on this screen (a leader's view of a member's plan) → 0, the note on the screen's bottom edge.
+  // (offsetParent is always null for a fixed element, so the bar's own box decides.)
+  const r = nav && nav.getBoundingClientRect();
+  if (!r || !r.height) return 0;
+  return Math.max(0, Math.round(window.innerHeight - r.top));
+};
+// 17 Nov: three letters (Jan, Nov), not one (J, N), so a month reads at a glance.
+const MON_LETTER = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MON_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** The whole plan's tiles by month (17 Nov): [{ si, months: [{ ym, tiles }] }], a season holding the months from its
+ *  start to the next season's (a repayment after the last season stays with it). */
+export function planMonths(plan, { areaNo, areaName, shares, filter } = {}) {
+  const ss = (plan.plan || plan).seasons || [];
+  // 17 Nov: green manures too, each its own crop agreement.
+  const grids = [...ss.map((_, si) => gridsOf(plan, si, { areaNo, areaName, shares }).map((g) => [si, g])).flat(),
+    ...coverGrids(plan, { areaNo, areaName, shares }).map((g) => ['gm', g])];
+  const seasonOf = (ym) => ss.reduce((k, s, i) => (String(s.start).slice(0, 7) <= ym ? i : k), 0);
+  // zones and season (17 Nov): a tapped tile shows its crop's areas on the map, in the season it is sown.
+  const tiles = grids.flatMap(([si, g]) => g.tiles.map((t) => ({ ...t, id: `${si}|${g.key}|${t.key}`, crop: g.crop, colour: g.colour, si,
+    zones: g.zones || [], season: si === 'gm' ? seasonOf(String(g.sow).slice(0, 7)) : si, seasons: g.seasons })));
+  // 18 Nov: a section is the real season of each date in its plan year (Jan–Feb belongs to Oct–Feb; was: everything
+  // after the plan's last season start fell under that season, so a Jan harvest showed under Jun–Aug), in date order.
+  const slotOf = (m) => (m >= 10 || m <= 2 ? 'S1' : m <= 5 ? 'S2' : 'S3');
+  const out = [];
+  // In time order across the crops; the same day keeps each crop's own order (stable sort).
+  // 17 Nov: a season chip shows only the crops sown in that season; areas tapped on the map only their tiles.
+  const keep = (x) => x.date && (filter?.season == null || (x.seasons?.length ? x.seasons : [x.season]).includes(filter.season))
+    && (!filter?.zones?.length || (x.zones || []).some((z) => filter.zones.includes(z)));
+  // On the same day a green manure's Turn in comes first: the next crop's work follows it (18 Nov).
+  const day = (t) => String(t.date).slice(0, 10);
+  for (const t of tiles.filter(keep).sort((a, b) => day(a).localeCompare(day(b)) || (b.key === 'turn_in') - (a.key === 'turn_in'))) {
+    const ym = String(t.date).slice(0, 7);
+    const y = Number(ym.slice(0, 4)); const mo = Number(ym.slice(5, 7));
+    const ay = mo >= 10 ? y : y - 1;   // the plan year (Oct–Sep) the date is in
+    const key = `${ay}:${slotOf(mo)}`;
+    let sec = out.find((x) => x.key === key);
+    if (!sec) { sec = { key, si: key, slot: slotOf(mo), ay, months: [] }; out.push(sec); }
+    let m = sec.months.find((x) => x.ym === ym);
+    if (!m) { m = { ym, tiles: [] }; sec.months.push(m); }
+    m.tiles.push(t);
+  }
+  return out;
+}
+
+// 17 Nov: the grid (4 a row) or one scrolling row per month, switched as the Harvests screen's list / calendar.
+const VIEW_KEY = 'nila.plan.jobView';
+const GridIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>;
+const RowIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="8" width="6" height="8" rx="1" /><rect x="9" y="8" width="6" height="8" rx="1" /><rect x="16" y="8" width="6" height="8" rx="1" /></svg>;
+
+function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
+  const [open, setOpen] = useState(null);
+  const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'grid'; } catch { return 'grid'; } });
+  const pickView = (v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
+  const asRow = view === 'row';
+  const secs = planMonths(plan, { areaNo, areaName, shares, filter });
+  if (!secs.length) return <p style={{ fontSize: 14, color: C.muted, margin: '16px 0 0' }}>Nothing is planned yet.</p>;
+  const all = secs.flatMap((x) => x.months.flatMap((m) => m.tiles));
+  const shown = all.find((t) => t.id === open);
+  const tile = (t) => {
+    const ink = inkOn(t.colour || C.muted);
+    // 17 Nov: the amount only on Collect and Repay (the crop agreement's money); the other tiles say how they are paid.
+    const amount = t.key === 'collect' || t.key === 'repay' ? inr(t.value || 0)
+      : t.kind === 'voucher' ? 'Voucher' : t.kind === 'cash' ? 'Cash' : 'You';
+    return (
+      <button key={t.id} type="button" role="listitem" aria-pressed={open === t.id} aria-label={detailOf(t)} onClick={() => { const on = open !== t.id; setOpen(on ? t.id : null); onTile?.(on ? t : null); }}
+        style={{ position: 'relative', borderRadius: 10, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          color: ink, fontFamily: FONT, cursor: 'pointer', padding: 0, background: t.colour || C.muted, border: edge(t.kind), ...(asRow ? { flex: '0 0 76px' } : {}),
+          opacity: t.done ? 0.55 : 1, outline: open === t.id ? `2px solid ${C.text}` : 'none', outlineOffset: 2 }}>
+        <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '8px 2px 6px', flexGrow: 1 }}>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d={IC[t.icon] || IC.tractor} />
+          </svg>
+          <span style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.1 }}>{t.label}</span>
         </span>
-        {now && t.area && <span style={{ color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.area}</span>}
-      </span>
+        {/* The amount in a darker strip at the bottom, as the crop cards' name row. */}
+        <span style={{ background: 'rgba(0,0,0,0.45)', color: '#ffffff', fontSize: 11, fontWeight: 700, padding: '3px 2px', textAlign: 'center', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis' }}>{amount}</span>
+        {(t.ready || t.done) && (
+          <span style={{ position: 'absolute', top: 3, right: 3, fontSize: 9, fontWeight: 700, padding: '0 5px', borderRadius: 9999,
+            background: C.ink, color: t.done ? C.muted : C.accent }}>{t.done ? '✓' : 'Ready'}</span>
+        )}
+      </button>
+    );
+  };
+  // The whole plan as one grid (17 Nov): a row per month with its letter on the left, a line with the season's name
+  // between seasons; a tap shows what a tile is worth under the grid.
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Segmented icon width="hug" label="Grid or row" value={view} onChange={pickView}
+          options={[['grid', <GridIcon key="g" />, 'Grid'], ['row', <RowIcon key="r" />, 'Row']]} />
+      </div>
+      {secs.map((sec, k) => (
+        <div key={sec.key} role="group" aria-label={`${SLOT[sec.slot]} ${sec.ay}–${String((sec.ay + 1) % 100).padStart(2, '0')}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* 18 Nov: a year break where the plan year changes ("2027–28"). */}
+          {(k === 0 || secs[k - 1].ay !== sec.ay) && (
+            <span style={{ fontSize: 14, fontWeight: 700, color: C.text, margin: k === 0 ? '0' : '14px 0 0' }}>{`${sec.ay}–${String((sec.ay + 1) % 100).padStart(2, '0')}`}</span>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0 2px' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, whiteSpace: 'nowrap' }}>{SEASON_SHORT[sec.slot]}</span>
+            <span aria-hidden="true" style={{ flexGrow: 1, height: 1, background: C.raised }} />
+          </div>
+          {sec.months.map((m) => {
+            const mi = Number(m.ym.slice(5, 7)) - 1;
+            return (
+              <div key={m.ym} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                <span aria-label={MON_NAME[mi]} style={{ width: 30, flexShrink: 0, fontSize: 13, fontWeight: 700, color: C.muted, paddingTop: 8, textAlign: 'left' }}>{MON_LETTER[mi]}</span>
+                <div role="list" aria-label={MON_NAME[mi]} style={asRow
+                  ? { flexGrow: 1, minWidth: 0, display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }
+                  : { flexGrow: 1, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>{m.tiles.map(tile)}</div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {/* 17 Nov: the tapped tile's note as an info note on top of the bottom bar, outside the card; a tap closes it. */}
+      {shown && <InfoFooter text={detailOf(shown)} onClose={() => { setOpen(null); onTile?.(null); }} />}
     </div>
   );
 }
 
-function Group({ name, items, now, first }) {
-  const [n, setN] = useState(first || items.length);
-  if (!items.length) return null;
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-      <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>{name}</span>
-      <div role="list" aria-label={name} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.slice(0, n).map((t) => <Row key={t.date + t.text + t.area} t={t} now={now} />)}
-      </div>
-      {/* 13 Nov: the whole property's list, a few at a time. */}
-      {n < items.length && (
-        <button type="button" onClick={() => setN(n + 5)} style={{ alignSelf: 'flex-start', border: 0, background: 'transparent', padding: 0,
-          color: C.accent, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Show more ({items.length - n})</button>
-      )}
-    </div>
+/** A short note on top of the bottom bar, as the registration screens' info footer (R5): a dark panel with rounded top
+ *  corners, behind the bar (in the bar's own layer, zIndex 9 under its 10) and down to the screen's bottom edge, outside
+ *  the card. 18 Nov (executive decision, every info area): like the registration footer it slides down out of sight
+ *  (450 ms) while the card is lowered — dragged down, or half way — and slides back up when the card is all the way up.
+ *  A tap closes it. tone 'warn': coral. */
+const REG_EASE = 'cubic-bezier(0.2,0.8,0.2,1)';
+export function InfoFooter({ text, onClose, tone }) {
+  const ink = tone === 'warn' ? C.coral : '#94A3B8';
+  const [down, setDown] = useState(true);
+  const [, setTick] = useState(0);
+  const box = useRef(null);
+  // 18 Nov: the card's bottom padding grows by the panel's height while it is shown, so the card's last row (a button)
+  // can be scrolled above it instead of being covered.
+  useEffect(() => {
+    const card = document.querySelector('.cp-sheet');
+    const el = box.current;
+    if (!card || !el || typeof ResizeObserver === 'undefined') return undefined;
+    const base = card.style.paddingBottom;
+    const fit = () => { card.style.paddingBottom = `calc(104px + ${Math.ceil(el.getBoundingClientRect().height)}px)`; };
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    fit();
+    return () => { ro.disconnect(); card.style.paddingBottom = base; };
+  }, []);
+  useEffect(() => {
+    let low = false;
+    let raf = 0;
+    // The card is up when its top is in the upper part of the screen; half way (or lower) it counts as lowered.
+    const check = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const card = document.querySelector('.cp-sheet');
+        const top = card ? card.getBoundingClientRect().top : 0;
+        setDown(low || top > window.innerHeight * 0.4);
+        setTick((n) => n + 1);   // the bar's size and sides, measured again
+      });
+    };
+    const onLow = (e) => { low = !!e.detail; check(); };
+    let t;
+    const onBar = () => { check(); clearTimeout(t); t = setTimeout(check, 260); };
+    check();
+    const late = setTimeout(check, 500);   // after the card's own opening animation
+    window.addEventListener('scroll', check, { capture: true, passive: true });
+    window.addEventListener('resize', check);
+    window.addEventListener('nila-sheet-low', onLow);
+    window.addEventListener('nila-sheet-mid', check);
+    window.addEventListener('nila-tabbar', onBar);
+    return () => {
+      cancelAnimationFrame(raf); clearTimeout(t); clearTimeout(late);
+      window.removeEventListener('scroll', check, { capture: true });
+      window.removeEventListener('resize', check);
+      window.removeEventListener('nila-sheet-low', onLow);
+      window.removeEventListener('nila-sheet-mid', check);
+      window.removeEventListener('nila-tabbar', onBar);
+    };
+  }, []);
+  return createPortal(
+    <button ref={box} type="button" role="status" aria-hidden={down || undefined} onClick={onClose} style={{ position: 'fixed', left: 8, right: 8, zIndex: 9, bottom: 0,
+      pointerEvents: down ? 'none' : 'auto', transform: down ? 'translateY(110%)' : 'translateY(0)',
+      transition: `transform 450ms ${REG_EASE}`,
+      display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
+      padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
+      borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
+      <span style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+        </svg>
+      </span>
+      <span style={{ fontSize: 14, color: ink, lineHeight: 1.5, alignSelf: 'center' }}>{text}</span>
+    </button>,
+    document.querySelector('nav[aria-label="Main"]')?.parentElement || document.body,
   );
 }
 
@@ -111,26 +302,15 @@ function Group({ name, items, now, first }) {
  *  month; a drawn one is done and not listed. assist: a shared phone, where the leader extends the plan.
  *  Extend, not update (executive decision 25 Oct): `plan` is her approved chain as one (the plan and its extensions);
  *  canExtend: the cycles "Extend my plan" adds (none: it covers the next three); onExtend starts it. */
-export default function ActivePlan({ plan, areaNo, areaName, season, shares, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart, chartTitle = "This year's plan", past = false, seasons, filter }) {
-  const now = today.toISOString().slice(0, 10);
-  const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
-  // One list for the whole property (13 Nov): every season's tasks in date order, not only the season on the bar.
-  // 13 Nov: seasons = the season indices whose chip is on (filter: the chips); only their tasks are listed.
-  const all = tasksOf(plan.plan, areaNo, areaName).filter((t) => !(t.share && byKey[t.share]?.drawn))
-    .filter((t) => !seasons || seasons.has(t.season))
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const ready = (t) => !!(t.share && byKey[t.share]?.ready);
-  const thisMonth = all.filter((t) => ready(t) || (t.date.slice(0, 7) === now.slice(0, 7) && !(t.share && byKey[t.share] && !ready(t))));
-  const later = all.filter((t) => !thisMonth.includes(t) && t.date.slice(0, 7) > now.slice(0, 7));
+export default function ActivePlan({ plan, areaNo, areaName, season, shares, onTile, assist, today = new Date(), canExtend = [], onExtend, extending, extendError, chart, chartTitle = "This year's plan", past = false, seasons, filter }) {
   const approvedAt = plan.approval?.ts ? new Date(plan.approval.ts * 1000) : null;
   const madeOn = approvedAt && approvedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return (
     <>
-      {!past && filter}
-      {!past && <Group name="To do now" items={thisMonth} now />}
-      {!past && <Group name="Coming up" items={later} first={4} />}
-      {/* 13 Nov: the whole plan as crop bars, below the tasks, under its own title. */}
-      {chart && (
+      {/* 17 Nov: the whole plan's job grid replaces To do now, Coming up and This year's plan (the bars stay for a record year). */}
+      {!past && <JobGrids plan={plan} areaNo={areaNo} areaName={areaName} shares={shares} onTile={onTile} filter={filter} />}
+      {!past && madeOn && <span style={{ display: 'block', marginTop: 12, fontSize: 13, color: C.muted }}>Plan made {madeOn}</span>}
+      {chart && past && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16, borderTop: `1px solid ${C.raised}`, paddingTop: 16 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: C.muted }}>{chartTitle}</span>
           {chart}

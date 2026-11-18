@@ -14,7 +14,9 @@ import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
 import { useNilaSigner } from '../wallet/signer';
 
 /** title (13 Nov): the task only ("Join the union"); the land's name is already on the screen behind it. */
-export default function StartHelp({ member, label, title, onBack, onStarted, onDesk }) {
+/** `onPair(account)` (sign later, plan 050): `member` is a new member's keyless placeholder; her QR carries her new
+ *  account, which is made and joined here and then paired with the holding address on the node. */
+export default function StartHelp({ member, label, title, onBack, onStarted, onDesk, onPair }) {
   const tx = useSorobanTx();
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -35,7 +37,7 @@ export default function StartHelp({ member, label, title, onBack, onStarted, onD
     }
     let q;
     try { q = readSessionQr(t); } catch (e) { setError(e.message); setTries((x) => x + 1); return; }
-    if (member && q.member !== member) { setError("This is another member's QR."); setTries((x) => x + 1); return; }
+    if (member && q.member !== member && !onPair) { setError("This is another member's QR."); setTries((x) => x + 1); return; }
     setError(undefined);
     if (q.join) {
       // A keypad whose account names no union yet (kind 4, 3 Nov), or a smartphone's (kind 5, 4 Nov): this app makes her
@@ -44,6 +46,12 @@ export default function StartHelp({ member, label, title, onBack, onStarted, onD
       setJoining(true);
       try { await ensureKeypadAccount(cfg, s, { account: q.member, first_signer: q.join.signer, set_union: q.join }); }
       catch (e) { console.error('[help] account not made or union not set', e); setError('Could not join her account to the union. Try again.'); setTries((x) => x + 1); return; }
+      finally { setJoining(false); }
+    }
+    if (onPair) {
+      setJoining(true);
+      try { await onPair(q.member); }
+      catch (e) { setError(e.message); setTries((x) => x + 1); return; }
       finally { setJoining(false); }
     }
     const out = await tx.run({ label: `Act for ${label || 'the member'}`, rows: [['For', '5 minutes']], contractName: q.member, fn: 'start_session',

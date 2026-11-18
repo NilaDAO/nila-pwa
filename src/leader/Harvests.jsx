@@ -14,8 +14,9 @@ import { SkeletonRows } from '../shell/Skeleton';
 import Segmented from '../shell/Segmented';
 import { Primary, inr } from '../plan/ui';
 import { Stepper } from '../loan/AssetParts';
-import { usePlanClient } from '../plan/hooks';
+import { useCropCatalogue, usePlanClient } from '../plan/hooks';
 import { unionCentre, useLeaderMap } from './unionMap';
+import { areasOf } from '../plan/record';
 import AreaMap from '../plan/AreaMap';
 import { useUnionMembers, useUnionShares } from './unionMembers';
 import { harvestGroups, unitOf, useCropPrices, useSetPrice } from './harvestData';
@@ -36,7 +37,7 @@ function groupMap(group, members) {
   for (const s of group?.shares || []) {
     const m = byAddr[s.member];
     if (!m) continue;
-    const parts = (m.record?.zones || []).filter((z) => (s.zones || []).includes(z.zone_id) && z.geometry);
+    const parts = areasOf(m.record).filter((z) => (s.zones || []).includes(z.zone_id) && z.geometry);
     const shapes = parts.length ? parts.map((z) => z.geometry) : m.places.map((p) => p.geometry);
     shapes.forEach((geometry, i) => {
       const id = `${s.token}#${i}`;
@@ -55,7 +56,10 @@ function useHarvests() {
   const members = useUnionMembers(api);
   const shares = useUnionShares(api);
   const prices = useCropPrices();
-  const groups = useMemo(() => harvestGroups(members.data, shares.data), [members.data, shares.data]);
+  // Fodder crops are fed, not sold (15 Nov): not on the Harvests screen.
+  const catalogue = useCropCatalogue();
+  const fodder = useMemo(() => new Set((catalogue.data?.crops || []).filter((c) => c.fodder).map((c) => c.key)), [catalogue.data]);
+  const groups = useMemo(() => harvestGroups(members.data, shares.data, Date.now() / 1000, fodder), [members.data, shares.data, fodder]);
   // The crop's rupees per kg: the union's local price on Stellar, else the catalogue's until a leader sets one.
   const priceOf = (crop) => {
     const b = (prices.data || []).find((x) => x.crop === crop);

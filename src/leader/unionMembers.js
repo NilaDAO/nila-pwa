@@ -38,7 +38,8 @@ const outline = (record) => record?.meta?.geometry?.out
 
 // Her land as on her title (24 Oct, the leader's Assets map): the title's fields from its metadata (the node's `shape`),
 // else the record's fields or areas.
-const addFields = (m, tf) => { if (tf?.fields?.length) m.fields.push(...tf.fields); };
+// land (16 Nov): the title's name on each field, for the border overlap warning ("Overlap with <land>").
+const addFields = (m, tf, land) => { if (tf?.fields?.length) m.fields.push(...tf.fields.map((f) => ({ ...f, land }))); };
 // A title whose field record is not built yet (28 Oct): its place on the map is the title's own outline (else its
 // fields), as the Assets map draws it, so the Members map and G2 show the land too.
 const addTitlePlace = (m, t, tf) => {
@@ -60,7 +61,7 @@ export function markJoined(address) {
 // The list as it was last seen, kept on the phone per account and union (22 Oct): G1 shows it at once on the next open
 // and refreshes it in the background. Only the list fields are kept (no field records), so it stays small.
 const cacheKey = (acct, union) => `nila.members.${union}.${acct}`;
-const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label', 'joined', 'keypadId', 'formerTitle'];
+const KEEP = ['key', 'address', 'name', 'phone', 'lands', 'loans', 'places', 'note', 'job', 'titleId', 'recordHash', 'route', 'label', 'joined', 'keypadId', 'formerTitle', 'formerPolygon'];
 function readKept(acct, union) {
   try { const v = JSON.parse(localStorage.getItem(cacheKey(acct, union)) || 'null'); return Array.isArray(v) ? v : undefined; } catch { return undefined; }
 }
@@ -90,7 +91,8 @@ function keep(acct, union, list) {
 const finish = (members) => members.map((m) => {
   const lands = [...m.lands].sort((a, b) => a - b);
   const route = m.titleId || lands[0] || m.address || `k${m.key.replace(/^keypad:/, '')}`;
-  return { ...m, lands, route: String(route), label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.address ? short(m.address) : m.phone || 'New member') };
+  return { ...m, lands, route: String(route), // 15 Nov: a member whose title was removed keeps her name, else the removed title's land, never her C address.
+    label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.formerTitle != null ? `Land ${m.formerTitle}` : m.address ? short(m.address) : m.phone || 'New member') };
 }).sort((a, b) => b.loans.some((x) => x.overdue) - a.loans.some((x) => x.overdue) || a.label.localeCompare(b.label));
 
 /** G1's list (22 Oct, lean): the union's titles, keypad members, open border jobs and the loan list, with each loan's
@@ -116,6 +118,7 @@ export function useUnionMembers(api) {
             note: r.note || '', job: r.job, nextHarvest: r.next_harvest || null, shareCounts: r.shares || {},
             seq: r.seq || 0, shareList: r.share_list || [], keypadId: r.keypad_id || undefined,
             formerTitle: r.former_title ?? undefined,   // 13 Nov: her title was burned; she stays in the list
+            formerPolygon: r.former_polygon || undefined,   // 15 Nov: her Polygon address, so a new title needs no QR scan
             // Her account names the union (7 Nov): false for a moved member until the leader scans her help QR; undefined unknown.
             joined: r.joined === false && joinedHere(r.address) ? true : r.joined,
             loans: (r.loans || []).map((l) => ({ token: String(l.token_id).toLowerCase().replace(/^0x/, '').padStart(64, '0'), left: Number(l.left ?? l.cash ?? 0), overdue: !!l.overdue, due: Number(l.due || 0) })) };
@@ -123,7 +126,7 @@ export function useUnionMembers(api) {
             m.lands.add(t.title_id);
             const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
             if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
-            addFields(m, shapeToFields(t.shape) || recordFields(record));
+            addFields(m, shapeToFields(t.shape) || recordFields(record), t.farm || `Land ${t.title_id}`);
             if (!record) addTitlePlace(m, t, shapeToFields(t.shape));
           }));
           return m;
@@ -139,8 +142,9 @@ export function useUnionMembers(api) {
       const border = borderClient(s);
       const [titles, keypad, jobs, loanList] = await Promise.all([
         api.unionTitles().then((r) => r.titles || []).catch(() => []),
-        // Not a smartphone member's recovery row (4 Nov, POST /keypad/recoveries): she is already a row under her account.
-        keypadClient(s).list().then((r) => (r.members || []).filter((k) => !(k.phone_type === 'smartphone' && k.account))).catch(() => []),
+        // Not a smartphone member's row (4 Nov recovery rows; 15 Nov the app-link row of Add a member): she is already a row
+        // under her account or her border job.
+        keypadClient(s).list().then((r) => (r.members || []).filter((k) => k.phone_type !== 'smartphone')).catch(() => []),
         border.jobs().then((r) => r || []).catch(() => []),
         api.unionLoans().then((r) => r.loans || []).catch(() => []),
       ]);
@@ -152,7 +156,7 @@ export function useUnionMembers(api) {
           const m = get(t.holder); m.lands.add(t.title_id); m.name = m.name || t.farm || '';
           const record = t.record_hash ? await fromNodeCached(t.record_hash).catch(() => null) : null;
           if (record) { m.places.push({ id: `land-${t.title_id}`, geometry: outline(record) }); if (!m.record) Object.assign(m, { record, recordHash: t.record_hash, titleId: t.title_id }); }
-          addFields(m, shapeToFields(t.shape) || recordFields(record));
+          addFields(m, shapeToFields(t.shape) || recordFields(record), t.farm || `Land ${t.title_id}`);
           if (!record) addTitlePlace(m, t, shapeToFields(t.shape));
         })),
         Promise.all(jobs.map(async (j) => {
@@ -230,9 +234,12 @@ export function useUnionShares(api, { fresh } = {}) {
           const lapsed = !drawn && (!!ft?.lapsed || (final > 0 && now > final));
           return { token: x.token, planId: x.plan_id, crop: x.name || String(x.crop).replace(/_/g, ' '), colour: x.colour, area: x.area,
             zones: x.zones || [], harvest: x.harvest, kg: x.kg, slot: x.slot, from, final, drawn, loan, lapsed,
-            ready: !drawn && !lapsed && now >= from,
+            // 18 Nov: held for the land check (not attested yet): listed, never ready to take up.
+            held: x.state === 'land_check' ? 'land_check' : undefined,
+            ready: !drawn && !lapsed && now >= from && x.state !== 'land_check',
             // The harvest the oracle reported for a financed share (fund_core maturity, 25 Oct: H2's harvested dots).
-            harvested: Number(ft?.loan?.maturity_ts || 0), crop_key: x.crop, state: x.state };
+            harvested: Number(ft?.loan?.maturity_ts || 0), crop_key: x.crop, state: x.state,
+            cash: ft ? n(ft.amount) : (x.cash ?? null) };   // the attested cash to collect (17 Nov, G2's row)
         });
         by[m.address] = { planId: shares.find((x) => x.ready)?.planId || shares[shares.length - 1]?.planId, shares };
       }

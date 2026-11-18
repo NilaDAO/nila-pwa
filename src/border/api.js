@@ -11,16 +11,19 @@ export function borderClient(signer) {
   return {
     sendPoints: ({ polygon, farm, union, points }) => call('POST', '/border/points', { polygon, farm: farm || undefined, union: union || undefined, points }).then(jobOf),
     // L14 for a smartphone member (29 Oct): the leader sends the points with the account and Polygon address of the
-    // member's help QR.
+    // member's help QR; without them (sign later, plan 050) the node makes a holding address for her.
     leaderPoints: ({ account, polygon, name, phone, farm, points }) =>
-      call('POST', '/border/points/leader', { account, polygon, name: name || '', phone: phone || '', farm: farm || '', points }).then(jobOf),
+      call('POST', '/border/points/leader', { account: account || '', polygon: polygon || '', name: name || '', phone: phone || '', farm: farm || '', points }).then(jobOf),
     mine: () => call('GET', '/border/mine').then(jobOf),
     jobs: () => call('GET', '/border/jobs').then(listOf),
     job: (id) => call('GET', `/border/job/${id}`).then(jobOf),
+    // Sign later (plan 050): a new member's holding address paired with her account at the scan of her QR.
+    pairHolder: (placeholder, account) => call('POST', `/border/holder/${placeholder}/member`, { account }),
     preview: (id, field, shape) => call('POST', `/border/job/${id}/preview`, { field, shape }),
     // 13 Nov: the field's soil (1–5) is accepted with its shape.
     accept: (id, field, shape, soil) => call('POST', `/border/job/${id}/decide`, { field, action: 'accept', shape, ...(soil ? { soil } : {}) }).then(jobOf),
-    noneFit: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit' }).then(jobOf),
+    // 17 Nov: sat 'google' = the area was recently under construction: drawn again on Google's newer picture.
+    noneFit: (id, field, sat) => call('POST', `/border/job/${id}/decide`, { field, action: 'none_fit', ...(sat ? { sat } : {}) }).then(jobOf),
     remove: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'delete' }).then(jobOf),   // 1 Nov
     retry: (id, field) => call('POST', `/border/job/${id}/decide`, { field, action: 'retry' }).then(jobOf),
     acceptPlan: (id, soil) => call('POST', `/border/job/${id}/decide`, { field: 0, action: 'accept_plan', ...(soil ? { soil } : {}) }).then(jobOf),

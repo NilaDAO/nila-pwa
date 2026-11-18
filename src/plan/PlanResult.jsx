@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react';
 import { C, FONT, R } from '../shell/tokens';
 import { Notice, inr, muted } from './ui';
+import { EDIT_TEXT } from './editTexts';
 
 export const SEASON = { S1: 'Oct–Feb', S2: 'Mar–May', S3: 'Jun–Aug' };
 const SPAN = { S1: 4, S2: 2, S3: 2 };   // months after the season's first month
@@ -152,15 +153,29 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
     out.push({ key: `standing-${st.crop}`, s0, s1, name: `${st.name}, until ${st.estimate ? '~' : ''}${m}`, fill: st.colour || C.muted,
       ink: lightBg(st.colour) ? C.ink : C.text, faded: true, editable: false, row: {} });
   }
-  for (const se of plan.plan.seasons || []) {
+  // A season's own span (14 Nov): its start to the next season's start (else three months), for a crop that stands
+  // there (no sowing date) and for a season left empty.
+  const ss = plan.plan.seasons || [];
+  const spanOf = (i) => {
+    const st = String(ss[i].start).slice(0, 10);
+    const t = new Date(st); t.setMonth(t.getMonth() + 3);
+    return [st, ss[i + 1]?.start ? String(ss[i + 1].start).slice(0, 10) : t.toISOString().slice(0, 10)];
+  };
+  for (const [i, se] of ss.entries()) {
     for (const r of se.rows.filter((x) => zonesOf(x).includes(zone))) {
-      if (at(r.harvest) <= 0 || at(r.sow) >= 12) continue;
-      const [s0, s1] = clamp(r.sow, r.harvest);
+      // A crop that stands there (sugarcane with no detected end, 14 Nov): no sowing date, drawn over its season and
+      // changeable like any crop (it was not drawn at all).
+      const [from, to] = r.sow ? [r.sow, r.harvest] : spanOf(i);
+      if (at(to) <= 0 || at(from) >= 12) continue;
+      const [s0, s1] = clamp(from, to);
       const pick = picked[se.slot] && cropOf(picked[se.slot]);
       const colour = (pick && pick.colour) || r.colour || C.muted;
       taken.add(se.slot);
-      out.push({ key: `${se.slot}-${r.crop}`, slot: se.slot, s0, s1, name: pick ? pick.name : r.name, fill: colour,
-        ink: lightBg(colour) ? C.ink : C.text, editable: !readOnly, row: { ...r, slot: se.slot }, dim: !!slots && !slots.has(se.slot) });
+      // A block sown more than 6 weeks ago (16 Nov, the node's plan.locked) is shown locked and cannot be changed.
+      const locked = !!plan.plan.locked?.[zone]?.[se.slot];
+      const name = pick ? pick.name : r.name;
+      out.push({ key: `${se.slot}-${r.crop}`, slot: se.slot, s0, s1, name: locked ? `${name} · ${EDIT_TEXT.locked}` : name, fill: colour,
+        ink: lightBg(colour) ? C.ink : C.text, editable: !readOnly && !locked, locked, row: { ...r, slot: se.slot }, dim: !!slots && !slots.has(se.slot) });
     }
   }
   for (const c of (plan.plan.soil_cover || []).filter((x) => x.zone === zone)) {
@@ -175,7 +190,26 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
       : `repeating-linear-gradient(45deg, ${c.colour || '#7FB069'} 0 3px, rgba(127,176,105,0.25) 3px 6px)`;
     // A soil cover is advice (21 Oct): a crop may be picked in its season instead (28 Oct).
     out.push({ key: `soil-${c.from}`, slot, s0, s1, name: label, fill, ink: C.text, soil: true, cover: c,
-      editable: !readOnly && !!slot && !taken.has(slot), row: { slot }, dim: !!slots && !!slot && !slots.has(slot) });
+      editable: !readOnly && !!slot && !taken.has(slot) && !plan.plan.locked?.[zone]?.[slot], row: { slot }, dim: !!slots && !!slot && !slots.has(slot) });
+    if (slot) taken.add(slot);
+  }
+  // A season the plan leaves empty on a planned area (14 Nov): a faint "Empty" bar she can tap to pick a crop.
+  if (plan.plan.proposal?.[zone]) {
+    for (const [i, se] of ss.entries()) {
+      if (taken.has(se.slot)) continue;
+      const [from, to] = spanOf(i);
+      if (at(to) <= 0 || at(from) >= 12) continue;
+      const [s0, s1] = clamp(from, to);
+      // Not over the crop standing now (its faded bar): from its end.
+      const busy = out.filter((it) => it.key.startsWith('standing-')).reduce((m, it) => Math.max(m, it.s1), 0);
+      const e0 = Math.max(s0, busy);
+      if (s1 - e0 < 0.3) continue;
+      const pick = picked[se.slot] && cropOf(picked[se.slot]);
+      out.push({ key: `empty-${se.slot}`, slot: se.slot, s0: e0, s1, name: pick ? pick.name : 'Empty',
+        fill: pick ? pick.colour || C.muted : 'repeating-linear-gradient(45deg, rgba(241,245,249,0.14) 0 3px, transparent 3px 6px)',
+        ink: pick ? (lightBg(pick.colour) ? C.ink : C.text) : C.muted, editable: !readOnly, row: { slot: se.slot },
+        dim: !!slots && !slots.has(se.slot) });
+    }
   }
   return out.sort((a, b) => a.s0 - b.s0);
 }
@@ -255,7 +289,9 @@ export function CostList({ r, k = 1 }) {
     ...Object.values(f.machines || {}).map((m) => [m.for.replace(/^./, (c) => c.toUpperCase()), `${(m.acres * k).toFixed(2)} acres${m.acres ? ` · ${inr(Math.round(m.value / m.acres))}/acre` : ''} · voucher`, n(m.value)]),
     ...Object.values(f.hand_work || {}).map((m) => [`${m.for.replace(/^./, (c) => c.toUpperCase())}, hired`, `${(m.acres * k).toFixed(2)} acres · ${inr(m.rate_inr_acre)}/acre · no union machine`, n(m.value)]),
   ].filter(Boolean);
-  if (f.harvest_cost) lines.push(['Harvest work and transport', `${ac.toFixed(2)} acres${per(f.harvest_cost)} · paid by you`, n(f.harvest_cost)]);
+  // 17 Nov: harvest labour lent in cash with the crop (older plans: hers, with transport).
+  if (f.harvest_cost) lines.push(f.harvest_financed ? ['Harvest labour', `${ac.toFixed(2)} acres${per(f.harvest_cost)} · cash`, n(f.harvest_cost)]
+    : ['Harvest work and transport', `${ac.toFixed(2)} acres${per(f.harvest_cost)} · paid by you`, n(f.harvest_cost)]);
   const total = lines.reduce((a, l) => a + l[2], 0);
   const row = (a, b, v, bold) => (
     <div key={a} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, lineHeight: 1.4, fontWeight: bold ? 700 : 400 }}>
@@ -271,12 +307,40 @@ export function CostList({ r, k = 1 }) {
       {row('Cost', f.own_cost ? 'not financed: you pay it yourself (fodder crop)' : null, inr(total), true)}
       {f.interest ? row('Interest', `${((f.interest / Math.max(1, (f.cash || 0) + (f.voucher_value || 0))) * 100).toFixed(1)}% of the loan, sowing to repayment`, inr(n(f.interest))) : null}
       {r.kg > 0 && row('Sale (estimate)', `${fmtKg(r.kg * k)} × ${inr(Math.round(r.value / r.kg))}/kg`, inr(n(r.value)), true)}
+      {/* 17 Nov: bags, loading, commission and market fee come off the sale. */}
+      {r.kg > 0 && r.market_cost > 0 && row('Bags, loading and market fees', `${Math.round((r.market_cost / Math.max(1, r.value)) * 100)}% of the sale`, `− ${inr(n(r.market_cost))}`)}
+      {r.kg > 0 && r.market_cost > 0 && row('You receive', null, inr(n(r.net_value)), true)}
     </div>
   );
 }
 
 /** crops: the catalogue's crops for the season rows' list; onCrop(row, cropKey): that crop instead on this area in that
  *  row's season; changing: a change is being sent. */
+/** The pros and cons of the last edit (16 Nov, the node's plan.pros_cons, by a small model; none when it is off). */
+/** 17 Nov: `extra` (lines by code: what the totals include, green manure) joins the same box, after the pros and
+ *  cons. Each pro, con and line is its own item, apart from the next. */
+export function ProsCons({ plan, extra = [] }) {
+  const items = plan.plan.pros_cons?.items || [];
+  const lines = (Array.isArray(extra) ? extra : [extra]).filter(Boolean);
+  if (!items.length && !lines.length) return null;
+  // The sign sits in the info icon's column (Notice: 18 px icon, 10 px gap), the text under the title.
+  const row = { display: 'flex', gap: 10, alignItems: 'flex-start', marginLeft: -28 };
+  const sign = { width: 18, flexShrink: 0, textAlign: 'center' };
+  return (
+    <Notice kind="info" title={EDIT_TEXT.prosCons}>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+        {items.map((it) => (
+          <span key={it.kind + it.text} style={row}>
+            <b aria-label={it.kind === 'pro' ? 'Pro' : 'Con'} style={sign}>{it.kind === 'pro' ? EDIT_TEXT.pro : EDIT_TEXT.con}</b>
+            <span>{it.text}</span>
+          </span>
+        ))}
+        {lines.map((l, i) => <span key={`x${i}`} style={row}><b aria-hidden="true" style={sign}>·</b><span>{l}</span></span>)}
+      </span>
+    </Notice>
+  );
+}
+
 export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, onNext, nextName, onAll, onCrop, onRemove, readOnly, crops, changing, picked = {}, onUpdate, acceptLabel = 'Accept the plan', y0, total }) {
   // picked (28 Oct): crops chosen on this area's rows, not sent yet (slot → crop key); the button then reads Update
   // crop plan and sends them all (onUpdate).
@@ -294,10 +358,11 @@ export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, o
   const share = (r) => (zonesOf(r).length < 2 || !own || !r.acres ? 1 : own / r.acres);
   const rows = seasons.flatMap((se) => se.rows.filter((r) => zonesOf(r).includes(zone)).map((r) => ({ ...r, k: share(r) })));
   const acres = own ?? rows[0]?.acres ?? 0;
-  const sales = Math.round(rows.reduce((a, r) => a + (r.value || 0) * r.k, 0));
+  // What she receives (17 Nov): the sale less bags, loading and market fees.
+  const sales = Math.round(rows.reduce((a, r) => a + (r.net_value ?? r.value ?? 0) * r.k, 0));
   // Her cost of the crops: what the plan finances, what she pays herself (fodder's inputs) and the harvest cost.
   const cost = Math.round(rows.reduce((a, r) => a + ((r.finance?.cash || 0) + (r.finance?.voucher_value || 0) + (r.finance?.own_cost || 0)
-    + (r.finance?.harvest_cost || 0)) * r.k, 0));
+    + (r.finance?.harvest_financed ? 0 : r.finance?.harvest_cost || 0)) * r.k, 0));   // lent harvest labour is in cash (17 Nov)
   const items = laneOf(plan, zone, { y0: year, picked, cropOf, readOnly: readOnly || !onCrop, record, crops });
   const openItem = items.find((it) => it.key === open);
   const covers = items.filter((it) => it.soil && it.cover && it.cover.kind !== 'bare');
@@ -349,6 +414,7 @@ export function AreaCard({ plan, zone, name, area, record, accepted, onAccept, o
       {items.filter((it) => it.soil && it.cover?.kind === 'bare').map((it) => (
         <Notice key={it.key} title="Bare soil in the dry months">You keep this area bare in the dry months: bare soil erodes.</Notice>
       ))}
+      <ProsCons plan={plan} />
       {off.map((r) => (
         <Notice key={`off-${r.crop}`} title={`${r.name}: not in Nila's crop list`}>
           Its yield, costs and sowing months are not checked by Nila, so it gets no loan or voucher.

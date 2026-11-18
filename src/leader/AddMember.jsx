@@ -4,9 +4,9 @@
 // #sent follows her progress: link sent, opened and agreed, phone set up (no PIN, executive decision 22 Oct). Then the
 // leader takes the field points on the leader's own phone (26 Oct, executive decision: the keypad phone takes none;
 // R5–R7's screen, tasks/member/<id>/points), which starts the border job; "Match field shapes" opens it (L2).
-// A smartphone member (executive decision 29 Oct): no SMS. The member registers in the Nila app (assist mode) and shows
-// the help QR, which carries the account and the Polygon address; the leader scans it here and takes the field points
-// on the leader's phone (tasks/member/qr/points), which start the member's border job. DESIGN GAPs: the leader's own name is not on Stellar, so the
+// A smartphone member (sign later, plan 050, 15 Nov; was 29 Oct: her help QR first): name and number as for a keypad
+// phone, the app link by SMS, then the field points on the leader's phone (tasks/member/qr/points); the node mints her
+// title to a holding address, and her account joins at a later scan of her QR on G2. DESIGN GAPs: the leader's own name is not on Stellar, so the
 // link names the union's representative (R9's union list); the hooks' names are the design's proposal (Q53).
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -20,11 +20,10 @@ import { useUnionInfo } from '../shell/SettingsParts';
 import { Notice, Primary } from '../plan/ui';
 import { useInviteLink, useKeypadClient, useKeypadMember } from '../keypad/hooks';
 import { useBorderClient, useSendFieldPoints } from '../border/hooks';
-import CameraView from '../shell/CameraView';
-import { accountOfQr, memberOfQr } from '../stellar/session';
 import { PointsStep, clearPoints, readPoints } from '../border/SendLocation';
 import { Loading } from '../register/Boot';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
+import { useBookActions } from '../union/hooks';
 
 const field = { height: 48, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 16px', boxSizing: 'border-box',
   width: '100%', fontFamily: FONT, fontSize: 14, fontWeight: 700, outline: 'none' };
@@ -141,24 +140,16 @@ export default function AddMember({ id, go }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('+91');
   const [type, setType] = useState('smartphone');
-  const [scanError, setScanError] = useState();
-  const [tries, setTries] = useState(0);
   const ok = name.trim() && phoneOk(phone);
-  const onScan = (t) => {
-    const m = memberOfQr(t);
-    if (!m) {
-      setScanError(accountOfQr(t) ? 'This QR has no Polygon address. The member updates the Nila app and shows the QR again.'
-        : 'This is not a member\'s Nila QR.');
-      setTries((x) => x + 1);
-      return;
-    }
-    scannedNewMember(m);
-    go('tasks/member/qr');
-  };
   const submit = () => send.mutate({ name: name.trim(), phone: phoneValue(phone), phoneType: type, unionName: union.name, leaderName: union.rep },
     // A keypad member (26 Oct): all in one go at the farm — the link is sent and the leader goes straight on to the
     // field points (R5–R7 on the leader's phone); a member who already has fields goes to the progress screen.
-    { onSuccess: (m) => go(m.phone_type === 'keypad' && !m.job ? `tasks/member/${m.id}/points` : `tasks/member/${m.id}`) });
+    // A smartphone member (sign later, plan 050, 15 Nov): the same, with no QR; the node mints her title to a holding
+    // address, and her account joins at a later scan of her QR (G2).
+    { onSuccess: (m) => {
+      if (type === 'smartphone') { writeScanned({ account: '', polygon: '', join: null, name: name.trim(), phone: phoneValue(phone) }); return go('tasks/member/qr/points'); }
+      return go(m.phone_type === 'keypad' && !m.job ? `tasks/member/${m.id}/points` : `tasks/member/${m.id}`);
+    } });
   return (
     <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: 'Add a member', onBack: () => go('tasks'), onSettings: () => go('settings') }}>
@@ -170,13 +161,6 @@ export default function AddMember({ id, go }) {
               <Radio title="Keypad phone" sub="Nila lite. The member opens a link from SMS." on={type === 'keypad'} onClick={() => setType('keypad')} />
             </div>
           </Card>
-          {type === 'smartphone' ? (
-            <Card title="Scan the member's QR">
-              <CameraView key={tries} mode="qr" onText={onScan} />
-              <Notice kind="info">Do this at the farm. The member registers in the Nila app and opens their QR. Then you take the field points on your phone.</Notice>
-              {scanError && <Text style={{ color: C.coral }}>{scanError}</Text>}
-            </Card>
-          ) : (
           <Card title="Member">
             <label style={label} htmlFor="l14-name">Name</label>
             <input id="l14-name" style={field} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
@@ -187,7 +171,6 @@ export default function AddMember({ id, go }) {
             {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
             <Primary disabled={!ok || send.isPending} onClick={submit}>Send app link and take field points</Primary>
           </Card>
-          )}
         </>
       )}
     </MapCard>
@@ -221,6 +204,9 @@ const writeScanned = (m) => { try { sessionStorage.setItem(SCANNED, JSON.stringi
 
 /** A smartphone member's help QR was scanned (L14 or the Members scan, 29 Oct): { account, polygon, join }. */
 export const scannedNewMember = (m) => writeScanned({ account: m.account, polygon: m.polygon, join: m.join || null });
+/** A member whose land title was removed (15 Nov): her account, Polygon address, name and phone are known, so a new
+ *  title starts at her name and number (tasks/member/qr), with no QR scan. */
+export const formerMember = (m) => writeScanned({ account: m.address, polygon: m.formerPolygon, join: null, name: m.name || '', phone: m.phone || '', former: true });
 
 /** A scanned smartphone member's account (4 Nov): she holds no XLM, so this leader's app makes it and sends her signed
  *  set_union from her QR (kind 5), the leader's own XLM paying the fee. 'idle' with no join (already made and joined),
@@ -247,17 +233,25 @@ function NewSmartphone({ go }) {
   const [name, setName] = useState(m?.name || '');
   const [phone, setPhone] = useState(m?.phone || '+91');
   const acct = useScannedAccount(m);
+  const { setName: tag } = useBookActions();
   useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
   if (!m) return null;
   const ok = name.trim() && phoneOk(phone);
-  const next = () => { writeScanned({ ...m, name: name.trim(), phone: phoneValue(phone) }); go('tasks/member/qr/points'); };
+  const next = () => {
+    writeScanned({ ...m, name: name.trim(), phone: phoneValue(phone) });
+    // 16 Nov: an existing member's name and number, as the leader verified them, go to the union's contact book, so
+    // the next new land title for her finds them filled in. Best effort: a phone without the union key skips it.
+    if (m.former && m.account) tag.mutate({ address: m.account, name: name.trim(), phone: phoneValue(phone) }, { onError: () => {} });
+    go('tasks/member/qr/points');
+  };
   return (
-    <Card title="New member">
+    // An existing member (15 Nov: a new title after a removal): the leader checks what is known, not a new member.
+    <Card title={m.former ? 'Verify the record' : 'New member'}>
       <label style={label} htmlFor="l14-name">Name</label>
       <input id="l14-name" style={field} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
       <label style={label} htmlFor="l14-phone">Phone number</label>
       <PhoneField id="l14-phone" value={phone} onChange={setPhone} />
-      <Row k={<b style={{ color: C.text }}>Account</b>} v={`${m.account.slice(0, 4)}…${m.account.slice(-4)}`} />
+      {m.account && <Row k={<b style={{ color: C.text }}>Account</b>} v={`${m.account.slice(0, 4)}…${m.account.slice(-4)}`} />}
       {acct !== 'idle' && <Step done={acct === 'done'} title="Account made and joined the union"
         sub={acct === 'busy' ? 'Making it…' : acct === 'failed' ? 'Not done: you scan the member\'s QR again before the mint' : ''} />}
       <Notice kind="info">Do this at the farm: next you take the field points on your phone.</Notice>
@@ -271,7 +265,7 @@ function NewSmartphone({ go }) {
 export function SmartphonePoints({ go }) {
   const api = useBorderClient();
   const [m] = useState(readScanned);
-  const key = m ? `smart-${m.account}` : 'smart-none';
+  const key = m ? `smart-${m.account || m.phone}` : 'smart-none';
   useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
   const send = useMutation({ mutationFn: () => {
     const q = readPoints(key);

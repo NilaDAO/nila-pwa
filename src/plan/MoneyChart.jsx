@@ -49,7 +49,7 @@ export function series(plan) {
   for (const r of financedRows(p)) {
     const f = r.finance;
     const h = at[ym(r.harvest)], w = at[ym(r.sow)], d = at[ym(f.due)];
-    if (h !== undefined && r.value > 0) sales[h].push({ name: r.name, colour: r.colour, v: r.value });
+    if (h !== undefined && r.value > 0) sales[h].push({ name: r.name, colour: r.colour, v: r.net_value ?? r.value });   // less market costs (17 Nov)
     if (w !== undefined) {
       take[w] += (f.cash || 0) + (f.voucher_value || 0);
       inputs[w] += (f.seed || 0) + (f.cash_inputs || 0) + (f.hand_work_cash || 0);
@@ -62,7 +62,7 @@ export function series(plan) {
     const back = h !== undefined && r.value > 0 ? h : d;
     if (back !== undefined) { repay[back] += f.repay || 0; principal[back] += (f.cash || 0) + (f.voucher_value || 0); }
   }
-  // Harvest work and transport (12 Nov): hers, at harvest; usually none yet (no figures in the catalogue).
+  // Harvest labour is paid at harvest (17 Nov: from the cash lent at sowing; older plans: her own money).
   for (const r of financedRows(p)) {
     const h = at[ym(r.harvest)];
     if (h !== undefined && r.finance?.harvest_cost) inputs[h] += r.finance.harvest_cost;

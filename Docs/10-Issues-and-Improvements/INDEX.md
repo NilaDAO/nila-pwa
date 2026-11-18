@@ -19,6 +19,7 @@ delete the file — it's the incident record), then update the row here.
 | [redeemFarmerNin draws from wrong USDT pool](redeemFarmerNin-wrong-pool.md) | nila-pwa / NilaFxPool contract | Blocking | Root-caused; contract fix not yet written or deployed |
 | [confirmCashOfferDelivered fails for non-owner union leaders](confirmCashOfferDelivered-leader-mismatch.md) | nila-pwa / NilaFxPool contract | Blocking (workaround exists) | Fix written & test-verified, **not deployed** |
 | [monitor-union destructive re-init on transient recovery failure](monitor-union-destructive-reinit-fallback.md) | NilaSensingAgent | Critical — live in prod | Root cause not fully found; fix not started; **no further Docker Hub pushes until fixed** |
+| [Prepare stored fencing layers per union area](fencing-layers-per-union.md) | nila-sensing | Improvement | Todo, not built (16 Nov) |
 
 ## Resolved
 

@@ -8,7 +8,7 @@ import { useNilaSigner } from '../wallet/signer';
 import { getCatalogue, planClient } from './api';
 
 export const qkPlan = {
-  catalogue: () => ['oracle', 'catalogue'],
+  catalogue: () => ['oracle', 'catalogue', 2],   // 2 (17 Nov): with grow days and sowing months
   plan: (landId) => ['oracle', 'plan', landId],
   job: (jobId) => ['oracle', 'planJob', jobId],
   titles: (addr) => ['polygon', 'titles', addr],
@@ -102,20 +102,22 @@ export function useExtendPlan(landId) {
   });
 }
 
-/** A plan job: polled every 10 s until done or error (design usePlanJob). */
-export function usePlanJob(jobId) {
+/** A plan job: polled every 10 s until done or error (design usePlanJob). An edit (16 Nov) is code only and
+ *  done in a second or two: polled every 2 s (`every`), only while it runs. */
+export function usePlanJob(jobId, every = 10_000) {
   const api = usePlanClient();
   return useQuery({
     queryKey: qkPlan.job(jobId), enabled: !!api && !!jobId,
     queryFn: () => api.job(jobId),
-    refetchInterval: (q) => (['done', 'error'].includes(q.state.data?.status) ? false : 10_000),
+    refetchInterval: (q) => (['done', 'error'].includes(q.state.data?.status) ? false : every),
   });
 }
 
 export function useSubmitIntake(landId) {
   const api = usePlanClient();
   // exclude (5 Nov): the areas she left out just before (buildings, roadsides), for this plan only.
-  return useMutation({ mutationFn: ({ intake, trees, wells, exclude }) => api.makePlan(landId, intake, { trees, wells, exclude }) });
+  // merge (14 Nov): areas she added to a touching area, { area: neighbour }, for this plan only.
+  return useMutation({ mutationFn: ({ intake, trees, wells, exclude, merge }) => api.makePlan(landId, intake, { trees, wells, exclude, merge }) });
 }
 
 /** CP11 "I accept": every area of the plan (the node accepts per area). */
@@ -123,10 +125,11 @@ export function useAcceptPlan(landId) {
   const api = usePlanClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (plan) => {
+    // conditions (16 Nov): the ids of the plan's conditions the user ticked, sent with every area's accept.
+    mutationFn: async ({ plan, conditions = [] }) => {
       let p = plan;
       for (const zone of Object.keys(plan.plan.proposal)) {
-        if (!plan.accepted?.[zone]) p = await api.accept(plan.id, zone);
+        if (!plan.accepted?.[zone]) p = await api.accept(plan.id, zone, conditions);
       }
       return p;
     },

@@ -73,4 +73,5 @@ done
 echo "$HEAD_SHA $(date -u +%FT%TZ) job $JOB version $VERSION" >"$STATE/$ENVN"
 say "published $SHORT (version $VERSION) to $ENVN (job $JOB)"
 [ "$ENVN" = dev ] && say "check https://dev.$APP_ID.amplifyapp.com, then: scripts/release/publish.sh prod"
-[ "$ENVN" = prod ] && say "tag it: git tag pwa-$(date -u +%F)-$SHORT $SHORT && git push origin pwa-$(date -u +%F)-$SHORT"
+# 18 Nov: the release tag is the app version (REACT_APP_VERSION), not a date.
+[ "$ENVN" = prod ] && say "tag it: git tag pwa-v$VERSION $SHORT && git push origin pwa-v$VERSION"
