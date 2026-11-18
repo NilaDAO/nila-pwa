@@ -121,9 +121,11 @@ export function LeaderLoan({ initial }) {
   const machines = useMachines();
   const rateOf = (t) => rates.data?.find((r) => r.type === Number(t))?.total || 0;
   const tractorRate = rateOf(TRACTOR);
-  // 18 Nov: a voucher row for every machine type the union prices (rates) or has, and every type of her plan.
-  const unionTypes = [...new Set([...(machines.data || []).map((m) => m.machine_type), ...(rates.data || []).map((r) => r.type)])];
-  const types = [...new Set([...Object.keys(mach).map(Number), ...unionTypes])].filter((t) => t > 0).sort((a, b) => a - b);
+  // 18 Nov: the voucher rows are the crop agreement's own machine work; more types are added from a list of the ones
+  // the union prices (rates) or has (Add a voucher).
+  const types = Object.keys(mach).map(Number).filter((t) => t > 0);
+  const addable = [...new Set([...(machines.data || []).map((m) => m.machine_type), ...(rates.data || []).map((r) => r.type)])]
+    .filter((t) => t > 0 && !types.includes(t)).sort((a, b) => a - b);
   const value = Object.entries(mach).reduce((a, [t, h]) => a + h * rateOf(t), 0);
   const hours = tractorRate > 0 ? unitsOf(1, value, tractorRate) : 0;   // units
   // The share is picked before this screen (23 Oct, no list here): the one from her QR or G2, else (a To do row, one
@@ -291,7 +293,7 @@ export function LeaderLoan({ initial }) {
   const notes = [
     ...(needsInvest ? [`The member must have ${inr(gateShort)} invested in the union before taking up a crop agreement. Count the cash below.`] : []),
     ...(notCovered > 0 ? [`${inr(notCovered)} of this crop agreement cannot be lent now: the union's member money is used up. It can be lent when members invest more.`] : []),
-    ...(checks.data && !more && types.length === 0 ? ['No machine vouchers: the union has not priced any machines yet.'] : []),
+    ...(checks.data && types.length === 0 && addable.length === 0 ? ['No machine vouchers: the union has not priced any machines yet.'] : []),
     ...blockedNoGate,
     ...(rows[0]?.[2] ? [cfg?.anchor_url ? `Not enough cash at the office: your LPs are asked to bring ${inr(gap)} when you ${mine ? 'get the cash' : 'show the QR'}.` : 'Not enough cash at the office for this crop agreement yet.'] : []),
     ...(checks.isError ? ['Could not read the union. Try again.'] : []),
@@ -299,7 +301,6 @@ export function LeaderLoan({ initial }) {
     ...(error ? [error] : []),
     ...(helping ? [`You can act for this member until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`] : []),
   ];
-  const warn = needsInvest || notCovered > 0 || blockedNoGate.length > 0 || !!rows[0]?.[2] || checks.isError || noPhotos || !!error;
   const btn = (on = true) => ({ flex: 1, height: 44, borderRadius: R.button, border: 0, background: on ? C.accent : C.raised, color: on ? C.ink : C.muted,
     fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: on ? 'pointer' : 'default' });
   return (
@@ -321,6 +322,13 @@ export function LeaderLoan({ initial }) {
                   set={(v) => setMach((m) => ({ ...m, [t]: v }))} step={0.1} max={Math.round((h + room) * 10) / 10} fmt={(v) => `${v} ac`} />
               );
             })}
+            {checks.data && addable.length > 0 && (
+              <select aria-label="Add a voucher" value="" onChange={(e) => { const t = Number(e.target.value); if (t) setMach((m) => ({ ...m, [t]: 0 })); }}
+                style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 14, fontWeight: 700, padding: '0 12px' }}>
+                <option value="">+ Add a voucher</option>
+                {addable.map((t) => <option key={t} value={t}>{typeName(t)}{rateOf(t) ? ` · ${inr(rateOf(t))}/ac` : ''}</option>)}
+              </select>
+            )}
             {hours > 0 && <KV k="Vouchers" v={`≈ ${ta(hours)} tractor acres`} />}
             <div style={line} />
             <KV k="Total" v={inr(cash + value)} />
@@ -349,7 +357,7 @@ export function LeaderLoan({ initial }) {
       </Card>
       {/* Room under the card for the info panel, so its last rows can be scrolled above it. */}
       {notes.length > 0 && <div aria-hidden="true" style={{ height: 160 }} />}
-      {notes.length > 0 && <InfoFooter tone={warn ? 'warn' : undefined} text={notes.map((n) => <span key={n} style={{ display: 'block' }}>{n}</span>)} onClose={() => { setError(undefined); setNoPhotos(false); }} />}
+      {notes.length > 0 && <InfoFooter text={notes.map((n) => <span key={n} style={{ display: 'block' }}>{n}</span>)} onClose={() => { setError(undefined); setNoPhotos(false); }} />}
     </MapCard>
   );
 }
