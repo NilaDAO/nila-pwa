@@ -23,4 +23,4 @@ that sets a demo flag.
 (`create-deployment` → upload → `start-deployment`), which `publish.sh` does. `prod` is pwa.nila.land, `dev` is
 `dev.d108zfeejs7ppp.amplifyapp.com`. Version: bump `REACT_APP_VERSION` in `.env.production` before publishing.
 
-**Tag** after a prod publish: `pwa-<date>-<sha>` (the script prints the command).
+**Tag** after a prod publish: `pwa-v<version>` — the app version (`REACT_APP_VERSION`), no date (18 Nov; the script prints the command).
