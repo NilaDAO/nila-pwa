@@ -17,7 +17,7 @@ test('the approved plan renders its job grid and a tap shows the detail', () => 
   const tapped = [];
   render(<ActivePlan plan={plan} areaNo={() => 1} areaName={() => 'A · 1'} season={0} shares={[]} onTile={(t) => tapped.push(t)} />);
   fireEvent.click(screen.getAllByText('Plough')[1]);
-  expect(screen.getByRole('status').textContent).toBe('Maize · Plough · ₹2,000');
+  expect(screen.getByRole('status', { hidden: true }).textContent).toBe('Maize · Plough · ₹2,000');
   // 17 Nov: the tap hands its areas and season to the screen (map focus, season chip).
   expect(tapped[0]).toMatchObject({ zones: ['z1'], season: 0 });
 });

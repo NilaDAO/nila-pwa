@@ -219,48 +219,52 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
   );
 }
 
-/** A short note on top of the bottom bar (17 Nov; 18 Nov also the year row's warning): as the registration screens' info
- *  footer (R5), a dark panel with rounded top corners, behind the bar (in the bar's own layer, zIndex 9 under its 10) and
- *  down to the screen's bottom edge, outside the card (the card moves when dragged). A tap closes it. tone 'warn': coral. */
-export function InfoFooter({ inline = false, ...p }) {
-  return inline ? <InfoInline {...p} /> : <InfoFixed {...p} />;
-}
-
-// inline (18 Nov, the take-up screen): the same note inside the card, so it moves with the card (as the registration
-// screens' footer), never covering the card's rows nor floating apart from them.
-function InfoInline({ text, tone }) {
+/** A short note on top of the bottom bar, as the registration screens' info footer (R5): a dark panel with rounded top
+ *  corners, behind the bar (in the bar's own layer, zIndex 9 under its 10) and down to the screen's bottom edge, outside
+ *  the card. 18 Nov (executive decision, every info area): like the registration footer it slides down out of sight
+ *  (450 ms) while the card is lowered — dragged down, or half way — and slides back up when the card is all the way up.
+ *  A tap closes it. tone 'warn': coral. */
+const REG_EASE = 'cubic-bezier(0.2,0.8,0.2,1)';
+export function InfoFooter({ text, onClose, tone }) {
   const ink = tone === 'warn' ? C.coral : '#94A3B8';
-  {
-    return (
-      <div role="status" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: '#121212', borderRadius: 16, padding: '14px 16px', fontFamily: FONT }}>
-        <span style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
-          </svg>
-        </span>
-        <span style={{ fontSize: 14, color: ink, lineHeight: 1.5, alignSelf: 'center' }}>{text}</span>
-      </div>
-    );
-  }
-}
-
-function InfoFixed({ text, onClose, tone }) {
-  const ink = tone === 'warn' ? C.coral : '#94A3B8';
-  // 18 Nov: the card dragged down (nila-sheet-low) takes the panel down with it, behind the bar; back up, it returns.
-  const [low, setLow] = useState(false);
-  // 18 Nov: the bar goes compact on a scroll down (a pill, a gutter on its sides): measured again once it has moved.
+  const [down, setDown] = useState(true);
   const [, setTick] = useState(0);
   useEffect(() => {
-    const on = (e) => setLow(!!e.detail);
+    let low = false;
+    let raf = 0;
+    // The card is up when its top is in the upper part of the screen; half way (or lower) it counts as lowered.
+    const check = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const card = document.querySelector('.cp-sheet');
+        const top = card ? card.getBoundingClientRect().top : 0;
+        setDown(low || top > window.innerHeight * 0.4);
+        setTick((n) => n + 1);   // the bar's size and sides, measured again
+      });
+    };
+    const onLow = (e) => { low = !!e.detail; check(); };
     let t;
-    const bar = () => { clearTimeout(t); setTick((n) => n + 1); t = setTimeout(() => setTick((n) => n + 1), 260); };
-    window.addEventListener('nila-sheet-low', on);
-    window.addEventListener('nila-tabbar', bar);
-    return () => { clearTimeout(t); window.removeEventListener('nila-sheet-low', on); window.removeEventListener('nila-tabbar', bar); };
+    const onBar = () => { check(); clearTimeout(t); t = setTimeout(check, 260); };
+    check();
+    const late = setTimeout(check, 500);   // after the card's own opening animation
+    window.addEventListener('scroll', check, { capture: true, passive: true });
+    window.addEventListener('resize', check);
+    window.addEventListener('nila-sheet-low', onLow);
+    window.addEventListener('nila-sheet-mid', check);
+    window.addEventListener('nila-tabbar', onBar);
+    return () => {
+      cancelAnimationFrame(raf); clearTimeout(t); clearTimeout(late);
+      window.removeEventListener('scroll', check, { capture: true });
+      window.removeEventListener('resize', check);
+      window.removeEventListener('nila-sheet-low', onLow);
+      window.removeEventListener('nila-sheet-mid', check);
+      window.removeEventListener('nila-tabbar', onBar);
+    };
   }, []);
   return createPortal(
-    <button type="button" role="status" aria-hidden={low || undefined} onClick={onClose} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0,
-      pointerEvents: low ? 'none' : 'auto', transform: low ? 'translateY(100%)' : 'none', transition: 'transform 200ms ease, left 200ms ease, right 200ms ease, padding 200ms ease',
+    <button type="button" role="status" aria-hidden={down || undefined} onClick={onClose} style={{ position: 'fixed', ...barSides(), zIndex: 9, bottom: 0,
+      pointerEvents: down ? 'none' : 'auto', transform: down ? 'translateY(110%)' : 'translateY(0)',
+      transition: `transform 450ms ${REG_EASE}, left 200ms ease, right 200ms ease, padding 200ms ease`,
       display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', background: '#121212', border: 0,
       padding: `14px 16px calc(${barTop() + 14}px + env(safe-area-inset-bottom, 0px))`, boxSizing: 'border-box',
       borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, fontFamily: FONT, cursor: 'pointer' }}>
