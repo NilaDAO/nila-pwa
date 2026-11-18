@@ -318,7 +318,8 @@ export function LeaderLoan({ initial }) {
             {/* 18 Nov: up to what the crop agreement asks, even when the union cannot lend it all now: then in red. */}
             {/* Above it, the first − goes straight to what the union can lend now (18 Nov). */}
             {checks.data && !more && <Stepper label="Cash" value={cash} set={(v) => setCash(cash > caps.cash && v < cash ? caps.cash : v)} step={100}
-              max={Math.max(caps.cash, Math.round(sel.ft ? Number(BigInt(sel.ft.amount ?? 0) / NIN) : sel.share.loan_amount || 0))} fmt={inr} tone={cash > caps.cash ? C.coral : undefined} />}
+              // Open (9 Oct): the union may give more than the agreement, unless its switch holds it to the attested amount.
+              max={checks.data.enforceToken ? Math.max(caps.cash, Math.round(sel.ft ? Number(BigInt(sel.ft.amount ?? 0) / NIN) : sel.share.loan_amount || 0)) : 10_000_000} fmt={inr} tone={cash > caps.cash ? C.coral : undefined} />}
             {checks.data && types.map((t) => {
               const h = mach[t] || 0;
               const room = tractorRate > 0 ? Math.floor(acresFor(Math.max(0, caps.hours - hours), rateOf(t), tractorRate) * 10) / 10 : 0;
