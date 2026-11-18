@@ -291,8 +291,9 @@ export function LeaderLoan({ initial }) {
   const needsInvest = gateShort > 0;
   // Every note goes to the info panel on top of the bottom bar (18 Nov), not into the card.
   const notes = [
-    ...(needsInvest ? [`The member must have ${inr(gateShort)} invested in the union before taking up a crop agreement. Count the cash below.`] : []),
-    ...(notCovered > 0 ? [`${inr(notCovered)} of this crop agreement cannot be lent now: the union's member money is used up. It can be lent when members invest more.`] : []),
+    // Texts approved 18 Nov.
+    ...(needsInvest ? [`Invest ${inr(gateShort)} first, then take up the crop agreement.`] : []),
+    ...(notCovered > 0 ? ['Your union lacks investment to cover the full amount.'] : []),
     ...(checks.data && types.length === 0 && addable.length === 0 ? ['No machine vouchers: the union has not priced any machines yet.'] : []),
     ...blockedNoGate,
     ...(rows[0]?.[2] ? [cfg?.anchor_url ? `Not enough cash at the office: your LPs are asked to bring ${inr(gap)} when you ${mine ? 'get the cash' : 'show the QR'}.` : 'Not enough cash at the office for this crop agreement yet.'] : []),
