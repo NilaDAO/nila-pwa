@@ -19,7 +19,9 @@ import { rowOf, useMyLand, useMyShares } from '../loan/MyShares';
 export { useStage } from './stageCtx';
 
 const same = (a, b) => (a === b) || (!!a && !!b && a.record === b.record && a.selected === b.selected && a.onSelect === b.onSelect
-  && a.fitBottom === b.fitBottom && a.chip === b.chip && JSON.stringify(a.center || null) === JSON.stringify(b.center || null) && JSON.stringify(a.labels || {}) === JSON.stringify(b.labels || {}));
+  && a.fitBottom === b.fitBottom && a.chip === b.chip
+  // 18 Nov: focus too; without it every highlight (a tapped tile or area, a crop agreement's areas) was dropped as the same map.
+  && JSON.stringify(a.focus || null) === JSON.stringify(b.focus || null) && JSON.stringify(a.center || null) === JSON.stringify(b.center || null) && JSON.stringify(a.labels || {}) === JSON.stringify(b.labels || {}));
 
 const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
 
