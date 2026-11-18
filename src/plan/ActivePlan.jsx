@@ -222,11 +222,15 @@ function JobGrids({ plan, areaNo, areaName, shares, onTile, filter }) {
 /** A short note on top of the bottom bar (17 Nov; 18 Nov also the year row's warning): as the registration screens' info
  *  footer (R5), a dark panel with rounded top corners, behind the bar (in the bar's own layer, zIndex 9 under its 10) and
  *  down to the screen's bottom edge, outside the card (the card moves when dragged). A tap closes it. tone 'warn': coral. */
-export function InfoFooter({ text, onClose, tone, inline = false }) {
+export function InfoFooter({ inline = false, ...p }) {
+  return inline ? <InfoInline {...p} /> : <InfoFixed {...p} />;
+}
+
+// inline (18 Nov, the take-up screen): the same note inside the card, so it moves with the card (as the registration
+// screens' footer), never covering the card's rows nor floating apart from them.
+function InfoInline({ text, tone }) {
   const ink = tone === 'warn' ? C.coral : '#94A3B8';
-  // inline (18 Nov, the take-up screen): the same note inside the card, so it moves with the card (as the registration
-  // screens' footer), never covering the card's rows nor floating apart from them.
-  if (inline) {
+  {
     return (
       <div role="status" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: '#121212', borderRadius: 16, padding: '14px 16px', fontFamily: FONT }}>
         <span style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -238,6 +242,10 @@ export function InfoFooter({ text, onClose, tone, inline = false }) {
       </div>
     );
   }
+}
+
+function InfoFixed({ text, onClose, tone }) {
+  const ink = tone === 'warn' ? C.coral : '#94A3B8';
   // 18 Nov: the card dragged down (nila-sheet-low) takes the panel down with it, behind the bar; back up, it returns.
   const [low, setLow] = useState(false);
   // 18 Nov: the bar goes compact on a scroll down (a pill, a gutter on its sides): measured again once it has moved.
