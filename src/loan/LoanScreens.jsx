@@ -46,14 +46,14 @@ const FLAG_DRAWN = 8;
 const FLAG_ENDED = 2 | 4;   // defaulted or closed
 const monthYear = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 
-function Stepper({ label, value, set, step, min = 0, max, fmt }) {
+function Stepper({ label, value, set, step, min = 0, max, fmt, tone }) {
   const b = { width: 44, height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontSize: 20, fontWeight: 700, flexShrink: 0 };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <span style={{ flexGrow: 1, color: C.muted, fontSize: 14, lineHeight: 1.5 }}>{label}</span>
       <button type="button" aria-label={`Less ${label}`} style={b} onClick={() => set(Math.max(min, +(value - step).toFixed(2)))}>−</button>
       <span style={{ width: 104, height: 44, borderRadius: R.button, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 16, fontWeight: 700 }}>{fmt(value)}</span>
+        fontSize: 16, fontWeight: 700, color: tone || C.text }}>{fmt(value)}</span>
       <button type="button" aria-label={`More ${label}`} style={b} onClick={() => set(Math.min(max, +(value + step).toFixed(2)))}>+</button>
     </div>
   );
@@ -124,6 +124,7 @@ export function LeaderLoan({ initial }) {
   // 18 Nov: the voucher rows are the crop agreement's own machine work; more types are added from a list of the ones
   // the union prices (rates) or has (Add a voucher).
   const types = Object.keys(mach).map(Number).filter((t) => t > 0);
+  const owned = [...new Set((machines.data || []).map((m) => Number(m.machine_type)))];
   const addable = [...new Set([...(machines.data || []).map((m) => m.machine_type), ...(rates.data || []).map((r) => r.type)])]
     .filter((t) => t > 0 && !types.includes(t)).sort((a, b) => a - b);
   const value = Object.entries(mach).reduce((a, [t, h]) => a + h * rateOf(t), 0);
@@ -147,7 +148,7 @@ export function LeaderLoan({ initial }) {
   useEffect(() => {
     if (!checks.data || !pickFt) return;
     const c = capsFor(checks.data, pickFt);
-    setCash((v) => Math.min(v, c.cash));
+    // 18 Nov: the cash stays at what the crop agreement asks, even above what the union can lend now (shown in red).
     // Over the union's machine stock (units): the last types give way first.
     if (!(tractorRate > 0)) return;
     setMach((m) => {
@@ -295,6 +296,8 @@ export function LeaderLoan({ initial }) {
     ...(needsInvest ? [`Invest ${inr(gateShort)} first, then take up the crop agreement.`] : []),
     ...(notCovered > 0 ? ['Your union lacks investment to cover the full amount.'] : []),
     ...(checks.data && types.length === 0 && addable.length === 0 ? ['No machine vouchers: the union has not priced any machines yet.'] : []),
+    // 18 Nov: a voucher added for a machine the union does not have.
+    ...types.filter((t) => !owned.includes(t)).map((t) => `Your union has no ${typeName(t).toLowerCase()} for this voucher.`),
     ...blockedNoGate,
     ...(rows[0]?.[2] ? [cfg?.anchor_url ? `Not enough cash at the office: your LPs are asked to bring ${inr(gap)} when you ${mine ? 'get the cash' : 'show the QR'}.` : 'Not enough cash at the office for this crop agreement yet.'] : []),
     ...(checks.isError ? ['Could not read the union. Try again.'] : []),
@@ -314,7 +317,9 @@ export function LeaderLoan({ initial }) {
           <>
             <CardTitle right={more ? <span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>Cash received</span> : null}>{name}</CardTitle>
             {more && <span style={muted}>Add machine work to this crop agreement: owed from today, with interest, like the vouchers you got with the cash.</span>}
-            {checks.data && !more && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
+            {/* 18 Nov: up to what the crop agreement asks, even when the union cannot lend it all now: then in red. */}
+            {checks.data && !more && <Stepper label="Cash" value={cash} set={setCash} step={100}
+              max={Math.max(caps.cash, Math.round(sel.ft ? Number(BigInt(sel.ft.amount ?? 0) / NIN) : sel.share.loan_amount || 0))} fmt={inr} tone={cash > caps.cash ? C.coral : undefined} />}
             {checks.data && types.map((t) => {
               const h = mach[t] || 0;
               const room = tractorRate > 0 ? Math.floor(acresFor(Math.max(0, caps.hours - hours), rateOf(t), tractorRate) * 10) / 10 : 0;
