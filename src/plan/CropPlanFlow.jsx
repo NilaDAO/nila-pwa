@@ -491,15 +491,24 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     const slotNow = ss[idx[0]].slot;
     const pickedHere = (z) => pending[z]?.[slotNow] && (catalogue.data?.crops || []).find((c) => c.key === pending[z][slotNow]);
     // A merged row (same crop on several areas, 21 Oct): its harvest on the first area's chip, "with Area n" on the others.
+    // 18 Nov: one label per crop agreement: a row over several areas is labelled on its first area only; its other areas
+    // keep the crop's colour without a chip (was "with B" on each).
     const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, pickedHere(z) ? { text: pickedHere(z).name, sub: 'changed',
-      colour: pickedHere(z).colour, acc: false } : { text: r.name,
-      sub: r.off_catalogue ? 'not in the crop list' : z !== zonesOf(r)[0] ? `with ${areaName(zonesOf(r)[0])}` : fmtKg(r.kg),
+      colour: pickedHere(z).colour, acc: false } : z !== zonesOf(r)[0] ? { text: r.name, colour: r.colour, acc: checked.has(z), hide: true } : { text: r.name,
+      sub: r.off_catalogue ? 'not in the crop list' : fmtKg(r.kg),
       colour: r.colour, acc: checked.has(z) }]));
     // An area with no crop that season but a pick for it.
     for (const z of Object.keys(pending)) if (!out[z] && pickedHere(z)) out[z] = { text: pickedHere(z).name, sub: 'changed', colour: pickedHere(z).colour };
     // A soil cover in this season (no bare soil in the dry months, 21 Oct), where no crop is on the area then.
     for (const c of plan.plan.soil_cover || []) {
-      if (out[c.zone] || !idx.some((k) => (c.slots || []).includes(ss[k].slot))) continue;
+      if (!idx.some((k) => (c.slots || []).includes(ss[k].slot))) continue;
+      // 18 Nov: a green manure before the crop on the same area in this season: both, in order ("Green manure → Sugarcane").
+      if (out[c.zone]) {
+        if (c.kind === 'green_manure' && rows[c.zone] && c.sow && rows[c.zone].sow && c.sow < rows[c.zone].sow && !out[c.zone].join && !out[c.zone].hide) {
+          out[c.zone] = { ...out[c.zone], text: `Green manure → ${out[c.zone].text}` };
+        }
+        continue;
+      }
       const short = c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/ \(.*\)$/, '');
       out[c.zone] = { text: c.kind === 'bare' ? 'Bare soil' : short.charAt(0).toUpperCase() + short.slice(1),
         sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',

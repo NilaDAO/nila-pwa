@@ -85,3 +85,21 @@ test('the grid filtered by a season chip and by an area (17 Nov)', () => {
   expect(crops({ zones: ['z1'] })).toEqual(['Maize']);
   expect(crops({ zones: ['z1', 'z2'] })).toEqual(['Maize', 'Sesame']);
 });
+
+test('a whole-year crop is in the grid under every season it grows in; Turn in before the next crop on the same day (18 Nov)', () => {
+  const row = { zone: 'z1', crop: 'sugarcane_plant', name: 'Sugarcane', sow: '2027-01-17', harvest: '2028-01-12', kg: 1000,
+    finance: { cash: 100, voucher_value: 0, interest: 10, due: '2028-02-02', hand_work: { plough: { for: 'ploughing', acres: 1, value: 50, when: '2027-01-17' } } } };
+  const p = { ...plan, plan: { seasons: [
+    { slot: 'S1', start: '2026-10-01', rows: [row] },
+    { slot: 'S2', start: '2027-03-01', rows: [{ ...row, continues: true }] },
+    { slot: 'S3', start: '2027-06-01', rows: [{ ...row, continues: true }] }],
+  soil_cover: [{ zone: 'z1', kind: 'green_manure', cover: 'sunnhemp', colour: '#8FA36B', sow: '2026-11-18', turn_in: '2027-01-17', slots: ['S1'],
+    finance: { seed: 500, cash: 500, voucher_value: 0, interest: 50, due: '2028-02-02', machines: {}, machine_weeks: [] } }], shares: [] } };
+  const { unmount } = render(<ActivePlan plan={p} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} filter={{ season: 1 }} />);
+  expect(screen.getAllByRole('listitem').map((b) => b.getAttribute('aria-label').split(' · ')[0])).toContain('Sugarcane');
+  unmount();
+  render(<ActivePlan plan={p} areaNo={() => 1} areaName={() => 'A'} season={0} shares={[]} />);
+  const jan = screen.getAllByRole('list', { name: 'January' })[0];
+  const labels = [...jan.querySelectorAll('[role=listitem]')].map((b) => b.getAttribute('aria-label').split(' · ').slice(0, 2).join(' '));
+  expect(labels.indexOf('Green manure Turn in')).toBeLessThan(labels.indexOf('Sugarcane Plough'));
+});

@@ -122,13 +122,15 @@ export function planMonths(plan, { areaNo, areaName, shares, filter } = {}) {
   const seasonOf = (ym) => ss.reduce((k, s, i) => (String(s.start).slice(0, 7) <= ym ? i : k), 0);
   // zones and season (17 Nov): a tapped tile shows its crop's areas on the map, in the season it is sown.
   const tiles = grids.flatMap(([si, g]) => g.tiles.map((t) => ({ ...t, id: `${si}|${g.key}|${t.key}`, crop: g.crop, colour: g.colour, si,
-    zones: g.zones || [], season: si === 'gm' ? seasonOf(String(g.sow).slice(0, 7)) : si })));
+    zones: g.zones || [], season: si === 'gm' ? seasonOf(String(g.sow).slice(0, 7)) : si, seasons: g.seasons })));
   const out = ss.map((_, si) => ({ si, months: [] }));
   // In time order across the crops; the same day keeps each crop's own order (stable sort).
   // 17 Nov: a season chip shows only the crops sown in that season; areas tapped on the map only their tiles.
-  const keep = (x) => x.date && (filter?.season == null || x.season === filter.season)
+  const keep = (x) => x.date && (filter?.season == null || (x.seasons?.length ? x.seasons : [x.season]).includes(filter.season))
     && (!filter?.zones?.length || (x.zones || []).some((z) => filter.zones.includes(z)));
-  for (const t of tiles.filter(keep).sort((a, b) => String(a.date).slice(0, 10).localeCompare(String(b.date).slice(0, 10)))) {
+  // On the same day a green manure's Turn in comes first: the next crop's work follows it (18 Nov).
+  const day = (t) => String(t.date).slice(0, 10);
+  for (const t of tiles.filter(keep).sort((a, b) => day(a).localeCompare(day(b)) || (b.key === 'turn_in') - (a.key === 'turn_in'))) {
     const ym = String(t.date).slice(0, 7);
     const sec = out[seasonOf(ym)];
     let m = sec.months.find((x) => x.ym === ym);
