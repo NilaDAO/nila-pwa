@@ -29,6 +29,11 @@ import { BRING } from '../anchor/sep';
 import { TRACTOR, acresFor, ta, typeName, unitsOf, useMachines, useRates } from '../machine/hooks';
 import ConfirmShare from './ConfirmShare';
 import { areaNames, opensOf } from './MyShares';
+import { InfoFooter } from '../plan/ActivePlan';
+import { useContactBook } from '../union/hooks';
+import PhotoCount from './PhotoCount';
+import { recordCash } from './CashDesk';
+import { overRoom, useDeskRoom } from './deskRoom';
 
 // A share's areas by their field names (13 Nov; was "Area n").
 const areaOf = (plan, share) => {
@@ -53,11 +58,25 @@ function Stepper({ label, value, set, step, min = 0, max, fmt }) {
   );
 }
 
-/** The repay for a share: the plan row of that zone and crop whose sow is the share's from_date. */
+/** The repay for a share: the plan row of that zone and crop whose sow is the share's from_date. A green manure's
+ *  agreement (18 Nov): its covers (one per area, merged into one agreement), as one row: name, due, machine acres. */
 function planRow(plan, share) {
   for (const s of plan.plan.seasons || []) for (const r of s.rows) if (r.zone === share.zone && r.crop === share.crop && r.sow === share.from_date) return r;
+  if (share.green_manure) {
+    const zs = share.zones || [share.zone];
+    const cs = (plan.plan.soil_cover || []).filter((c) => c.finance && zs.includes(c.zone) && c.sow === share.from_date);
+    if (!cs.length) return null;
+    const machines = {};
+    for (const c of cs) for (const [k, m] of Object.entries(c.finance.machines || {})) {
+      machines[k] = { ...m, acres: (machines[k]?.acres || 0) + (m.acres || 0) };
+    }
+    const raw = String(cs[0].name || share.crop).replace(/^mulch, then /i, '').replace(/^green manure: /i, '');
+    return { name: `Green manure · ${raw}`, finance: { due: cs[0].finance.due, machines } };
+  }
   return null;
 }
+// A crop key as words when no plan row names it ("wild_indigo" → "Wild indigo").
+const words = (k) => { const t = String(k || '').replace(/_/g, ' '); return t.charAt(0).toUpperCase() + t.slice(1); };
 
 /** initial: `<plan id>` (a To do row) or `<plan id>_<token id>` (her crop agreement QR, decimal; her G2 row, hex): opens on
  *  that plan and share. No member picker (23 Oct): a leader comes here from her QR, a To do row or her G2 only. */
@@ -74,7 +93,7 @@ export function LeaderLoan({ initial }) {
   const plans = useQuery({ queryKey: ['plan', 'byId', planId], enabled: !!api && !!planId, queryFn: () => api.plan(planId) });
   const plan = plans.data?.approval?.decision === 'approve' ? plans.data : undefined;
   const holder = unionList.data?.find((m) => m.lands.includes(Number(plan?.land_id)));
-  const memberMap = holder?.record ? <AreaMap record={holder.record} /> : <span />;
+  const book = useContactBook();
   const shares = useQuery({
     queryKey: ['oracle', 'shares', planId], enabled: !!plan && !!cfg,
     queryFn: async () => {
@@ -98,7 +117,8 @@ export function LeaderLoan({ initial }) {
   const machines = useMachines();
   const rateOf = (t) => rates.data?.find((r) => r.type === Number(t))?.total || 0;
   const tractorRate = rateOf(TRACTOR);
-  const unionTypes = [...new Set((machines.data || []).map((m) => m.machine_type))];
+  // 18 Nov: a voucher row for every machine type the union prices (rates) or has, and every type of her plan.
+  const unionTypes = [...new Set([...(machines.data || []).map((m) => m.machine_type), ...(rates.data || []).map((r) => r.type)])];
   const types = [...new Set([...Object.keys(mach).map(Number), ...unionTypes])].filter((t) => t > 0).sort((a, b) => a - b);
   const value = Object.entries(mach).reduce((a, [t, h]) => a + h * rateOf(t), 0);
   const hours = tractorRate > 0 ? unitsOf(1, value, tractorRate) : 0;   // units
@@ -138,8 +158,15 @@ export function LeaderLoan({ initial }) {
   const bringRoom = useBringRoom();
   const [error, setError] = useState();
   const helpUntil = useSessionUntil(shares.data?.find((x) => x.token_id === pick)?.ft?.member);
+  // Invest in the flow (18 Nov): when the member is below the union's gate, the leader counts the cash here.
+  const desk = useDeskRoom();
+  const investTx = useSorobanTx();
+  const [invest, setInvest] = useState(null);   // rupees to invest, null: not started
+  const [counting, setCounting] = useState(false);
+  const [noPhotos, setNoPhotos] = useState(false);
 
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); window.location.hash = '#/assets'; }} onRetry={() => tx.retry()} />;
+  if (investTx.status !== 'idle') return <TxScreens tx={investTx} onClose={() => { investTx.reset(); setInvest(null); checks.refetch(); }} onRetry={() => investTx.retry()} />;
   // No session yet (26 Oct: the help QR is the one office QR): the leader scans the member's help QR first, then uses
   // the crop agreement for the member in the session.
   if (req) {
@@ -157,6 +184,19 @@ export function LeaderLoan({ initial }) {
   }
   const sel = shares.data?.find((x) => x.token_id === pick);
   const row = sel && planRow(plan, sel.share);
+  // 18 Nov: the crop agreement's areas on the map (the others faded), the card half way up; the title is the member's
+  // name from the leaders' contact book, else the farm's.
+  const member = sel?.ft?.member;
+  const zones = sel ? (sel.share.zones || [sel.share.zone]).filter(Boolean) : [];
+  const memberMap = holder?.record ? <AreaMap record={holder.record} focus={zones.length ? zones : null} fitBottom={Math.round(window.innerHeight * 0.5)} /> : <span />;
+  const title = (member && book.data?.names.get(member)?.name) || holder?.label || holder?.name || `Land ${plan.land_id}`;
+  if (counting && member) {
+    return <PhotoCount name={`Invest · ${title}`} target={invest || 0} verb="Invest" desk={desk.data}
+      onBack={() => setCounting(false)} onDone={async (c) => {
+        setCounting(false);
+        if (!(await recordCash({ tx: investTx, leader: s.stellarAddress, cfg, purpose: 'invest', who: member, total: c.total, s3Keys: c.s3Keys, amount: invest }))) setNoPhotos(true);
+      }} />;
+  }
   // The rate fund_core charges (uc.rate_bp). The plan's tree discount (LOAN_RULES §5) is not applied by the
   // contract yet, so it is not promised here (contract gap, P5-Loan.md).
   const rateBp = checks.data?.rateBp;
@@ -188,7 +228,7 @@ export function LeaderLoan({ initial }) {
   const helping = !mine && helpUntil > 0;
   if (bring.tx.status === 'pending' || bring.tx.status === 'failed') return <TxScreens tx={bring.tx} onClose={() => bring.tx.reset()} onRetry={() => bring.tx.retry()} />;
   if (own && sel && mine) {
-    const nm = `${row?.name || sel.crop}`;
+    const nm = `${row?.name || words(sel.share.crop || sel.crop)}`;
     const ar = areaOf(plan, sel.share);
     const draw = () => tx.run({
       label: more ? `More machine work · ${nm}` : `Crop agreement ${nm}`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
@@ -199,7 +239,7 @@ export function LeaderLoan({ initial }) {
     return <ConfirmShare own more={more} cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
   }
   if (own && sel && helping) {
-    const nm = `${row?.name || sel.crop}`;
+    const nm = `${row?.name || words(sel.share.crop || sel.crop)}`;
     const ar = areaOf(plan, sel.share);
     const draw = () => tx.run({
       label: more ? `More machine work · ${nm} · for the member` : `Crop agreement ${nm} · for the member`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
@@ -211,7 +251,7 @@ export function LeaderLoan({ initial }) {
   }
   // Board LeaderRedeem, without its crop agreement list (23 Oct: the share comes picked): one card with the share, the
   // steppers, total / interest / repay and the union checks. No seed row: seed is paid as cash (P5).
-  const name = sel ? `${row?.name || sel.crop} · ${areaOf(plan, sel.share)}` : '';
+  const name = sel ? (row?.name || words(sel.share.crop || sel.crop)) : '';
   // Cash is lent from member money only (junior, above its reserve); the plan's cash above that is shown, not lent.
   const notCovered = sel && checks.data && !more ? Math.max(0, Math.round(sel.share.loan_amount || 0) - caps.cash) : 0;
   const rows = checkRows(checks.data, cash, hours, caps);
@@ -234,26 +274,36 @@ export function LeaderLoan({ initial }) {
     return true;
   };
   const line = { height: 1, background: C.raised };
+  // 18 Nov: the investment gate is not a dead end: the leader counts the member's cash in this flow.
+  const gateShort = checks.data?.gateShort || 0;
+  const blockedNoGate = blocked.filter((b) => !/invested in the union first/.test(b));
+  const needsInvest = gateShort > 0;
+  // Every note goes to the info panel on top of the bottom bar (18 Nov), not into the card.
+  const notes = [
+    ...(needsInvest ? [`The member must have ${inr(gateShort)} invested in the union before taking up a crop agreement. Count the cash below.`] : []),
+    ...(notCovered > 0 ? [`${inr(notCovered)} of this crop agreement cannot be lent now: the union's member money is used up. It can be lent when members invest more.`] : []),
+    ...(checks.data && !more && types.length === 0 ? ['No machine vouchers: the union has not priced any machines yet.'] : []),
+    ...blockedNoGate,
+    ...(rows[0]?.[2] ? [cfg?.anchor_url ? `Not enough cash at the office: your LPs are asked to bring ${inr(gap)} when you ${mine ? 'get the cash' : 'show the QR'}.` : 'Not enough cash at the office for this crop agreement yet.'] : []),
+    ...(checks.isError ? ['Could not read the union. Try again.'] : []),
+    ...(noPhotos ? ['The photos were not saved, so the cash was not recorded. Count again.'] : []),
+    ...(error ? [error] : []),
+    ...(helping ? [`You can act for this member until ${new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`] : []),
+  ];
+  const warn = needsInvest || notCovered > 0 || blockedNoGate.length > 0 || !!rows[0]?.[2] || checks.isError || noPhotos || !!error;
+  const btn = (on = true) => ({ flex: 1, height: 44, borderRadius: R.button, border: 0, background: on ? C.accent : C.raised, color: on ? C.ink : C.muted,
+    fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: on ? 'pointer' : 'default' });
   return (
-    <MapCard map={memberMap} header={{ title: `Land ${plan.land_id}`, onBack: () => window.history.back() }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <MapCard map={memberMap} full={false} top={Math.round(window.innerHeight * 0.5)} header={{ title, onBack: () => window.history.back() }}
+      style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}>
       <Card label={more ? 'More machine work' : 'Crop agreement request'}>
         {(shares.isLoading || (sel && !checks.data && !checks.isError)) && <SkeletonRows rows={6} />}
         {shares.data && !sel && <span style={muted}>None of their crop agreements is ready.</span>}
         {sel && (checks.data || checks.isError) && (
           <>
-            <CardTitle right={<span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>{more ? 'Cash received' : 'Ready'}</span>}>{name}</CardTitle>
+            <CardTitle right={more ? <span style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>Cash received</span> : null}>{name}</CardTitle>
             {more && <span style={muted}>Add machine work to this crop agreement: owed from today, with interest, like the vouchers you got with the cash.</span>}
-            {checks.isError && <span style={{ color: C.coral }}>Could not read the union. Try again.</span>}
             {checks.data && !more && <Stepper label="Cash" value={cash} set={setCash} step={100} max={caps.cash} fmt={inr} />}
-            {/* Cash above member money: only a sold batch's prepayment could fund it. DESIGN GAP: no on-chain record of
-                sold-batch prepayments on Stellar yet, so the chip is ₹0. */}
-            {notCovered > 0 && (
-              <>
-                <span style={{ alignSelf: 'flex-start', minHeight: 32, borderRadius: 12, background: C.raised, color: C.muted, padding: '0 12px',
-                  display: 'flex', alignItems: 'center', fontSize: 14, fontWeight: 700 }}>Sold batches · ₹0 prepaid</span>
-                <span style={{ color: C.muted, fontSize: 14, lineHeight: 1.5 }}>Cash above member money ({inr(notCovered)} more in the plan) can only be funded by selling a batch (a buyer's prepayment).</span>
-              </>
-            )}
             {checks.data && types.map((t) => {
               const h = mach[t] || 0;
               const room = tractorRate > 0 ? Math.floor(acresFor(Math.max(0, caps.hours - hours), rateOf(t), tractorRate) * 10) / 10 : 0;
@@ -269,17 +319,26 @@ export function LeaderLoan({ initial }) {
             {repay != null && !more && <KV k="Repay" v={`${inr(repay)} · about end of ${monthYear(row.finance.due)}`} />}
             <div style={line} />
             {rows.map(([k, v, bad]) => <KV key={k} k={k} v={v} color={bad ? C.coral : C.text} />)}
-            {blocked.map((b) => <span key={b} style={{ color: C.coral, fontSize: 14 }}>{b}</span>)}
-            {/* L11 #short: the gap goes to the union's LPs as a Bring (P9). */}
-            {rows[0]?.[2] && (cfg?.anchor_url
-              ? <span style={muted}>Not enough cash at the office: your LPs are asked to bring {inr(gap)} when you {mine ? 'get the cash' : 'show the QR'}.</span>
-              : <span style={{ ...muted, color: C.coral }}>Not enough cash at the office for this crop agreement yet.</span>)}
-            {error && <span style={{ color: C.coral }}>{error}</span>}
-            <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || (more && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{more ? (mine ? 'Add the machine work' : helping ? 'Add the machine work for the member' : "Scan the member's QR") : mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's QR"}</Primary>
-            {helping && <span style={muted}>You can act for this member until {new Date(helpUntil * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.</span>}
+            {/* 18 Nov: invest here when the member is below the gate: the amount, then the photo count of the cash. */}
+            {needsInvest && member && (
+              <>
+                <div style={line} />
+                <Stepper label="Invest" value={invest ?? gateShort} set={setInvest} step={100} min={gateShort} max={Math.max(gateShort, desk.data?.room ?? gateShort * 100)} fmt={inr} />
+                {desk.data && (invest ?? gateShort) > desk.data.room && <span style={{ color: C.coral, fontSize: 14 }}>{overRoom(desk.data, invest ?? gateShort)}</span>}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" style={btn(!desk.data || (invest ?? gateShort) <= desk.data.room)} disabled={!!desk.data && (invest ?? gateShort) > desk.data.room}
+                    onClick={() => { setNoPhotos(false); setInvest(invest ?? gateShort); setCounting(true); }}>Photo count</button>
+                  <button type="button" style={btn(false)} disabled>Cash teller · soon</button>
+                </div>
+              </>
+            )}
+            {!needsInvest && (
+              <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || (more && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{more ? (mine ? 'Add the machine work' : helping ? 'Add the machine work for the member' : "Scan the member's QR") : mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's QR"}</Primary>
+            )}
           </>
         )}
       </Card>
+      {notes.length > 0 && <InfoFooter tone={warn ? 'warn' : undefined} text={notes.map((n) => <span key={n} style={{ display: 'block' }}>{n}</span>)} onClose={() => { setError(undefined); setNoPhotos(false); }} />}
     </MapCard>
   );
 }
