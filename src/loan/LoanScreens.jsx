@@ -194,7 +194,8 @@ export function LeaderLoan({ initial }) {
   const zones = sel ? (sel.share.zones || [sel.share.zone]).filter(Boolean) : [];
   // Its areas filled in the crop's colour (green manure: its own), the others faded.
   const colour = row?.colour || (sel?.share.green_manure ? (plan.plan.soil_cover || []).find((c) => zones.includes(c.zone) && c.colour)?.colour : null) || C.accent;
-  const mapLabels = Object.fromEntries(zones.map((z) => [z, { text: row?.name || '', colour }]));
+  // No chips on these areas: the card's title names the crop (a chip per area repeated it four times).
+  const mapLabels = Object.fromEntries(zones.map((z) => [z, { text: '', colour, hide: true }]));
   const rec = planRecord.data?.record || holder?.record;
   const memberMap = rec ? <AreaMap record={rec} labels={mapLabels} focus={zones.length ? zones : null} fitBottom={Math.round(window.innerHeight * 0.5)} /> : <span />;
   const title = (member && book.data?.names.get(member)?.name) || holder?.label || holder?.name || `Land ${plan.land_id}`;
@@ -346,6 +347,8 @@ export function LeaderLoan({ initial }) {
           </>
         )}
       </Card>
+      {/* Room under the card for the info panel, so its last rows can be scrolled above it. */}
+      {notes.length > 0 && <div aria-hidden="true" style={{ height: 160 }} />}
       {notes.length > 0 && <InfoFooter tone={warn ? 'warn' : undefined} text={notes.map((n) => <span key={n} style={{ display: 'block' }}>{n}</span>)} onClose={() => { setError(undefined); setNoPhotos(false); }} />}
     </MapCard>
   );
