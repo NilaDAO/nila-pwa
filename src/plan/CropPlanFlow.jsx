@@ -495,7 +495,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     // keep the crop's colour without a chip (was "with B" on each).
     const out = Object.fromEntries(Object.entries(rows).map(([z, r]) => [z, pickedHere(z) ? { text: pickedHere(z).name, sub: 'changed',
       colour: pickedHere(z).colour, acc: false } : z !== zonesOf(r)[0] ? { text: r.name, colour: r.colour, acc: checked.has(z), hide: true } : { text: r.name,
-      sub: r.off_catalogue ? 'not in the crop list' : fmtKg(r.kg),
+      // 18 Nov: a whole-year crop running on into a later season shows the yield of its sowing row (its own row has 0).
+      sub: r.off_catalogue ? 'not in the crop list' : fmtKg(r.continues ? (ss.flatMap((x) => x.rows).find((x) => x.crop === r.crop && !x.continues
+        && zonesOf(x).some((zz) => zonesOf(r).includes(zz)))?.kg ?? r.kg) : r.kg),
       colour: r.colour, acc: checked.has(z) }]));
     // An area with no crop that season but a pick for it.
     for (const z of Object.keys(pending)) if (!out[z] && pickedHere(z)) out[z] = { text: pickedHere(z).name, sub: 'changed', colour: pickedHere(z).colour };
@@ -504,8 +506,10 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       if (!idx.some((k) => (c.slots || []).includes(ss[k].slot))) continue;
       // 18 Nov: a green manure before the crop on the same area in this season: both, in order ("Green manure → Sugarcane").
       if (out[c.zone]) {
-        if (c.kind === 'green_manure' && rows[c.zone] && c.sow && rows[c.zone].sow && c.sow < rows[c.zone].sow && !out[c.zone].join && !out[c.zone].hide) {
-          out[c.zone] = { ...out[c.zone], text: `Green manure → ${out[c.zone].text}` };
+        if (c.kind === 'green_manure' && rows[c.zone] && c.sow && rows[c.zone].sow && c.sow < rows[c.zone].sow && !out[c.zone].join && out[c.zone].hide) {
+          out[c.zone] = { ...out[c.zone], stripe: c.colour };   // the agreement's other areas: stripes, no chip
+        } else if (c.kind === 'green_manure' && rows[c.zone] && c.sow && rows[c.zone].sow && c.sow < rows[c.zone].sow && !out[c.zone].join) {
+          out[c.zone] = { ...out[c.zone], text: `Green manure → ${out[c.zone].text}`, stripe: c.colour };
         }
         continue;
       }
