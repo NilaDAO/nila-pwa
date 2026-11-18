@@ -330,7 +330,7 @@ export function LeaderLoan({ initial }) {
             })}
             {checks.data && listed.length > 0 && (
               <select aria-label="Add a voucher" value="" onChange={(e) => { const t = Number(e.target.value); if (t) setMach((m) => ({ ...m, [t]: 0 })); }}
-                style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 14, fontWeight: 700, padding: '0 12px' }}>
+                style={{ height: 44, borderRadius: R.button, border: 0, background: C.raised, color: C.text, fontFamily: FONT, fontSize: 14, fontWeight: 700, padding: '0 20px 0 12px' }}>
                 <option value="">+ Add a voucher</option>
                 {listed.map((t) => <option key={t} value={t} disabled={!owned.includes(t)}>{typeName(t)}{owned.includes(t) && rateOf(t) ? ` · ${inr(rateOf(t))}/ac` : !owned.includes(t) ? ' · not in your union' : ''}</option>)}
               </select>
