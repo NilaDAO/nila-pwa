@@ -359,6 +359,8 @@ function SignerBridge({ children }) {
     signEvmTx,
     // { exists, nin: { balance, authorized }, usdc, sponsor } once read; undefined before.
     stellarAccount: account.data,
+    // The account read failed (SCF T2 row 25): her nIN is unknown, not 0.
+    stellarAccountFailed: account.isError && !account.data,
     // run: the move (M1 step 1) and the retry button call it; no second run while one is pending.
     stellarSetup: {
       status: setupStatus, error: setupError?.message,
@@ -373,7 +375,7 @@ function SignerBridge({ children }) {
       return evm.signMessage(msg);
     },
   }), [signersReady, authenticated, error, user, privyNew, evm, storedAddress, stellar, smart,
-    signHash, signEvmTx, account.data, setupStatus, setupError, runSetup, runSetupAsync, joinUnion]);
+    signHash, signEvmTx, account.data, account.isError, setupStatus, setupError, runSetup, runSetupAsync, joinUnion]);
 
   let screen = children;
   if (passkeyMode) {

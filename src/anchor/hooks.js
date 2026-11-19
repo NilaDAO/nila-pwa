@@ -69,9 +69,10 @@ export function useLpStatus() {
       const position = pos ? { kind: Number(pos.kind), usdc: Number(pos.usdc) / U, inr: Math.round(Number(pos.inr) / U), opened: Number(pos.opened) } : null;
       // A smart account (C…) holds USDC in the USDC contract itself: no trustline, nothing for the node to sponsor.
       if (smart) {
-        const units = await readContract(cfg, 'usdc', 'balance', [sv.address(me)]).catch(() => 0n);
+        const units = await readContract(cfg, 'usdc', 'balance', [sv.address(me)]).catch(() => null);
+        // A failed read is unknown, not 0 (SCF T2 row 25): A1 leaves its total out and says so.
         const usdc = Number(units || 0) / U;
-        return { ...base, trustline: true, usdc, locked, free: Math.max(0, usdc - locked), position };
+        return { ...base, trustline: true, usdc, usdcFailed: units === null, locked, free: Math.max(0, usdc - locked), position };
       }
       const [code, issuer] = (cfg.usdc_asset || ':').split(':');
       const line = a?.balances?.find((b) => b.asset_code === code && b.asset_issuer === issuer);

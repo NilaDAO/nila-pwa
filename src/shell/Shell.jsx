@@ -41,6 +41,7 @@ import LeaderBorder from '../border/LeaderBorder';
 import Registration, { onboarded } from '../register/Registration';
 import { BootLoading } from '../register/Boot';
 import RegFrame from '../register/RegFrame';
+import TitleFailed from '../register/TitleFailed';
 import { useTitleCount } from '../register/titles';
 import { demoNew } from '../register/AfterCode';
 import History from '../history/History';
@@ -205,7 +206,7 @@ export default function Shell({ leader }) {
   // Which screen: shell/start.js (titles loading, the start steps R9 + R10 once per wallet, a tab).
   const screen = screenToOpen({ titles: titleCount, onboarded: onboarded(s?.evmAddress), demoNew: demoNew(s?.evmAddress),
     privyNew: s?.privyNew, tab: view, arg: readArg(), leader });
-  if (screen === 'titleWait') return <TitleWait titleCount={titleCount} s={s} />;
+  if (screen === 'titleWait') return titleCount.failed?.length ? <TitleFailed titleCount={titleCount} /> : <TitleWait titleCount={titleCount} s={s} />;
   if (screen === 'start') {
     const onStarted = () => { go('crop'); setStarted((n) => n + 1); };
     return <div style={{ minHeight: '100vh', background: C.ground }} data-testid="registration"><Registration onStarted={onStarted} /></div>;

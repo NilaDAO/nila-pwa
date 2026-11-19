@@ -7,13 +7,19 @@ import { useStellarTitleCount } from '../stellar/hooks';
 export function useTitleCount(evm, stellarAddress) {
   const legacy = useLegacyBalances(evm);
   const st = useStellarTitleCount(stellarAddress);
-  // A failed read counts as none (a new wallet has none; the mint refuses a second title anyway).
   // No Polygon wallet in this session (7 Nov: a moved member signed in with Privy only): the Polygon read never
   // starts, so it counts as none and her Stellar titles decide; waiting for it left her on the loader for good.
-  const polygon = !evm ? 0 : legacy.data ? legacy.data.titles : legacy.isError ? 0 : undefined;
-  const stellar = !stellarAddress ? 0 : st.data != null ? st.data : st.isError ? 0 : undefined;
-  const count = polygon === undefined || stellar === undefined ? undefined : Math.max(polygon, stellar);
-  return { count, polygon, stellar, loading: count === undefined, legacy };
+  const polygon = !evm ? 0 : legacy.data ? legacy.data.titles : undefined;
+  const stellar = !stellarAddress ? 0 : st.data != null ? st.data : undefined;
+  // A failed read is never "none" (SCF T2 row 25, 19 Nov; was: counted as 0, which could send a title holder to
+  // registration). A title on the other chain is enough; otherwise the count stays unknown and `failed` names the chain.
+  const failed = [!!evm && polygon === undefined && legacy.isError && 'polygon',
+    !!stellarAddress && stellar === undefined && st.isError && 'stellar'].filter(Boolean);
+  const pending = (polygon === undefined && !failed.includes('polygon')) || (stellar === undefined && !failed.includes('stellar'));
+  const known = [polygon, stellar].filter((v) => v !== undefined);
+  const count = pending ? undefined : known.some((v) => v >= 1) ? Math.max(...known) : failed.length ? undefined : 0;
+  const retry = () => { if (failed.includes('polygon')) legacy.refetch?.(); if (failed.includes('stellar')) st.refetch?.(); };
+  return { count, polygon, stellar, loading: count === undefined, failed: count === undefined ? failed : [], retry, legacy };
 }
 
 /** Query keys to refresh once a title may have arrived (R14). */

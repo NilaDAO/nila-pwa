@@ -34,8 +34,10 @@ export default function StaticRoot({ children }) {
     signHash: async () => new Uint8Array(64),
     signEvmTx: async () => '0x',
     stellarAccount: account.data,
+    // The account read failed (SCF T2 row 25): her nIN is unknown, not 0.
+    stellarAccountFailed: account.isError && !account.data,
     stellarSetup: { status: 'success', run: () => {}, runAsync: async () => {} },
     signEvmMessage: async () => `0x${'0'.repeat(130)}`,
-  }), [ready, evmWallet, stellar, account.data]);
+  }), [ready, evmWallet, stellar, account.data, account.isError]);
   return <SignerContext.Provider value={value}>{children}</SignerContext.Provider>;
 }
