@@ -16,6 +16,9 @@ export function useLegacyBalances(address) {
     enabled: !!provider && !!address,
     staleTime: 60_000,
     retry: 1,
+    // A failed read is not tried again when another screen starts reading it (19 Nov): that reset it to "loading" and
+    // the shell, which waits for it, swapped A1 for its loader every second. Try again and ↻ read it again.
+    retryOnMount: false,
     queryFn: async () => {
       const c = (a) => new ethers.Contract(a, ERC20, provider);
       // An unreachable Polygon RPC never fails a call (the provider retries its network check for good): after 20 s
