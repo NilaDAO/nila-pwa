@@ -63,6 +63,11 @@ function Stepper({ label, value, set, step, min = 0, max, fmt, tone, onZero }) {
  *  agreement (18 Nov): its covers (one per area, merged into one agreement), as one row: name, due, machine acres. */
 function planRow(plan, share) {
   for (const s of plan.plan.seasons || []) for (const r of s.rows) if (r.zone === share.zone && r.crop === share.crop && r.sow === share.from_date) return r;
+  // 19 Nov: a bio manure's agreement: its plan item, named with the crop it goes before.
+  if (share.bio_manure) {
+    const b = (plan.plan.bio_manure || []).find((x) => x.zone === share.zone && x.on === share.from_date);
+    return b ? { name: `${b.name} · before ${b.before.name.toLowerCase()}`, finance: b.finance } : null;
+  }
   if (share.green_manure) {
     const zs = share.zones || [share.zone];
     const cs = (plan.plan.soil_cover || []).filter((c) => c.finance && zs.includes(c.zone) && c.sow === share.from_date);
@@ -160,6 +165,8 @@ export function LeaderLoan({ initial }) {
   }, [checks.data, pickFt, tractorRate]); // eslint-disable-line react-hooks/exhaustive-deps
   const [req, setReq] = useState();
   const [own, setOwn] = useState(false);
+  // 19 Nov (executive decision): lake sludge is financed (its haulage) only once a leader confirms the permit here.
+  const [permitSeen, setPermitSeen] = useState(false);
   const tx = useSorobanTx();
   const bring = usePost();   // L11 #short, automatic (25 Oct): see askBring
   const bringRoom = useBringRoom();
@@ -357,8 +364,14 @@ export function LeaderLoan({ initial }) {
                 </div>
               </>
             )}
+            {!needsInvest && sel.share?.permit && !more && (
+              <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, lineHeight: 1.4, cursor: 'pointer' }}>
+                <input type="checkbox" checked={permitSeen} onChange={(e) => setPermitSeen(e.target.checked)} style={{ width: 20, height: 20, margin: 0, accentColor: C.accent }} />
+                <span>I have seen the permit to take the lake sludge.</span>
+              </label>
+            )}
             {!needsInvest && (
-              <Primary disabled={!checks.data || blocked.length > 0 || (!cash && !hours) || (more && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{more ? (mine ? 'Add the machine work' : helping ? 'Add the machine work for the member' : "Scan the member's QR") : mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's QR"}</Primary>
+              <Primary disabled={(sel.share?.permit && !more && !permitSeen) || !checks.data || blocked.length > 0 || (!cash && !hours) || (more && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{more ? (mine ? 'Add the machine work' : helping ? 'Add the machine work for the member' : "Scan the member's QR") : mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's QR"}</Primary>
             )}
           </>
         )}
