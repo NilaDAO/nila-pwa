@@ -18,6 +18,15 @@ export const BIO_MANURES = [
   { key: `${BIO_PREFIX}lake_silt`, type: 'lake_silt', name: 'Lake sludge', colour: '#7A7D6B' },
 ];
 export const isBio = (key) => String(key || '').startsWith(BIO_PREFIX);
+
+/** The row's keys with manure `bio` pinned before the crop at index `i` (bar i is key i): a manure already before that
+ *  crop is replaced (19 Nov: a manure can go before any crop on the row, not only the next one tapped). */
+export function pegBio(keys, i, bio) {
+  const before = i > 0 && isBio(keys[i - 1]);
+  const out = keys.filter((_, k) => !(before && k === i - 1));
+  out.splice(before ? i - 1 : i, 0, bio);
+  return out;
+}
 const BIO_DAYS = 14;
 
 const day = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`) : null);

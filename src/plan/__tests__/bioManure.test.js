@@ -46,3 +46,18 @@ test('its agreement counts in the season of the crop it goes before', () => {
   expect(seasonsCounted(p).gm).toEqual([expect.objectContaining({ kind: 'bio_manure', slots: ['S3'] })]);
   expect(seasonsCounted(p, [1]).gm).toEqual([]);
 });
+
+test('a manure pinned before any crop on the row, replacing the one before it', () => {
+  const { pegBio } = require('../yearRow');
+  const keys = ['black_gram', 'maize'];
+  const one = pegBio(keys, 0, 'bio_manure:goat');
+  expect(one).toEqual(['bio_manure:goat', 'black_gram', 'maize']);
+  const { bars } = fill(one, { seasons, cat });
+  expect(toChanges(bars, seasons).S1).toBe('bio_manure:goat+black_gram');
+  // bar 2 is maize now; pin cow before it, then swap the goat before black gram for lake sludge
+  const two = pegBio(pegBio(one, 2, 'bio_manure:cow'), 1, 'bio_manure:lake_silt');
+  expect(two).toEqual(['bio_manure:lake_silt', 'black_gram', 'bio_manure:cow', 'maize']);
+  const ch = toChanges(fill(two, { seasons, cat }).bars, seasons);
+  expect(ch.S1).toBe('bio_manure:lake_silt+black_gram');
+  expect(Object.values(ch)).toContain('bio_manure:cow+maize');
+});
