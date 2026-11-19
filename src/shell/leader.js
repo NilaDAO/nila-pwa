@@ -5,6 +5,7 @@
 // Was: four places (StellarGate, R9, recovery, useIsLeader), each with its own retry loop around a hook that answered
 // undefined until its contract loaded, so a leader could open the member app.
 import { useEffect } from 'react';
+import { polygonProvider } from '../utils/polygonProvider';
 import { useQuery } from '@tanstack/react-query';
 import { ethers } from 'ethers';
 import { setDBitem } from '../utils/db';
@@ -15,7 +16,7 @@ const ABI = ['function isLeader(address unionAddr, address acct) view returns (b
 const rpc = () => (Number(process.env.REACT_APP_CHAIN_ID || 137) === 137 ? process.env.REACT_APP_RPC_ALCHEMY : process.env.REACT_APP_RPC);
 let roles;
 const contract = () => {
-  if (!roles) roles = new ethers.Contract(ROLES, ABI, new ethers.JsonRpcProvider(rpc()));
+  if (!roles) roles = new ethers.Contract(ROLES, ABI, polygonProvider(rpc()));
   return roles;
 };
 
