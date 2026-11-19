@@ -13,6 +13,7 @@ import BorderMap, { RED, SOIL_COLOUR, ShapeThumb, soilInk } from './BorderMap';
 import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
+import { PlayingLogo } from '../register/RegFrame';
 import { TxScreens } from '../stellar/TxStatus';
 import { Notice, Sheet } from '../plan/ui';
 import { TrashIcon } from '../shell/icons';
@@ -107,7 +108,8 @@ function FieldRow({ f, sub, right, onClick, warn }) {
       <span style={{ width: 24, height: 24, borderRadius: R.round, background: C.ink, color: C.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{f.n}</span>
       <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={quiet}>{sub}</span>}
         {warn?.length > 0 && <b style={{ color: ink }}>Overlap with {warn.join(', ')}</b>}</span>
-      {right && <span style={quiet}>{right}</span>}
+      {/* 19 Nov: a field being drawn shows the logo at play here, not the word (leaders took it for broken). */}
+      {right && (typeof right === 'string' ? <span style={quiet}>{right}</span> : right)}
     </button>
   );
 }
@@ -135,7 +137,7 @@ function Fetch({ job, onBack, onAdd }) {
       <Head title={again ? `Drawing field ${again.n} again` : 'Finding field borders'} sub="Drawing shapes, please wait" />
       <Legend nb={nb} />
       {job.fields.map((f) => (
-        <FieldRow key={f.n} f={f} right={f.state === 'drawing' ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.state === 'accepted' ? 'Accepted' : f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : 'Waiting'} />
+        <FieldRow key={f.n} f={f} right={f.state === 'drawing' ? <PlayingLogo label={f.round > 0 ? 'Drawing again' : 'Drawing'} /> : f.state === 'accepted' ? 'Accepted' : f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : 'Waiting'} />
       ))}
       <AddRow onClick={onAdd} />
     </Frame>
@@ -184,7 +186,7 @@ function Plan({ job, onField, onBack, onAdd }) {
         const busy = f.state === 'drawing';
         return (<div key={f.n} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <FieldRow f={f} sub={f.state === 'left_out' ? 'Left out' : busy ? 'Drawing the shapes, please wait' : f.state === 'inside' ? insideText(f) : f.state === 'empty' ? 'No shape left: check it' : s ? acres(s.acres) : ''}
-            right={busy ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.accepted ? 'Accepted' : undefined}
+            right={busy ? <PlayingLogo label={f.round > 0 ? 'Drawing again' : 'Drawing'} /> : f.accepted ? 'Accepted' : undefined}
             onClick={f.state === 'left_out' || busy ? undefined : () => onField(f.n)} warn={nb.warn[f.n]} />
         </div>);
       })}

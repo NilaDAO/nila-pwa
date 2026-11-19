@@ -299,6 +299,31 @@ const KEYFRAMES = `@keyframes nila-bounce{0%,100%{transform:translateY(0)}50%{tr
 @keyframes nila-shadow{0%,100%{transform:scaleX(1);opacity:1}50%{transform:scaleX(0.6);opacity:0.5}}
 @media (prefers-reduced-motion: reduce){.nila-bounce,.nila-shadow{animation:none!important}}`;
 
+// The logo at play (19 Nov), for a wait inside a row (a field's shapes being drawn): a squash, a hop with a full
+// turn in the air, a landing and a wobble, then a rest, about every 2.8 s. Small enough for a row; its label is what
+// a screen reader says (the row's old text). Still with reduced motion.
+const PLAY_CSS = `@keyframes nila-play{0%{transform:translateY(0) rotate(0) scale(1,1)}
+10%{transform:translateY(0) rotate(0) scale(1.18,0.8)}
+22%{transform:translateY(-9px) rotate(0) scale(0.92,1.1)}
+38%{transform:translateY(-11px) rotate(360deg) scale(1,1)}
+50%{transform:translateY(0) rotate(360deg) scale(1.15,0.84)}
+58%{transform:translateY(0) rotate(360deg) scale(1,1)}
+66%{transform:translateY(0) rotate(345deg) scale(1,1)}
+74%{transform:translateY(0) rotate(375deg) scale(1,1)}
+82%,100%{transform:translateY(0) rotate(360deg) scale(1,1)}}
+@keyframes nila-play-shadow{0%,10%,58%,100%{transform:scaleX(1);opacity:.9}22%{transform:scaleX(.7);opacity:.5}38%{transform:scaleX(.55);opacity:.35}50%{transform:scaleX(1.15);opacity:1}}
+@media (prefers-reduced-motion: reduce){.nila-play,.nila-play-shadow{animation:none!important}}`;
+
+export function PlayingLogo({ size = 28, label = 'Loading' }) {
+  return (
+    <span role="status" aria-label={label} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+      <style>{PLAY_CSS}</style>
+      <img className="nila-play" src={LOGO} alt="" style={{ width: size, height: size, transformOrigin: '50% 100%', animation: 'nila-play 2.8s ease-in-out infinite' }} />
+      <span className="nila-play-shadow" style={{ width: Math.round(size * 0.6), height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.22)', animation: 'nila-play-shadow 2.8s ease-in-out infinite' }} />
+    </span>
+  );
+}
+
 export function Bouncing({ pad = 64, size = 48, top, bottom, label = 'Loading' }) {
   return (
     // Room above the logo for its 18 px bounce (it rose into the card's title before). top / bottom: exact padding
