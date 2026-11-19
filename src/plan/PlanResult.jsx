@@ -193,6 +193,15 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
       editable: !readOnly && !!slot && !taken.has(slot) && !plan.plan.locked?.[zone]?.[slot], row: { slot }, dim: !!slots && !!slot && !slots.has(slot) });
     if (slot) taken.add(slot);
   }
+  // A bio manure before a crop (19 Nov): a short cross-hatched bar in its colour, from its spreading day to the sowing.
+  for (const b of (plan.plan.bio_manure || []).filter((x) => x.zone === zone)) {
+    if (at(b.before?.sow || b.on) <= 0 || at(b.on) >= 12) continue;
+    const [s0, s1] = clamp(b.on, b.before?.sow || b.on);
+    const c = b.colour || C.muted;
+    out.push({ key: `bio-${b.on}`, slot: b.slot, s0, s1, name: b.name, ink: C.text, soil: true, editable: false, row: { slot: b.slot },
+      fill: `repeating-linear-gradient(45deg, ${c} 0 2px, transparent 2px 6px), repeating-linear-gradient(-45deg, ${c} 0 2px, transparent 2px 6px)`,
+      dim: !!slots && !slots.has(b.slot) });
+  }
   // A season the plan leaves empty on a planned area (14 Nov): a faint "Empty" bar she can tap to pick a crop.
   if (plan.plan.proposal?.[zone]) {
     for (const [i, se] of ss.entries()) {

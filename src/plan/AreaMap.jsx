@@ -96,14 +96,15 @@ export const ringsOf = (g) => (g?.type === 'Polygon' ? [g.coordinates[0]] : g?.t
 /** Stripes across a polygon (18 Nov: two crops on one area in a season, e.g. green manure then sugarcane): diagonal
  *  lines, cut to the polygon with its holes (even-odd), as [[lng, lat], [lng, lat]] segments. Google Maps fills no
  *  pattern, so the second crop's colour is drawn as these lines over the first crop's fill. */
-export function stripes(poly, n = 14) {
+export function stripes(poly, n = 14, dir = 1) {
   const rings = (poly || []).filter((r) => r.length > 2);
   if (!rings.length) return [];
   const lat0 = rings[0][0][1] * Math.PI / 180;
   const k = Math.cos(lat0);   // lng degrees to the same scale as lat
   // Rotate 45°: u = x + y, v = y − x (x = lng·k, y = lat); stripes are lines of constant v.
-  const rot = ([lng, lat]) => { const x = lng * k; return [x + lat, lat - x]; };
-  const back = (u, v) => { const x = (u - v) / 2; const y = (u + v) / 2; return [x / k, y]; };
+  // dir −1 (19 Nov): the other diagonal, for a cross-hatch.
+  const rot = ([lng, lat]) => { const x = lng * k * dir; return [x + lat, lat - x]; };
+  const back = (u, v) => { const x = (u - v) / 2; const y = (u + v) / 2; return [x / k / dir, y]; };
   const rr = rings.map((r) => r.map(rot));
   const vs = rr.flat().map((q) => q[1]);
   const vMin = Math.min(...vs); const vMax = Math.max(...vs);
@@ -218,6 +219,11 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
           stripes(poly0).forEach(([a, b]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: a[1], lng: a[0] }, { lat: b[1], lng: b[0] }],
             clickable: false, zIndex: 2, strokeColor: lab.stripe, strokeOpacity: faded ? FADE : 0.9, strokeWeight: 3 })));
         }
+        // lab.cross (19 Nov): a bio manure before the crop this season, a cross-hatch in its colour.
+        if (lab.cross) {
+          [1, -1].forEach((d) => stripes(poly0, 14, d).forEach(([a, b]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: a[1], lng: a[0] }, { lat: b[1], lng: b[0] }],
+            clickable: false, zIndex: 2, strokeColor: lab.cross, strokeOpacity: faded ? FADE : 0.9, strokeWeight: 2 }))));
+        }
       }));
       if (k && !lab.hide && !chipsOff && g.marker?.AdvancedMarkerElement) {   // hide: a shape with no chip (a member's further fields)
         const mk = new g.marker.AdvancedMarkerElement({ map: m, position: { lat: sy / k, lng: sx / k }, gmpClickable: !!pick,
@@ -298,6 +304,10 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
       if (lab.stripe) {   // 18 Nov: as on the Google map, the second crop's colour as stripes
         polysOf(z.geometry).forEach((poly0) => stripes(poly0).forEach(([a, b]) => L.polyline([[a[1], a[0]], [b[1], b[0]]],
           { color: lab.stripe, weight: 3, opacity: faded ? FADE : 0.9, interactive: false }).addTo(map)));
+      }
+      if (lab.cross) {    // 19 Nov: a bio manure, cross-hatched in its colour
+        polysOf(z.geometry).forEach((poly0) => [1, -1].forEach((d) => stripes(poly0, 14, d).forEach(([a, b]) => L.polyline([[a[1], a[0]], [b[1], b[0]]],
+          { color: lab.cross, weight: 2, opacity: faded ? FADE : 0.9, interactive: false }).addTo(map))));
       }
       if (focus?.length && !faded) focused.push(layer);
       if (onSelect) layer.on('click', () => onSelect(selected === tapTo ? null : tapTo));

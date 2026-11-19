@@ -11,3 +11,13 @@ test('stripes stay inside the area and skip its hole (18 Nov)', () => {
   const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   for (const [a, b] of holed) expect(inside(mid(a, b), [78.0004, 11.0004, 0.0002]) && !inside(a, [78.0004, 11.0004, 0.0002]) && !inside(b, [78.0004, 11.0004, 0.0002])).toBe(false);
 });
+
+test('the other diagonal (19 Nov cross-hatch) gives as many lines, mirrored', () => {
+  const { stripes } = require('../AreaMap');
+  const sq = [[[78, 11], [78.001, 11], [78.001, 11.001], [78, 11.001], [78, 11]]];
+  const a = stripes(sq, 10, 1); const b = stripes(sq, 10, -1);
+  expect(b.length).toBe(a.length);
+  // a / line rises one way, a \ line the other
+  const slope = ([p, q]) => Math.sign((q[1] - p[1]) / (q[0] - p[0]));
+  expect(slope(a[3])).toBe(-slope(b[3]));
+});

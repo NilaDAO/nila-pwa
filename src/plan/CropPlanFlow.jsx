@@ -524,8 +524,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     }
     // 19 Nov: a bio manure before the crop sown on the area in this season: both, in order ("Goat manure → Maize").
     for (const b of plan.plan.bio_manure || []) {
-      if (!idx.some((k) => ss[k].slot === b.slot) || !out[b.zone] || out[b.zone].hide || out[b.zone].join) continue;
-      out[b.zone] = { ...out[b.zone], text: `${b.name} → ${out[b.zone].text}` };
+      if (!idx.some((k) => ss[k].slot === b.slot) || !out[b.zone] || out[b.zone].join) continue;
+      out[b.zone] = out[b.zone].hide ? { ...out[b.zone], cross: b.colour } : { ...out[b.zone], text: `${b.name} → ${out[b.zone].text}`, cross: b.colour };
     }
     // An area left out for what stands on it (13 Nov: trees, buildings, water…): named so on the map, in its colour.
     for (const [z, why] of Object.entries(plan.plan.left_out_reasons || {})) {
