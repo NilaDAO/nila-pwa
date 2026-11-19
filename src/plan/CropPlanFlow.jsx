@@ -1096,7 +1096,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       <Sheet map={editable && record ? <AreaMap record={record} labels={labels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72}
         chip="Tap areas to change" /> : map}
         landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}
-        tools={!area && chipsOn && <SeasonChips ss={ss} i={shown} onPick={setSeason} />}>
+        // 19 Nov: as on the approved plan, no chip is on at first (the whole plan; the map shows the first season); a
+        // chip tapped filters the chart and the table and shows its season on the map, tapped again it is off.
+        tools={!area && chipsOn && <SeasonChips ss={ss} i={shown} on={gridSeason} onPick={(k) => { setSeason(k); setGridSeason((g) => (g === k ? null : k)); }} />}>
         {area ? (
           <AreaCard plan={plan} zone={area} name={areaName(area)} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
             accepted={checked.has(area)} total={zones.length} readOnly={readOnly} y0={y0}
@@ -1109,8 +1111,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           <PlanView plan={plan} record={record} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={editable ? toggle : pickArea}
             crops={catalogue.data?.crops} changing={saving} pending={pending}
             ticks={ticks} onTick={(k) => setTicks((t) => { const n = new Set(t); if (n.has(k)) n.delete(k); else n.add(k); return n; })}
-            off={chipsOn ? seasonsOff(ss, shown, new Set([ss[shown].slot])) : undefined}
-            slots={chipsOn ? new Set([ss[shown].slot]) : undefined}
+            off={chipsOn && gridSeason != null ? seasonsOff(ss, shown, new Set([ss[shown].slot])) : undefined}
+            slots={chipsOn && gridSeason != null ? new Set([ss[shown].slot]) : undefined}
             />
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}
