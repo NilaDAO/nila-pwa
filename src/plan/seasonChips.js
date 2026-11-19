@@ -16,6 +16,9 @@ export function seasonsCounted(p, off = []) {
   const offSlots = new Set(off.map((k) => ss[k]?.slot));
   return {
     seasons: ss.filter((_, k) => !off.includes(k)),
-    gm: (p.soil_cover || []).filter((c) => c.finance && !offSlots.has((c.slots || [])[0])),
+    // The extra crop agreements without a season row of their own: green manures (4 Nov) and bio manures (19 Nov),
+    // each counted in the season it is in.
+    gm: [...(p.soil_cover || []).filter((c) => c.finance && !offSlots.has((c.slots || [])[0])),
+      ...(p.bio_manure || []).filter((b) => b.finance && !offSlots.has(b.slot)).map((b) => ({ ...b, kind: 'bio_manure', slots: [b.slot] }))],
   };
 }

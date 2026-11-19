@@ -13,7 +13,7 @@ import { plainError } from '../stellar/errors';
 import { getCropBatches } from '../plan/api';
 
 /** The unit a crop is weighed in on H1 (the boards): tonnes for cane, banana and cassava, else quintals. */
-export const unitOf = (crop) => (['sugarcane', 'banana', 'cassava'].some((k) => String(crop).startsWith(k)) ? { per: 1000, name: 'MT', short: 'MT' }
+export const unitOf = (crop) => (['sugarcane', 'banana', 'cassava', 'goat_manure', 'cow_manure'].some((k) => String(crop).startsWith(k)) ? { per: 1000, name: 'MT', short: 'MT' }
   : { per: 100, name: 'quintal', short: 'q' });
 
 /** Each crop and the union's local price of it: [{ crop, name, colour, code, inrPerKg, catalogueInrPerKg }]. */

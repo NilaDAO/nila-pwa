@@ -27,7 +27,7 @@ import { neighboursOf } from './neighbours';
 import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
 import { EDIT_TEXT } from './editTexts';
-import { GREEN_MANURE, fill, rowOf, slotsOf, toChanges, whyNoRoom } from './yearRow';
+import { BIO_MANURES, GREEN_MANURE, cropOf, fill, rowOf, slotsOf, toChanges, whyNoRoom } from './yearRow';
 import { ordered, rowAdvice } from './rowAdvice';
 import { presets } from './areaPresets';
 import { AreaCard, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
@@ -177,7 +177,8 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
         return [
           hand > 0 && `${inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates).`,
           vouchers > 0 && `${inr(vouchers)} in vouchers.`,
-          gm.length > 0 && 'Green manure is its own crop agreement, repaid with the next crop.',
+          gm.some((c) => c.kind === 'green_manure') && 'Green manure is its own crop agreement, repaid with the next crop.',
+          gm.some((c) => c.kind === 'bio_manure') && 'Manure is its own crop agreement, repaid with the crop it goes before.',
         ];
       })()} />
       {!readOnly && <Conditions plan={plan} ticks={ticks} onTick={onTick} />}
@@ -517,6 +518,11 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       out[c.zone] = { text: c.kind === 'bare' ? 'Bare soil' : short.charAt(0).toUpperCase() + short.slice(1),
         sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
+    }
+    // 19 Nov: a bio manure before the crop sown on the area in this season: both, in order ("Goat manure → Maize").
+    for (const b of plan.plan.bio_manure || []) {
+      if (!idx.some((k) => ss[k].slot === b.slot) || !out[b.zone] || out[b.zone].hide || out[b.zone].join) continue;
+      out[b.zone] = { ...out[b.zone], text: `${b.name} → ${out[b.zone].text}` };
     }
     // An area left out for what stands on it (13 Nov: trees, buildings, water…): named so on the map, in its colour.
     for (const [z, why] of Object.entries(plan.plan.left_out_reasons || {})) {
@@ -983,7 +989,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       const add = (key) => {
         const keys = [...rowKeys, key];
         if (fill(keys, { seasons: ss, cat: names, free0 }).dropped.includes(key)) {
-          setRowNote(`${(names[key] || GREEN_MANURE).name}: ${whyNoRoom(key, rowKeys, { seasons: ss, cat: names, free0 }).replace(/^./, (x) => x.toLowerCase())}.`); return;
+          setRowNote(`${cropOf(key, names).name}: ${whyNoRoom(key, rowKeys, { seasons: ss, cat: names, free0 }).replace(/^./, (x) => x.toLowerCase())}.`); return;
         }
         setRowKeys(keys); setRowNote(undefined);
       };
@@ -992,6 +998,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       const stop = () => { setEditSel([]); setRowKeys([]); setRowNote(undefined); };
       const update = async () => {
         setError(undefined);
+        // 19 Nov: a bio manure goes before a crop; without one after it there is nothing to send it with.
+        if (bars.some((b) => b.waiting)) { setRowNote('Add the crop the manure goes before.'); return; }
         const changes = Object.fromEntries(editSel.map((z) => [z, toChanges(fill(rowKeys, { seasons: ss, cat: names, free0: bases[z].free0 }).bars, ss, bases[z].locked)]));
         try {
           const res = await revise.mutateAsync({ planId: plan.id, note: '', changes });
@@ -1000,7 +1008,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       };
     if (editable && z0) {
       const mine = (plan.plan.intake?.crops || []).filter((k) => names[k]);
-      const list = [...mine.map((k) => names[k]), GREEN_MANURE, ...sortedCrops(catalogue.data?.crops || []).filter((c) => !mine.includes(c.key))];
+      // 19 Nov: the bio manures after the green manure; each goes before the next crop tapped.
+      const list = [...mine.map((k) => names[k]), GREEN_MANURE, ...BIO_MANURES, ...sortedCrops(catalogue.data?.crops || []).filter((c) => !mine.includes(c.key))];
       // Advice by code (17 Nov): tags, faded and advised crops, one sentence; every crop can still be tapped.
       const advice = rowAdvice(list, rowKeys, { seasons: ss, cat: names, free0, wells: plan.plan.inputs?.wells, hardMonths: plan.plan.intake?.hard_months || [] });
       const shownList = ordered(list, advice);
@@ -1022,13 +1031,14 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
                   {freeAt > 0 && <span title="Growing now" style={{ position: 'absolute', left: 0, width: `${(freeAt / 12) * 100}%`, top: 0, bottom: 0,
                     background: `repeating-linear-gradient(45deg, ${C.muted} 0 3px, transparent 3px 6px)`, opacity: 0.6 }} />}
                   {bars.map((b, i) => {
-                    const c = names[b.key] || GREEN_MANURE;
+                    const c = cropOf(b.key, names) || GREEN_MANURE;
                     const s0 = pos(b.sow); const s1 = Math.max(s0 + 0.3, pos(b.end));
+                    // A bio manure waiting for its crop is drawn faded (19 Nov).
                     return (
                       <button key={`${b.key}-${i}`} type="button" aria-label={`Take out ${c.name}`} onClick={() => dropAt(i)} style={{ position: 'absolute',
                         left: `${(s0 / 12) * 100}%`, width: `calc(${((s1 - s0) / 12) * 100}% - 2px)`, top: 0, bottom: 0, border: 0, borderRadius: 6, padding: '0 6px',
                         background: c.colour || C.muted, color: C.ink, fontFamily: FONT, fontSize: 12, fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap',
-                        textOverflow: 'ellipsis', cursor: 'pointer', textAlign: 'left' }}>{c.name}</button>
+                        textOverflow: 'ellipsis', cursor: 'pointer', textAlign: 'left', opacity: b.waiting ? 0.5 : 1 }}>{c.name}</button>
                     );
                   })}
                 </div>
