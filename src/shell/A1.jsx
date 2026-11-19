@@ -36,6 +36,8 @@ const memory = { y: 0, low: false };
 export const resetA1Scroll = () => { memory.y = 0; memory.low = false; window.scrollTo(0, 0); };
 
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
+// The identity check as this phone last saw it (Shell sets it when it switches her to self mode).
+const knownChecked = (me) => { try { return localStorage.getItem(`nila.mode.k1.${me}`) != null; } catch { return false; } };
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
 
 // The board's tile per asset row (MemberAssets-ley3); rows drawn by other modules (UnionRows) get theirs by label.
@@ -128,13 +130,15 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const usdcInr = (leader || lp?.idChecked) && rate ? ((lp?.usdc || 0) + withUnion) * rate : 0;
   // One balance across the chains (SCF T2 rows 25–26, 19 Nov): a part that failed to load is never counted as 0.
   // The total is not shown then; the line under it names what is missing and the refresh button tries again.
-  // TEXT TO APPROVE: "Not loaded: …. Tap ↻ to try again." and its parts.
+  // Texts approved 19 Nov; nIN and USDC are named only where she can have them (identity check).
   const counted = leader || lp?.idChecked;
   const usdcHeld = (lp?.usdc || 0) + withUnion;
   const missing = [
     !!s?.stellarAddress && inv.isError && !inv.data && 'your investment',
     (leader || lp?.idChecked) && s?.stellarAccountFailed && 'nIN',
-    !!s?.stellarAddress && lpQ.isError && !lp && 'nIN and USDC',
+    // nIN and USDC exist only after the identity check (assist-mode members never have them, 19 Nov): when that read
+    // failed they are named only for a leader or a member this phone knows is checked (Shell's self-mode switch flag).
+    !!s?.stellarAddress && lpQ.isError && !lp && (leader || knownChecked(s.stellarAddress)) && 'nIN and USDC',
     counted && lp?.usdcFailed && 'USDC',
     counted && usdcHeld > 0 && !rate && (rateQ.isError || rateQ.data === null) && 'the dollar rate',
   ].filter(Boolean);

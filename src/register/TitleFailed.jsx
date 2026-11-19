@@ -1,5 +1,5 @@
 // A land-title read that failed (SCF T2 row 25, 19 Nov): said at once with a retry, never taken as "no title" (which
-// would open registration for a title holder). TEXT TO APPROVE: "Could not load your land title…", "Try again".
+// would open registration for a title holder). Texts approved 19 Nov.
 import RegFrame from './RegFrame';
 
 export default function TitleFailed({ titleCount }) {
