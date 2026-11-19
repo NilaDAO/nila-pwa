@@ -21,3 +21,14 @@ test('the other diagonal (19 Nov cross-hatch) gives as many lines, mirrored', ()
   const slope = ([p, q]) => Math.sign((q[1] - p[1]) / (q[0] - p[0]));
   expect(slope(a[3])).toBe(-slope(b[3]));
 });
+
+test('a fixed spacing lines up across two parts of an area (19 Nov: bio manure lines)', () => {
+  const { stripes, MANURE_STEP } = require('../AreaMap');
+  const left = [[[78, 11], [78.001, 11], [78.001, 11.001], [78, 11.001], [78, 11]]];
+  const right = [[[78.001, 11], [78.0023, 11], [78.0023, 11.001], [78.001, 11.001], [78.001, 11]]];
+  // a line leaving the left part at its right edge carries on in the right part at the same point
+  const atEdge = (segs) => segs.flat().filter(([lng]) => Math.abs(lng - 78.001) < 1e-9).map(([, lat]) => lat.toFixed(7)).sort();
+  const l = atEdge(stripes(left, 0, -1, MANURE_STEP)); const r = atEdge(stripes(right, 0, -1, MANURE_STEP));
+  expect(l.length).toBeGreaterThan(0);
+  expect(l).toEqual(r);
+});

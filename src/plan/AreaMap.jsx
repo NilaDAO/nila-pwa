@@ -96,7 +96,7 @@ export const ringsOf = (g) => (g?.type === 'Polygon' ? [g.coordinates[0]] : g?.t
 /** Stripes across a polygon (18 Nov: two crops on one area in a season, e.g. green manure then sugarcane): diagonal
  *  lines, cut to the polygon with its holes (even-odd), as [[lng, lat], [lng, lat]] segments. Google Maps fills no
  *  pattern, so the second crop's colour is drawn as these lines over the first crop's fill. */
-export function stripes(poly, n = 14, dir = 1) {
+export function stripes(poly, n = 14, dir = 1, every = 0) {
   const rings = (poly || []).filter((r) => r.length > 2);
   if (!rings.length) return [];
   const lat0 = rings[0][0][1] * Math.PI / 180;
@@ -108,10 +108,11 @@ export function stripes(poly, n = 14, dir = 1) {
   const rr = rings.map((r) => r.map(rot));
   const vs = rr.flat().map((q) => q[1]);
   const vMin = Math.min(...vs); const vMax = Math.max(...vs);
-  const step = (vMax - vMin) / n;
+  // every (19 Nov): a fixed spacing on one grid, so the parts of an area (and its neighbours) line up.
+  const step = every > 0 ? every : (vMax - vMin) / n;
   if (!(step > 0)) return [];
   const out = [];
-  for (let v = vMin + step / 2; v < vMax; v += step) {
+  for (let v = every > 0 ? Math.ceil(vMin / step) * step : vMin + step / 2; v < vMax; v += step) {
     const us = [];
     for (const r of rr) for (let i = 0, j = r.length - 1; i < r.length; j = i, i += 1) {
       const [ui, vi] = r[i]; const [uj, vj] = r[j];
@@ -122,6 +123,8 @@ export function stripes(poly, n = 14, dir = 1) {
   }
   return out;
 }
+// A bio manure's lines (19 Nov): single, the other diagonal from a green manure's, about 8 m apart on one grid.
+export const MANURE_STEP = 0.0001;
 export const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
 
 /** Joined areas (14 Nov): an area whose label has `join` (an area she added to a touching one) is drawn as part of
@@ -219,10 +222,10 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
           stripes(poly0).forEach(([a, b]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: a[1], lng: a[0] }, { lat: b[1], lng: b[0] }],
             clickable: false, zIndex: 2, strokeColor: lab.stripe, strokeOpacity: faded ? FADE : 0.9, strokeWeight: 3 })));
         }
-        // lab.cross (19 Nov): a bio manure before the crop this season, a cross-hatch in its colour.
+        // lab.cross (19 Nov): a bio manure before the crop this season, single lines in its colour.
         if (lab.cross) {
-          [1, -1].forEach((d) => stripes(poly0, 14, d).forEach(([a, b]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: a[1], lng: a[0] }, { lat: b[1], lng: b[0] }],
-            clickable: false, zIndex: 2, strokeColor: lab.cross, strokeOpacity: faded ? FADE : 0.9, strokeWeight: 2 }))));
+          stripes(poly0, 0, -1, MANURE_STEP).forEach(([a, b]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: a[1], lng: a[0] }, { lat: b[1], lng: b[0] }],
+            clickable: false, zIndex: 2, strokeColor: lab.cross, strokeOpacity: faded ? FADE : 0.9, strokeWeight: 2 })));
         }
       }));
       if (k && !lab.hide && !chipsOff && g.marker?.AdvancedMarkerElement) {   // hide: a shape with no chip (a member's further fields)
@@ -305,9 +308,9 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
         polysOf(z.geometry).forEach((poly0) => stripes(poly0).forEach(([a, b]) => L.polyline([[a[1], a[0]], [b[1], b[0]]],
           { color: lab.stripe, weight: 3, opacity: faded ? FADE : 0.9, interactive: false }).addTo(map)));
       }
-      if (lab.cross) {    // 19 Nov: a bio manure, cross-hatched in its colour
-        polysOf(z.geometry).forEach((poly0) => [1, -1].forEach((d) => stripes(poly0, 14, d).forEach(([a, b]) => L.polyline([[a[1], a[0]], [b[1], b[0]]],
-          { color: lab.cross, weight: 2, opacity: faded ? FADE : 0.9, interactive: false }).addTo(map))));
+      if (lab.cross) {    // 19 Nov: a bio manure, single lines in its colour
+        polysOf(z.geometry).forEach((poly0) => stripes(poly0, 0, -1, MANURE_STEP).forEach(([a, b]) => L.polyline([[a[1], a[0]], [b[1], b[0]]],
+          { color: lab.cross, weight: 2, opacity: faded ? FADE : 0.9, interactive: false }).addTo(map)));
       }
       if (focus?.length && !faded) focused.push(layer);
       if (onSelect) layer.on('click', () => onSelect(selected === tapTo ? null : tapTo));
