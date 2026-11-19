@@ -304,13 +304,15 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
         ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? FADE : 1 }
         : { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
       layer.addTo(group);
+      // 19 Nov: the lines go in the areas' group, not straight on the map: added to the map before it has a view, a
+      // line made Leaflet's renderer before the group's polygons drew, and they crashed ("reading 'min'").
       if (lab.stripe) {   // 18 Nov: as on the Google map, the second crop's colour as stripes
         polysOf(z.geometry).forEach((poly0) => stripes(poly0).forEach(([a, b]) => L.polyline([[a[1], a[0]], [b[1], b[0]]],
-          { color: lab.stripe, weight: 3, opacity: faded ? FADE : 0.9, interactive: false }).addTo(map)));
+          { color: lab.stripe, weight: 3, opacity: faded ? FADE : 0.9, interactive: false }).addTo(group)));
       }
       if (lab.cross) {    // 19 Nov: a bio manure, single lines in its colour
         polysOf(z.geometry).forEach((poly0) => stripes(poly0, 0, -1, MANURE_STEP).forEach(([a, b]) => L.polyline([[a[1], a[0]], [b[1], b[0]]],
-          { color: lab.cross, weight: 2, opacity: faded ? FADE : 0.9, interactive: false }).addTo(map)));
+          { color: lab.cross, weight: 2, opacity: faded ? FADE : 0.9, interactive: false }).addTo(group)));
       }
       if (focus?.length && !faded) focused.push(layer);
       if (onSelect) layer.on('click', () => onSelect(selected === tapTo ? null : tapTo));
