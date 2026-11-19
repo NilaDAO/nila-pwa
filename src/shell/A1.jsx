@@ -36,6 +36,8 @@ const memory = { y: 0, low: false };
 export const resetA1Scroll = () => { memory.y = 0; memory.low = false; window.scrollTo(0, 0); };
 
 const inr = (n) => `₹${Math.floor(n).toLocaleString('en-IN')}`;
+// The identity check as this phone last saw it (Shell sets it when it switches her to self mode).
+const knownChecked = (me) => { try { return localStorage.getItem(`nila.mode.k1.${me}`) != null; } catch { return false; } };
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '…');
 
 // The board's tile per asset row (MemberAssets-ley3); rows drawn by other modules (UnionRows) get theirs by label.
@@ -101,7 +103,8 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const s = useNilaSigner();
   const qc = useQueryClient();
   const ninHeld = s?.stellarAccount?.nin?.balance ?? 0;
-  const titles = useTitleCount(s?.evmAddress, s?.stellarAddress).count;   // Polygon or Stellar (src/register/titles.js)
+  const titleCount = useTitleCount(s?.evmAddress, s?.stellarAddress);   // Polygon or Stellar (src/register/titles.js)
+  const titles = titleCount.count;
   const inv = useInvestment(s?.stellarAddress);
   const invested = inv.data ? Number(inv.data.invested) / 1e7 : undefined;
   // The value of a withdrawal on its way (its shares at the fund's index), only while there is one.
@@ -114,17 +117,33 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
   const vCode = loadVoucherCode();
   const vOpen = vCode && vCode.until > Date.now() / 1000 && (vouchers.data || []).some((v) => v.token === vCode.token && v.used === vCode.used) ? vCode : null;
   const machine = useMyMachine(s?.stellarAddress).data;
-  const lp = useLpStatus().data;
+  const lpQ = useLpStatus();
+  const lp = lpQ.data;
   // A member handles nIN (and USDC) only once the anchor has checked their identity (K1, executive decision 24 Oct); a
   // leader always. Without the check the nIN row and its value in the total stay hidden.
   const nin = leader || lp?.idChecked ? ninHeld : 0;
   // USDC in rupees at fx_pool's current rate (22 Oct; an expired rate leaves it out of the total). 31 Oct: members' too,
   // all of it: the wallet's (its locked part included) and a Collect position's USDC locked with the union.
-  const rate = useFxRate().data;
+  const rateQ = useFxRate();
+  const rate = rateQ.data;
   const withUnion = lp?.position?.kind === 1 ? lp.position.usdc : 0;
   const usdcInr = (leader || lp?.idChecked) && rate ? ((lp?.usdc || 0) + withUnion) * rate : 0;
+  // One balance across the chains (SCF T2 rows 25–26, 19 Nov): a part that failed to load is never counted as 0.
+  // The total is not shown then; the line under it names what is missing and the refresh button tries again.
+  // Texts approved 19 Nov; nIN and USDC are named only where she can have them (identity check).
+  const counted = leader || lp?.idChecked;
+  const usdcHeld = (lp?.usdc || 0) + withUnion;
+  const missing = [
+    !!s?.stellarAddress && inv.isError && !inv.data && 'your investment',
+    (leader || lp?.idChecked) && s?.stellarAccountFailed && 'nIN',
+    // nIN and USDC exist only after the identity check (assist-mode members never have them, 19 Nov): when that read
+    // failed they are named only for a leader or a member this phone knows is checked (Shell's self-mode switch flag).
+    !!s?.stellarAddress && lpQ.isError && !lp && (leader || knownChecked(s.stellarAddress)) && 'nIN and USDC',
+    counted && (lp?.usdcFailed || lp?.positionFailed) && 'USDC',
+    counted && usdcHeld > 0 && !rate && (rateQ.isError || rateQ.data === null) && 'the dollar rate',
+  ].filter(Boolean);
   const shares = useMyShares().data || [];
-  const refresh = () => { qc.invalidateQueries({ queryKey: ['stellar'] }); qc.invalidateQueries({ queryKey: ['oracle', 'myShares'] }); };
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['stellar'] }); qc.invalidateQueries({ queryKey: ['polygon'] }); qc.invalidateQueries({ queryKey: ['oracle', 'myShares'] }); };
   const fetching = useIsFetching({ queryKey: ['stellar'] }) > 0;
   // The open loans for the repay card (fund_core food_token loans, 7 decimals). A closed loan is skipped (24 Oct: a
   // repaid loan showed "₹1 left"); what is left is counted as the desk counts it: principal and interest still owed.
@@ -191,7 +210,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           </button>
           <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
         </div>
-        <div style={{ fontSize: 32, fontWeight: 700, margin: '4px 0 12px' }} data-testid="total-balance">{inr(nin + (invested || 0) + usdcInr)}/-</div>
+        <div style={{ fontSize: 32, fontWeight: 700, margin: '4px 0 12px' }} data-testid="total-balance">{missing.length ? '—' : `${inr(nin + (invested || 0) + usdcInr)}/-`}</div>
+        {missing.length > 0 && <div role="status" data-testid="total-missing" style={{ color: C.gold, fontSize: 14, margin: '-4px 0 12px' }}>
+          Not loaded: {missing.join(', ')}. Tap ↻ to try again.</div>}
         <button type="button" aria-label="Show wallet QR code" onClick={onWalletQr} style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, height: 40, padding: '0 16px',
           borderRadius: R.button, background: C.raised, border: 0, color: C.text, fontWeight: 700,
@@ -206,7 +227,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         {leader && <UnionRows Row={Row} Icon={NinIcon} onTreasury={onTreasury} onSettle={onSettle} />}
         {leader && <span style={label}>Yours</span>}
         <Row label="Open land title" icon={<LandIcon />} title="Land title" sub="Digital twin of your farm"
-          value={titles ?? '…'} valueSub="—" onClick={onLand} />
+          value={titles ?? (titleCount.failed?.length ? 'Not loaded' : '…')} valueSub="—" onClick={onLand} />
         {/* A member sees nIN only when she holds some: a machine owner's income, collected in cash (24 Oct). */}
         {/* 13 Nov: nIN opens only after the identity check too, as USDC: a leader without it sees the row locked. */}
         {leader && !lp?.idChecked

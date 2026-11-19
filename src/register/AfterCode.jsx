@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { useNilaSigner } from '../wallet/signer';
 import { useTitleCount } from './titles';
+import TitleFailed from './TitleFailed';
 import RegFrame from './RegFrame';
 import { DEMO_COGNITO } from '../utils/demoMode';
 import { linkCode, recoveredAccount } from '../wallet/RecoverLink';
@@ -37,6 +38,7 @@ export default function AfterCode({ onNew, onExisting }) {
     else onExisting(evm);
   }, [known]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (!known && titleCount.failed?.length) return <TitleFailed titleCount={titleCount} />;
   if (late && !known) {
     // DESIGN GAP: no board for a login that does not finish (as StellarGate's Holding).
     return (

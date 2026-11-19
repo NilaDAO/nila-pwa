@@ -133,7 +133,7 @@ export default function MemberStatus({ id, go }) {
     if (!found) return found;
     const mine = shares.data?.[found.address] || {};
     return { ...found, plan: plan.data, shares: mine.shares || [],
-      loans: loans.map((l) => ({ ...l, due: dues.data?.[l.token] || 0, ...((mine.shares || []).find((x) => x.token === l.token) ? { crop: mine.shares.find((x) => x.token === l.token).crop } : {}) })) };
+      loans: loans.map((l) => ({ ...l, due: dues.data?.[l.token] || 0, dueFailed: dues.data?.[l.token] === null, ...((mine.shares || []).find((x) => x.token === l.token) ? { crop: mine.shares.find((x) => x.token === l.token).crop } : {}) })) };
   }, [found, loans, shares.data, dues.data, plan.data]);
   const inv = useInvestment(m?.address);
   const tx = useSorobanTx();
@@ -376,7 +376,8 @@ export default function MemberStatus({ id, go }) {
       )}
       {m.loans.length > 0 && (
         <Section title="Lending" right={`${inr(owed)} owed now`}>
-          {loan?.due ? <Row k="Repay" v={`${inr(loan.left)} · ${month(loan.due * 1000)}`} tone={loan.overdue ? C.coral : undefined} /> : null}
+          {loan?.due ? <Row k="Repay" v={`${inr(loan.left)} · ${month(loan.due * 1000)}`} tone={loan.overdue ? C.coral : undefined} />
+            : loan?.dueFailed ? <Row k="Repay" v="Not loaded" /> : null}
         </Section>
       )}
       {m.loans.length > 0 && (

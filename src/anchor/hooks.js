@@ -10,6 +10,10 @@ import { getAccount } from '../stellar/api';
 import { readContract, sv } from '../stellar/soroban';
 import { anchorInfo, sep10 } from './sep';
 
+const FAILED = Symbol('read failed');
+// The identity check as this phone last saw it (Shell sets nila.mode.k1.<address> when it switches her to self mode).
+const knownChecked = (me) => { try { return localStorage.getItem(`nila.mode.k1.${me}`) != null; } catch { return false; } };
+
 const API = process.env.REACT_APP_API_BASE_URL;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const U = 10_000_000;
@@ -58,20 +62,26 @@ export function useLpStatus() {
         readContract(cfg, 'fx_pool', 'lp_member', um).catch(() => null),
         smart ? null : getAccount(cfg.horizon_url, me).catch(() => null),
         // K1 (22 Oct): the anchor marked her identity checked on fx_pool (a leader's USDC, A9).
-        readContract(cfg, 'fx_pool', 'id_checked', [sv.address(me)]).catch(() => false),
-        readContract(cfg, 'fx_pool', 'position', um).catch(() => null),
-        smart ? readContract(cfg, me, 'lien').catch(() => 0n) : 0n,
+        // A failed read is unknown, not "not checked" / "no position" / "nothing locked" (SCF T2 row 25).
+        readContract(cfg, 'fx_pool', 'id_checked', [sv.address(me)]).catch(() => FAILED),
+        readContract(cfg, 'fx_pool', 'position', um).catch(() => FAILED),
+        smart ? readContract(cfg, me, 'lien').catch(() => FAILED) : 0n,
       ]);
-      const base = { member: !!title, lp: !!m?.accepted, idChecked: !!idc };
-      const locked = Number(lien || 0) / U;
+      // The ID check unread: as this phone last saw it (Shell's self-mode switch flag), never silently "not checked".
+      const idCheckFailed = idc === FAILED;
+      const base = { member: !!title, lp: !!m?.accepted, idChecked: idCheckFailed ? knownChecked(me) : !!idc, idCheckFailed,
+        positionFailed: pos === FAILED, lienFailed: lien === FAILED };
+      const locked = lien === FAILED ? 0 : Number(lien || 0) / U;
       // Her position (31 Oct): Collect = her USDC locked in fx_pool for the union's cash she took; Bring = the union's
       // USDC locked in her account for the cash she brought. Shown on her USDC row in the wallet (A1).
-      const position = pos ? { kind: Number(pos.kind), usdc: Number(pos.usdc) / U, inr: Math.round(Number(pos.inr) / U), opened: Number(pos.opened) } : null;
+      const position = pos && pos !== FAILED ? { kind: Number(pos.kind), usdc: Number(pos.usdc) / U, inr: Math.round(Number(pos.inr) / U), opened: Number(pos.opened) } : null;
       // A smart account (C…) holds USDC in the USDC contract itself: no trustline, nothing for the node to sponsor.
       if (smart) {
-        const units = await readContract(cfg, 'usdc', 'balance', [sv.address(me)]).catch(() => 0n);
+        const units = await readContract(cfg, 'usdc', 'balance', [sv.address(me)]).catch(() => null);
+        // A failed read is unknown, not 0 (SCF T2 row 25): A1 leaves its total out and says so.
         const usdc = Number(units || 0) / U;
-        return { ...base, trustline: true, usdc, locked, free: Math.max(0, usdc - locked), position };
+        // Free USDC is 0 while the lien is unread: nothing is offered on an unknown lock.
+        return { ...base, trustline: true, usdc, usdcFailed: units === null, locked, free: lien === FAILED ? 0 : Math.max(0, usdc - locked), position };
       }
       const [code, issuer] = (cfg.usdc_asset || ':').split(':');
       const line = a?.balances?.find((b) => b.asset_code === code && b.asset_issuer === issuer);

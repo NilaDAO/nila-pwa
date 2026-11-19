@@ -58,6 +58,8 @@ export default function CashOut({ onBack, kycOnly }) {
   const maxScan = useQuery({ queryKey: ['stellar', 'maxScan'], enabled: !!cfg,
     queryFn: () => readContract(cfg, 'fx_pool', 'max_scan', []) });
   const nin = Math.floor(s?.stellarAccount?.nin?.balance ?? 0);
+  // Her balance did not load (SCF T2 row 25): "Not loaded", and the cash-out max stays 0 (nothing to pay out on).
+  const ninFailed = !!s?.stellarAccount?.nin?.balanceFailed;
   const max = maxScan.data != null ? Math.min(nin, Number(BigInt(maxScan.data) / NIN)) : 0;
   const [amount, setAmount] = useState(1000);
   const lp = useLpStatus().data;
@@ -123,7 +125,7 @@ export default function CashOut({ onBack, kycOnly }) {
         : <Secondary disabled>Collecting needs a connection</Secondary>} />
   );
   return (
-    <AssetSwapLayout onBack={onBack} icon={<MarkCircle />} name="nIN" sub="Worth ₹1 each" amount={`${fmt(nin)} nIN`} value={`₹${fmt(nin)}`}
+    <AssetSwapLayout onBack={onBack} icon={<MarkCircle />} name="nIN" sub="Worth ₹1 each" amount={ninFailed ? 'Not loaded' : `${fmt(nin)} nIN`} value={ninFailed ? '' : `₹${fmt(nin)}`}
       switchLabel="Cash out or swap" options={canSwap ? SWITCH : null} tab={pick} onTab={setPick}
       note={online ? (error || 'Collect it in cash at the union office. Your leader scans your QR, and the same nIN is burned.')
         : `You are offline. Balance from today, ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`}>

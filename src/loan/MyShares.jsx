@@ -194,7 +194,7 @@ function ShareSign({ x, name, onBack }) {
           <p style={muted}>Machine work</p>
           <Stepper value={a} set={setAcres} step={1} min={0} max={maxAcres} unit="tractor acres" label="Tractor acres" />
           <p style={muted}>Your leader scans the next QR, hands you the cash and records your crop agreement. You repay it with interest after the harvest.</p>
-          <Primary disabled={!s?.ready || !cfg || (c < 1 && a < 1)} onClick={sign}>Make my QR</Primary>
+          <Primary disabled={!s?.ready || !cfg || !checks.data || checks.data.unknown || (c < 1 && a < 1)} onClick={sign}>Make my QR</Primary>
           {error && <p style={{ ...muted, color: C.coral }}>{error}</p>}
         </>
       )}

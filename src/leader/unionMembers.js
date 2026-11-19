@@ -256,7 +256,8 @@ export function useLoanDues(loans) {
     queryKey: ['stellar', 'loanDues', cfg?.union, tokens.join(',')], enabled: !!cfg?.contracts?.fund_core && tokens.length > 0,
     staleTime: 60_000,
     queryFn: async () => Object.fromEntries(await Promise.all(tokens.map(async (t) => [t,
-      Number(await readContract(cfg, 'fund_core', 'due_date', [sv.address(cfg.union), sv.bytes32(t)]).catch(() => 0) || 0)]))),
+      // null: the read failed (SCF T2 row 25; G2 says "Not loaded"); 0: no due date yet (no end of season reported).
+      await readContract(cfg, 'fund_core', 'due_date', [sv.address(cfg.union), sv.bytes32(t)]).then((v) => Number(v || 0)).catch(() => null)]))),
   });
 }
 

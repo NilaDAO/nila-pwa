@@ -1,4 +1,5 @@
 import { useMemo, useCallback, useEffect, useState } from 'react';
+import { polygonProvider } from '../utils/polygonProvider';
 import { ethers } from "ethers";
 import { useDataContext } from "../utils/NavigationContext";
 import { useDecryptKey } from "./useDecryptKey.ts";
@@ -768,7 +769,7 @@ export function useBasicProvider() {
       console.error('🚨 No RPC URL configured');
       return { basicprovider: undefined } as const;
     }
-    return { basicprovider: new ethers.JsonRpcProvider(rpcUrl) } as const;
+    return { basicprovider: polygonProvider(rpcUrl) } as const;
   }, [rpcUrl]);
 }
 
@@ -781,7 +782,7 @@ export function useProvider() {
       console.error('🚨 No RPC URL configured');
       return { provider: undefined } as const;
     }
-    return { provider: new ethers.JsonRpcProvider(rpcUrl) } as const;
+    return { provider: polygonProvider(rpcUrl) } as const;
   }, [rpcUrl]);
 }
 
@@ -796,7 +797,7 @@ export function useWallet() {
   return useMemo(() => {
     if (!pk) return { provider: undefined, wallet: undefined } as const;
     try {
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const provider = polygonProvider(rpcUrl);
       const wallet = new ethers.Wallet(pk, provider);
       return { provider, wallet } as const;
     } catch (err) {

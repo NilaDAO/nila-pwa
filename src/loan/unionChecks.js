@@ -33,9 +33,10 @@ export function useUnionChecks(member) {
         readContract(cfg, 'fund_core', 'get_senior_market', u),
         readContract(cfg, 'fund_core', 'senior_earmark', u),
         readContract(cfg, 'fund_core', 'union_treasury', u),
-        readContract(cfg, 'fx_pool', 'cash_at_hand', u).catch(() => 0n),
+        // A failed read is unknown, not 0 (SCF T2 row 25): "Not loaded", and the request waits (`unknown`).
+        readContract(cfg, 'fx_pool', 'cash_at_hand', u).catch(() => null),
         // A voucher hour is lent at the tractor hour's whole value (26 Oct), out of free senior money.
-        cfg.contracts.machinery ? readContract(cfg, 'machinery', 'value_per_tractor_acre', u).catch(() => 0n) : 0n,
+        cfg.contracts.machinery ? readContract(cfg, 'machinery', 'value_per_tractor_acre', u).catch(() => null) : 0n,
         readContract(cfg, 'fund_core', 'union_book', u).then((b) => b?.on_hold ?? 0),
         readContract(cfg, 'fund_core', 'position', um),
         readContract(cfg, 'fund_core', 'loans_of', um),
@@ -49,7 +50,7 @@ export function useUnionChecks(member) {
       // The voucher reserve is outside senior cash (26 Oct): all of it is free.
       const seniorFree = num(senior?.cash);
       void earmark;
-      const ph = num(perHour);
+      const ph = perHour === null ? null : num(perHour);
       const blocked = [];
       if (Number(hold) > 0) blocked.push('Lending is on hold in the union.');
       if (BigInt(pos?.invested ?? 0) + GATE_ROUNDING < BigInt(uc.gate ?? 0)) blocked.push(`The member needs ₹${Math.round(num(uc.gate)).toLocaleString('en-IN')} invested in the union first.`);
@@ -60,10 +61,12 @@ export function useUnionChecks(member) {
         cashCap: Math.max(0, Math.floor(num(lendable))),
         // No machine price set for the union → no machine work can be granted yet.
         // In units (centi tractor acres, 27 Oct): the senior money free for the value of tractor acres.
-        hoursCap: ph > 0 ? Math.max(0, Math.floor((seniorFree * 100) / ph)) : 0,
+        hoursCap: ph === null ? null : ph > 0 ? Math.max(0, Math.floor((seniorFree * 100) / ph)) : 0,
         valuePerHour: ph,
         enforceToken: !!uc.enforce_token_amount,
-        onHand: num(atHand) + num(treasury),
+        onHand: atHand === null ? null : num(atHand) + num(treasury),
+        // Cash at hand or the machine price did not load: no request until they do.
+        unknown: atHand === null || perHour === null,
         rateBp: Number(uc.rate_bp),
         // 18 Nov: what the member still has to invest before a crop agreement (the gate), in whole rupees.
         gateShort: Math.max(0, Math.ceil(num(BigInt(uc.gate ?? 0) - BigInt(pos?.invested ?? 0)))),
@@ -76,8 +79,9 @@ export function useUnionChecks(member) {
 /** The caps for one food token: the union's, and with the switch on, the attested amount and hours. */
 export function capsFor(c, ft) {
   if (!c) return { cash: 0, hours: 0 };
-  if (!c.enforceToken || !ft) return { cash: c.cashCap, hours: c.hoursCap };
-  return { cash: Math.min(c.cashCap, Math.floor(num(ft.amount))), hours: Math.min(c.hoursCap, Number(ft.hours)) };
+  const hours = c.hoursCap ?? 0;   // unknown: the request waits (c.unknown), the stepper offers none
+  if (!c.enforceToken || !ft) return { cash: c.cashCap, hours };
+  return { cash: Math.min(c.cashCap, Math.floor(num(ft.amount))), hours: Math.min(hours, Number(ft.hours)) };
 }
 
 /** Repay about: simple interest at the rate fund_core charges, from the draw to the due date. */
@@ -89,10 +93,10 @@ export function repayAbout(cash, rateBp, from, due) {
 /** The three rows, as the board words them. */
 export function checkRows(c, cash, hours, caps = capsFor(c)) {
   if (!c) return [];
-  const short = cash - c.onHand;
+  const short = c.onHand === null ? 0 : cash - c.onHand;
   return [
-    ['Cash on hand', short > 0 ? `₹${Math.round(c.onHand).toLocaleString('en-IN')} · ₹${Math.round(short).toLocaleString('en-IN')} short` : `₹${Math.round(c.onHand).toLocaleString('en-IN')} · enough`, short > 0],
-    ['Seed and machine stock', hours <= caps.hours ? 'Enough' : `${(Math.floor(caps.hours / 10) / 10).toFixed(1)} tractor acres at most`, hours > caps.hours],
+    ['Cash on hand', c.onHand === null ? 'Not loaded' : short > 0 ? `₹${Math.round(c.onHand).toLocaleString('en-IN')} · ₹${Math.round(short).toLocaleString('en-IN')} short` : `₹${Math.round(c.onHand).toLocaleString('en-IN')} · enough`, short > 0],
+    ['Seed and machine stock', c.hoursCap === null ? 'Not loaded' : hours <= caps.hours ? 'Enough' : `${(Math.floor(caps.hours / 10) / 10).toFixed(1)} tractor acres at most`, c.hoursCap !== null && hours > caps.hours],
     ['Loan limit of the union', cash <= caps.cash ? 'Within' : `₹${Math.round(caps.cash).toLocaleString('en-IN')} at most`, cash > caps.cash],
   ];
 }
