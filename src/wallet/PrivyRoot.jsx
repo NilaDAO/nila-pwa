@@ -360,7 +360,7 @@ function SignerBridge({ children }) {
     // { exists, nin: { balance, authorized }, usdc, sponsor } once read; undefined before.
     stellarAccount: account.data,
     // The account read failed (SCF T2 row 25): her nIN is unknown, not 0.
-    stellarAccountFailed: account.isError && !account.data,
+    stellarAccountFailed: (account.isError && !account.data) || !!account.data?.nin?.balanceFailed,
     // run: the move (M1 step 1) and the retry button call it; no second run while one is pending.
     stellarSetup: {
       status: setupStatus, error: setupError?.message,

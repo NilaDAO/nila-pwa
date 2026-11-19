@@ -130,8 +130,8 @@ export default function MyMachine({ onBack, pick: first }) {
         {d && (
           <>
             <Paid k="Paid at the job" sub="In nIN, when you claim" v={inr(d.received)} />
-            <Paid k="Owed when the members repay" sub="Held for you until each member repays" v={inr(d.pending)} />
-            <Paid k="Ready to collect" sub="The members repaid this part" v={inr(d.ready)} />
+            <Paid k="Owed when the members repay" sub="Held for you until each member repays" v={d.pending === null ? 'Not loaded' : inr(d.pending)} />
+            <Paid k="Ready to collect" sub="The members repaid this part" v={d.ready === null ? 'Not loaded' : inr(d.ready)} />
             {/* Owner split (1 Nov): the settled part waits in fund_core until the owner collects it to the wallet. */}
             {d.ready > 0 && (
               <Primary disabled={!tx.ready} onClick={() => tx.run({ label: `Collect ${inr(d.ready)}`, rows: [['To your wallet', inr(d.ready)]],
@@ -238,7 +238,7 @@ function Claim({ machine, rate, tractor, onBack }) {
     qc.setQueryData(['stellar', 'dues', cfg?.union, s.stellarAddress], (d) => {
       if (!d) return d;
       const before = d.jobs.find((j) => j.token === job.token && j.pendingNow > 0)?.pendingNow || 0;
-      return { ...d, received: d.received + prepay, pending: d.pending + pending,
+      return { ...d, received: d.received + prepay, pending: d.pending === null ? null : d.pending + pending,
         jobs: [{ ...job, pendingNow: before + pending }, ...d.jobs.map((j) => (j.token === job.token ? { ...j, pendingNow: 0 } : j))] };
     });
   };

@@ -139,7 +139,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     // nIN and USDC exist only after the identity check (assist-mode members never have them, 19 Nov): when that read
     // failed they are named only for a leader or a member this phone knows is checked (Shell's self-mode switch flag).
     !!s?.stellarAddress && lpQ.isError && !lp && (leader || knownChecked(s.stellarAddress)) && 'nIN and USDC',
-    counted && lp?.usdcFailed && 'USDC',
+    counted && (lp?.usdcFailed || lp?.positionFailed) && 'USDC',
     counted && usdcHeld > 0 && !rate && (rateQ.isError || rateQ.data === null) && 'the dollar rate',
   ].filter(Boolean);
   const shares = useMyShares().data || [];

@@ -202,7 +202,7 @@ function Adjust({ cash, dir, onClose }) {
             <Row k="Your USDC after" v={`${(myUsdc - a).toLocaleString('en-IN')} USDC`} />
           </>
         ) : fromRainy ? <Row k="Rainy day fund after" v={inr(cash.rainy - a)} /> : <Row k="Union treasury after" v={inr(cash.treasury + (dir === 'deposit' ? a : -a))} />}
-        {!usdc && <Row k="Your nIN after" v={`${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />}
+        {!usdc && <Row k="Your nIN after" v={s?.stellarAccount?.nin?.balanceFailed ? 'Not loaded' : `${(mine + (dir === 'deposit' ? -a : a)).toLocaleString('en-IN')} nIN`} />}
       </div>
       <button type="button" disabled={!a || !tx.ready || (usdc && !rate)} style={{ ...primary, opacity: !a || !tx.ready || (usdc && !rate) ? 0.5 : 1 }} onClick={go}>
         {usdc ? `Deposit ${a} USDC` : dir === 'deposit' ? `Deposit ${inr(a)}` : `Withdraw ${inr(a)}`}</button>
@@ -284,7 +284,9 @@ function CashCard({ cash }) {
 export default function CashBoard({ settle, onScanLp, tasks }) {
   const api = usePlanClient();
   const cashQ = useUnionCash();
-  const room = useDeskRoom().data;
+  const roomQ = useDeskRoom();
+  const room = roomQ.data;
+  const roomWait = roomQ.isError ? 'Not loaded' : '…';
   const bookQ = useUnionBook(api);
   const [adjust, setAdjust] = useState(null);   // null (closed), 'deposit' or 'withdraw'
   const cash = cashQ.data;
@@ -352,11 +354,11 @@ export default function CashBoard({ settle, onScanLp, tasks }) {
             <Row k="Cash at the office" v={`${inr(cash.atHand)} (${cash.treasury ? Math.round((100 * cash.atHand) / cash.treasury) : 0}%)`} />
             {/* What the office may hold (fund_core.cash_room, on-chain since 31 Oct): the treasury plus the cash members
                 are due to take out again; a count above it is refused. */}
-            <Row k="The office may hold" v={room ? inr(room.limit) : '…'} />
+            <Row k="The office may hold" v={room ? inr(room.limit) : roomWait} />
             {room && (room.withdrawals > 0 || room.shares > 0) && (
               <span style={{ color: C.muted, fontSize: 14, marginTop: -6 }}>Treasury {inr(room.treasury)}{room.withdrawals > 0 ? ` + withdrawals waiting ${inr(room.withdrawals)}` : ''}{room.shares > 0 ? ` + crop agreements within 9 weeks ${inr(room.shares)}` : ''}</span>
             )}
-            <Row k="Room for more cash" v={room ? inr(room.room) : '…'} accent />
+            <Row k="Room for more cash" v={room ? inr(room.room) : roomWait} accent />
           </div>
         </section>
         <CashAhead api={api} cash={cash} style={card}><AskBring /></CashAhead>

@@ -180,18 +180,19 @@ export function useOwnerDues(owner) {
       const jobs = loadJobs().filter((j) => j.owner === owner);
       const tokens = [...new Set(jobs.map((j) => j.token))];
       const [balance, owed] = await Promise.all([
-        readContract(cfg, 'fund_core', 'owner_balance', [u, sv.address(owner)]).catch(() => 0n),
+        // A failed read is unknown, not 0 (SCF T2 row 25): "Not loaded", no Collect.
+        readContract(cfg, 'fund_core', 'owner_balance', [u, sv.address(owner)]).catch(() => null),
         Promise.all(tokens.map((t) => readContract(cfg, 'fund_core', 'owner_dues', [u, sv.bytes32(t)])
           .then((d) => num((d?.owners || []).filter((o) => o.owner === owner).reduce((a, o) => a + BigInt(o.amount), 0n)))
-          .catch(() => 0))),
+          .catch(() => null))),
       ]);
-      const owedBy = Object.fromEntries(tokens.map((t, i) => [t, owed[i]]));
+      const owedBy = Object.fromEntries(tokens.map((t, i) => [t, owed[i] ?? 0]));
       // A crop agreement's owed amount is shown on its latest job (the contract keeps one figure per share and owner).
       const last = Object.fromEntries(jobs.map((j, i) => [j.token, i]));
       return {
         received: jobs.reduce((a, j) => a + j.prepay, 0),
-        ready: num(balance),
-        pending: owed.reduce((a, x) => a + x, 0),
+        ready: balance === null ? null : num(balance),
+        pending: owed.some((x) => x === null) ? null : owed.reduce((a, x) => a + x, 0),
         jobs: jobs.map((j, i) => ({ ...j, pendingNow: last[j.token] === i ? owedBy[j.token] : 0 })).reverse(),
       };
     },

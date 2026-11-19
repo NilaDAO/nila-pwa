@@ -20,7 +20,9 @@ export function useDeskRoom() {
       const u = [sv.address(cfg.union)];
       const [treasury, atHand, junior, cashRoom] = await Promise.all([
         readContract(cfg, 'fund_core', 'union_treasury', u),
-        readContract(cfg, 'fx_pool', 'cash_at_hand', u).catch(() => 0n),
+        // Not caught (SCF T2 row 25): a failed read fails the figure ("Not loaded"; PhotoCount records no count without
+        // it), never a room computed on 0 cash at hand.
+        readContract(cfg, 'fx_pool', 'cash_at_hand', u),
         readContract(cfg, 'fund_core', 'get_junior_market', u),
         readContract(cfg, 'fund_core', 'cash_room', u),
       ]);

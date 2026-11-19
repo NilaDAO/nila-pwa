@@ -35,7 +35,7 @@ export default function StaticRoot({ children }) {
     signEvmTx: async () => '0x',
     stellarAccount: account.data,
     // The account read failed (SCF T2 row 25): her nIN is unknown, not 0.
-    stellarAccountFailed: account.isError && !account.data,
+    stellarAccountFailed: (account.isError && !account.data) || !!account.data?.nin?.balanceFailed,
     stellarSetup: { status: 'success', run: () => {}, runAsync: async () => {} },
     signEvmMessage: async () => `0x${'0'.repeat(130)}`,
   }), [ready, evmWallet, stellar, account.data, account.isError]);
