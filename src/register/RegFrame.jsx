@@ -318,7 +318,7 @@ export function PlayingLogo({ size = 28, label = 'Loading' }) {
   return (
     <span role="status" aria-label={label} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, flexShrink: 0 }}>
       <style>{PLAY_CSS}</style>
-      <img className="nila-play" src={LOGO} alt="" style={{ width: size, height: size, transformOrigin: '50% 100%', animation: 'nila-play 2.8s ease-in-out infinite' }} />
+      <img className="nila-play" src={LOGO} alt="" style={{ width: size, height: size, transformOrigin: '50% 50%', animation: 'nila-play 2.8s ease-in-out infinite' }} />
       <span className="nila-play-shadow" style={{ width: Math.round(size * 0.6), height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.22)', animation: 'nila-play-shadow 2.8s ease-in-out infinite' }} />
     </span>
   );
