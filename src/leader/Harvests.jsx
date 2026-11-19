@@ -58,7 +58,9 @@ function useHarvests() {
   const prices = useCropPrices();
   // Fodder crops are fed, not sold (15 Nov): not on the Harvests screen.
   const catalogue = useCropCatalogue();
-  const fodder = useMemo(() => new Set((catalogue.data?.crops || []).filter((c) => c.fodder).map((c) => c.key)), [catalogue.data]);
+  // Bio manure (19 Nov) is not sold either: its own crop agreement, repaid with the crop it goes before.
+  const fodder = useMemo(() => new Set([...(catalogue.data?.crops || []).filter((c) => c.fodder).map((c) => c.key),
+    'goat_manure', 'cow_manure', 'lake_silt']), [catalogue.data]);
   const groups = useMemo(() => harvestGroups(members.data, shares.data, Date.now() / 1000, fodder), [members.data, shares.data, fodder]);
   // The crop's rupees per kg: the union's local price on Stellar, else the catalogue's until a leader sets one.
   const priceOf = (crop) => {
@@ -66,7 +68,9 @@ function useHarvests() {
     if (b?.inrPerKg > 0) return { inrPerKg: b.inrPerKg, set: true, family: b.code };
     return { inrPerKg: b?.catalogueInrPerKg || 0, set: false, family: b?.code };
   };
-  return { groups, priceOf, members: members.data, loading: !members.data || !shares.data, refetch: () => { shares.refetch(); prices.refetch(); } };
+  // 19 Nov: goat and cow manure, whose price a tonne the plan finances the manure at (lake sludge is free).
+  const manures = (prices.data || []).filter((b) => b.kind === 'bio_manure');
+  return { groups, priceOf, manures, members: members.data, loading: !members.data || !shares.data, refetch: () => { shares.refetch(); prices.refetch(); } };
 }
 
 function Head() {
@@ -155,7 +159,7 @@ function Calendar({ groups, go }) {
 /** H1: the Harvests tab. The map shows every member's property (25 Oct). */
 export function HarvestList({ go }) {
   const { map } = useLeaderMap('harvests');   // 13 Nov: what grows now per area (was the members map)
-  const { groups, priceOf, loading, refetch } = useHarvests();
+  const { groups, priceOf, manures, loading, refetch } = useHarvests();
   const [edit, setEdit] = useState();
   const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'list'; } catch { return 'list'; } });
   const pickView = (v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
@@ -217,6 +221,31 @@ export function HarvestList({ go }) {
             </section>
           );
         })}
+        {/* 19 Nov: the union's manure prices, which the crop plan finances goat and cow manure at. */}
+        {view === 'list' && manures.length > 0 && (
+          <section style={card} aria-label="Manure prices">
+            <span style={{ fontSize: 16, fontWeight: 700 }}>Manure prices</span>
+            {manures.map((c) => {
+              const u = unitOf(c.crop);
+              const p = priceOf(c.crop);
+              const open = edit === c.crop;
+              return (
+                <div key={c.crop} style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: `1px solid ${C.raised}`, paddingTop: 12 }}>
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontWeight: 700 }}>{c.name}</span>
+                    <span style={sub}>
+                      {p.set ? `${inr(p.inrPerKg * u.per)} /${u.name}` : 'No price yet'} ·{' '}
+                      <button type="button" onClick={() => setEdit(open ? undefined : c.crop)} style={{ border: 0, background: 'none', padding: 0, color: C.accent, fontWeight: 700, fontFamily: FONT, fontSize: 14, cursor: 'pointer' }}>
+                        {open ? 'Close' : 'Update'}
+                      </button>
+                    </span>
+                  </span>
+                  {open && <PriceEditor crop={c} price={p} onClose={() => setEdit(undefined)} />}
+                </div>
+              );
+            })}
+          </section>
+        )}
       </div>
     </MapCard>
   );

@@ -4,15 +4,15 @@
 // field accepted or left out → L4 (mint). Data: the node's border job (O16). DESIGN GAP: no member names in the
 // app (the farm name or a short address stands in).
 import { cloneElement, useCallback, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { C, FONT, R, SHADOW } from '../shell/tokens';
+import { C, FONT, R } from '../shell/tokens';
 import ErrorFull from '../shell/ErrorFull';
 import { acres, shapeFor } from './api';
 import BorderMap, { RED, SOIL_COLOUR, ShapeThumb, soilInk } from './BorderMap';
 import { useBorderClient, useBorderDecision, useBorderJob, useMintLandTitle } from './hooks';
 import { PointsStep, clearPoints, readPoints } from './SendLocation';
 import { Loading } from '../register/Boot';
+import { PlayingLogo } from '../register/RegFrame';
 import { TxScreens } from '../stellar/TxStatus';
 import { Notice, Sheet } from '../plan/ui';
 import { TrashIcon } from '../shell/icons';
@@ -107,7 +107,8 @@ function FieldRow({ f, sub, right, onClick, warn }) {
       <span style={{ width: 24, height: 24, borderRadius: R.round, background: C.ink, color: C.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{f.n}</span>
       <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}><b>{fieldName(f)}</b>{sub && <span style={quiet}>{sub}</span>}
         {warn?.length > 0 && <b style={{ color: ink }}>Overlap with {warn.join(', ')}</b>}</span>
-      {right && <span style={quiet}>{right}</span>}
+      {/* 19 Nov: a field being drawn shows the logo at play here, not the word (leaders took it for broken). */}
+      {right && (typeof right === 'string' ? <span style={quiet}>{right}</span> : right)}
     </button>
   );
 }
@@ -135,7 +136,7 @@ function Fetch({ job, onBack, onAdd }) {
       <Head title={again ? `Drawing field ${again.n} again` : 'Finding field borders'} sub="Drawing shapes, please wait" />
       <Legend nb={nb} />
       {job.fields.map((f) => (
-        <FieldRow key={f.n} f={f} right={f.state === 'drawing' ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.state === 'accepted' ? 'Accepted' : f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : 'Waiting'} />
+        <FieldRow key={f.n} f={f} right={f.state === 'drawing' ? <PlayingLogo label={f.round > 0 ? 'Drawing again' : 'Drawing'} /> : f.state === 'accepted' ? 'Accepted' : f.state === 'left_out' ? 'Left out' : f.state === 'inside' ? insideText(f) : 'Waiting'} />
       ))}
       <AddRow onClick={onAdd} />
     </Frame>
@@ -184,7 +185,7 @@ function Plan({ job, onField, onBack, onAdd }) {
         const busy = f.state === 'drawing';
         return (<div key={f.n} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <FieldRow f={f} sub={f.state === 'left_out' ? 'Left out' : busy ? 'Drawing the shapes, please wait' : f.state === 'inside' ? insideText(f) : f.state === 'empty' ? 'No shape left: check it' : s ? acres(s.acres) : ''}
-            right={busy ? (f.round > 0 ? 'Drawing again' : 'Drawing') : f.accepted ? 'Accepted' : undefined}
+            right={busy ? <PlayingLogo label={f.round > 0 ? 'Drawing again' : 'Drawing'} /> : f.accepted ? 'Accepted' : undefined}
             onClick={f.state === 'left_out' || busy ? undefined : () => onField(f.n)} warn={nb.warn[f.n]} />
         </div>);
       })}
@@ -195,9 +196,9 @@ function Plan({ job, onField, onBack, onAdd }) {
   );
 }
 
-// 17 Nov: None fit is the last card of the shape row (a field with a cross), no longer a button. Its sheet asks why:
-// an area recently under construction is drawn again on Google's newer picture (Esri's is older in places), else
-// as before. DESIGN GAP: no board for the card or the sheet yet.
+// 17 Nov: None fit is the last card of the shape row (a field with a cross), no longer a button. 19 Nov: one tap again,
+// no sheet: the node picks each round's step (1st Google's picture, 2nd the point moved one way, 3rd the other way).
+// DESIGN GAP: no board for the card yet.
 function NoneFitCard({ onClick, disabled }) {
   return (
     <button type="button" aria-label="None fit" disabled={disabled} onClick={onClick} style={{
@@ -213,28 +214,6 @@ function NoneFitCard({ onClick, disabled }) {
   );
 }
 
-function NoneFitSheet({ onPick, onCancel }) {
-  const row = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, width: '100%', padding: '12px 16px',
-    background: C.raised, border: 0, borderRadius: 12, color: C.text, fontFamily: FONT, fontSize: 14, textAlign: 'left', cursor: 'pointer' };
-  return createPortal(
-    <>
-      <div aria-hidden="true" onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.6)' }} />
-      <div role="dialog" aria-modal="true" aria-label="Why don't they fit?" style={{ position: 'fixed', left: 8, right: 8, bottom: 88, zIndex: 21,
-        background: C.ink, borderRadius: 24, boxShadow: SHADOW, padding: '22px 22px 22px', display: 'flex', flexDirection: 'column', gap: 12, fontFamily: FONT, color: C.text }}>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>Why don't they fit?</div>
-        <button type="button" style={row} onClick={() => onPick('google')}>
-          <b>Area recently under construction</b>
-          <span style={{ color: C.muted }}>New buildings, a road, cleared land: drawn again on a newer picture</span>
-        </button>
-        <button type="button" style={row} onClick={() => onPick(null)}>
-          <b>The shapes are wrong</b>
-          <span style={{ color: C.muted }}>Drawn again from the member's point</span>
-        </button>
-        <button type="button" onClick={onCancel} style={{ ...btn(false), flex: 'none' }}>Cancel</button>
-      </div>
-    </>, document.body);
-}
-
 /** L3: pick a shape for one field; Accept locks it, the None fit card draws it again. */
 function Check({ job, n, onDone, onBack }) {
   const f = job.fields.find((x) => x.n === n);
@@ -245,7 +224,6 @@ function Check({ job, n, onDone, onBack }) {
   const plan = job.plan;
   const { accept, noneFit, retry, remove } = useBorderDecision(job.id);
   const [ask, setAsk] = useState(false);   // the delete confirm (1 Nov)
-  const [why, setWhy] = useState(false);   // the None fit sheet (17 Nov)
   const busy = accept.isPending || noneFit.isPending || retry.isPending || remove.isPending;
   const err = accept.error || noneFit.error || remove.error;
   // A tap only selects the shape (executive decision 4 Nov): no preview call to the node; Accept returns the new plan.
@@ -284,7 +262,7 @@ function Check({ job, n, onDone, onBack }) {
             <span style={{ fontSize: 14, fontWeight: 700, padding: '4px 0 2px' }}>{i === 0 ? 'Best' : `${Number(s.acres).toFixed(2)} ac`}</span>
           </button>
         ))}
-        <NoneFitCard disabled={busy} onClick={() => setWhy(true)} />
+        <NoneFitCard disabled={busy} onClick={() => noneFit.mutate({ field: n }, { onSuccess: onDone })} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
         <span style={{ color: C.muted }}>Area</span><b>{chosen ? acres(chosen.acres) : '—'}</b>
@@ -292,11 +270,11 @@ function Check({ job, n, onDone, onBack }) {
       {/* 13 Nov: a field is accepted with its shape and its soil (the leader is on the land); the soil goes on the title. */}
       {shapes.length > 0 && <SoilPick value={soilNow} onPick={setSoil} />}
       {/* DESIGN GAP: no board for a field whose every shape overlaps an accepted field (e.g. two points a few metres
-          apart): say so, Accept stays off, None fit draws it again from its own point (16 Nov: no longer moved). */}
+          apart): say so, Accept stays off, None fit draws it again (19 Nov: Google's picture, then the point moved). */}
       {shapes.length === 0 && (
         <p role="note" style={{ margin: 0, fontSize: 14, color: C.text }}>{f.state === 'inside'
-          ? `This point lies inside field ${f.inside}, so it is part of that field and the land title can be minted. Is it a field of its own? Press None fit to draw it again from its own point.`
-          : 'No shape left for this field. Press None fit to draw it again from its own point.'}</p>
+          ? `This point lies inside field ${f.inside}, so it is part of that field and the land title can be minted. Is it a field of its own? Press None fit to draw it again.`
+          : 'No shape left for this field. Press None fit to draw it again.'}</p>
       )}
       {holds > 0 && (
         <Notice kind="warn" title={`This shape covers field ${chosen.holds.join(', ')} too`}>
@@ -314,8 +292,6 @@ function Check({ job, n, onDone, onBack }) {
         <button type="button" disabled={busy || !sel || !soilNow} style={{ ...btn(true), opacity: busy || !sel || !soilNow ? 0.4 : 1 }}
           onClick={() => accept.mutate({ field: n, shape: sel, soil: soilNow }, { onSuccess: onDone })}>{accept.isPending ? 'Accepting…' : 'Accept'}</button>
       </div>
-      {why && <NoneFitSheet onCancel={() => setWhy(false)}
-        onPick={(sat) => { setWhy(false); noneFit.mutate({ field: n, sat }, { onSuccess: onDone }); }} />}
       {ask && (
         <ConfirmCard title={`Delete field ${n}`} ok={remove.isPending ? 'Deleting…' : 'Delete'} okStyle={{ background: C.coral }} okDisabled={remove.isPending}
           warn="The field and its point are removed from this land. To add it again, use + Add a point."

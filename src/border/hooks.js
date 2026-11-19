@@ -94,7 +94,7 @@ export function useBorderDecision(id) {
   // 13 Nov: the soil is kept with the accepted field here too (withSoils), so its fill stays after Accept.
   const accept = useJobWrite(id, (a, { field, shape, soil }) => a.accept(id, field, shape, soil)
     .then((job) => { keepSoil(id, field, soil); return job; }));
-  const noneFit = useJobWrite(id, (a, { field, sat }) => a.noneFit(id, field, sat));
+  const noneFit = useJobWrite(id, (a, { field }) => a.noneFit(id, field));
   const retry = useJobWrite(id, (a, { field }) => a.retry(id, field));
   const remove = useJobWrite(id, (a, { field }) => a.remove(id, field));   // delete the field and its point (1 Nov)
   // 28 Oct: the proposed plan at once (L2), and a neighbour plot added to a field or made a field of its own.

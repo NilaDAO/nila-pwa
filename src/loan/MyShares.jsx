@@ -221,8 +221,11 @@ export function TakeUp({ token, leader, onBack }) {
 const coverRows = (p) => (p?.soil_cover || []).filter((c) => c.finance).map((c) => ({ zone: c.zone, zones: [c.zone], crop: c.cover,
   name: c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/^./, (a) => a.toUpperCase()), colour: c.colour, sow: c.sow,
   kg: 0, value: 0, finance: c.finance, green_manure: true }));
+// A bio manure (19 Nov) likewise: its plan item stands in for a row.
+const bioRows = (p) => (p?.bio_manure || []).filter((b) => b.finance).map((b) => ({ zone: b.zone, zones: [b.zone], crop: b.crop,
+  name: b.name, colour: b.colour, sow: b.on, kg: 0, value: 0, finance: b.finance, bio_manure: b.type, slot: b.slot }));
 const rowOne = (x) => (x.plan?.plan?.seasons || []).flatMap((se) => se.rows.map((r) => ({ ...r, slot: se.slot })))
-  .concat(coverRows(x.plan?.plan))
+  .concat(coverRows(x.plan?.plan), bioRows(x.plan?.plan))
   .filter((r) => (r.zones || [r.zone]).includes(x.zone) && (r.crop === x.crop || r.name === x.crop))
   // The same crop can stand on one area in two seasons: the share's sowing date picks the season.
   .sort((a, b) => (b.sow === x.share.from_date) - (a.sow === x.share.from_date))[0];
@@ -265,7 +268,7 @@ export function ShareRows({ onOpen }) {
           <button key={x.token_id} type="button" onClick={() => onOpen(x.token_id)} style={{
             display: 'flex', alignItems: 'center', gap: 10, background: C.raised, borderRadius: 12, padding: '12px 16px', minHeight: 48,
             width: '100%', border: 0, color: C.text, textAlign: 'left', fontSize: 14, lineHeight: 1.5, cursor: 'pointer' }}>
-            <ShareTile colour={r.colour} soil={!!(r.green_manure || x.share?.green_manure)} />
+            <ShareTile colour={r.colour} soil={!!(r.green_manure || x.share?.green_manure || r.bio_manure || x.share?.bio_manure)} />
             <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontWeight: 700 }}>{r.name || x.crop.replace(/_/g, ' ')}</span>
               <span style={{ color: C.muted }}>{x.area}{r.slot ? ` · ${SEASON[r.slot]}` : ''}{fodder ? ' · fodder' : ''}</span>
