@@ -32,7 +32,7 @@ export default function ConfirmShare({ cash, hours, name, area, own, forMember, 
           <button type="button" onClick={onCancel} style={{ ...second, flex: 1, width: 'auto' }}>Cancel</button>
           <button type="button" disabled={!ready} onClick={onConfirm} style={{ ...second, flex: 1, width: 'auto', background: C.accent, color: C.ink, opacity: ready ? 1 : 0.5,
             cursor: ready ? 'pointer' : 'default' }}>
-            {more ? (forMember ? 'The member accepts the machine work' : 'Accept the vouchers') : forMember ? 'Hand out cash' : hours > 0 ? 'I received the cash · accept the vouchers' : 'I received the cash'}
+            {more ? (forMember ? 'The member accepts the machine work' : 'Accept the vouchers') : forMember ? 'Handed over the cash' : hours > 0 ? 'I received the cash · accept the vouchers' : 'I received the cash'}
           </button>
         </div>
       </Card>
