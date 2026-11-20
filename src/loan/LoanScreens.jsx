@@ -18,7 +18,7 @@ import { C, FONT, R } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
 import AreaMap from '../plan/AreaMap';
 import { useFieldRecord } from '../plan/record';
-import { useUnionMembers } from '../leader/unionMembers';
+import { markDrawn, useUnionMembers } from '../leader/unionMembers';
 import { Card, CardTitle, KV } from './AssetParts';
 import { NIN } from './request';
 import StartHelp from './StartHelp';
@@ -253,23 +253,23 @@ export function LeaderLoan({ initial }) {
   if (own && sel && mine) {
     const nm = `${row?.name || words(sel.share.crop || sel.crop)}`;
     const ar = areaOf(plan, sel.share);
-    const draw = () => tx.run({
+    const draw = () => { markDrawn(tokenHex(sel.token_id)); return tx.run({
       label: more ? `More machine work · ${nm}` : `Crop agreement ${nm}`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan',
       args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
-      invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
-    });
+      invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks'], ['stellar', 'unionShares']],
+    }); };
     return <ConfirmShare own more={more} cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
   }
   if (own && sel && helping) {
     const nm = `${row?.name || words(sel.share.crop || sel.crop)}`;
     const ar = areaOf(plan, sel.share);
-    const draw = () => tx.run({
+    const draw = () => { markDrawn(tokenHex(sel.token_id)); return tx.run({
       label: more ? `More machine work · ${nm} · for the member` : `Crop agreement ${nm} · for the member`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan', session: sel.ft.member,
       args: [sv.address(cfg.union), sv.address(sel.ft.member), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
-      invalidate: [['oracle', 'shares'], ['stellar', 'unionChecks']],
-    });
+      invalidate: [['oracle', 'shares'], ['stellar', 'unionChecks'], ['stellar', 'unionShares']],
+    }); };
     return <ConfirmShare forMember more={more} cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
   }
   // Board LeaderRedeem, without its crop agreement list (23 Oct: the share comes picked): one card with the share, the
