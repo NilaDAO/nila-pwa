@@ -996,7 +996,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       // 19 Nov: a manure is pinned to any crop already on the row: its chip, then that crop's bar.
       const crops = bars.filter((b) => !b.bio && b.key !== GREEN_MANURE.key);
       const add = (key) => {
-        if (isBio(key) && crops.length) { setPeg(peg === key ? null : key); setRowNote(undefined); return; }
+        // 20 Nov: a green manure too is pinned to a crop on the row (its chip, then the crop's bar).
+        if ((isBio(key) || key === GREEN_MANURE.key) && crops.length) { setPeg(peg === key ? null : key); setRowNote(undefined); return; }
         setPeg(null);
         const keys = [...rowKeys, key];
         if (fill(keys, { seasons: ss, cat: names, free0 }).dropped.includes(key)) {
@@ -1007,7 +1008,14 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       // The bars are the kept keys in order (a key with no room never enters the row), so bar i is key i.
       const dropAt = (i) => {
         if (peg) {
-          if (!bars[i].bio && bars[i].key !== GREEN_MANURE.key) setRowKeys(pegBio(rowKeys, i, peg));
+          if (!bars[i].bio && bars[i].key !== GREEN_MANURE.key) {
+            const next = pegBio(rowKeys, i, peg);
+            // No room for it before that crop (the field is busy up to its sowing): said, the row unchanged.
+            if (fill(next, { seasons: ss, cat: names, free0 }).dropped.length) {
+              setPeg(null); setRowNote(`${cropOf(peg, names).name}: no room before ${String(names[bars[i].key]?.name || bars[i].key).toLowerCase()}.`); return;
+            }
+            setRowKeys(next);
+          }
           setPeg(null); setRowNote(undefined); return;
         }
         setRowKeys(rowKeys.filter((_, k) => k !== i)); setRowNote(undefined);
@@ -1070,14 +1078,15 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
                 : rowTab === 'manures' ? 'Tap a manure, then the crop on the row it goes before.' : 'Tap a crop to add it to the row.'}</p>
               <div role="group" aria-label="Crops" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
                 {shownList.map((c) => {
-                  const dim = advice.faded.has(c.key) && !(isBio(c.key) && crops.length); const good = (advice.front.has(c.key) && !dim) || peg === c.key;
+                  const pinnable = (isBio(c.key) || c.key === GREEN_MANURE.key) && crops.length;
+                  const dim = advice.faded.has(c.key) && !pinnable; const good = (advice.front.has(c.key) && !dim) || peg === c.key;
                   return (
                     <button key={c.key} type="button" disabled={saving} onClick={() => add(c.key)} style={{
                       flex: '0 0 92px', border: `2px solid ${good ? C.accent : C.raised}`, borderRadius: 12, background: C.raised, padding: 0, overflow: 'hidden',
                       display: 'flex', flexDirection: 'column', alignItems: 'stretch', color: C.text, fontFamily: FONT, cursor: 'pointer', opacity: dim ? 0.45 : 1 }}>
                       <span aria-hidden="true" style={{ height: 32, background: c.colour || C.muted }} />
                       <span style={{ fontSize: 12, fontWeight: 700, padding: '6px 4px 2px', lineHeight: 1.2, textAlign: 'center' }}>{c.name}</span>
-                      {(isBio(c.key) && crops.length ? [] : advice.tags[c.key] || []).map((t) => (
+                      {(pinnable ? [] : advice.tags[c.key] || []).map((t) => (
                         <span key={t.text} style={{ fontSize: 10, lineHeight: 1.2, padding: '0 4px 4px', textAlign: 'center', color: t.good ? C.accent : C.muted }}>{t.text}</span>
                       ))}
                     </button>

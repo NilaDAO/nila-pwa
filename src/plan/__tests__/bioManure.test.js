@@ -60,3 +60,17 @@ test('a manure pinned before any crop on the row, replacing the one before it', 
   expect(ch.S1).toBe('bio_manure:lake_silt+black_gram');
   expect(Object.values(ch)).toContain('bio_manure:cow+maize');
 });
+
+test('a green manure pinned before a crop already on the row (20 Nov)', () => {
+  const { pegBio } = require('../yearRow');
+  const keys = ['black_gram', 'maize'];
+  const next = pegBio(keys, 1, 'green_manure');
+  expect(next).toEqual(['black_gram', 'green_manure', 'maize']);
+  const { bars, dropped } = fill(next, { seasons, cat });
+  expect(dropped).toEqual([]);
+  const ch = toChanges(bars, seasons);
+  expect(Object.values(ch)).toContain('maize');
+  expect(Object.values(ch).some((v) => String(v).startsWith('green_manure'))).toBe(true);
+  // before a bio manure already pinned to that crop, which stays just before the sowing
+  expect(pegBio(['black_gram', 'bio_manure:cow', 'maize'], 2, 'green_manure')).toEqual(['black_gram', 'green_manure', 'bio_manure:cow', 'maize']);
+});
