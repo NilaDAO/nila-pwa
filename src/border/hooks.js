@@ -74,6 +74,8 @@ function useJobWrite(id, fn) {
       if (job && job.id) qc.setQueryData(qkBorder.job(job.id), job);
       qc.invalidateQueries({ queryKey: qkBorder.jobs() });
       if (id) qc.invalidateQueries({ queryKey: qkBorder.job(id) });
+      // 20 Nov: the leader's own mint (or other job step) shows on the members list at once, not at its next minute.
+      qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });
     },
   });
 }
