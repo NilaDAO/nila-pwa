@@ -239,7 +239,6 @@ export default function MemberStatus({ id, go }) {
     const sh = (p.shares || []).find((s) => s.crop === x.crop_key && same(s.zones || [s.zone], x.zones));
     const rows = !sh ? [] : sh.green_manure
       ? (p.soil_cover || []).filter((c) => c.finance && c.sow === sh.from_date && (sh.zones || [sh.zone]).includes(c.zone))
-      : sh.bio_manure ? (p.bio_manure || []).filter((b) => b.finance && b.on === sh.from_date && b.zone === sh.zone)
       : (p.seasons || []).flatMap((se) => se.rows).filter((r) => r.crop === sh.crop && r.sow === sh.from_date && (r.zones || [r.zone]).some((z) => (sh.zones || [sh.zone]).includes(z)));
     const cash = x.cash ?? sh?.loan_amount;
     const vouchers = rows.reduce((a, r) => a + (r.finance?.voucher_value || 0), 0);

@@ -63,11 +63,6 @@ function Stepper({ label, value, set, step, min = 0, max, fmt, tone, onZero }) {
  *  agreement (18 Nov): its covers (one per area, merged into one agreement), as one row: name, due, machine acres. */
 function planRow(plan, share) {
   for (const s of plan.plan.seasons || []) for (const r of s.rows) if (r.zone === share.zone && r.crop === share.crop && r.sow === share.from_date) return r;
-  // 19 Nov: a bio manure's agreement: its plan item, named with the crop it goes before.
-  if (share.bio_manure) {
-    const b = (plan.plan.bio_manure || []).find((x) => x.zone === share.zone && x.on === share.from_date);
-    return b ? { name: `${b.name} · before ${b.before.name.toLowerCase()}`, finance: b.finance } : null;
-  }
   if (share.green_manure) {
     const zs = share.zones || [share.zone];
     const cs = (plan.plan.soil_cover || []).filter((c) => c.finance && zs.includes(c.zone) && c.sow === share.from_date);
