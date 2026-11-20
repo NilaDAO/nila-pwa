@@ -844,8 +844,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       const to = { ...mergeTo };
       for (const r of picked) if (r !== keep) to[r] = keep;
       setMergeTo(to);
-      // The joined area takes the answer of the largest part, if it had one; she sets it next.
-      setPicked([keep]);
+      // 20 Nov: joined, the selection clears (the card goes down while an area is still to set), so the joined area
+      // shows on the map as one; a tap on it selects it again.
+      settle(toSet.length);
     };
     const split = () => {
       const r = picked[0];
