@@ -248,7 +248,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
         // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so an accent outline (solid since 14 Nov) and a faint fill.
         // 14 Nov: its outline solid in the accent, no longer dashed.
         const poly = new g.Polygon({ map: m, paths, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
-          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? FADE : sel ? 0.5 : 1),
+          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.solid ? 0.75 : lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? FADE : sel ? 0.5 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
           // 20 Nov: a selected area keeps its own edge; its white line is drawn inside it (below).
           // lab.edge (20 Nov): the area's line in that colour whatever its fill (an area with a cover set keeps its line).
@@ -356,7 +356,7 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
       if (lab.hatch) hatchPattern();
       const layer = L.geoJSON(z.geometry, { style: lab.hatch
         ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? FADE : 1 }
-        : { color: lab.edge || colour, weight: 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel || lab.edge ? (faded ? FADE : 1) : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
+        : { color: lab.edge || colour, weight: 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel || lab.edge ? (faded ? FADE : 1) : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.solid ? 0.75 : lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
       // A joined group whatever its fill (a hatched one still to set too): its parts without their own line.
       if (joined && !lab.dashed) layer.setStyle({ opacity: 0 });
       layer.addTo(group);

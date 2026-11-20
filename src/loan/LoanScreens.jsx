@@ -200,12 +200,12 @@ export function LeaderLoan({ initial }) {
   // Its areas filled in the crop's colour (green manure: its own), the others faded.
   const colour = row?.colour || (sel?.share.green_manure ? (plan.plan.soil_cover || []).find((c) => zones.includes(c.zone) && c.colour)?.colour : null) || C.accent;
   // No chips on these areas: the card's title names the crop (a chip per area repeated it four times).
-  // 20 Nov: the accent line around each of its areas and a light fill, so a dark crop colour (black gram) does not blend
-  // the areas into one.
+  // 20 Nov: the accent line around each of its areas (a dark crop colour such as black gram blended them into one) and
+  // a fuller fill (lab.solid), so its areas stand out.
   // 20 Nov: each of its areas named on the map (was hidden: the card names the crop, but not which area is which).
   const order0 = Object.keys(plan?.plan?.proposal || {}).sort();
   const mapLabels = Object.fromEntries(zones.map((z) => [z, { text: plan?.plan?.area_names?.[z] || `Area ${order0.indexOf(z) + 1}`,
-    colour, edge: C.accent, soil: true }]));
+    colour, edge: C.accent, solid: true }]));
   // 18 Nov: an area the plan joined to another (plan.merged, e.g. D · 3 into D · 4) is drawn as part of it, as on the plan.
   for (const [z, to] of Object.entries(plan?.plan?.merged || {})) if (!zones.includes(z)) mapLabels[z] = { join: to };
   const rec = planRecord.data?.record || holder?.record;
