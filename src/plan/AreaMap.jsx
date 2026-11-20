@@ -235,8 +235,8 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
       // 20 Nov: a hatched group still to set too (its accent outline).
       if (joined && !lab.dashed) {
         outlineOf(group.flatMap((y) => polysOf(y.geometry).flat())).forEach(([p, q]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: p[1], lng: p[0] }, { lat: q[1], lng: q[0] }],
-          clickable: false, zIndex: 2, strokeColor: sel ? '#ffffff' : lab.hatch ? '#D4CF5A' : colour,
-          strokeOpacity: sel ? 1 : lab.hatch ? (faded ? FADE : 1) : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), strokeWeight: sel ? 3 : 1.5 })));
+          clickable: false, zIndex: 2, strokeColor: sel ? '#ffffff' : lab.edge || (lab.hatch ? '#D4CF5A' : colour),
+          strokeOpacity: sel ? 1 : lab.hatch || lab.edge ? (faded ? FADE : 1) : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), strokeWeight: sel ? 3 : 1.5 })));
       }
       group.forEach((part) => polysOf(part.geometry).forEach((poly0) => {
         // Its holes as holes (14 Nov): an area inside it is not painted over.
@@ -250,8 +250,9 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
           fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? FADE : sel ? 0.5 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
           // 20 Nov: a selected area keeps its own edge; its white line is drawn inside it (below).
-          strokeColor: sel && joined ? '#ffffff' : lab.hatch ? '#D4CF5A' : colour,
-          strokeOpacity: joined && !lab.dashed ? 0 : sel ? 1 : lab.hatch ? (faded ? FADE : 1) : lab.dashed ? 0 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1),
+          // lab.edge (20 Nov): the area's line in that colour whatever its fill (an area with a cover set keeps its line).
+          strokeColor: sel && joined ? '#ffffff' : lab.edge || (lab.hatch ? '#D4CF5A' : colour),
+          strokeOpacity: joined && !lab.dashed ? 0 : sel ? 1 : lab.hatch || lab.edge ? (faded ? FADE : 1) : lab.dashed ? 0 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1),
           strokeWeight: 1.5, zIndex: sel ? 3 : 1 });
         if (sel && !joined) {
           paths.slice(0, 1).forEach(() => drawn.current.push(new g.Polyline({ map: m, clickable: false, zIndex: 4, strokeColor: '#ffffff', strokeOpacity: 1, strokeWeight: 3,
@@ -354,13 +355,14 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
       if (lab.hatch) hatchPattern();
       const layer = L.geoJSON(z.geometry, { style: lab.hatch
         ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? FADE : 1 }
-        : { color: colour, weight: 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
+        : { color: lab.edge || colour, weight: 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel || lab.edge ? (faded ? FADE : 1) : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
       // A joined group whatever its fill (a hatched one still to set too): its parts without their own line.
       if (joined && !lab.dashed) layer.setStyle({ opacity: 0 });
       layer.addTo(group);
       if (joined && !lab.dashed && !outlined.has(root)) {
         outlined.add(root);
-        const line = sel ? { color: '#ffffff', weight: 3, opacity: 1 } : lab.hatch ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1 }
+        const line = sel ? { color: '#ffffff', weight: 3, opacity: 1 } : lab.edge ? { color: lab.edge, weight: 1.5, opacity: faded ? FADE : 1 }
+          : lab.hatch ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1 }
           : { color: colour, weight: 1.5, opacity: (lab.colour ? 1 : 0.15) * (faded ? FADE : 1) };
         outlineOf(groupOf(root).flatMap((y) => polysOf(y.geometry).flat())).forEach(([p, q]) => L.polyline([[p[1], p[0]], [q[1], q[0]]],
           { ...line, interactive: false }).addTo(group));

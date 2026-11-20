@@ -855,8 +855,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       setMergeTo(to);
       setPicked(groupOf(r));
     };
+    // 20 Nov: every area keeps its accent line here, also once a cover is set (its fill alone left it without one).
     const labels = Object.fromEntries(zoneOrder.map((z) => [z, rootOf(z) !== z ? { join: rootOf(z) }
-      : { ...(nowLabels[z] || { text: areaName(z) }), sel: picked.includes(z) }]));
+      : { ...(nowLabels[z] || { text: areaName(z) }), sel: picked.includes(z), edge: '#D4CF5A' }]));
     // The row's order: on a strip (a land cover set or preset) the land covers first, else her crops first.
     const covered = picked.length > 0 && picked.every((r) => COVERS.some((c) => c.key === growing[r]));
     const mine = cropList.filter((c) => crops.has(c.key));
