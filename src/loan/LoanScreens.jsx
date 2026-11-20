@@ -352,15 +352,21 @@ export function LeaderLoan({ initial }) {
                 });
                 setDropped((d) => ({ ...d, [k]: !off }));
               };
+              // 20 Nov: as the steppers: its amount in a grey box, and an X in a box of its own (a + puts it back).
+              const box = { height: 44, borderRadius: R.button, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: FONT, fontSize: 14, fontWeight: 700 };
               return (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, fontSize: 14 }}>
-                  <span style={{ color: C.muted }}>{isBio ? x.name : 'Green manure'}</span>
-                  <span style={{ textAlign: 'right' }}>
-                    <span style={{ fontWeight: 700, color: off ? C.muted : C.text, textDecoration: off ? 'line-through' : 'none' }}>
-                      {what}{x.voucher_value ? ` · ${isBio ? 'haulage ' : ''}${inr(x.voucher_value)} voucher${isBio ? '' : 's'}` : ''}
-                    </span>{' '}
-                    <button type="button" onClick={toggle} style={{ border: 0, background: 'none', padding: 0, color: C.accent, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-                      {off ? 'Add back' : 'Remove'}
+                <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ color: C.muted, fontSize: 14 }}>{isBio ? x.name : 'Green manure'}</span>
+                  <span style={{ display: 'flex', gap: 8 }}>
+                    <span style={{ ...box, padding: '0 12px', color: off ? C.muted : C.text, textDecoration: off ? 'line-through' : 'none', whiteSpace: 'nowrap' }}>
+                      {what}{x.voucher_value ? ` · ${inr(x.voucher_value)} voucher${isBio ? '' : 's'}` : ''}
+                    </span>
+                    <button type="button" aria-label={off ? `Add back ${isBio ? x.name : 'green manure'}` : `Remove ${isBio ? x.name : 'green manure'}`} onClick={toggle}
+                      style={{ ...box, width: 44, border: 0, padding: 0, color: C.text, cursor: 'pointer' }}>
+                      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        {off ? <path d="M12 5v14M5 12h14" /> : <path d="M6 6l12 12M18 6 6 18" />}
+                      </svg>
                     </button>
                   </span>
                 </div>
