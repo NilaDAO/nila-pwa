@@ -141,8 +141,12 @@ export function LeaderLoan({ initial }) {
     // Taken up already (27 Oct): only machine work is added, from 0.
     if (Number(x.ft?.loan?.flags ?? 0) & FLAG_DRAWN) { setPick(x.token_id); setCash(0); setMach({}); return; }
     setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0));
-    const ms = Object.values(planRow(plan, x.share)?.finance?.machines || {}).filter((m) => m.type && (m.acres ?? 0) > 0);
-    setMach(Object.fromEntries(ms.map((m) => [m.type, Math.round(m.acres * 10) / 10])));
+    const f = planRow(plan, x.share)?.finance || {};
+    // 20 Nov: a bio manure before the crop is part of its agreement: its haulage joins the crop's own machine work.
+    const ms = [...Object.values(f.machines || {}), ...Object.values(f.manure?.machines || {})].filter((m) => m.type && (m.acres ?? 0) > 0);
+    const acres = {};
+    for (const m of ms) acres[m.type] = (acres[m.type] || 0) + m.acres;
+    setMach(Object.fromEntries(Object.entries(acres).map(([t, a]) => [t, Math.round(a * 10) / 10])));
   }, [shares.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // The plan's amounts, within the union's caps once they are read (the steppers start inside the limit).
   useEffect(() => {
@@ -324,6 +328,12 @@ export function LeaderLoan({ initial }) {
             {checks.data && !more && <Stepper label="Cash" value={cash} set={(v) => setCash(cash > caps.cash && v < cash ? caps.cash : v)} step={100}
               // Open (9 Oct): the union may give more than the agreement, unless its switch holds it to the attested amount.
               max={checks.data.enforceToken ? Math.max(caps.cash, Math.round(sel.ft ? Number(BigInt(sel.ft.amount ?? 0) / NIN) : sel.share.loan_amount || 0)) : 10_000_000} fmt={inr} tone={cash > caps.cash ? C.coral : undefined} />}
+            {/* 20 Nov: a bio manure in this agreement, under the cash (its cash is in it; its haulage in the trailer voucher). */}
+            {checks.data && !more && row?.finance?.manure && (() => {
+              const mn = row.finance.manure;
+              const what = mn.price_source === 'free' ? 'free' : mn.cash ? `${inr(mn.cash)} in the cash` : 'your own';
+              return <KV k={mn.name} v={`${what}${mn.voucher_value ? ` · haulage ${inr(mn.voucher_value)} voucher` : ''}`} />;
+            })()}
             {checks.data && types.map((t) => {
               const h = mach[t] || 0;
               const room = tractorRate > 0 ? Math.floor(acresFor(Math.max(0, caps.hours - hours), rateOf(t), tractorRate) * 10) / 10 : 0;
