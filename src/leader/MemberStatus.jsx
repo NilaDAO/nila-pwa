@@ -339,7 +339,7 @@ export default function MemberStatus({ id, go }) {
         {/* 20 Nov: joined from her placeholder (sign later): until her account holds the title (seconds; at most the
             attester's 10-minute round), this row says so instead of the Join card or "Pending". */}
         {/^G[A-Z2-7]{55}$/.test(m.address || '') && !m.keypadId && joinedHere(m.address) && (
-          <Row k="Status" v="Joining · moving the land title to the member's account" />
+          <Row k="Status" v="Setting up the account" />
         )}
         {/* A title whose field record is still being built (15 Nov): the crop plan's waiting view (CP1), not a status row. */}
         {!m.record && !pendingJob && !m.note && (m.titleId || m.lands?.length) ? (<>
