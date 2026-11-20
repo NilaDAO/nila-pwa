@@ -125,6 +125,47 @@ export function stripes(poly, n = 14, dir = 1, every = 0) {
 }
 // A bio manure's lines (19 Nov): single, the other diagonal from a green manure's, about 8 m apart on one grid.
 export const MANURE_STEP = 0.0001;
+/** A ring moved `m` metres inward (20 Nov: a selected area's white line inside its own edge, so on a border shared
+ *  with a neighbour it shows which side is selected): each edge shifted inward, corners where the shifted edges meet;
+ *  a corner that would shoot far off (a sharp spike) is moved straight in instead. [[lng, lat]] in and out. */
+export function insetRing(ring, m = 2.5) {
+  const pts = (ring || []).slice();
+  if (pts.length > 1 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) pts.pop();
+  const n = pts.length;
+  if (n < 3) return ring || [];
+  const lat0 = pts[0][1] * Math.PI / 180;
+  const kx = 111320 * Math.cos(lat0); const ky = 110540;
+  const P = pts.map(([lng, lat]) => [lng * kx, lat * ky]);
+  let area = 0;
+  for (let i = 0; i < n; i += 1) { const [x1, y1] = P[i]; const [x2, y2] = P[(i + 1) % n]; area += x1 * y2 - x2 * y1; }
+  const sgn = area > 0 ? 1 : -1;   // counter-clockwise: the inside is to the left of each edge
+  const off = [];
+  for (let i = 0; i < n; i += 1) {
+    const [x1, y1] = P[i]; const [x2, y2] = P[(i + 1) % n];
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const nx = (-(y2 - y1) / len) * sgn * m; const ny = ((x2 - x1) / len) * sgn * m;
+    off.push([[x1 + nx, y1 + ny], [x2 + nx, y2 + ny], [nx, ny]]);
+  }
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    const [a1, a2, na] = off[(i - 1 + n) % n]; const [b1, b2, nb] = off[i];
+    const d1 = [a2[0] - a1[0], a2[1] - a1[1]]; const d2 = [b2[0] - b1[0], b2[1] - b1[1]];
+    const den = d1[0] * d2[1] - d1[1] * d2[0];
+    let q;
+    if (Math.abs(den) > 1e-9) {
+      const t = ((b1[0] - a1[0]) * d2[1] - (b1[1] - a1[1]) * d2[0]) / den;
+      q = [a1[0] + t * d1[0], a1[1] + t * d1[1]];
+    }
+    const [px, py] = P[i];
+    if (!q || Math.hypot(q[0] - px, q[1] - py) > 4 * m) {
+      const ax = (na[0] + nb[0]) / 2; const ay = (na[1] + nb[1]) / 2; const l = Math.hypot(ax, ay) || 1;
+      q = [px + (ax / l) * m, py + (ay / l) * m];
+    }
+    out.push([q[0] / kx, q[1] / ky]);
+  }
+  out.push(out[0]);
+  return out;
+}
 export const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
 
 /** Joined areas (14 Nov): an area whose label has `join` (an area she added to a touching one) is drawn as part of
@@ -206,9 +247,14 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
         const poly = new g.Polygon({ map: m, paths, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
           fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? FADE : sel ? 0.5 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
-          strokeColor: sel ? '#ffffff' : lab.hatch ? '#D4CF5A' : colour,
+          // 20 Nov: a selected area keeps its own edge; its white line is drawn inside it (below).
+          strokeColor: sel && joined ? '#ffffff' : lab.hatch ? '#D4CF5A' : colour,
           strokeOpacity: sel ? (joined ? 0 : 1) : lab.hatch ? (faded ? FADE : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1),
-          strokeWeight: sel ? 3 : 1.5, zIndex: sel ? 3 : 1 });
+          strokeWeight: 1.5, zIndex: sel ? 3 : 1 });
+        if (sel && !joined) {
+          paths.slice(0, 1).forEach(() => drawn.current.push(new g.Polyline({ map: m, clickable: false, zIndex: 4, strokeColor: '#ffffff', strokeOpacity: 1, strokeWeight: 3,
+            path: insetRing(poly0[0]).map(([lng, lat]) => ({ lat, lng })) })));
+        }
         // lab.dashed (13 Nov, the members map): a property's outline as a dashed line.
         if (lab.dashed) {
           drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
@@ -302,8 +348,11 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
       if (lab.hatch) hatchPattern();
       const layer = L.geoJSON(z.geometry, { style: lab.hatch
         ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? FADE : 1 }
-        : { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
+        : { color: colour, weight: 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
       layer.addTo(group);
+      // 20 Nov: a selected area's white line inside its own edge (as on the Google map).
+      if (sel && !lab.hatch) polysOf(z.geometry).forEach((poly0) => L.polyline(insetRing(poly0[0]).map(([lng, lat]) => [lat, lng]),
+        { color: '#ffffff', weight: 3, opacity: 1, interactive: false }).addTo(group));
       // 19 Nov: the lines go in the areas' group, not straight on the map: added to the map before it has a view, a
       // line made Leaflet's renderer before the group's polygons drew, and they crashed ("reading 'min'").
       if (lab.stripe) {   // 18 Nov: as on the Google map, the second crop's colour as stripes
