@@ -905,8 +905,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   if (at === 'making') {
     return (
       // No farm name over the wait (26 Oct): the card's header says whose plan is made (a leader for a member: the name).
-      <Sheet map={map} title={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : 'Making your crop plan'} noSettings>
-        <Making label={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : undefined} jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
+      <Sheet map={map} title={forLand ? 'Making the crop plan' : 'Making your crop plan'} noSettings>
+        <Making label={forLand ? 'Making the crop plan' : undefined} jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
           onError={(e) => { setError(e); setStep('leaveout'); }} />
       </Sheet>
     );
