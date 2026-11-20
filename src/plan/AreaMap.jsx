@@ -329,9 +329,13 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
     const areas = areasOf(record);
     const group = L.featureGroup().addTo(map);
     const focused = [];
+    // 20 Nov: joined areas as one shape, as on the Google map: no line between the parts, one outline around them.
+    const groupOf = (r) => areas.filter((y) => y.geometry && joinRoot(labels, y.zone_id) === r);
+    const outlined = new Set();
     areas.forEach((z, i) => {
       if (!z.geometry) return;
       const root = joinRoot(labels, z.zone_id);   // 14 Nov: an added area in its neighbour's style, no label of its own
+      const joined = groupOf(root).length > 1;
       const own = labels[z.zone_id] && !labels[z.zone_id].join ? labels[z.zone_id] : { text: z.name || `Area ${i + 1}` };
       if (own.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       let lab = root === z.zone_id ? own : { ...(labels[root] || {}), hide: true };
@@ -349,9 +353,15 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
       const layer = L.geoJSON(z.geometry, { style: lab.hatch
         ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? FADE : 1 }
         : { color: colour, weight: 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
+      if (joined && !lab.hatch && !lab.dashed) layer.setStyle({ opacity: 0 });
       layer.addTo(group);
-      // 20 Nov: a selected area's white line inside its own edge (as on the Google map).
-      if (sel && !lab.hatch) polysOf(z.geometry).forEach((poly0) => L.polyline(insetRing(poly0[0]).map(([lng, lat]) => [lat, lng]),
+      if (joined && !lab.hatch && !lab.dashed && !outlined.has(root)) {
+        outlined.add(root);
+        outlineOf(groupOf(root).flatMap((y) => polysOf(y.geometry).flat())).forEach(([p, q]) => L.polyline([[p[1], p[0]], [q[1], q[0]]],
+          { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), interactive: false }).addTo(group));
+      }
+      // 20 Nov: a selected area's white line inside its own edge (as on the Google map); a joined group's is its outline.
+      if (sel && !lab.hatch && !joined) polysOf(z.geometry).forEach((poly0) => L.polyline(insetRing(poly0[0]).map(([lng, lat]) => [lat, lng]),
         { color: '#ffffff', weight: 3, opacity: 1, interactive: false }).addTo(group));
       // 19 Nov: the lines go in the areas' group, not straight on the map: added to the map before it has a view, a
       // line made Leaflet's renderer before the group's polygons drew, and they crashed ("reading 'min'").
