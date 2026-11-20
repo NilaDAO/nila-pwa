@@ -1011,7 +1011,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           if (!bars[i].bio && bars[i].key !== GREEN_MANURE.key) {
             const next = pegBio(rowKeys, i, peg);
             // No room for it before that crop (the field is busy up to its sowing): said, the row unchanged.
-            if (fill(next, { seasons: ss, cat: names, free0 }).dropped.length) {
+            // Only the manure itself counts: a crop outside the crop list on the row is dropped by the row anyway.
+            if (fill(next, { seasons: ss, cat: names, free0 }).dropped.includes(peg)) {
               setPeg(null); setRowNote(`${cropOf(peg, names).name}: no room before ${String(names[bars[i].key]?.name || bars[i].key).toLowerCase()}.`); return;
             }
             setRowKeys(next);
