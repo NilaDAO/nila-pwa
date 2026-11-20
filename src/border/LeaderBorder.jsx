@@ -162,7 +162,7 @@ function PlotChoice({ job, plot, onClose }) {
       <Head title={`Plot next to the fields · ${acres(plot.acres)}`} sub="Part of this land? Add it to a field or make it a field of its own." />
       {accepted.map((f) => (
         <button key={f.n} type="button" disabled={busy} style={{ ...btn(false), flex: 'none' }}
-          onClick={() => addPlot.mutate({ field: f.n, plot: plot.id }, { onSuccess: onClose })}>Add to {fieldName(f)}</button>
+          onClick={() => addPlot.mutate({ field: f.n, plot: plot.id }, { onSuccess: onClose })}>Add to {fieldName(f)}{f.name ? ` (${f.n})` : ''}</button>
       ))}
       {!anyAccepted && <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>Accept a field first to add this plot to it.</p>}
       <button type="button" disabled={busy} style={{ ...btn(true), flex: 'none' }}
