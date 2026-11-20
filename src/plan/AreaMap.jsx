@@ -73,8 +73,9 @@ function chip({ text, sub, acc, soil }, on, faded, clickable) {
   // A soil cover's chip (21 Oct) has a dashed green border, so it never reads as a crop for sale.
   // 13 Nov: a size smaller (12/11 px, tighter padding), so the labels cover less of the land.
   Object.assign(el.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2px 8px', borderRadius: '10px',
-    background: on ? '#D4CF5A' : 'rgba(18,18,18,0.85)', color: on ? '#121212' : '#F1F5F9', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap',
-    border: on ? '0' : soil ? '1.5px dashed #7FB069' : '0', opacity: faded ? '0.3' : '1', cursor: clickable ? 'pointer' : 'default', transform: 'translateY(50%)' });
+    // 20 Nov: a faded area's chip stays opaque (at 0.3 it read as behind the fills), its text grey instead.
+    background: on ? '#D4CF5A' : 'rgba(18,18,18,0.85)', color: on ? '#121212' : faded ? '#94A3B8' : '#F1F5F9', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap',
+    border: on ? '0' : soil ? '1.5px dashed #7FB069' : '0', opacity: '1', cursor: clickable ? 'pointer' : 'default', transform: 'translateY(50%)' });
   const a = document.createElement('span');
   Object.assign(a.style, { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', lineHeight: '1.4', fontWeight: '700' });
   if (acc) {
