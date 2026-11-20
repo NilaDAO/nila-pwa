@@ -8,6 +8,32 @@
 export const GREEN_MANURE = { key: 'green_manure', name: 'Green manure', colour: '#7FB069', days: 60,
   sow_months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], whole_year: false };
 export const SLOT_MONTHS = { S1: [10, 11, 12, 1, 2], S2: [3, 4, 5], S3: [6, 7, 8] };
+// Bio manure (19 Nov, executive decision): spread once before the next crop on the row, its own crop agreement repaid
+// with that crop. It takes no season and no grow days: on the row it sits just before the crop it goes before
+// (nila-sensing plan/manure.py: up to 14 days before the sowing, once the field is free).
+export const BIO_PREFIX = 'bio_manure:';
+export const BIO_MANURES = [
+  { key: `${BIO_PREFIX}goat`, type: 'goat', name: 'Goat manure', colour: '#8C6D4F' },
+  { key: `${BIO_PREFIX}cow`, type: 'cow', name: 'Cow manure', colour: '#6B5A3E' },
+  { key: `${BIO_PREFIX}lake_silt`, type: 'lake_silt', name: 'Lake sludge', colour: '#7A7D6B' },
+];
+export const isBio = (key) => String(key || '').startsWith(BIO_PREFIX);
+
+/** The row's keys with manure `bio` pinned before the crop at index `i` (bar i is key i): a manure already before that
+ *  crop is replaced (19 Nov: a manure can go before any crop on the row, not only the next one tapped). */
+export function pegBio(keys, i, bio) {
+  // 20 Nov: a green manure is pinned the same way, before the crop and before a bio manure pinned to it (a bio manure
+  // is spread just before the sowing); one already before that crop is not replaced (a second one is refused by the row).
+  if (bio === GREEN_MANURE.key) {
+    const at = i > 0 && isBio(keys[i - 1]) ? i - 1 : i;
+    return [...keys.slice(0, at), bio, ...keys.slice(at)];
+  }
+  const before = i > 0 && isBio(keys[i - 1]);
+  const out = keys.filter((_, k) => !(before && k === i - 1));
+  out.splice(before ? i - 1 : i, 0, bio);
+  return out;
+}
+const BIO_DAYS = 14;
 
 const day = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`) : null);
 const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
@@ -30,7 +56,7 @@ export function sowDate(crop, slot, notBefore) {
   return null;
 }
 
-const cropOf = (key, cat) => (key === GREEN_MANURE.key ? GREEN_MANURE : cat[key]);
+export const cropOf = (key, cat) => (key === GREEN_MANURE.key ? GREEN_MANURE : isBio(key) ? BIO_MANURES.find((b) => b.key === key) : cat[key]);
 
 /** The row from the crops tapped, in order: { bars: [{ key, slot, whole, sow, end }], dropped: [key] }. A crop with
  *  no room left in the year (or no grow days) is dropped. `free0`: the day the field is free (a crop standing now). */
@@ -38,9 +64,18 @@ export function fill(keys, { seasons, cat, free0 = null, today = null }) {
   const slots = slotsOf(seasons);
   const bars = []; const dropped = [];
   let free = day(free0); let next = 0;
+  let bio = null;   // a bio manure tapped, waiting for the crop it goes before (its index in bars)
   const t0 = today ? new Date(today.getFullYear(), today.getMonth(), today.getDate()) : (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); })();
   for (const key of keys) {
     const c = cropOf(key, cat);
+    if (isBio(key)) {
+      // One before each crop, and only where a crop can still follow.
+      if (!c || bio != null || next >= slots.length || bars.some((b) => b.whole)) { dropped.push(key); continue; }
+      const at = free || slots[next].start;
+      bio = bars.length;
+      bars.push({ key, bio: true, waiting: true, slot: null, sow: at, end: addDays(at, BIO_DAYS) });
+      continue;
+    }
     if (!c || !(c.days > 0) || next >= slots.length) { dropped.push(key); continue; }
     const gm = key === GREEN_MANURE.key;
     let placed = false;
@@ -52,7 +87,16 @@ export function fill(keys, { seasons, cat, free0 = null, today = null }) {
       const end = addDays(sow, c.days);
       // A whole-year crop (17 Nov) holds every season after it is sown and runs on into the next year (sugarcane
       // after maize); nothing comes after it on the row.
+      const freeBefore = free;
       bars.push({ key, slot: slots[i].slot, whole: !!c.whole_year, sow, end });
+      if (bio != null && !gm) {
+        // The waiting bio manure goes before this crop: from 14 days before its sowing, not before the field is free.
+        const b = bars[bio]; const from = addDays(sow, -BIO_DAYS);
+        const on = freeBefore && freeBefore > from ? freeBefore : from;
+        bars[bio] = { ...b, waiting: false, slot: slots[i].slot, sow: on < sow ? on : addDays(sow, -1), end: sow, before: bars.length - 1 };
+        bars[bars.length - 1].manure = b.key.slice(BIO_PREFIX.length);
+        bio = null;
+      }
       // 18 Nov: a green manure does not take its season: the next crop may follow in the same season once it is
       // ploughed in (green manure Oct–Nov, then sugarcane from December).
       free = end; next = c.whole_year ? slots.length : gm ? i : i + 1; placed = true;
@@ -71,10 +115,14 @@ export function toChanges(bars, seasons, locked = {}) {
   seasons.forEach((s, i) => {
     if (locked[s.slot]) return;
     const here = bars.filter((b) => b.slot === s.slot);
-    const crop = whole && i >= from ? whole.key : (here.find((b) => b.key !== GREEN_MANURE.key)?.key ?? null);
+    const cropBar = here.find((b) => b.key !== GREEN_MANURE.key && !b.bio);
+    const crop = whole && i >= from ? whole.key : (cropBar?.key ?? null);
     const gmFirst = crop && here.some((b) => b.key === GREEN_MANURE.key) && (!whole || i === from || crop !== whole.key);
     // 18 Nov: a green manure before a crop in the same season goes to the node as "green_manure+<crop>".
-    out[s.slot] = gmFirst ? `${GREEN_MANURE.key}+${crop}` : crop ?? (here.length ? GREEN_MANURE.key : null);
+    const base = gmFirst ? `${GREEN_MANURE.key}+${crop}` : crop ?? (here.some((b) => b.key === GREEN_MANURE.key) ? GREEN_MANURE.key : null);
+    // 19 Nov: a bio manure before the crop sown in this season: "bio_manure:<type>+<crop>".
+    const sownHere = cropBar && cropBar.slot === s.slot ? cropBar : null;
+    out[s.slot] = sownHere?.manure && crop ? `${BIO_PREFIX}${sownHere.manure}+${base}` : base;
   });
   return out;
 }
@@ -96,6 +144,8 @@ export function rowOf(plan, zone) {
     }
   }
   for (const c of (p.soil_cover || []).filter((x) => x.zone === zone && x.kind === 'green_manure')) items.push([c.sow || c.from, GREEN_MANURE.key]);
+  // 19 Nov: a bio manure, on its spreading day, just before its crop.
+  for (const b of (p.bio_manure || []).filter((x) => x.zone === zone && !locked[x.slot])) items.push([b.on, `${BIO_PREFIX}${b.type}`]);
   items.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
   return { keys: items.map(([, k]) => k), free0: free ? iso(free) : null, locked };
 }
@@ -123,7 +173,9 @@ export function whyNoRoom(key, keys, { seasons, cat, free0 = null }) {
   const now = fill(keys, { seasons, cat, free0 });
   if (!fill([...keys, key], { seasons, cat, free0 }).dropped.includes(key)) return null;
   const slots = slotsOf(seasons);
-  const last = now.bars[now.bars.length - 1];
+  const real = now.bars.filter((b) => !b.bio);
+  const last = real[real.length - 1];
+  if (isBio(key)) return now.bars.some((b) => b.bio && b.waiting) ? 'One manure before each crop' : 'Field full this year';
   const next = last ? slots.findIndex((s) => s.slot === last.slot) + (last.key === GREEN_MANURE.key ? 0 : 1) : 0;
   if (!c || !(c.days > 0)) return 'Field full this year';
   if ((last && last.whole) || next >= slots.length) return 'Field full this year';

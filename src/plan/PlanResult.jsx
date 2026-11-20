@@ -193,6 +193,18 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
       editable: !readOnly && !!slot && !taken.has(slot) && !plan.plan.locked?.[zone]?.[slot], row: { slot }, dim: !!slots && !!slot && !slots.has(slot) });
     if (slot) taken.add(slot);
   }
+  // A bio manure before a crop (19 Nov): a short hatched bar in its colour, from its spreading day to the sowing.
+  for (const b of (plan.plan.bio_manure || []).filter((x) => x.zone === zone)) {
+    if (at(b.before?.sow || b.on) <= 0 || at(b.on) >= 12) continue;
+    // 20 Nov: it ends at the crop's sowing and is at least a few days wide, so a manure spread the day before (after a
+    // green manure ploughed in) is not hidden under the crop's bar.
+    const end = Math.max(0, Math.min(12, at(b.before?.sow || b.on)));
+    const s1 = Math.max(end, 0.3); const s0 = Math.max(0, Math.min(Math.max(0, Math.min(12, at(b.on))), s1 - 0.3));
+    const c = b.colour || C.muted;
+    out.push({ key: `bio-${b.on}`, slot: b.slot, s0, s1, name: b.name, ink: C.text, soil: true, editable: false, row: { slot: b.slot },
+      fill: `repeating-linear-gradient(-45deg, ${c} 0 3px, transparent 3px 6px)`,
+      dim: !!slots && !slots.has(b.slot) });
+  }
   // A season the plan leaves empty on a planned area (14 Nov): a faint "Empty" bar she can tap to pick a crop.
   if (plan.plan.proposal?.[zone]) {
     for (const [i, se] of ss.entries()) {
@@ -211,7 +223,8 @@ export function laneOf(plan, zone, { y0, picked = {}, cropOf = () => null, readO
         dim: !!slots && !slots.has(se.slot) });
     }
   }
-  return out.sort((a, b) => a.s0 - b.s0);
+  // A bio manure's short bar is drawn last, over the bars it touches (20 Nov).
+  return out.sort((a, b) => (a.key.startsWith('bio-') - b.key.startsWith('bio-')) || a.s0 - b.s0);
 }
 
 /** One lane: the bars with their names inside. onBar(item): a bar tapped (its crops open); open: the open bar's key. */
@@ -289,6 +302,20 @@ export function CostList({ r, k = 1 }) {
     ...Object.values(f.machines || {}).map((m) => [m.for.replace(/^./, (c) => c.toUpperCase()), `${(m.acres * k).toFixed(2)} acres${m.acres ? ` · ${inr(Math.round(m.value / m.acres))}/acre` : ''} · voucher`, n(m.value)]),
     ...Object.values(f.hand_work || {}).map((m) => [`${m.for.replace(/^./, (c) => c.toUpperCase())}, hired`, `${(m.acres * k).toFixed(2)} acres · ${inr(m.rate_inr_acre)}/acre · no union machine`, n(m.value)]),
   ].filter(Boolean);
+  // 20 Nov: a green manure before the crop is part of its agreement: its seed in cash, its machine work as vouchers.
+  const gmf = f.green_manure;
+  if (gmf) {
+    const nm = String(gmf.name || 'Green manure').replace(/^(Mulch, then )?green manure: /i, '').replace(/^./, (c) => c.toUpperCase());
+    if (gmf.cash) lines.push([`Green manure: ${nm}`, 'seed · cash', n(gmf.cash)]);
+    if (gmf.voucher_value) lines.push([`Green manure: ${nm}, machine work`, 'sowing and turning in · voucher', n(gmf.voucher_value)]);
+  }
+  // 20 Nov: a bio manure before the crop is part of its agreement: the manure in cash, its haulage a voucher.
+  const mn = f.manure;
+  if (mn) {
+    const what = mn.price_source === 'free' ? 'free, permit' : mn.cash ? `${mn.tonnes} t · ${inr(mn.price_inr_t)}/t` : 'your own';
+    lines.push([mn.name, `${what} · cash`, n(mn.cash + (mn.hand_work_cash || 0))]);
+    if (mn.voucher_value) lines.push([`${mn.name}, haulage`, 'trailer · voucher', n(mn.voucher_value)]);
+  }
   // 17 Nov: harvest labour lent in cash with the crop (older plans: hers, with transport).
   if (f.harvest_cost) lines.push(f.harvest_financed ? ['Harvest labour', `${ac.toFixed(2)} acres${per(f.harvest_cost)} · cash`, n(f.harvest_cost)]
     : ['Harvest work and transport', `${ac.toFixed(2)} acres${per(f.harvest_cost)} · paid by you`, n(f.harvest_cost)]);

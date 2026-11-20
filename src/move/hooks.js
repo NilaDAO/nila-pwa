@@ -15,13 +15,20 @@ export function useLegacyBalances(address) {
     queryKey: ['polygon', 'legacy', address],
     enabled: !!provider && !!address,
     staleTime: 60_000,
+    retry: 1,
+    // A failed read is not tried again when another screen starts reading it (19 Nov): that reset it to "loading" and
+    // the shell, which waits for it, swapped A1 for its loader every second. Try again and ↻ read it again.
+    retryOnMount: false,
     queryFn: async () => {
       const c = (a) => new ethers.Contract(a, ERC20, provider);
-      const [titles, nin, usdt] = await Promise.all([
+      // An unreachable Polygon RPC never fails a call (the provider retries its network check for good): after 20 s
+      // the read counts as failed, so the app says so instead of loading forever (SCF T2 row 26, 19 Nov).
+      const late = new Promise((_, rej) => setTimeout(() => rej(new Error('Polygon did not answer in 20 s')), 20_000));
+      const [titles, nin, usdt] = await Promise.race([Promise.all([
         c(process.env.REACT_APP_LAND_TITLE_MAIN).balanceOf(address),
         c(process.env.REACT_APP_NIN_MAIN).balanceOf(address),
         c(process.env.REACT_APP_USDT_MAIN).balanceOf(address),
-      ]);
+      ]), late]);
       return { titles: Number(titles), ninWei: nin, nin: Number(ethers.formatUnits(nin, 18)),
         usdt: Number(ethers.formatUnits(usdt, 6)) };
     },

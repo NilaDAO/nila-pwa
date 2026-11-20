@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { polygonProvider } from '../utils/polygonProvider';
 import { useQuery, useQueryClient }  from "@tanstack/react-query";
 import { ethers, toBeHex, zeroPadValue, getBytes, decodeBytes32String,ContractTransactionResponse } from "ethers";
 import { useTx } from "./useTx.ts";
@@ -748,7 +749,7 @@ export function useIsLeader(options: { address?: string; chain?: string | number
         console.error('🚨 No RPC URL configured');
         return undefined;
       }
-      return new ethers.JsonRpcProvider(rpcUrl);
+      return polygonProvider(rpcUrl);
     }, [rpcUrl]);
     const roles           = useContract(genericRolesAddress, isLeaderABI, provider)
     const fallbackAddress = options.address ?? db?.address;

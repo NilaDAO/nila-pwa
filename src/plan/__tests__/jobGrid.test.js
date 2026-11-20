@@ -25,3 +25,21 @@ test('the action is named from the job, never the voucher type', () => {
   expect(actionOf('ridging')).toBe('Ridge');
   expect(actionOf('mulching')).toBe('Mulching');
 });
+
+test('20 Nov: a green manure in its crop agreement is one grid for its areas, no Collect or Repay; a bio manure has its tiles', () => {
+  const { coverGrids, manureGrids } = require('../jobGrid');
+  const fin = { seed: 500, cash: 500, voucher_value: 0, interest: 10, due: '2027-09-01', machine_weeks: [], machines: {}, hand_work: {} };
+  const plan = { plan: { seasons: [{ slot: 'S2', rows: [] }, { slot: 'S3', rows: [] }], shares: [],
+    soil_cover: ['z1', 'z2', 'z3'].map((z) => ({ zone: z, kind: 'green_manure', cover: 'wild_indigo', sow: '2027-04-01', turn_in: '2027-05-31',
+      slots: ['S2'], colour: '#8FA36B', agreement: 'L:maize:2027-28K:z1+z2+z3', finance: fin })),
+    bio_manure: [{ zone: 'z1', slot: 'S3', type: 'cow', name: 'Cow manure', colour: '#6B5A3E', on: '2027-05-31', agreement: 'L:maize:2027-28K:z1+z2+z3',
+      finance: { manure: 0, voucher_value: 800, hand_work_cash: 0, machines: { trailer: { acres: 1 } } } }] } };
+  const g = coverGrids(plan);
+  expect(g).toHaveLength(1);
+  expect(g[0].zones).toEqual(['z1', 'z2', 'z3']);
+  expect(g[0].tiles.map((t) => t.key)).toEqual(['seed', 'turn_in']);
+  expect(g[0].tiles[0].value).toBe(1500);
+  const b = manureGrids(plan);
+  expect(b).toHaveLength(1);
+  expect(b[0].tiles.map((t) => [t.key, t.kind])).toEqual([['manure', 'self'], ['haul', 'voucher']]);
+});

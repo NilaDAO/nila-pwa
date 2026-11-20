@@ -195,6 +195,11 @@ export function useUnionMembers(api) {
  *  no mint list per plan), with each share's state on Stellar. Chain reads are kept on this phone and read again only
  *  for members whose row changed since the last read (their counter), in batches of 100; `fresh`: one member whose
  *  shares are always read again (her G2, so a share just drawn on her own phone does not still offer Take up). */
+// 20 Nov: crop agreements taken up on this phone: read again at the next refresh (their kept read said "not drawn"),
+// so the Cash map's "Taken up" counts them at once instead of after the node changes the member's row.
+const drawnHere = new Set();
+export const markDrawn = (token) => { if (token) drawnHere.add(String(token).toLowerCase().replace(/^0x/, '').padStart(64, '0')); };
+
 export function useUnionShares(api, { fresh } = {}) {
   const { data: cfg } = useStellarConfig();
   const members = useUnionMembers(api);
@@ -210,8 +215,9 @@ export function useUnionShares(api, { fresh } = {}) {
       const need = [];
       for (const m of list) {
         const again = m.key === fresh || kept.seqs[m.key] !== m.seq;
-        for (const x of m.shareList || []) if (again || !(x.token in kept.fts)) need.push(x.token);
+        for (const x of m.shareList || []) if (again || !(x.token in kept.fts) || drawnHere.has(String(x.token).toLowerCase())) need.push(x.token);
       }
+      drawnHere.clear();
       const read = need.length ? await readFoodTokens(cfg, cfg.union, need).catch(() => null) : {};
       const fts = { ...kept.fts };
       if (read) for (const t of need) fts[t] = read[t] || null;
@@ -256,7 +262,8 @@ export function useLoanDues(loans) {
     queryKey: ['stellar', 'loanDues', cfg?.union, tokens.join(',')], enabled: !!cfg?.contracts?.fund_core && tokens.length > 0,
     staleTime: 60_000,
     queryFn: async () => Object.fromEntries(await Promise.all(tokens.map(async (t) => [t,
-      Number(await readContract(cfg, 'fund_core', 'due_date', [sv.address(cfg.union), sv.bytes32(t)]).catch(() => 0) || 0)]))),
+      // null: the read failed (SCF T2 row 25; G2 says "Not loaded"); 0: no due date yet (no end of season reported).
+      await readContract(cfg, 'fund_core', 'due_date', [sv.address(cfg.union), sv.bytes32(t)]).then((v) => Number(v || 0)).catch(() => null)]))),
   });
 }
 

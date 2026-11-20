@@ -73,8 +73,9 @@ function chip({ text, sub, acc, soil }, on, faded, clickable) {
   // A soil cover's chip (21 Oct) has a dashed green border, so it never reads as a crop for sale.
   // 13 Nov: a size smaller (12/11 px, tighter padding), so the labels cover less of the land.
   Object.assign(el.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2px 8px', borderRadius: '10px',
-    background: on ? '#D4CF5A' : 'rgba(18,18,18,0.85)', color: on ? '#121212' : '#F1F5F9', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap',
-    border: on ? '0' : soil ? '1.5px dashed #7FB069' : '0', opacity: faded ? '0.3' : '1', cursor: clickable ? 'pointer' : 'default', transform: 'translateY(50%)' });
+    // 20 Nov: a faded area's chip stays opaque (at 0.3 it read as behind the fills), its text grey instead.
+    background: on ? '#D4CF5A' : 'rgba(18,18,18,0.85)', color: on ? '#121212' : faded ? '#94A3B8' : '#F1F5F9', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap',
+    border: on ? '0' : soil ? '1.5px dashed #7FB069' : '0', opacity: '1', cursor: clickable ? 'pointer' : 'default', transform: 'translateY(50%)' });
   const a = document.createElement('span');
   Object.assign(a.style, { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', lineHeight: '1.4', fontWeight: '700' });
   if (acc) {
@@ -96,21 +97,23 @@ export const ringsOf = (g) => (g?.type === 'Polygon' ? [g.coordinates[0]] : g?.t
 /** Stripes across a polygon (18 Nov: two crops on one area in a season, e.g. green manure then sugarcane): diagonal
  *  lines, cut to the polygon with its holes (even-odd), as [[lng, lat], [lng, lat]] segments. Google Maps fills no
  *  pattern, so the second crop's colour is drawn as these lines over the first crop's fill. */
-export function stripes(poly, n = 14) {
+export function stripes(poly, n = 14, dir = 1, every = 0) {
   const rings = (poly || []).filter((r) => r.length > 2);
   if (!rings.length) return [];
   const lat0 = rings[0][0][1] * Math.PI / 180;
   const k = Math.cos(lat0);   // lng degrees to the same scale as lat
   // Rotate 45°: u = x + y, v = y − x (x = lng·k, y = lat); stripes are lines of constant v.
-  const rot = ([lng, lat]) => { const x = lng * k; return [x + lat, lat - x]; };
-  const back = (u, v) => { const x = (u - v) / 2; const y = (u + v) / 2; return [x / k, y]; };
+  // dir −1 (19 Nov): the other diagonal, for a cross-hatch.
+  const rot = ([lng, lat]) => { const x = lng * k * dir; return [x + lat, lat - x]; };
+  const back = (u, v) => { const x = (u - v) / 2; const y = (u + v) / 2; return [x / k / dir, y]; };
   const rr = rings.map((r) => r.map(rot));
   const vs = rr.flat().map((q) => q[1]);
   const vMin = Math.min(...vs); const vMax = Math.max(...vs);
-  const step = (vMax - vMin) / n;
+  // every (19 Nov): a fixed spacing on one grid, so the parts of an area (and its neighbours) line up.
+  const step = every > 0 ? every : (vMax - vMin) / n;
   if (!(step > 0)) return [];
   const out = [];
-  for (let v = vMin + step / 2; v < vMax; v += step) {
+  for (let v = every > 0 ? Math.ceil(vMin / step) * step : vMin + step / 2; v < vMax; v += step) {
     const us = [];
     for (const r of rr) for (let i = 0, j = r.length - 1; i < r.length; j = i, i += 1) {
       const [ui, vi] = r[i]; const [uj, vj] = r[j];
@@ -119,6 +122,49 @@ export function stripes(poly, n = 14) {
     us.sort((a, b) => a - b);
     for (let i = 0; i + 1 < us.length; i += 2) out.push([back(us[i], v), back(us[i + 1], v)]);
   }
+  return out;
+}
+// A bio manure's lines (19 Nov): single, the other diagonal from a green manure's, about 8 m apart on one grid.
+export const MANURE_STEP = 0.0001;
+/** A ring moved `m` metres inward (20 Nov: a selected area's white line inside its own edge, so on a border shared
+ *  with a neighbour it shows which side is selected): each edge shifted inward, corners where the shifted edges meet;
+ *  a corner that would shoot far off (a sharp spike) is moved straight in instead. [[lng, lat]] in and out. */
+export function insetRing(ring, m = 1) {
+  const pts = (ring || []).slice();
+  if (pts.length > 1 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) pts.pop();
+  const n = pts.length;
+  if (n < 3) return ring || [];
+  const lat0 = pts[0][1] * Math.PI / 180;
+  const kx = 111320 * Math.cos(lat0); const ky = 110540;
+  const P = pts.map(([lng, lat]) => [lng * kx, lat * ky]);
+  let area = 0;
+  for (let i = 0; i < n; i += 1) { const [x1, y1] = P[i]; const [x2, y2] = P[(i + 1) % n]; area += x1 * y2 - x2 * y1; }
+  const sgn = area > 0 ? 1 : -1;   // counter-clockwise: the inside is to the left of each edge
+  const off = [];
+  for (let i = 0; i < n; i += 1) {
+    const [x1, y1] = P[i]; const [x2, y2] = P[(i + 1) % n];
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const nx = (-(y2 - y1) / len) * sgn * m; const ny = ((x2 - x1) / len) * sgn * m;
+    off.push([[x1 + nx, y1 + ny], [x2 + nx, y2 + ny], [nx, ny]]);
+  }
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    const [a1, a2, na] = off[(i - 1 + n) % n]; const [b1, b2, nb] = off[i];
+    const d1 = [a2[0] - a1[0], a2[1] - a1[1]]; const d2 = [b2[0] - b1[0], b2[1] - b1[1]];
+    const den = d1[0] * d2[1] - d1[1] * d2[0];
+    let q;
+    if (Math.abs(den) > 1e-9) {
+      const t = ((b1[0] - a1[0]) * d2[1] - (b1[1] - a1[1]) * d2[0]) / den;
+      q = [a1[0] + t * d1[0], a1[1] + t * d1[1]];
+    }
+    const [px, py] = P[i];
+    if (!q || Math.hypot(q[0] - px, q[1] - py) > 4 * m) {
+      const ax = (na[0] + nb[0]) / 2; const ay = (na[1] + nb[1]) / 2; const l = Math.hypot(ax, ay) || 1;
+      q = [px + (ax / l) * m, py + (ay / l) * m];
+    }
+    out.push([q[0] / kx, q[1] / ky]);
+  }
+  out.push(out[0]);
   return out;
 }
 export const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
@@ -187,9 +233,11 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
       const colour = lab.colour || '#ffffff';
       let sx = 0; let sy = 0; let k = 0;
       // Joined areas: one outline around the group, no line between its parts.
-      if (joined && !lab.hatch && !lab.dashed) {
+      // 20 Nov: a hatched group still to set too (its accent outline).
+      if (joined && !lab.dashed) {
         outlineOf(group.flatMap((y) => polysOf(y.geometry).flat())).forEach(([p, q]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: p[1], lng: p[0] }, { lat: q[1], lng: q[0] }],
-          clickable: false, zIndex: 2, strokeColor: sel ? '#ffffff' : colour, strokeOpacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), strokeWeight: sel ? 3 : 1.5 })));
+          clickable: false, zIndex: 2, strokeColor: sel ? '#ffffff' : lab.edge || (lab.hatch ? '#D4CF5A' : colour),
+          strokeOpacity: sel ? 1 : lab.hatch || lab.edge ? (faded ? FADE : 1) : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), strokeWeight: sel ? 3 : 1.5 })));
       }
       group.forEach((part) => polysOf(part.geometry).forEach((poly0) => {
         // Its holes as holes (14 Nov): an area inside it is not painted over.
@@ -200,11 +248,17 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
         // Still to be set (13 Nov, lab.hatch): Google Maps fills no pattern, so an accent outline (solid since 14 Nov) and a faint fill.
         // 14 Nov: its outline solid in the accent, no longer dashed.
         const poly = new g.Polygon({ map: m, paths, clickable: !!pick, fillColor: lab.hatch ? '#F1F5F9' : colour,
-          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? FADE : sel ? 0.5 : 1),
+          fillOpacity: (lab.hatch ? 0.1 : lab.outline ? 0.06 : (lab.colour ? (lab.solid ? 0.75 : lab.soil ? 0.3 : 0.55) : 0.15)) * (faded ? FADE : sel ? 0.5 : 1),
           // An area with nothing on it (12 Nov): its line as faint as its fill, not solid white.
-          strokeColor: sel ? '#ffffff' : lab.hatch ? '#D4CF5A' : colour,
-          strokeOpacity: sel ? (joined ? 0 : 1) : lab.hatch ? (faded ? FADE : 1) : lab.dashed || joined ? 0 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1),
-          strokeWeight: sel ? 3 : 1.5, zIndex: sel ? 3 : 1 });
+          // 20 Nov: a selected area keeps its own edge; its white line is drawn inside it (below).
+          // lab.edge (20 Nov): the area's line in that colour whatever its fill (an area with a cover set keeps its line).
+          strokeColor: sel && joined ? '#ffffff' : lab.edge || (lab.hatch ? '#D4CF5A' : colour),
+          strokeOpacity: joined && !lab.dashed ? 0 : sel ? 1 : lab.hatch || lab.edge ? (faded ? FADE : 1) : lab.dashed ? 0 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1),
+          strokeWeight: 1.5, zIndex: sel ? 3 : 1 });
+        if (sel && !joined) {
+          paths.slice(0, 1).forEach(() => drawn.current.push(new g.Polyline({ map: m, clickable: false, zIndex: 4, strokeColor: '#ffffff', strokeOpacity: 1, strokeWeight: 3,
+            path: insetRing(poly0[0]).map(([lng, lat]) => ({ lat, lng })) })));
+        }
         // lab.dashed (13 Nov, the members map): a property's outline as a dashed line.
         if (lab.dashed) {
           drawn.current.push(new g.Polyline({ map: m, path: [...path, path[0]], strokeOpacity: 0, clickable: false, zIndex: 2,
@@ -217,6 +271,11 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
         if (lab.stripe) {
           stripes(poly0).forEach(([a, b]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: a[1], lng: a[0] }, { lat: b[1], lng: b[0] }],
             clickable: false, zIndex: 2, strokeColor: lab.stripe, strokeOpacity: faded ? FADE : 0.9, strokeWeight: 3 })));
+        }
+        // lab.cross (19 Nov): a bio manure before the crop this season, single lines in its colour.
+        if (lab.cross) {
+          stripes(poly0, 0, -1, MANURE_STEP).forEach(([a, b]) => drawn.current.push(new g.Polyline({ map: m, path: [{ lat: a[1], lng: a[0] }, { lat: b[1], lng: b[0] }],
+            clickable: false, zIndex: 2, strokeColor: lab.cross, strokeOpacity: faded ? FADE : 0.9, strokeWeight: 2 })));
         }
       }));
       if (k && !lab.hide && !chipsOff && g.marker?.AdvancedMarkerElement) {   // hide: a shape with no chip (a member's further fields)
@@ -243,7 +302,10 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
     }
     // Which land, not only which report (13 Nov): a record without a report hash gave every land the same key, so the
     // map stayed on a member's land (G2) when the leader's crop plan opened.
-    const fitKey = `${record?.land_id ?? ''}:${record?.report_hash_bytes32 || record?.report_hash || ''}:${fitBottom || ''}:${selected || ''}:${(focus || []).join('+')}`;
+    // 20 Nov: the areas drawn are in the key too: the union maps (Members, Cash, Harvests) have no land id, so moving
+    // between those tabs drew new areas but never fitted the map to them.
+    const drawnIds = record?.land_id == null ? (record?.zones || []).map((z) => z.zone_id).join(',') : '';
+    const fitKey = `${record?.land_id ?? ''}:${record?.report_hash_bytes32 || record?.report_hash || ''}:${fitBottom || ''}:${selected || ''}:${(focus || []).join('+')}:${drawnIds}`;
     if (!target.isEmpty() && fitted.current !== fitKey) {
       fitted.current = fitKey;
       // Her areas sit in the part above the card (the card covers the lower part of the screen).
@@ -274,9 +336,13 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
     const areas = areasOf(record);
     const group = L.featureGroup().addTo(map);
     const focused = [];
+    // 20 Nov: joined areas as one shape, as on the Google map: no line between the parts, one outline around them.
+    const groupOf = (r) => areas.filter((y) => y.geometry && joinRoot(labels, y.zone_id) === r);
+    const outlined = new Set();
     areas.forEach((z, i) => {
       if (!z.geometry) return;
       const root = joinRoot(labels, z.zone_id);   // 14 Nov: an added area in its neighbour's style, no label of its own
+      const joined = groupOf(root).length > 1;
       const own = labels[z.zone_id] && !labels[z.zone_id].join ? labels[z.zone_id] : { text: z.name || `Area ${i + 1}` };
       if (own.gone) return;   // an area she left out of the plan (5 Nov): not drawn, not tappable
       let lab = root === z.zone_id ? own : { ...(labels[root] || {}), hide: true };
@@ -293,11 +359,30 @@ function LeafletAreaMap({ record, labels = {}, height = 220, selected = null, fo
       if (lab.hatch) hatchPattern();
       const layer = L.geoJSON(z.geometry, { style: lab.hatch
         ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1, fillColor: 'url(#nila-hatch)', fillOpacity: faded ? FADE : 1 }
-        : { color: sel ? '#ffffff' : colour, weight: sel ? 3 : 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel ? 1 : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
+        : { color: lab.edge || colour, weight: 1.5, ...(lab.dashed && !sel ? { dashArray: '6 4', weight: 2 } : {}), opacity: sel || lab.edge ? (faded ? FADE : 1) : (lab.colour ? 1 : 0.15) * (faded ? FADE : 1), fillColor: colour, fillOpacity: (lab.outline ? 0.06 : lab.colour ? (lab.solid ? 0.75 : lab.soil ? 0.3 : 0.55) : 0.15) * (faded ? FADE : sel ? 0.5 : 1) } });
+      // A joined group whatever its fill (a hatched one still to set too): its parts without their own line.
+      if (joined && !lab.dashed) layer.setStyle({ opacity: 0 });
       layer.addTo(group);
+      if (joined && !lab.dashed && !outlined.has(root)) {
+        outlined.add(root);
+        const line = sel ? { color: '#ffffff', weight: 3, opacity: 1 } : lab.edge ? { color: lab.edge, weight: 1.5, opacity: faded ? FADE : 1 }
+          : lab.hatch ? { color: '#F1F5F9', weight: 2, opacity: faded ? FADE : 1 }
+          : { color: colour, weight: 1.5, opacity: (lab.colour ? 1 : 0.15) * (faded ? FADE : 1) };
+        outlineOf(groupOf(root).flatMap((y) => polysOf(y.geometry).flat())).forEach(([p, q]) => L.polyline([[p[1], p[0]], [q[1], q[0]]],
+          { ...line, interactive: false }).addTo(group));
+      }
+      // 20 Nov: a selected area's white line inside its own edge (as on the Google map); a joined group's is its outline.
+      if (sel && !lab.hatch && !joined) polysOf(z.geometry).forEach((poly0) => L.polyline(insetRing(poly0[0]).map(([lng, lat]) => [lat, lng]),
+        { color: '#ffffff', weight: 3, opacity: 1, interactive: false }).addTo(group));
+      // 19 Nov: the lines go in the areas' group, not straight on the map: added to the map before it has a view, a
+      // line made Leaflet's renderer before the group's polygons drew, and they crashed ("reading 'min'").
       if (lab.stripe) {   // 18 Nov: as on the Google map, the second crop's colour as stripes
         polysOf(z.geometry).forEach((poly0) => stripes(poly0).forEach(([a, b]) => L.polyline([[a[1], a[0]], [b[1], b[0]]],
-          { color: lab.stripe, weight: 3, opacity: faded ? FADE : 0.9, interactive: false }).addTo(map)));
+          { color: lab.stripe, weight: 3, opacity: faded ? FADE : 0.9, interactive: false }).addTo(group)));
+      }
+      if (lab.cross) {    // 19 Nov: a bio manure, single lines in its colour
+        polysOf(z.geometry).forEach((poly0) => stripes(poly0, 0, -1, MANURE_STEP).forEach(([a, b]) => L.polyline([[a[1], a[0]], [b[1], b[0]]],
+          { color: lab.cross, weight: 2, opacity: faded ? FADE : 0.9, interactive: false }).addTo(group)));
       }
       if (focus?.length && !faded) focused.push(layer);
       if (onSelect) layer.on('click', () => onSelect(selected === tapTo ? null : tapTo));

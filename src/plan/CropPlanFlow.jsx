@@ -27,7 +27,8 @@ import { neighboursOf } from './neighbours';
 import { fieldsMap, useTitleFields } from './titleFields';
 import CropsStep from './CropsStep';
 import { EDIT_TEXT } from './editTexts';
-import { GREEN_MANURE, fill, rowOf, slotsOf, toChanges, whyNoRoom } from './yearRow';
+import Segmented from '../shell/Segmented';
+import { BIO_MANURES, GREEN_MANURE, cropOf, fill, isBio, pegBio, rowOf, slotsOf, toChanges, whyNoRoom } from './yearRow';
 import { ordered, rowAdvice } from './rowAdvice';
 import { presets } from './areaPresets';
 import { AreaCard, PlanChart, ProsCons, SEASON, SlideBar, sortedCrops, fmtKg, firstRecordYear, pastLabels, planYear, rowsInSeason, yearLabel, zonesOf } from './PlanResult';
@@ -178,6 +179,10 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
           hand > 0 && `${inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates).`,
           vouchers > 0 && `${inr(vouchers)} in vouchers.`,
           gm.length > 0 && 'Green manure is its own crop agreement, repaid with the next crop.',
+          (p.soil_cover || []).some((c) => c.agreement) && 'Green manure is part of the next crop\'s agreement.',
+          (p.bio_manure || []).length > 0 && 'Manure is part of the crop agreement it goes before.',
+          // 19 Nov: her own cows' manure, named (the acres a year it covers; not bought there, the haulage still a voucher).
+          p.own_manure?.used_acres > 0 && `Your ${p.own_manure.cows} cow${p.own_manure.cows === 1 ? '' : 's'} give manure for about ${p.own_manure.acres} acre${p.own_manure.acres === 1 ? '' : 's'} a year: that manure is not bought, only hauled.`,
         ];
       })()} />
       {!readOnly && <Conditions plan={plan} ticks={ticks} onTick={onTick} />}
@@ -416,6 +421,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // The plan's edit (17 Nov): the areas selected, the row's crops in order, a note under the row.
   const [editSel, setEditSel] = useState([]);
   const [rowKeys, setRowKeys] = useState([]);
+  const [peg, setPeg] = useState(null);
+  const [rowTab, setRowTab] = useState('crops');   // 20 Nov: the year row's chips: crops or manures   // 19 Nov: a manure chip tapped, waiting for the crop on the row it goes before
   const [rowNote, setRowNote] = useState();   // the areas selected on the map (17 Nov), each a joined area's root
   const [cashGiven, setCashGiven] = useState(null);   // CP7b's answer, sent with the leave-out step   // the area asked to remove (CP10 confirm)
   const [afterMake, setAfterMake] = useState('why');
@@ -502,6 +509,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     // An area with no crop that season but a pick for it.
     for (const z of Object.keys(pending)) if (!out[z] && pickedHere(z)) out[z] = { text: pickedHere(z).name, sub: 'changed', colour: pickedHere(z).colour };
     // A soil cover in this season (no bare soil in the dry months, 21 Oct), where no crop is on the area then.
+    const seenCover = new Set();
     for (const c of plan.plan.soil_cover || []) {
       if (!idx.some((k) => (c.slots || []).includes(ss[k].slot))) continue;
       // 18 Nov: a green manure before the crop on the same area in this season: both, in order ("Green manure → Sugarcane").
@@ -514,9 +522,18 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
         continue;
       }
       const short = c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/ \(.*\)$/, '');
+      // 20 Nov: the same green manure in one crop agreement over several areas: one label, as a merged crop.
+      const one = c.agreement && `${c.cover}|${c.agreement}`;
+      if (one && seenCover.has(one)) { out[c.zone] = { colour: c.colour, soil: true, hide: true, acc: checked.has(c.zone) }; continue; }
+      if (one) seenCover.add(one);
       out[c.zone] = { text: c.kind === 'bare' ? 'Bare soil' : short.charAt(0).toUpperCase() + short.slice(1),
         sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
+    }
+    // 19 Nov: a bio manure before the crop sown on the area in this season: both, in order ("Goat manure → Maize").
+    for (const b of plan.plan.bio_manure || []) {
+      if (!idx.some((k) => ss[k].slot === b.slot) || !out[b.zone] || out[b.zone].join) continue;
+      out[b.zone] = out[b.zone].hide ? { ...out[b.zone], cross: b.colour } : { ...out[b.zone], text: `${b.name} → ${out[b.zone].text}`, cross: b.colour };
     }
     // An area left out for what stands on it (13 Nov: trees, buildings, water…): named so on the map, in its colour.
     for (const [z, why] of Object.entries(plan.plan.left_out_reasons || {})) {
@@ -835,8 +852,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       const to = { ...mergeTo };
       for (const r of picked) if (r !== keep) to[r] = keep;
       setMergeTo(to);
-      // The joined area takes the answer of the largest part, if it had one; she sets it next.
-      setPicked([keep]);
+      // 20 Nov: joined, the selection clears (the card goes down while an area is still to set), so the joined area
+      // shows on the map as one; a tap on it selects it again.
+      settle(toSet.length);
     };
     const split = () => {
       const r = picked[0];
@@ -845,8 +863,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       setMergeTo(to);
       setPicked(groupOf(r));
     };
+    // 20 Nov: every area keeps its accent line here, also once a cover is set (its fill alone left it without one).
     const labels = Object.fromEntries(zoneOrder.map((z) => [z, rootOf(z) !== z ? { join: rootOf(z) }
-      : { ...(nowLabels[z] || { text: areaName(z) }), sel: picked.includes(z) }]));
+      : { ...(nowLabels[z] || { text: areaName(z) }), sel: picked.includes(z), edge: '#D4CF5A' }]));
     // The row's order: on a strip (a land cover set or preset) the land covers first, else her crops first.
     const covered = picked.length > 0 && picked.every((r) => COVERS.some((c) => c.key === growing[r]));
     const mine = cropList.filter((c) => crops.has(c.key));
@@ -896,8 +915,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   if (at === 'making') {
     return (
       // No farm name over the wait (26 Oct): the card's header says whose plan is made (a leader for a member: the name).
-      <Sheet map={map} title={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : 'Making your crop plan'} noSettings>
-        <Making label={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : undefined} jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
+      <Sheet map={map} title={forLand ? 'Making the crop plan' : 'Making your crop plan'} noSettings>
+        <Making label={forLand ? 'Making the crop plan' : undefined} jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
           onError={(e) => { setError(e); setStep('leaveout'); }} />
       </Sheet>
     );
@@ -980,18 +999,39 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
         if (!editSel.length && next.length) setRowKeys(rowOf(plan, z).keys);
         setEditSel(next); setRowNote(undefined);
       };
+      // 19 Nov: a manure is pinned to any crop already on the row: its chip, then that crop's bar.
+      const crops = bars.filter((b) => !b.bio && b.key !== GREEN_MANURE.key);
       const add = (key) => {
+        // 20 Nov: a green manure too is pinned to a crop on the row (its chip, then the crop's bar).
+        if ((isBio(key) || key === GREEN_MANURE.key) && crops.length) { setPeg(peg === key ? null : key); setRowNote(undefined); return; }
+        setPeg(null);
         const keys = [...rowKeys, key];
         if (fill(keys, { seasons: ss, cat: names, free0 }).dropped.includes(key)) {
-          setRowNote(`${(names[key] || GREEN_MANURE).name}: ${whyNoRoom(key, rowKeys, { seasons: ss, cat: names, free0 }).replace(/^./, (x) => x.toLowerCase())}.`); return;
+          setRowNote(`${cropOf(key, names).name}: ${whyNoRoom(key, rowKeys, { seasons: ss, cat: names, free0 }).replace(/^./, (x) => x.toLowerCase())}.`); return;
         }
         setRowKeys(keys); setRowNote(undefined);
       };
       // The bars are the kept keys in order (a key with no room never enters the row), so bar i is key i.
-      const dropAt = (i) => { setRowKeys(rowKeys.filter((_, k) => k !== i)); setRowNote(undefined); };
-      const stop = () => { setEditSel([]); setRowKeys([]); setRowNote(undefined); };
+      const dropAt = (i) => {
+        if (peg) {
+          if (!bars[i].bio && bars[i].key !== GREEN_MANURE.key) {
+            const next = pegBio(rowKeys, i, peg);
+            // No room for it before that crop (the field is busy up to its sowing): said, the row unchanged.
+            // Only the manure itself counts: a crop outside the crop list on the row is dropped by the row anyway.
+            if (fill(next, { seasons: ss, cat: names, free0 }).dropped.includes(peg)) {
+              setPeg(null); setRowNote(`${cropOf(peg, names).name}: no room before ${String(names[bars[i].key]?.name || bars[i].key).toLowerCase()}.`); return;
+            }
+            setRowKeys(next);
+          }
+          setPeg(null); setRowNote(undefined); return;
+        }
+        setRowKeys(rowKeys.filter((_, k) => k !== i)); setRowNote(undefined);
+      };
+      const stop = () => { setEditSel([]); setRowKeys([]); setRowNote(undefined); setPeg(null); };
       const update = async () => {
         setError(undefined);
+        // 19 Nov: a bio manure goes before a crop; without one after it there is nothing to send it with.
+        if (bars.some((b) => b.waiting)) { setRowNote('Add the crop the manure goes before.'); return; }
         const changes = Object.fromEntries(editSel.map((z) => [z, toChanges(fill(rowKeys, { seasons: ss, cat: names, free0: bases[z].free0 }).bars, ss, bases[z].locked)]));
         try {
           const res = await revise.mutateAsync({ planId: plan.id, note: '', changes });
@@ -1000,7 +1040,10 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       };
     if (editable && z0) {
       const mine = (plan.plan.intake?.crops || []).filter((k) => names[k]);
-      const list = [...mine.map((k) => names[k]), GREEN_MANURE, ...sortedCrops(catalogue.data?.crops || []).filter((c) => !mine.includes(c.key))];
+      // 19 Nov: the bio manures after the green manure; each goes before the next crop tapped.
+      // 20 Nov: crops and manures (green and bio) on two tabs of one row.
+      const cropsList = [...mine.map((k) => names[k]), ...sortedCrops(catalogue.data?.crops || []).filter((c) => !mine.includes(c.key))];
+      const list = rowTab === 'manures' ? [GREEN_MANURE, ...BIO_MANURES] : cropsList;
       // Advice by code (17 Nov): tags, faded and advised crops, one sentence; every crop can still be tapped.
       const advice = rowAdvice(list, rowKeys, { seasons: ss, cat: names, free0, wells: plan.plan.inputs?.wells, hardMonths: plan.plan.intake?.hard_months || [] });
       const shownList = ordered(list, advice);
@@ -1015,37 +1058,42 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           landName={name} onBack={stop}>
           {(
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: 0 }}>{editSel.length === 1 ? areaName(z0) : `${editSel.length} areas selected`}</h1>
+              {/* 20 Nov: no count for several areas (the map shows them selected); one area keeps its name. */}
+              {editSel.length === 1 && <h1 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', margin: 0 }}>{areaName(z0)}</h1>}
               {/* The year row: what stands now (fixed), then her crops; a tap on a crop's bar takes it out. */}
               <div>
                 <div style={{ position: 'relative', height: 40, background: C.raised, borderRadius: 8, overflow: 'hidden' }}>
                   {freeAt > 0 && <span title="Growing now" style={{ position: 'absolute', left: 0, width: `${(freeAt / 12) * 100}%`, top: 0, bottom: 0,
                     background: `repeating-linear-gradient(45deg, ${C.muted} 0 3px, transparent 3px 6px)`, opacity: 0.6 }} />}
                   {bars.map((b, i) => {
-                    const c = names[b.key] || GREEN_MANURE;
+                    const c = cropOf(b.key, names) || GREEN_MANURE;
                     const s0 = pos(b.sow); const s1 = Math.max(s0 + 0.3, pos(b.end));
+                    // A bio manure waiting for its crop is drawn faded (19 Nov).
                     return (
                       <button key={`${b.key}-${i}`} type="button" aria-label={`Take out ${c.name}`} onClick={() => dropAt(i)} style={{ position: 'absolute',
                         left: `${(s0 / 12) * 100}%`, width: `calc(${((s1 - s0) / 12) * 100}% - 2px)`, top: 0, bottom: 0, border: 0, borderRadius: 6, padding: '0 6px',
                         background: c.colour || C.muted, color: C.ink, fontFamily: FONT, fontSize: 12, fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap',
-                        textOverflow: 'ellipsis', cursor: 'pointer', textAlign: 'left' }}>{c.name}</button>
+                        textOverflow: 'ellipsis', cursor: 'pointer', textAlign: 'left', opacity: b.waiting ? 0.5 : 1 }}>{c.name}</button>
                     );
                   })}
                 </div>
                 <div style={{ display: 'flex', marginTop: 4 }}>{axis.map((m, i) => <span key={i} style={{ flex: 1, textAlign: 'center', fontSize: 11, color: C.muted }}>{m}</span>)}</div>
               </div>
               {advice.sentence && <p role="note" style={{ margin: 0, textAlign: 'center', fontSize: 14 }}>{advice.sentence}</p>}
-              <p style={{ ...muted, margin: 0, textAlign: 'center' }}>Tap a crop to add it to the row.</p>
+              <Segmented label="Crops or manures" value={rowTab} onChange={(v) => { setRowTab(v); setPeg(null); }} options={[['crops', 'Crops'], ['manures', 'Manures']]} />
+              <p style={{ ...muted, margin: 0, textAlign: 'center', color: peg ? C.accent : undefined }}>{peg ? 'Tap the crop on the row the manure goes before.'
+                : rowTab === 'manures' ? 'Tap a manure, then the crop on the row it goes before.' : 'Tap a crop to add it to the row.'}</p>
               <div role="group" aria-label="Crops" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
                 {shownList.map((c) => {
-                  const dim = advice.faded.has(c.key); const good = advice.front.has(c.key) && !dim;
+                  const pinnable = (isBio(c.key) || c.key === GREEN_MANURE.key) && crops.length;
+                  const dim = advice.faded.has(c.key) && !pinnable; const good = (advice.front.has(c.key) && !dim) || peg === c.key;
                   return (
                     <button key={c.key} type="button" disabled={saving} onClick={() => add(c.key)} style={{
                       flex: '0 0 92px', border: `2px solid ${good ? C.accent : C.raised}`, borderRadius: 12, background: C.raised, padding: 0, overflow: 'hidden',
                       display: 'flex', flexDirection: 'column', alignItems: 'stretch', color: C.text, fontFamily: FONT, cursor: 'pointer', opacity: dim ? 0.45 : 1 }}>
                       <span aria-hidden="true" style={{ height: 32, background: c.colour || C.muted }} />
                       <span style={{ fontSize: 12, fontWeight: 700, padding: '6px 4px 2px', lineHeight: 1.2, textAlign: 'center' }}>{c.name}</span>
-                      {(advice.tags[c.key] || []).map((t) => (
+                      {(pinnable ? [] : advice.tags[c.key] || []).map((t) => (
                         <span key={t.text} style={{ fontSize: 10, lineHeight: 1.2, padding: '0 4px 4px', textAlign: 'center', color: t.good ? C.accent : C.muted }}>{t.text}</span>
                       ))}
                     </button>
@@ -1073,7 +1121,9 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
       <Sheet map={editable && record ? <AreaMap record={record} labels={labels} onSelect={toggle} fitBottom={Math.round(window.innerHeight / 2) + 72}
         chip="Tap areas to change" /> : map}
         landName={name} bar={bar} resetKey={area || ''} onBack={back('why')}
-        tools={!area && chipsOn && <SeasonChips ss={ss} i={shown} onPick={setSeason} />}>
+        // 19 Nov: as on the approved plan, no chip is on at first (the whole plan; the map shows the first season); a
+        // chip tapped filters the chart and the table and shows its season on the map, tapped again it is off.
+        tools={!area && chipsOn && <SeasonChips ss={ss} i={shown} on={gridSeason} onPick={(k) => { setSeason(k); setGridSeason((g) => (g === k ? null : k)); }} />}>
         {area ? (
           <AreaCard plan={plan} zone={area} name={areaName(area)} record={record} area={areasOf(record).find((z) => z.zone_id === area)}
             accepted={checked.has(area)} total={zones.length} readOnly={readOnly} y0={y0}
@@ -1086,8 +1136,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
           <PlanView plan={plan} record={record} checked={checked} areaNo={areaNo} areaName={areaName} onAccept={toTerms} readOnly={readOnly} y0={y0} onArea={editable ? toggle : pickArea}
             crops={catalogue.data?.crops} changing={saving} pending={pending}
             ticks={ticks} onTick={(k) => setTicks((t) => { const n = new Set(t); if (n.has(k)) n.delete(k); else n.add(k); return n; })}
-            off={chipsOn ? seasonsOff(ss, shown, new Set([ss[shown].slot])) : undefined}
-            slots={chipsOn ? new Set([ss[shown].slot]) : undefined}
+            off={chipsOn && gridSeason != null ? seasonsOff(ss, shown, new Set([ss[shown].slot])) : undefined}
+            slots={chipsOn && gridSeason != null ? new Set([ss[shown].slot]) : undefined}
             />
         )}
         {error && <p style={{ color: C.coral }}>{error}</p>}

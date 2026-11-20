@@ -71,8 +71,10 @@ export function coverGrids(plan, { areaNo = (z) => z, areaName, shares = [] } = 
   const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
   const groups = new Map();
   for (const c of (p.soil_cover || []).filter((x) => x.finance && x.kind === 'green_manure' && x.sow)) {
-    const sh = (p.shares || []).find((x) => x.green_manure && (x.zones || [x.zone]).includes(c.zone) && x.from_date === c.sow && (!x.crop || x.crop === c.cover));
-    const k = sh?.key || `${c.zone}:gm:${c.cover}:${c.sow}`;
+    // 20 Nov: a green manure in its next crop's agreement (c.agreement): grouped by that agreement, no Collect or
+    // Repay of its own (the crop's carry it). An older plan: its own agreement (green_manure true).
+    const sh = c.agreement ? null : (p.shares || []).find((x) => x.green_manure === true && (x.zones || [x.zone]).includes(c.zone) && x.from_date === c.sow && (!x.crop || x.crop === c.cover));
+    const k = c.agreement ? `${c.agreement}:${c.cover}:${c.sow}` : sh?.key || `${c.zone}:gm:${c.cover}:${c.sow}`;
     if (!groups.has(k)) groups.set(k, { sh, covers: [] });
     groups.get(k).covers.push(c);
   }
@@ -114,11 +116,43 @@ export function coverGrids(plan, { areaNo = (z) => z, areaName, shares = [] } = 
     if (c0.turn_in && !turned) tiles.push({ key: 'turn_in', label: 'Turn in', kind: 'self', icon: 'plant', value: null, date: c0.turn_in });
     const owe = Math.round(sum((f) => (f.cash || 0) + (f.voucher_value || 0) + (f.interest || 0)));
     const due = c0.finance.due;
-    if (owe && due) tiles.push({ key: 'repay', label: 'Repay', kind: 'self', icon: 'repay', value: owe, date: due, afterHarvest: true });
+    if (owe && due && !c0.agreement) tiles.push({ key: 'repay', label: 'Repay', kind: 'self', icon: 'repay', value: owe, date: due, afterHarvest: true });
     const zones = covers.map((c) => c.zone);
     const area = typeof areaNo(c0.zone) === 'number' && areaName ? areaLabel({ zones }, areaNo, areaName) : '';
     const seasons = (p.seasons || []).map((s2, i) => (covers.some((c) => (c.slots || []).includes(s2.slot)) ? i : -1)).filter((i) => i >= 0);
     out.push({ key: `gm:${k}`, crop: 'Green manure', colour: c0.colour, area, zones, seasons, sow: c0.sow, until: sh?.final_date || null, tiles });
+  }
+  return out;
+}
+
+
+/** A bio manure's tiles (20 Nov): part of its crop's agreement (no Collect or Repay of its own): the manure (cash when
+ *  bought; hers when her own cows' or free lake sludge) and its haulage (a voucher, or hired cash), on its spreading
+ *  day. Areas of one agreement with the same manure on the same day are one grid. Same shape as gridsOf's grids. */
+export function manureGrids(plan, { areaNo = (z) => z, areaName } = {}) {
+  const p = plan.plan || plan;
+  const groups = new Map();
+  for (const b of (p.bio_manure || []).filter((x) => x.on)) {
+    const k = `${b.agreement || b.zone}:${b.type}:${b.on}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(b);
+  }
+  const out = [];
+  for (const [k, items] of groups) {
+    const b0 = items[0];
+    const sum = (f) => items.reduce((a, b) => a + (f(b.finance || {}) || 0), 0);
+    const tiles = [];
+    const bought = sum((f) => f.manure);
+    tiles.push({ key: 'manure', label: 'Manure', kind: bought ? 'cash' : 'self', icon: 'inputs', value: bought || null, date: b0.on });
+    const haul = sum((f) => f.voucher_value);
+    if (haul) tiles.push({ key: 'haul', label: 'Haul', kind: 'voucher', icon: 'transport', value: haul, date: b0.on,
+      acres: items.reduce((a, b) => a + Object.values(b.finance?.machines || {}).reduce((x, m) => x + (m.acres || 0), 0), 0) });
+    const hired = sum((f) => f.hand_work_cash);
+    if (hired) tiles.push({ key: 'haul_hired', label: 'Haul', kind: 'cash', icon: 'transport', value: hired, date: b0.on });
+    const zones = items.map((b) => b.zone);
+    const area = typeof areaNo(b0.zone) === 'number' && areaName ? areaLabel({ zones }, areaNo, areaName) : '';
+    const seasons = (p.seasons || []).map((s2, i) => (items.some((b) => b.slot === s2.slot) ? i : -1)).filter((i) => i >= 0);
+    out.push({ key: `bio:${k}`, crop: b0.name, colour: b0.colour, area, zones, seasons, sow: b0.on, until: null, tiles });
   }
   return out;
 }

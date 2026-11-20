@@ -34,12 +34,14 @@ export function useAccount(address, smart) {
       if (smart && smart !== address) {
         const deployed = await isDeployed(cfg, smart);
         const [bal, auth, union] = deployed ? await Promise.all([
-          readContract(cfg, 'nin', 'balance', [sv.address(smart)]).catch(() => 0),
+          // A failed balance read is unknown, not 0 (SCF T2 row 25): balanceFailed, balance null.
+          readContract(cfg, 'nin', 'balance', [sv.address(smart)]).catch(() => null),
           readContract(cfg, 'nin', 'authorized', [sv.address(smart)]).catch(() => false),
           // The union her account named (member-owned accounts, 3 Nov); null until she names one. undefined: not read.
           readAccountUnion(cfg, smart).catch(() => undefined)]) : [0, false, null];
         return { exists: true, deployed, union, sponsor: a.sponsor || null,
-          nin: { balance: Number(BigInt(bal ?? 0)) / 10 ** NIN_DECIMALS, authorized: !!auth }, decimals: NIN_DECIMALS };
+          nin: { balance: deployed && bal === null ? null : Number(BigInt(bal ?? 0)) / 10 ** NIN_DECIMALS,
+            balanceFailed: deployed && bal === null, authorized: !!auth }, decimals: NIN_DECIMALS };
       }
       const [code, issuer] = cfg.nin_asset.split(':');
       const nin = a.balances.find((b) => b.asset_code === code && b.asset_issuer === issuer);

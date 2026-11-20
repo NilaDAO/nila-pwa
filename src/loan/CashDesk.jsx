@@ -108,7 +108,8 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
       }
       const members = typed ? [typed] : union.data.filter((m) => m.address && m.loans.length).map((m) => m.address);
       const per = await Promise.all(members.map(async (who) => {
-        const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(who)]).catch(() => []);
+        // A failed read fails the list (its "Could not read the loans" line), never "No open loans" (SCF T2 row 25).
+        const ids = await readContract(cfg, 'fund_core', 'loans_of', [sv.address(cfg.union), sv.address(who)]);
         return Promise.all((ids || []).map(async (id) => {
           const h = Buffer.from(id).toString('hex');
           const [loan, vb] = await Promise.all([

@@ -3,7 +3,7 @@
 // still be tapped. The rotation facts come from nila-sensing plan/reference/rules_v1.json (a placeholder until TNAU
 // and the unions confirm it): a pulse before maize, paddy or sorghum is good; a crop after one of its own family
 // tires the soil. Dry months from soil_v1 (Mar–May).
-import { GREEN_MANURE, fill, whyNoRoom } from './yearRow';
+import { GREEN_MANURE, cropOf, fill, isBio, whyNoRoom } from './yearRow';
 
 export const DRY_MONTHS = [3, 4, 5];
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -12,8 +12,9 @@ const lower = (s) => String(s || '').toLowerCase();
 /** { tags: { key: [{ text, good }] }, faded: Set, front: Set, sentence } for the crops `list` after the row `keys`.
  *  wells: false = confirmed no well (a high-water crop is faded); hardMonths: her months (1–12) needing money. */
 export function rowAdvice(list, keys, { seasons, cat, free0 = null, wells, hardMonths = [] }) {
-  const { bars } = fill(keys, { seasons, cat, free0 });
-  const crop = (k) => (k === GREEN_MANURE.key ? GREEN_MANURE : cat[k]);
+  // A bio manure (19 Nov) is not a crop on the row: the rotation advice looks past it.
+  const bars = fill(keys, { seasons, cat, free0 }).bars.filter((b) => !b.bio);
+  const crop = (k) => cropOf(k, cat);
   const last = bars.length ? crop(bars[bars.length - 1].key) : null;
   const lastKey = bars.length ? bars[bars.length - 1].key : null;
   const pulseOnRow = bars.some((b) => crop(b.key)?.legume);
@@ -24,6 +25,7 @@ export function rowAdvice(list, keys, { seasons, cat, free0 = null, wells, hardM
     const next = fill([...keys, k], { seasons, cat, free0 });
     if (next.dropped.includes(k)) { tag(k, whyNoRoom(k, keys, { seasons, cat, free0 }), false); faded.add(k); continue; }
     const bar = next.bars[next.bars.length - 1];
+    if (isBio(k)) continue;
     if (k === GREEN_MANURE.key) {
       if (DRY_MONTHS.includes(bar.sow.getMonth() + 1)) { tag(k, 'Covers the dry months', true); front.add(k); }
       continue;

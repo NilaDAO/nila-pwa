@@ -48,6 +48,8 @@ export default function HelpQr({ note, onBack, withPolygon = false } = {}) {
     return () => { lock?.release().catch(() => {}); };
   }, []);
   const over = qr && now > qr.until;
+  // 20 Nov: a new QR as soon as this one runs out (it was a tap on the circle), so the leader never scans a stale one.
+  useEffect(() => { if (over && !error) make(); }, [over]); // eslint-disable-line react-hooks/exhaustive-deps
   // The map-view standard (26 Oct): a full-height map card with its drag line, the title and settings in its header.
   // Laid out as the account QR (31 Oct): the QR in its card with the address and Copy, a warning card, the note at the
   // bottom.
