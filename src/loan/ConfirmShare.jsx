@@ -27,9 +27,10 @@ export default function ConfirmShare({ cash, hours, name, area, own, forMember, 
         {hours > 0 && kv('Machine vouchers', `${ta(hours)} tractor acres`)}
         {kv('For', `${name} · ${area}`)}
         {kv('Repay', '3 weeks after harvest')}
+        {/* 20 Nov: the buttons in the card, as on the take-up screen (they stood on the sheet below it). */}
+        <Primary disabled={!ready} onClick={onConfirm}>{more ? (forMember ? 'The member accepts the machine work' : 'Accept the vouchers') : forMember ? 'Handed over the cash' : hours > 0 ? 'I received the cash · accept the vouchers' : 'I received the cash'}</Primary>
+        <button type="button" onClick={onCancel} style={second}>Cancel</button>
       </Card>
-      <Primary disabled={!ready} onClick={onConfirm}>{more ? (forMember ? 'The member accepts the machine work' : 'Accept the vouchers') : forMember ? 'Handed over the cash' : hours > 0 ? 'I received the cash · accept the vouchers' : 'I received the cash'}</Primary>
-      <button type="button" onClick={onCancel} style={second}>Cancel</button>
       {/* 20 Nov: the reminder in the info panel above the bottom bar, as the take-up's notes. */}
       {!more && <InfoFooter text={own ? 'Only confirm when you take the cash from the union cash box.' : forMember ? 'Only confirm when the member has the cash in hand.' : 'Only confirm when you have the cash in your hand.'} />}
     </MapCard>
