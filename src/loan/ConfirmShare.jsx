@@ -6,6 +6,7 @@ import { C, FONT } from '../shell/tokens';
 import { Card } from './AssetParts';
 import { ta } from '../machine/hooks';
 import MapCard from '../shell/MapCard';
+import { InfoFooter } from '../plan/ActivePlan';
 
 const kv = (k, v) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
@@ -27,12 +28,10 @@ export default function ConfirmShare({ cash, hours, name, area, own, forMember, 
         {kv('For', `${name} · ${area}`)}
         {kv('Repay', '3 weeks after harvest')}
       </Card>
-      {!more && <Card label="Before you confirm" style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01" /></svg>
-        <span style={{ fontSize: 14, lineHeight: 1.5 }}>{own ? 'Only confirm when you take the cash from the union cash box.' : forMember ? 'Only confirm when the member has the cash in hand.' : 'Only confirm when you have the cash in your hand.'}</span>
-      </Card>}
       <Primary disabled={!ready} onClick={onConfirm}>{more ? (forMember ? 'The member accepts the machine work' : 'Accept the vouchers') : forMember ? 'Hand out cash' : hours > 0 ? 'I received the cash · accept the vouchers' : 'I received the cash'}</Primary>
       <button type="button" onClick={onCancel} style={second}>Cancel</button>
+      {/* 20 Nov: the reminder in the info panel above the bottom bar, as the take-up's notes. */}
+      {!more && <InfoFooter text={own ? 'Only confirm when you take the cash from the union cash box.' : forMember ? 'Only confirm when the member has the cash in hand.' : 'Only confirm when you have the cash in your hand.'} />}
     </MapCard>
   );
 }
