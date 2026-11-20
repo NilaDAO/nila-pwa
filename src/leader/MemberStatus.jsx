@@ -237,7 +237,7 @@ export default function MemberStatus({ id, go }) {
     const p = m.plan?.plan || {};
     const same = (a, b) => a.length === b.length && a.every((z) => b.includes(z));
     const sh = (p.shares || []).find((s) => s.crop === x.crop_key && same(s.zones || [s.zone], x.zones));
-    const rows = !sh ? [] : sh.green_manure
+    const rows = !sh ? [] : sh.green_manure === true
       ? (p.soil_cover || []).filter((c) => c.finance && c.sow === sh.from_date && (sh.zones || [sh.zone]).includes(c.zone))
       : (p.seasons || []).flatMap((se) => se.rows).filter((r) => r.crop === sh.crop && r.sow === sh.from_date && (r.zones || [r.zone]).some((z) => (sh.zones || [sh.zone]).includes(z)));
     const cash = x.cash ?? sh?.loan_amount;
