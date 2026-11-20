@@ -83,3 +83,29 @@ export function hatch(geometry, spacingM = 4) {
   });
   return out;
 }
+
+
+/** The shortest distance in metres between two shapes (20 Nov: a neighbour plot is offered only to the fields that
+ *  touch it): 0 when they overlap; else the nearest corner of one to an edge of the other. */
+export function gapM(a, b) {
+  const pa = rings(a); const pb = rings(b);
+  if (!pa.length || !pb.length) return Infinity;
+  const lat0 = ((box(a)[1] + box(a)[3]) / 2) * (Math.PI / 180);
+  const kx = 111320 * Math.cos(lat0); const ky = 110540;
+  const xy = ([lng, lat]) => [lng * kx, lat * ky];
+  const pts = (p) => p.flatMap(([outer]) => (outer || []).map(xy));
+  const segs = (p) => p.flatMap((poly) => poly.flatMap((ring) => ring.slice(1).map((q, i) => [xy(ring[i]), xy(q)])));
+  const toSeg = ([px, py], [[x1, y1], [x2, y2]]) => {
+    const dx = x2 - x1; const dy = y2 - y1; const l = dx * dx + dy * dy;
+    const t = l ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / l)) : 0;
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  };
+  // A corner of one inside the other: they overlap.
+  if (pa.some(([outer]) => (outer || []).some(([x, y]) => inGeom(x, y, b)))
+    || pb.some(([outer]) => (outer || []).some(([x, y]) => inGeom(x, y, a)))) return 0;
+  let d = Infinity;
+  const sa = segs(pa); const sb = segs(pb);
+  for (const p of pts(pa)) for (const s of sb) d = Math.min(d, toSeg(p, s));
+  for (const p of pts(pb)) for (const s of sa) d = Math.min(d, toSeg(p, s));
+  return d;
+}

@@ -19,7 +19,7 @@ import { TrashIcon } from '../shell/icons';
 import { ConfirmCard } from '../shell/SettingsParts';
 import { usePlanClient } from '../plan/hooks';
 import { useUnionMembers } from '../leader/unionMembers';
-import { googlePaths, overlaps } from './overlap';
+import { gapM, googlePaths, overlaps } from './overlap';
 
 const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
 // The farm name, else a keypad member's name (O17: she has no wallet yet), else her Polygon address as the union knows her.
@@ -143,13 +143,20 @@ function Fetch({ job, onBack, onAdd }) {
   );
 }
 
+// A plot this close to an accepted field may be added to it (20 Nov): a bund or a path between them.
+const ADJACENT_M = 10;
+
 /** A neighbour plot the runs found (28 Oct, DESIGN GAP: no board): add it to an accepted field, make it a field of
  *  its own, or leave it out. Shown in the card while a plot on the map is picked. */
 function PlotChoice({ job, plot, onClose }) {
   const { addPlot, newField } = useBorderDecision(job.id);
   const busy = addPlot.isPending || newField.isPending;
   const err = addPlot.error || newField.error;
-  const accepted = job.fields.filter((f) => f.state === 'accepted');
+  // 20 Nov: only the accepted fields that touch the plot (a bund or path apart at most), nearest first.
+  const accepted = job.fields.filter((f) => f.state === 'accepted')
+    .map((f) => ({ f, d: gapM(plot.geometry, shapeFor(f, job.plan)?.geometry || f.accepted_shape?.geometry) }))
+    .filter((x) => x.d <= ADJACENT_M).sort((x, y) => x.d - y.d).map((x) => x.f);
+  const anyAccepted = job.fields.some((f) => f.state === 'accepted');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <Head title={`Plot next to the fields · ${acres(plot.acres)}`} sub="Part of this land? Add it to a field or make it a field of its own." />
@@ -157,7 +164,7 @@ function PlotChoice({ job, plot, onClose }) {
         <button key={f.n} type="button" disabled={busy} style={{ ...btn(false), flex: 'none' }}
           onClick={() => addPlot.mutate({ field: f.n, plot: plot.id }, { onSuccess: onClose })}>Add to {fieldName(f)}</button>
       ))}
-      {!accepted.length && <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>Accept a field first to add this plot to it.</p>}
+      {!anyAccepted && <p role="note" style={{ margin: 0, fontSize: 14, color: C.muted }}>Accept a field first to add this plot to it.</p>}
       <button type="button" disabled={busy} style={{ ...btn(true), flex: 'none' }}
         onClick={() => newField.mutate({ plot: plot.id }, { onSuccess: onClose })}>{newField.isPending ? 'Adding…' : 'Make it a new field'}</button>
       <button type="button" disabled={busy} style={{ ...btn(false), flex: 'none', background: 'transparent' }} onClick={onClose}>Leave it out</button>
