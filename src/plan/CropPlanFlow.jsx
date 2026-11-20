@@ -178,6 +178,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
           hand > 0 && `${inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates).`,
           vouchers > 0 && `${inr(vouchers)} in vouchers.`,
           gm.length > 0 && 'Green manure is its own crop agreement, repaid with the next crop.',
+          (p.soil_cover || []).some((c) => c.agreement) && 'Green manure is part of the next crop\'s agreement.',
           (p.bio_manure || []).length > 0 && 'Manure is part of the crop agreement it goes before.',
           // 19 Nov: her own cows' manure, named (the acres a year it covers; not bought there, the haulage still a voucher).
           p.own_manure?.used_acres > 0 && `Your ${p.own_manure.cows} cow${p.own_manure.cows === 1 ? '' : 's'} give manure for about ${p.own_manure.acres} acre${p.own_manure.acres === 1 ? '' : 's'} a year: that manure is not bought, only hauled.`,

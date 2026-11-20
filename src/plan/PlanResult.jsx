@@ -298,6 +298,13 @@ export function CostList({ r, k = 1 }) {
     ...Object.values(f.machines || {}).map((m) => [m.for.replace(/^./, (c) => c.toUpperCase()), `${(m.acres * k).toFixed(2)} acres${m.acres ? ` · ${inr(Math.round(m.value / m.acres))}/acre` : ''} · voucher`, n(m.value)]),
     ...Object.values(f.hand_work || {}).map((m) => [`${m.for.replace(/^./, (c) => c.toUpperCase())}, hired`, `${(m.acres * k).toFixed(2)} acres · ${inr(m.rate_inr_acre)}/acre · no union machine`, n(m.value)]),
   ].filter(Boolean);
+  // 20 Nov: a green manure before the crop is part of its agreement: its seed in cash, its machine work as vouchers.
+  const gmf = f.green_manure;
+  if (gmf) {
+    const nm = String(gmf.name || 'Green manure').replace(/^(Mulch, then )?green manure: /i, '').replace(/^./, (c) => c.toUpperCase());
+    if (gmf.cash) lines.push([`Green manure: ${nm}`, 'seed · cash', n(gmf.cash)]);
+    if (gmf.voucher_value) lines.push([`Green manure: ${nm}, machine work`, 'sowing and turning in · voucher', n(gmf.voucher_value)]);
+  }
   // 20 Nov: a bio manure before the crop is part of its agreement: the manure in cash, its haulage a voucher.
   const mn = f.manure;
   if (mn) {

@@ -143,7 +143,8 @@ export function LeaderLoan({ initial }) {
     setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0));
     const f = planRow(plan, x.share)?.finance || {};
     // 20 Nov: a bio manure before the crop is part of its agreement: its haulage joins the crop's own machine work.
-    const ms = [...Object.values(f.machines || {}), ...Object.values(f.manure?.machines || {})].filter((m) => m.type && (m.acres ?? 0) > 0);
+    const ms = [...Object.values(f.machines || {}), ...Object.values(f.manure?.machines || {}), ...Object.values(f.green_manure?.machines || {})]
+      .filter((m) => m.type && (m.acres ?? 0) > 0);
     const acres = {};
     for (const m of ms) acres[m.type] = (acres[m.type] || 0) + m.acres;
     setMach(Object.fromEntries(Object.entries(acres).map(([t, a]) => [t, Math.round(a * 10) / 10])));
@@ -333,6 +334,11 @@ export function LeaderLoan({ initial }) {
               const mn = row.finance.manure;
               const what = mn.price_source === 'free' ? 'free' : mn.cash ? `${inr(mn.cash)} in the cash` : 'your own';
               return <KV k={mn.name} v={`${what}${mn.voucher_value ? ` · haulage ${inr(mn.voucher_value)} voucher` : ''}`} />;
+            })()}
+            {/* 20 Nov: a green manure before the crop, likewise (its seed in the cash, its machine work in the vouchers). */}
+            {checks.data && !more && row?.finance?.green_manure && (() => {
+              const g = row.finance.green_manure;
+              return <KV k="Green manure" v={`${inr(g.cash)} seed in the cash${g.voucher_value ? ` · ${inr(g.voucher_value)} vouchers` : ''}`} />;
             })()}
             {checks.data && types.map((t) => {
               const h = mach[t] || 0;
