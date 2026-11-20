@@ -302,7 +302,10 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
     }
     // Which land, not only which report (13 Nov): a record without a report hash gave every land the same key, so the
     // map stayed on a member's land (G2) when the leader's crop plan opened.
-    const fitKey = `${record?.land_id ?? ''}:${record?.report_hash_bytes32 || record?.report_hash || ''}:${fitBottom || ''}:${selected || ''}:${(focus || []).join('+')}`;
+    // 20 Nov: the areas drawn are in the key too: the union maps (Members, Cash, Harvests) have no land id, so moving
+    // between those tabs drew new areas but never fitted the map to them.
+    const drawnIds = record?.land_id == null ? (record?.zones || []).map((z) => z.zone_id).join(',') : '';
+    const fitKey = `${record?.land_id ?? ''}:${record?.report_hash_bytes32 || record?.report_hash || ''}:${fitBottom || ''}:${selected || ''}:${(focus || []).join('+')}:${drawnIds}`;
     if (!target.isEmpty() && fitted.current !== fitKey) {
       fitted.current = fitKey;
       // Her areas sit in the part above the card (the card covers the lower part of the screen).
