@@ -206,6 +206,15 @@ export function LeaderLoan({ initial }) {
   const order0 = Object.keys(plan?.plan?.proposal || {}).sort();
   const mapLabels = Object.fromEntries(zones.map((z) => [z, { text: plan?.plan?.area_names?.[z] || `Area ${order0.indexOf(z) + 1}`,
     colour, edge: C.accent, solid: true }]));
+  // 20 Nov: which of its areas get a manure before the crop: the manure's lines and its name under the area's.
+  for (const b of plan?.plan?.bio_manure || []) {
+    if (sel && b.agreement === sel.share.key && mapLabels[b.zone]) mapLabels[b.zone] = { ...mapLabels[b.zone], sub: b.name, cross: b.colour };
+  }
+  for (const c of plan?.plan?.soil_cover || []) {
+    if (sel && c.agreement === sel.share.key && mapLabels[c.zone] && !mapLabels[c.zone].sub) {
+      mapLabels[c.zone] = { ...mapLabels[c.zone], sub: 'Green manure', stripe: c.colour };
+    }
+  }
   // 18 Nov: an area the plan joined to another (plan.merged, e.g. D · 3 into D · 4) is drawn as part of it, as on the plan.
   for (const [z, to] of Object.entries(plan?.plan?.merged || {})) if (!zones.includes(z)) mapLabels[z] = { join: to };
   const rec = planRecord.data?.record || holder?.record;
