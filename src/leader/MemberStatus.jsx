@@ -29,7 +29,7 @@ import { rowsInSeason } from '../plan/PlanResult';
 import { SEASON, areaNames } from '../loan/MyShares';
 import { SkeletonRows } from '../shell/Skeleton';
 import { inr } from '../plan/ui';
-import { markJoined, useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
+import { joinedHere, markJoined, useLoanDues, useUnionMembers, useUnionShares } from './unionMembers';
 import { useNilaSigner } from '../wallet/signer';
 import { keypadClient } from '../keypad/api';
 import { shareOfToken } from '../machine/hooks';
@@ -269,6 +269,7 @@ export default function MemberStatus({ id, go }) {
       // No land (13 Nov: e.g. her title removed): the union's land, as the crop plan's no-title map.
       : <AreaMap record={null} center={unionCentre(members.data)} />;
   const myLands = new Set([m.titleId, ...(m.lands || [])].filter((x) => x != null).map(String));
+  const titled = myLands.size > 0;   // 20 Nov: a land title in the union (investing needs one)
   const waiting = (pendingPlans.data?.plans || []).find((p) => myLands.has(String(p.land_id)));
   const planBtn = <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`memberplan/${m.route}`)}>View the crop plan</button>;
   // Invested (13 Nov): above Join the union before the member has joined (the amount only; actions after joining).
@@ -276,7 +277,15 @@ export default function MemberStatus({ id, go }) {
         <Section title="Invested" right={invested == null ? '…' : `${Math.round(invested).toLocaleString('en-IN')} nIN`}>
           {/* Her actions start here only (executive decision 22 Oct: Members → G2 → action; the Cash tab is the union's money).
               Nothing invested: Invest only; else Invest more and Withdraw. Invest opens the count choice. */}
-          {m.joined === false ? null : !act ? (
+          {/* 20 Nov: only a land title holder may invest (fund_core.deposit_junior, holds_title; "junior = holds a title"):
+              without one, no Invest button but what to do first (the contract refused it with error #7). */}
+          {m.joined === false ? null : !act && !titled ? (
+            <>
+              <span style={{ color: C.muted, fontSize: 14 }}>Mint a land title first to invest.</span>
+              {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
+                onClick={withdrawing ? withQr('Pay out the withdrawal', payOut) : withQr('Withdraw', () => setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
+            </>
+          ) : !act ? (
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" style={btn()} onClick={() => { setAct('invest'); setNoPhotos(false); }}>{invested > 0 ? 'Invest more' : 'Invest'}</button>
               {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
@@ -325,7 +334,12 @@ export default function MemberStatus({ id, go }) {
             a new member's account is paired with the holding address her title was minted to (holder: her placeholder). */}
         {m.joined === false && !(m.keypadId && /^G/.test(m.address || '')) && (
           <JoinSteps m={m} holder={holder}
-            onScan={() => setScanning({ what: 'Join the union', holder, then: () => { if (!holder) markJoined(m.address); refetchMembers(); } })} />
+            onScan={() => setScanning({ what: 'Join the union', holder, then: () => { markJoined(m.address); refetchMembers(); } })} />
+        )}
+        {/* 20 Nov: joined from her placeholder (sign later): until her account holds the title (seconds; at most the
+            attester's 10-minute round), this row says so instead of the Join card or "Pending". */}
+        {/^G[A-Z2-7]{55}$/.test(m.address || '') && !m.keypadId && joinedHere(m.address) && (
+          <Row k="Status" v="Setting up the account" />
         )}
         {/* A title whose field record is still being built (15 Nov): the crop plan's waiting view (CP1), not a status row. */}
         {!m.record && !pendingJob && !m.note && (m.titleId || m.lands?.length) ? (<>

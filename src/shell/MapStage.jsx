@@ -27,7 +27,7 @@ const LOGO = `${process.env.PUBLIC_URL || ''}/images/reg-logo.png`;
 
 /** The leader's tab filter (23 Oct): a chip naming it and its count, on the map at any card position. */
 const Chip = ({ text }) => (
-  <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 72px)', left: '50%', transform: 'translateX(-50%)', zIndex: 2,
+  <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 16px)', left: '50%', transform: 'translateX(-50%)', zIndex: 2,
     pointerEvents: 'none', background: 'rgba(18,18,18,0.85)', color: '#F1F5F9', borderRadius: 9999, padding: '4px 12px',
     fontFamily: 'Inter, system-ui, sans-serif', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap' }}>{text}</div>
 );

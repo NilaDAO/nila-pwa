@@ -32,3 +32,19 @@ test('a fixed spacing lines up across two parts of an area (19 Nov: bio manure l
   expect(l.length).toBeGreaterThan(0);
   expect(l).toEqual(r);
 });
+
+test('a selected area\'s line is inside it (20 Nov): every corner of the inset ring is inside the square', () => {
+  const { insetRing } = require('../AreaMap');
+  const ring = [[78, 11], [78.001, 11], [78.001, 11.001], [78, 11.001], [78, 11]];
+  for (const r of [ring, [...ring].reverse()]) {
+    const out = insetRing(r, 3);
+    expect(out.length).toBe(5);
+    for (const [x, y] of out.slice(0, 4)) {
+      expect(x).toBeGreaterThan(78); expect(x).toBeLessThan(78.001);
+      expect(y).toBeGreaterThan(11); expect(y).toBeLessThan(11.001);
+    }
+    // about 3 m in (0.000027° of latitude)
+    expect(Math.min(...out.map(([, y]) => y)) - 11).toBeGreaterThan(0.00002);
+    expect(Math.min(...out.map(([, y]) => y)) - 11).toBeLessThan(0.00004);
+  }
+});
