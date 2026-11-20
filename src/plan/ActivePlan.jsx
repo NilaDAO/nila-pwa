@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import { C, FONT } from '../shell/tokens';
 import { inr } from './ui';
 import { areaLabel } from './PlanResult';
-import { gridsOf, coverGrids } from './jobGrid';
+import { gridsOf, coverGrids, manureGrids } from './jobGrid';
 import Segmented from '../shell/Segmented';
 
 const month = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short' }).replace('Sept', 'Sep');
@@ -118,7 +118,9 @@ export function planMonths(plan, { areaNo, areaName, shares, filter } = {}) {
   const ss = (plan.plan || plan).seasons || [];
   // 17 Nov: green manures too, each its own crop agreement.
   const grids = [...ss.map((_, si) => gridsOf(plan, si, { areaNo, areaName, shares }).map((g) => [si, g])).flat(),
-    ...coverGrids(plan, { areaNo, areaName, shares }).map((g) => ['gm', g])];
+    ...coverGrids(plan, { areaNo, areaName, shares }).map((g) => ['gm', g]),
+    // 20 Nov: bio manures (part of their crop's agreement), on their spreading day.
+    ...manureGrids(plan, { areaNo, areaName }).map((g) => ['gm', g])];
   const seasonOf = (ym) => ss.reduce((k, s, i) => (String(s.start).slice(0, 7) <= ym ? i : k), 0);
   // zones and season (17 Nov): a tapped tile shows its crop's areas on the map, in the season it is sown.
   const tiles = grids.flatMap(([si, g]) => g.tiles.map((t) => ({ ...t, id: `${si}|${g.key}|${t.key}`, crop: g.crop, colour: g.colour, si,
