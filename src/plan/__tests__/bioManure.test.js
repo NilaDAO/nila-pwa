@@ -40,11 +40,10 @@ test('the plan row reads its bio manures back before their crop', () => {
   expect(rowOf(plan, 'z1').keys).toEqual(['bio_manure:goat', 'maize']);
 });
 
-test('its agreement counts in the season of the crop it goes before', () => {
+test('its cost is in its crop row, not a separate agreement in the totals (20 Nov)', () => {
   const p = { seasons: [{ slot: 'S1', rows: [] }, { slot: 'S3', rows: [] }],
     bio_manure: [{ zone: 'z1', slot: 'S3', finance: { cash: 100, voucher_value: 50 } }] };
-  expect(seasonsCounted(p).gm).toEqual([expect.objectContaining({ kind: 'bio_manure', slots: ['S3'] })]);
-  expect(seasonsCounted(p, [1]).gm).toEqual([]);
+  expect(seasonsCounted(p).gm).toEqual([]);
 });
 
 test('a manure pinned before any crop on the row, replacing the one before it', () => {

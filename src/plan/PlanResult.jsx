@@ -298,6 +298,13 @@ export function CostList({ r, k = 1 }) {
     ...Object.values(f.machines || {}).map((m) => [m.for.replace(/^./, (c) => c.toUpperCase()), `${(m.acres * k).toFixed(2)} acres${m.acres ? ` · ${inr(Math.round(m.value / m.acres))}/acre` : ''} · voucher`, n(m.value)]),
     ...Object.values(f.hand_work || {}).map((m) => [`${m.for.replace(/^./, (c) => c.toUpperCase())}, hired`, `${(m.acres * k).toFixed(2)} acres · ${inr(m.rate_inr_acre)}/acre · no union machine`, n(m.value)]),
   ].filter(Boolean);
+  // 20 Nov: a bio manure before the crop is part of its agreement: the manure in cash, its haulage a voucher.
+  const mn = f.manure;
+  if (mn) {
+    const what = mn.price_source === 'free' ? 'free, permit' : mn.cash ? `${mn.tonnes} t · ${inr(mn.price_inr_t)}/t` : 'your own';
+    lines.push([mn.name, `${what} · cash`, n(mn.cash + (mn.hand_work_cash || 0))]);
+    if (mn.voucher_value) lines.push([`${mn.name}, haulage`, 'trailer · voucher', n(mn.voucher_value)]);
+  }
   // 17 Nov: harvest labour lent in cash with the crop (older plans: hers, with transport).
   if (f.harvest_cost) lines.push(f.harvest_financed ? ['Harvest labour', `${ac.toFixed(2)} acres${per(f.harvest_cost)} · cash`, n(f.harvest_cost)]
     : ['Harvest work and transport', `${ac.toFixed(2)} acres${per(f.harvest_cost)} · paid by you`, n(f.harvest_cost)]);
