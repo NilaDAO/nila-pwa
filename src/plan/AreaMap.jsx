@@ -128,7 +128,7 @@ export const MANURE_STEP = 0.0001;
 /** A ring moved `m` metres inward (20 Nov: a selected area's white line inside its own edge, so on a border shared
  *  with a neighbour it shows which side is selected): each edge shifted inward, corners where the shifted edges meet;
  *  a corner that would shoot far off (a sharp spike) is moved straight in instead. [[lng, lat]] in and out. */
-export function insetRing(ring, m = 2.5) {
+export function insetRing(ring, m = 1) {
   const pts = (ring || []).slice();
   if (pts.length > 1 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) pts.pop();
   const n = pts.length;
