@@ -19,9 +19,8 @@ export default function ConfirmShare({ cash, hours, name, area, own, forMember, 
   // more (27 Oct): machine hours added to a crop agreement already taken up; no cash changes hands.
   // forMember (26 Oct, A2): a leader helping a member in a session confirms for the member, with the member there.
   return (
-    <MapCard map={map} header={{ title: more ? 'Add machine work' : forMember ? "Use the member's crop agreement" : 'Confirm your crop agreement', onBack: onCancel }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <MapCard map={map} header={{ title: more ? 'Add machine work' : forMember ? 'Confirm cash handover' : 'Confirm your crop agreement', onBack: onCancel }} style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}>
       {!own && !forMember && <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Your union leader asks you to confirm</span>}
-      {forMember && <span style={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>Read the amounts to the member and confirm together</span>}
       <Card label="Your crop agreement" style={{ gap: 12 }}>
         {!more && kv('Cash you receive', inr(cash))}
         {hours > 0 && kv('Machine vouchers', `${ta(hours)} tractor acres`)}
