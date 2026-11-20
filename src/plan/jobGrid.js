@@ -71,7 +71,7 @@ export function coverGrids(plan, { areaNo = (z) => z, areaName, shares = [] } = 
   const byKey = Object.fromEntries((shares || []).map((x) => [x.share?.key || x.share, x]));
   const groups = new Map();
   for (const c of (p.soil_cover || []).filter((x) => x.finance && x.kind === 'green_manure' && x.sow)) {
-    const sh = (p.shares || []).find((x) => x.green_manure && (x.zones || [x.zone]).includes(c.zone) && x.from_date === c.sow && (!x.crop || x.crop === c.cover));
+    const sh = c.agreement ? null : (p.shares || []).find((x) => x.green_manure === true && (x.zones || [x.zone]).includes(c.zone) && x.from_date === c.sow && (!x.crop || x.crop === c.cover));
     const k = sh?.key || `${c.zone}:gm:${c.cover}:${c.sow}`;
     if (!groups.has(k)) groups.set(k, { sh, covers: [] });
     groups.get(k).covers.push(c);

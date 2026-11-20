@@ -18,7 +18,7 @@ import { C, FONT, R } from '../shell/tokens';
 import MapCard from '../shell/MapCard';
 import AreaMap from '../plan/AreaMap';
 import { useFieldRecord } from '../plan/record';
-import { useUnionMembers } from '../leader/unionMembers';
+import { markDrawn, useUnionMembers } from '../leader/unionMembers';
 import { Card, CardTitle, KV } from './AssetParts';
 import { NIN } from './request';
 import StartHelp from './StartHelp';
@@ -63,7 +63,7 @@ function Stepper({ label, value, set, step, min = 0, max, fmt, tone, onZero }) {
  *  agreement (18 Nov): its covers (one per area, merged into one agreement), as one row: name, due, machine acres. */
 function planRow(plan, share) {
   for (const s of plan.plan.seasons || []) for (const r of s.rows) if (r.zone === share.zone && r.crop === share.crop && r.sow === share.from_date) return r;
-  if (share.green_manure) {
+  if (share.green_manure === true) {   // its own agreement (before 20 Nov); a crop's carries the cover's name
     const zs = share.zones || [share.zone];
     const cs = (plan.plan.soil_cover || []).filter((c) => c.finance && zs.includes(c.zone) && c.sow === share.from_date);
     if (!cs.length) return null;
@@ -141,8 +141,13 @@ export function LeaderLoan({ initial }) {
     // Taken up already (27 Oct): only machine work is added, from 0.
     if (Number(x.ft?.loan?.flags ?? 0) & FLAG_DRAWN) { setPick(x.token_id); setCash(0); setMach({}); return; }
     setPick(x.token_id); setCash(Math.round(x.share.loan_amount || 0));
-    const ms = Object.values(planRow(plan, x.share)?.finance?.machines || {}).filter((m) => m.type && (m.acres ?? 0) > 0);
-    setMach(Object.fromEntries(ms.map((m) => [m.type, Math.round(m.acres * 10) / 10])));
+    const f = planRow(plan, x.share)?.finance || {};
+    // 20 Nov: a bio manure before the crop is part of its agreement: its haulage joins the crop's own machine work.
+    const ms = [...Object.values(f.machines || {}), ...Object.values(f.manure?.machines || {}), ...Object.values(f.green_manure?.machines || {})]
+      .filter((m) => m.type && (m.acres ?? 0) > 0);
+    const acres = {};
+    for (const m of ms) acres[m.type] = (acres[m.type] || 0) + m.acres;
+    setMach(Object.fromEntries(Object.entries(acres).map(([t, a]) => [t, Math.round(a * 10) / 10])));
   }, [shares.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // The plan's amounts, within the union's caps once they are read (the steppers start inside the limit).
   useEffect(() => {
@@ -162,6 +167,8 @@ export function LeaderLoan({ initial }) {
   const [own, setOwn] = useState(false);
   // 19 Nov (executive decision): lake sludge is financed (its haulage) only once a leader confirms the permit here.
   const [permitSeen, setPermitSeen] = useState(false);
+  // 20 Nov: a manure in the agreement left out of this take-up (its cash and haulage out of the amounts).
+  const [dropped, setDropped] = useState({});
   const tx = useSorobanTx();
   const bring = usePost();   // L11 #short, automatic (25 Oct): see askBring
   const bringRoom = useBringRoom();
@@ -198,7 +205,7 @@ export function LeaderLoan({ initial }) {
   const member = sel?.ft?.member;
   const zones = sel ? (sel.share.zones || [sel.share.zone]).filter(Boolean) : [];
   // Its areas filled in the crop's colour (green manure: its own), the others faded.
-  const colour = row?.colour || (sel?.share.green_manure ? (plan.plan.soil_cover || []).find((c) => zones.includes(c.zone) && c.colour)?.colour : null) || C.accent;
+  const colour = row?.colour || (sel?.share.green_manure === true ? (plan.plan.soil_cover || []).find((c) => zones.includes(c.zone) && c.colour)?.colour : null) || C.accent;
   // No chips on these areas: the card's title names the crop (a chip per area repeated it four times).
   const mapLabels = Object.fromEntries(zones.map((z) => [z, { text: '', colour, hide: true }]));
   // 18 Nov: an area the plan joined to another (plan.merged, e.g. D · 3 into D · 4) is drawn as part of it, as on the plan.
@@ -246,23 +253,23 @@ export function LeaderLoan({ initial }) {
   if (own && sel && mine) {
     const nm = `${row?.name || words(sel.share.crop || sel.crop)}`;
     const ar = areaOf(plan, sel.share);
-    const draw = () => tx.run({
+    const draw = () => { markDrawn(tokenHex(sel.token_id)); return tx.run({
       label: more ? `More machine work · ${nm}` : `Crop agreement ${nm}`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan',
       args: [sv.address(cfg.union), sv.address(s.stellarAddress), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
-      invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks']],
-    });
+      invalidate: [['oracle', 'myShares'], ['oracle', 'shares'], ['stellar', 'investment'], ['stellar', 'unionChecks'], ['stellar', 'unionShares']],
+    }); };
     return <ConfirmShare own more={more} cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
   }
   if (own && sel && helping) {
     const nm = `${row?.name || words(sel.share.crop || sel.crop)}`;
     const ar = areaOf(plan, sel.share);
-    const draw = () => tx.run({
+    const draw = () => { markDrawn(tokenHex(sel.token_id)); return tx.run({
       label: more ? `More machine work · ${nm} · for the member` : `Crop agreement ${nm} · for the member`, rows: [...(more ? [] : [['Cash', inr(cash)]]), ...(hours ? [['Machine vouchers', `${ta(hours)} tractor acres`]] : []), ['For', `${nm} · ${ar}`]],
       contractName: 'fund_core', fn: 'draw_loan', session: sel.ft.member,
       args: [sv.address(cfg.union), sv.address(sel.ft.member), sv.bytes32(tokenHex(sel.token_id)), sv.i128(BigInt(Math.round(cash)) * NIN), sv.u32(hours)],
-      invalidate: [['oracle', 'shares'], ['stellar', 'unionChecks']],
-    });
+      invalidate: [['oracle', 'shares'], ['stellar', 'unionChecks'], ['stellar', 'unionShares']],
+    }); };
     return <ConfirmShare forMember more={more} cash={cash} hours={hours} name={nm} area={ar} ready={tx.ready} onConfirm={draw} onCancel={() => setOwn(false)} map={memberMap} />;
   }
   // Board LeaderRedeem, without its crop agreement list (23 Oct: the share comes picked): one card with the share, the
@@ -324,6 +331,47 @@ export function LeaderLoan({ initial }) {
             {checks.data && !more && <Stepper label="Cash" value={cash} set={(v) => setCash(cash > caps.cash && v < cash ? caps.cash : v)} step={100}
               // Open (9 Oct): the union may give more than the agreement, unless its switch holds it to the attested amount.
               max={checks.data.enforceToken ? Math.max(caps.cash, Math.round(sel.ft ? Number(BigInt(sel.ft.amount ?? 0) / NIN) : sel.share.loan_amount || 0)) : 10_000_000} fmt={inr} tone={cash > caps.cash ? C.coral : undefined} />}
+            {/* 20 Nov: a bio or green manure in this agreement, under the cash (its cash in it, its machine work in the
+                vouchers); Remove takes them out of this take-up, Add back puts them in again. */}
+            {checks.data && !more && [['manure', row?.finance?.manure], ['green', row?.finance?.green_manure]].filter(([, x]) => x).map(([k, x]) => {
+              const isBio = k === 'manure';
+              const cashOf = isBio ? (x.cash || 0) + (x.hand_work_cash || 0) : (x.cash || 0);
+              const what = isBio ? (x.price_source === 'free' ? 'free' : x.cash ? `${inr(x.cash)} in the cash` : 'your own')
+                : `${inr(x.cash || 0)} seed in the cash`;
+              const off = !!dropped[k];
+              const toggle = () => {
+                const sign = off ? 1 : -1;
+                setCash((c) => Math.max(0, c + sign * cashOf));
+                setMach((m) => {
+                  const n = { ...m };
+                  for (const v of Object.values(x.machines || {})) {
+                    if (!v.type) continue;
+                    n[v.type] = Math.max(0, Math.round(((n[v.type] || 0) + sign * (v.acres || 0)) * 10) / 10);
+                  }
+                  return n;
+                });
+                setDropped((d) => ({ ...d, [k]: !off }));
+              };
+              // 20 Nov: as the steppers: its amount in a grey box, and an X in a box of its own (a + puts it back).
+              const box = { height: 44, borderRadius: R.button, background: C.raised, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: FONT, fontSize: 14, fontWeight: 700 };
+              return (
+                <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ color: C.muted, fontSize: 14 }}>{isBio ? x.name : 'Green manure'}</span>
+                  <span style={{ display: 'flex', gap: 8 }}>
+                    <span style={{ ...box, padding: '0 12px', color: off ? C.muted : C.text, textDecoration: off ? 'line-through' : 'none', whiteSpace: 'nowrap' }}>
+                      {what}{x.voucher_value ? ` · ${inr(x.voucher_value)} voucher${isBio ? '' : 's'}` : ''}
+                    </span>
+                    <button type="button" aria-label={off ? `Add back ${isBio ? x.name : 'green manure'}` : `Remove ${isBio ? x.name : 'green manure'}`} onClick={toggle}
+                      style={{ ...box, width: 44, border: 0, padding: 0, color: C.text, cursor: 'pointer' }}>
+                      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        {off ? <path d="M12 5v14M5 12h14" /> : <path d="M6 6l12 12M18 6 6 18" />}
+                      </svg>
+                    </button>
+                  </span>
+                </div>
+              );
+            })}
             {checks.data && types.map((t) => {
               const h = mach[t] || 0;
               const room = tractorRate > 0 ? Math.floor(acresFor(Math.max(0, caps.hours - hours), rateOf(t), tractorRate) * 10) / 10 : 0;
@@ -359,14 +407,14 @@ export function LeaderLoan({ initial }) {
                 </div>
               </>
             )}
-            {!needsInvest && sel.share?.permit && !more && (
+            {!needsInvest && sel.share?.permit && !dropped.manure && !more && (
               <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, lineHeight: 1.4, cursor: 'pointer' }}>
                 <input type="checkbox" checked={permitSeen} onChange={(e) => setPermitSeen(e.target.checked)} style={{ width: 20, height: 20, margin: 0, accentColor: C.accent }} />
                 <span>I have seen the permit to take the lake sludge.</span>
               </label>
             )}
             {!needsInvest && (
-              <Primary disabled={(sel.share?.permit && !more && !permitSeen) || !checks.data || checks.data.unknown || blocked.length > 0 || (!cash && !hours) || (more && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{more ? (mine ? 'Add the machine work' : helping ? 'Add the machine work for the member' : "Scan the member's QR") : mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's QR"}</Primary>
+              <Primary disabled={(sel.share?.permit && !dropped.manure && !more && !permitSeen) || !checks.data || checks.data.unknown || blocked.length > 0 || (!cash && !hours) || (more && !hours) || cash > caps.cash || hours > caps.hours} onClick={mine || helping ? async () => { if (await askBring()) setOwn(true); } : go}>{more ? (mine ? 'Add the machine work' : helping ? 'Add the machine work for the member' : "Scan the member's QR") : mine ? 'Get cash and vouchers' : helping ? 'Use it for the member' : "Scan the member's QR"}</Primary>
             )}
           </>
         )}
