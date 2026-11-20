@@ -66,11 +66,17 @@ const MESSAGES = {
   },
 };
 
+/** A message's first line, at most 160 characters (the rest of a host error is its event log). */
+const short = (m) => { const l = m.split('\n').find((x) => x.trim()) || m; return l.length > 160 ? `${l.slice(0, 157)}…` : l; };
+
 /** The plain reason for a failed call, or the message as it came when it is not a contract error. */
 export function plainError(message, cfg) {
   const m = String(message || '');
+  // 20 Nov: a help or request QR signed for a few minutes, scanned too late.
+  if (/signature has expired/i.test(m)) return 'This QR has expired. Ask the member to show a new one.';
   const code = /Error\(Contract, #(\d+)\)/.exec(m);
-  if (!code) return m;
+  // 20 Nov: anything else without a contract code: its first line only, never the whole diagnostic dump.
+  if (!code) return short(m);
   // The contract that raised it: "contract:C…, topics:[error, Error(Contract, #N)]".
   const who = new RegExp(`contract:(C[A-Z2-7]{55}), topics:\\[error, Error\\(Contract, #${code[1]}\\)`).exec(m)?.[1];
   const name = Object.entries(cfg?.contracts || {}).find(([, id]) => id === who)?.[0];

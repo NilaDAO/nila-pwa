@@ -179,6 +179,7 @@ function PlanView({ plan, record, checked, onAccept, readOnly, crops, changing, 
           hand > 0 && `${inr(hand)} in cash for work done by hand or hired, as the union has no machine for it (at reference rates).`,
           vouchers > 0 && `${inr(vouchers)} in vouchers.`,
           gm.length > 0 && 'Green manure is its own crop agreement, repaid with the next crop.',
+          (p.soil_cover || []).some((c) => c.agreement) && 'Green manure is part of the next crop\'s agreement.',
           (p.bio_manure || []).length > 0 && 'Manure is part of the crop agreement it goes before.',
           // 19 Nov: her own cows' manure, named (the acres a year it covers; not bought there, the haulage still a voucher).
           p.own_manure?.used_acres > 0 && `Your ${p.own_manure.cows} cow${p.own_manure.cows === 1 ? '' : 's'} give manure for about ${p.own_manure.acres} acre${p.own_manure.acres === 1 ? '' : 's'} a year: that manure is not bought, only hauled.`,
@@ -508,6 +509,7 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     // An area with no crop that season but a pick for it.
     for (const z of Object.keys(pending)) if (!out[z] && pickedHere(z)) out[z] = { text: pickedHere(z).name, sub: 'changed', colour: pickedHere(z).colour };
     // A soil cover in this season (no bare soil in the dry months, 21 Oct), where no crop is on the area then.
+    const seenCover = new Set();
     for (const c of plan.plan.soil_cover || []) {
       if (!idx.some((k) => (c.slots || []).includes(ss[k].slot))) continue;
       // 18 Nov: a green manure before the crop on the same area in this season: both, in order ("Green manure → Sugarcane").
@@ -520,6 +522,10 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
         continue;
       }
       const short = c.name.replace(/^(Mulch, then )?green manure: /i, '').replace(/ \(.*\)$/, '');
+      // 20 Nov: the same green manure in one crop agreement over several areas: one label, as a merged crop.
+      const one = c.agreement && `${c.cover}|${c.agreement}`;
+      if (one && seenCover.has(one)) { out[c.zone] = { colour: c.colour, soil: true, hide: true, acc: checked.has(c.zone) }; continue; }
+      if (one) seenCover.add(one);
       out[c.zone] = { text: c.kind === 'bare' ? 'Bare soil' : short.charAt(0).toUpperCase() + short.slice(1),
         sub: c.kind === 'bare' ? 'erosion risk' : c.kind === 'mulch' ? 'soil cover' : 'green manure',
         colour: c.kind === 'bare' ? undefined : c.colour, soil: true, acc: checked.has(c.zone) };
@@ -909,8 +915,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   if (at === 'making') {
     return (
       // No farm name over the wait (26 Oct): the card's header says whose plan is made (a leader for a member: the name).
-      <Sheet map={map} title={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : 'Making your crop plan'} noSettings>
-        <Making label={forLand ? `Making the crop plan for ${forLand.label || 'the member'}` : undefined} jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
+      <Sheet map={map} title={forLand ? 'Making the crop plan' : 'Making your crop plan'} noSettings>
+        <Making label={forLand ? 'Making the crop plan' : undefined} jobId={jobId} onDone={(pid) => { setMadeId(pid); qc.invalidateQueries({ queryKey: qkPlan.plan(landId) }); setStep(afterMake); setAfterMake('why'); }}
           onError={(e) => { setError(e); setStep('leaveout'); }} />
       </Sheet>
     );

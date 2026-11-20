@@ -44,7 +44,7 @@ function Block({ x, onTakeUp }) {
         style={{ display: 'flex', alignItems: 'center', gap: 8, border: 0, padding: 0, background: 'transparent', color: C.text, fontFamily: FONT, cursor: 'pointer', textAlign: 'left' }}>
         <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 9999, background: r.colour || C.muted, flex: 'none' }} />
         <span style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.3 }}>{name}{x.share.green_manure ? ' · Green manure' : ''}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.3 }}>{name}{x.share.green_manure === true ? ' · Green manure' : ''}</span>
           <span style={{ ...muted, fontSize: 13, lineHeight: 1.5 }}>{months}</span>
         </span>
         <span style={{ fontSize: 13, fontWeight: 700, color: C.muted, textAlign: 'right' }}>{statusOf(x)}</span>

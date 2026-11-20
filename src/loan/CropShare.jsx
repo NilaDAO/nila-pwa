@@ -115,7 +115,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   }
   const r = rowOf(x) || {};
   const name = r.name || x.crop.replace(/_/g, ' ');
-  const fodder = !x.share.green_manure && !x.share.loan_amount && (x.share.acres_work ?? x.share.hours);
+  const fodder = x.share.green_manure !== true && !x.share.loan_amount && (x.share.acres_work ?? x.share.hours);
   const nAreas = areasOf(record).length;
   // The share's area in the crop's colour with the crop as its label; the other areas keep "Area n". A merged share
   // (same crop on several areas, 21 Oct) colours each of its areas.
@@ -154,7 +154,7 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
       <span style={{ display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{name}</span>
         {/* 13 Nov: the fields are in the bar above; this line says what the numbers on the right are. */}
-        <span style={{ ...muted, lineHeight: 1.5 }}>{x.share.green_manure ? 'Green manure' : fodder ? 'Fodder' : 'Estimated sales'}</span>
+        <span style={{ ...muted, lineHeight: 1.5 }}>{x.share.green_manure === true ? 'Green manure' : fodder ? 'Fodder' : 'Estimated sales'}</span>
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{r.kg ? amount(r.kg) : '—'}</span>
