@@ -10,7 +10,8 @@
 // PersonalName: G2's full name and phone for a member's address (the leaders' reference, not the farm name).
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { C } from '../shell/tokens';
+import { C, FONT, TAB_BAR_HEIGHT } from '../shell/tokens';
+import MapCard from '../shell/MapCard';
 import CameraView from '../shell/CameraView';
 import MessageSlider, { big as slideBig, card as slideCard, head as slideHead } from '../shell/MessageSlider';
 import { ChevronIcon, LockIcon, MachineryTile } from '../shell/icons';
@@ -203,29 +204,14 @@ export function SignersCard() {
   );
 }
 
-export function ContactBookCard() {
+/** The contact book card. Showing and scanning the union key open their own screens (21 Nov: never the QR or the
+ *  camera inside Settings): `onShow` after the warning, `onScan`; LeaderSettings renders UnionKeyQr / UnionKeyScan. */
+export function ContactBookCard({ onShow, onScan }) {
   const { data: cfg } = useStellarConfig();
   const book = useContactBook();
   const { useKey } = useBookActions();
   const [ask, setAsk] = useState(false);
-  const [show, setShow] = useState(false);
-  const [scan, setScan] = useState(false);
-  const [img, setImg] = useState();
-  const [msg, setMsg] = useState('');
   const st = book.data?.state;
-  useEffect(() => {
-    const key = cfg?.union && loadKey(cfg.union);
-    if (show && key) QRCode.toDataURL(keyQr(cfg.union, key), { width: 400, margin: 0, errorCorrectionLevel: 'M' }).then(setImg);
-    else setImg(undefined);
-  }, [show, cfg?.union, st]);
-  const onQr = (text) => {
-    setScan(false);
-    const k = parseKeyQr(text);
-    if (!k) { setMsg('This is not a union key.'); return; }
-    if (k.union !== cfg?.union) { setMsg('This key is for another union.'); return; }
-    setMsg('');
-    useKey.mutate(k.key);
-  };
   const label = { none: 'Not made yet', unsent: 'On this phone, not sent', scan: 'Scan it from another leader', mismatch: 'Different from the union\'s',
     ok: `Set · ${book.data?.names.size || 0} name${book.data?.names.size === 1 ? '' : 's'}` }[st] || '…';
   return (
@@ -241,30 +227,63 @@ export function ContactBookCard() {
             {useKey.isPending ? 'Making…' : 'Make the union key'}
           </button>
         )}
-        {st === 'ok' && (
-          <button type="button" onClick={() => (show ? setShow(false) : setAsk(true))} style={{ ...btn, flex: 1 }}>{show ? 'Hide key' : 'Show key'}</button>
-        )}
-        {(st === 'scan' || st === 'mismatch') && (
-          <button type="button" onClick={() => { setScan(!scan); setShow(false); setMsg(''); }} style={{ ...btn, flex: 1 }}>{scan ? 'Stop scanning' : 'Scan a key'}</button>
-        )}
+        {st === 'ok' && <button type="button" onClick={() => setAsk(true)} style={{ ...btn, flex: 1 }}>Show key</button>}
+        {(st === 'scan' || st === 'mismatch') && <button type="button" onClick={onScan} style={{ ...btn, flex: 1 }}>Scan a key</button>}
       </div>
-      {img && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          {/* The standard QR (A1a, WalletQr): a white circle, the code at 62% inside it. */}
-          <div style={{ width: '100%', aspectRatio: '1', borderRadius: 9999, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img src={img} alt="Union key QR code" style={{ width: '62%', height: '62%', imageRendering: 'pixelated' }} />
-          </div>
-          <Text>Let only another leader of your union scan this.</Text>
-        </div>
-      )}
-      {scan && <CameraView mode="qr" onText={onQr} hint="Scan the union key on another leader's phone." />}
-      {msg && <Text style={{ color: C.coral }}>{msg}</Text>}
       <Err e={useKey.error} />
       {ask && (
-        <ConfirmCard title="Show the union key" ok="Show" onCancel={() => setAsk(false)} onOk={() => { setAsk(false); setScan(false); setShow(true); }}
+        <ConfirmCard title="Show the union key" ok="Show" onCancel={() => setAsk(false)} onOk={() => { setAsk(false); onShow(); }}
           warn="Anyone who scans this key can read every name in the contact book. Show it only to another leader of your union, face to face." />
       )}
     </Card>
+  );
+}
+
+const SCREEN = { padding: '0 8px', fontFamily: FONT, color: C.text, minHeight: `calc(100dvh - ${TAB_BAR_HEIGHT + 16}px)`, display: 'flex', flexDirection: 'column' };
+const QR_CARD = { background: C.ink, borderRadius: 24, padding: 22, boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
+  alignItems: 'center', gap: 16, marginBottom: 140 };
+
+/** The union key as a QR on its own screen, as "Your account number" (WalletQr): the white circle in a card, the note above
+ *  the tab bar. */
+export function UnionKeyQr({ onBack }) {
+  const { data: cfg } = useStellarConfig();
+  const [img, setImg] = useState();
+  useEffect(() => {
+    const key = cfg?.union && loadKey(cfg.union);
+    if (key) QRCode.toDataURL(keyQr(cfg.union, key), { width: 400, margin: 0, errorCorrectionLevel: 'M' }).then(setImg);
+  }, [cfg?.union]);
+  return (
+    <MapCard style={SCREEN} header={{ title: 'Union key', onBack, settings: false }}>
+      <section aria-label="Union key QR code" style={QR_CARD}>
+        <div style={{ width: '100%', aspectRatio: '1', borderRadius: 9999, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {img && <img src={img} alt="Union key QR code" style={{ width: '62%', height: '62%', imageRendering: 'pixelated' }} />}
+        </div>
+      </section>
+      <NoteBar>Let only another leader of your union scan this.</NoteBar>
+    </MapCard>
+  );
+}
+
+/** Scanning the union key on its own screen: the one camera viewer; back to Settings once the key is set. */
+export function UnionKeyScan({ onBack }) {
+  const { data: cfg } = useStellarConfig();
+  const { useKey } = useBookActions();
+  const [msg, setMsg] = useState('');
+  const [tries, setTries] = useState(0);
+  const onQr = async (text) => {
+    const k = parseKeyQr(text);
+    const again = (m) => { setMsg(m); setTries((t) => t + 1); };
+    if (!k) return again('This is not a union key.');
+    if (k.union !== cfg?.union) return again('This key is for another union.');
+    setMsg('');
+    try { await useKey.mutateAsync(k.key); onBack(); } catch (e) { again(e?.message || String(e)); }
+  };
+  return (
+    <MapCard style={SCREEN} header={{ title: 'Scan the union key', onBack, settings: false }}>
+      <CameraView key={tries} mode="qr" onText={onQr} hint="Scan the union key on another leader's phone." />
+      {useKey.isPending && <Text>Setting the key…</Text>}
+      {msg && <Text style={{ color: C.coral }}>{msg}</Text>}
+    </MapCard>
   );
 }
 

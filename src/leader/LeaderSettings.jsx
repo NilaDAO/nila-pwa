@@ -8,7 +8,8 @@
 import MapCard from '../shell/MapCard';
 import { useStellarConfig } from '../stellar/hooks';
 import { useLpStatus } from '../anchor/hooks';
-import { ContactBookCard, SignersCard, VoucherPrices } from '../union/UnionCards';
+import { useState } from 'react';
+import { ContactBookCard, SignersCard, UnionKeyQr, UnionKeyScan, VoucherPrices } from '../union/UnionCards';
 import { C, FONT, R } from '../shell/tokens';
 import { ChevronIcon } from '../shell/icons';
 import { AccountCard, Card, CardButton, NotificationsCard, ResetCard, SwitchRow, UnionCard } from '../shell/SettingsParts';
@@ -35,12 +36,16 @@ export default function LeaderSettings({ onBack, onIdCheck, onIdLeader, onOffers
   const { data: cfg } = useStellarConfig();
   const lp = useLpStatus();
   const isLp = !!lp.data?.lp;
+  // The union key's QR and its scan on their own screens (21 Nov), back to Settings with the arrow.
+  const [screen, setScreen] = useState();
+  if (screen === 'key') return <UnionKeyQr onBack={() => setScreen()} />;
+  if (screen === 'scan') return <UnionKeyScan onBack={() => setScreen()} />;
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }} header={{ title: 'Settings', onBack, settings: false }}>
       <UnionCard extra={<IdentityRow checked={!!lp.data?.idChecked} onClick={onIdLeader} />} />
 
       <SignersCard />
-      <ContactBookCard />
+      <ContactBookCard onShow={() => setScreen('key')} onScan={() => setScreen('scan')} />
       <VoucherPrices />
 
       {cfg?.anchor_url && lp.data?.member && (
