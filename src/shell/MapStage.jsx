@@ -84,7 +84,7 @@ export function shareOn(shares, seasons, i, zone) {
 export const areaHash = (zone, y0) => `#/croparea/${encodeURIComponent(zone)}${y0 != null ? `/${y0}` : ''}`;
 
 /** Where a map looks with nothing of the member's to draw (the demo union's area; also the union map's start). */
-export const UNION_START = { lat: 11.8872, lng: 78.9659 };
+export const UNION_START = { lat: 11.878671, lng: 78.964561 };   // the union's place, as registration (register/FieldMap.jsx)
 
 /** Where A1's card opens (its top, px): a strip of map above it. */
 export const homeTop = () => Math.round(window.innerHeight * 0.34);

@@ -119,7 +119,7 @@ function GoogleBorderMap({ fields = [], plan = {}, active, shapeOverride, drawin
   return (
     <div style={{ height, width: '100%' }} aria-label="Satellite map with field shapes">
       <GoogleMap mapContainerStyle={{ height: '100%', width: '100%' }} options={G_OPTIONS}
-        onLoad={(m) => { map.current = m; m.setZoom(18); m.setCenter(fields[0]?.point ? { lat: fields[0].point.lat, lng: fields[0].point.lng } : { lat: 11.8872, lng: 78.9659 }); draw(); }}
+        onLoad={(m) => { map.current = m; m.setZoom(18); m.setCenter(fields[0]?.point ? { lat: fields[0].point.lat, lng: fields[0].point.lng } : { lat: 11.878671, lng: 78.964561 }); draw(); }}
         onUnmount={() => { map.current = null; }} />
     </div>
   );
