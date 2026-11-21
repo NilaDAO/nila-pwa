@@ -282,8 +282,9 @@ export default function MemberStatus({ id, go }) {
           {m.joined === false ? null : !act && !titled ? (
             <>
               <span style={{ color: C.muted, fontSize: 14 }}>Mint a land title first to invest.</span>
-              {invested > 0 && <button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
-                onClick={withdrawing ? withQr('Pay out the withdrawal', payOut) : withQr('Withdraw', () => setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button>}
+              {/* In a row as below: btn's flex: 1 in the Section's column would squash its height. */}
+              {invested > 0 && <div style={{ display: 'flex' }}><button type="button" style={btn(withdrawing || free >= 1)} disabled={!withdrawing && free < 1}
+                onClick={withdrawing ? withQr('Pay out the withdrawal', payOut) : withQr('Withdraw', () => setStep('withdraw'))}>{withdrawing ? 'Pay out withdrawal' : 'Withdraw'}</button></div>}
             </>
           ) : !act ? (
             <div style={{ display: 'flex', gap: 8 }}>
