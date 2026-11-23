@@ -3,7 +3,8 @@
 // - cash: the junior cash above its reserve (no ₹10,000 cap in code since 30 Oct: the crop plan and the leaders
 //   hold it for the first cycle; max_loan is kept as that recommendation)
 //   (claimable × (1 + safety_bp) + safety_floor; ReserveStop / InsufficientCash);
-// - machine work: free senior money ÷ the value of a tractor acre (NoSeniorBacking);
+// - machine work: the same junior cash above its reserve ÷ the value of a tractor acre (since 23 Nov vouchers are
+//   lent from junior money, senior only guarantees; NoSeniorBacking keeps its name in fund_core);
 // - with the union's switch on, the attested amount and hours of her token (AboveFoodToken);
 // - blockers: lending on hold (LendingOnHold), her investment below the gate (BelowGate), too many open
 //   loans (TooManyLoans).
@@ -27,15 +28,14 @@ export function useUnionChecks(member) {
     queryFn: async () => {
       const u = [sv.address(cfg.union)];
       const um = [...u, sv.address(member)];
-      const [uc, junior, senior, earmark, treasury, atHand, perHour, hold, pos, loans] = await Promise.all([
+      const [uc, junior, earmark, treasury, atHand, perHour, hold, pos, loans] = await Promise.all([
         readContract(cfg, 'fund_core', 'get_union_config', u),
         readContract(cfg, 'fund_core', 'get_junior_market', u),
-        readContract(cfg, 'fund_core', 'get_senior_market', u),
         readContract(cfg, 'fund_core', 'senior_earmark', u),
         readContract(cfg, 'fund_core', 'union_treasury', u),
         // A failed read is unknown, not 0 (SCF T2 row 25): "Not loaded", and the request waits (`unknown`).
         readContract(cfg, 'fx_pool', 'cash_at_hand', u).catch(() => null),
-        // A voucher hour is lent at the tractor hour's whole value (26 Oct), out of free senior money.
+        // A voucher hour is lent at the tractor hour's whole value (26 Oct), out of junior cash (23 Nov).
         cfg.contracts.machinery ? readContract(cfg, 'machinery', 'value_per_tractor_acre', u).catch(() => null) : 0n,
         readContract(cfg, 'fund_core', 'union_book', u).then((b) => b?.on_hold ?? 0),
         readContract(cfg, 'fund_core', 'position', um),
@@ -47,8 +47,6 @@ export function useUnionChecks(member) {
       const juniorCash = BigInt(junior?.cash ?? 0);
       const lendable = juniorCash > reserve ? juniorCash - reserve : 0n;
       const maxLoan = num(uc.max_loan);
-      // The voucher reserve is outside senior cash (26 Oct): all of it is free.
-      const seniorFree = num(senior?.cash);
       void earmark;
       const ph = perHour === null ? null : num(perHour);
       const blocked = [];
@@ -60,8 +58,8 @@ export function useUnionChecks(member) {
         // Whole rupees: the request is in whole rupees.
         cashCap: Math.max(0, Math.floor(num(lendable))),
         // No machine price set for the union → no machine work can be granted yet.
-        // In units (centi tractor acres, 27 Oct): the senior money free for the value of tractor acres.
-        hoursCap: ph === null ? null : ph > 0 ? Math.max(0, Math.floor((seniorFree * 100) / ph)) : 0,
+        // In units (centi tractor acres, 27 Oct): the junior cash above its reserve for the value of tractor acres.
+        hoursCap: ph === null ? null : ph > 0 ? Math.max(0, Math.floor((num(lendable) * 100) / ph)) : 0,
         valuePerHour: ph,
         enforceToken: !!uc.enforce_token_amount,
         onHand: atHand === null ? null : num(atHand) + num(treasury),

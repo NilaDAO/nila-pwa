@@ -318,7 +318,7 @@ function GoogleAreaMap({ record, labels = {}, height = 220, selected = null, foc
   return (
     <div style={{ height, width: '100%', background: '#25361f' }} aria-label="Map of your areas">
       <GoogleMap mapContainerStyle={{ height: '100%', width: '100%' }} options={G_OPTIONS}
-        onLoad={(m) => { map.current = m; m.setZoom(17); m.setCenter({ lat: 11.8872, lng: 78.9659 }); draw(); }} onUnmount={() => { map.current = null; }} />
+        onLoad={(m) => { map.current = m; m.setZoom(17); m.setCenter({ lat: 11.878671, lng: 78.964561 }); draw(); }} onUnmount={() => { map.current = null; }} />
     </div>
   );
 }

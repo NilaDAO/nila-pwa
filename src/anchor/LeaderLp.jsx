@@ -49,6 +49,10 @@ export function ScanLp({ onBack }) {
   const [bad, setBad] = useState();
   const o = useQuery({ queryKey: ['stellar', 'offer', id], enabled: !!cfg && id != null,
     queryFn: () => readContract(cfg, 'fx_pool', 'offer', [sv.u64(id)]) });
+  // Senior first (23 Nov): the part of a Collect's USDC that goes to the senior guarantee pool, [rupees, USDC].
+  // Absent on fx_pool before the guarantee-pool upgrade: then none.
+  const senior = useQuery({ queryKey: ['stellar', 'offerSenior', id], enabled: !!cfg && id != null,
+    queryFn: () => readContract(cfg, 'fx_pool', 'offer_senior', [sv.u64(id)]).catch(() => null) });
   const [proof, setProof] = useState();   // { ts, sig } from her code
   const [typing, setTyping] = useState(false);
   const [typed, setTyped] = useState('');
@@ -110,6 +114,9 @@ export function ScanLp({ onBack }) {
       {ok && (
         <>
           <Choice sub={`LP ${short(o.data.lp)} · ${usdcOf(o.data.usdc)} USDC`}>{kind === BRING ? `The LP brings ${inr(inrAmt)}` : `The LP takes ${inr(inrAmt)}`}</Choice>
+          {kind !== BRING && Array.isArray(senior.data) && BigInt(senior.data[1] ?? 0) > 0n && (
+            <p style={muted}>{usdcOf(senior.data[1])} USDC paid out to guarantees</p>
+          )}
           <p style={muted}>{kind === BRING ? `Count the cash the LP hands over: ${inr(hand)}${fee ? ` (${inr(inrAmt)} less the LP's fee)` : ''}. Confirming moves the USDC to the LP.`
             : 'Hand over the cash. Confirming locks the LP\'s USDC with the union.'}</p>
           {kind === BRING && counted == null && <Primary disabled={!tx.ready} onClick={() => setCounting(true)}>Count the cash</Primary>}
