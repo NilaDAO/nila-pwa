@@ -17,7 +17,7 @@ import OtpHelp, { useOtpMember } from './OtpHelp';
 /** title (13 Nov): the task only ("Join the union"); the land's name is already on the screen behind it. */
 /** `onPair(account)` (sign later, plan 050): `member` is a new member's keyless placeholder; her QR carries her new
  *  account, which is made and joined here and then paired with the holding address on the node. */
-export default function StartHelp({ member, label, title, onBack, onStarted, onDesk, onPair }) {
+export default function StartHelp({ member, label, title, onBack, onStarted, onDesk, onPair, qrOnly }) {
   const tx = useSorobanTx();
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -25,7 +25,8 @@ export default function StartHelp({ member, label, title, onBack, onStarted, onD
   const [error, setError] = useState();
   const [tries, setTries] = useState(0);
   // Leader OTP (24 Nov): for a known member whose phone is set up, a code instead of the QR.
-  const otpRow = useOtpMember(onPair ? null : member);
+  // Never for Join the union (qrOnly): set_union needs the member's own key; a session cannot reach the account.
+  const otpRow = useOtpMember(onPair || qrOnly ? null : member);
   const [otp, setOtp] = useState(false);
   const read = async (t) => {
     // His signed nIN cash-out QR (NILA:N, executive decision 4 Nov): no session; HandOver (CashOut.jsx) reads it.

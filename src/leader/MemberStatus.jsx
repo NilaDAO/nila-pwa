@@ -205,7 +205,7 @@ export default function MemberStatus({ id, go }) {
   if (syncing) return <LiteDataQr m={m} inv={inv} onClose={() => setSyncing(false)} />;
   if (scanning) {
     return <StartHelp member={m.address} label={m.label} title={scanning.what} onBack={() => setScanning(false)}
-      onPair={scanning.holder ? (account) => borderApi.pairHolder(m.address, account) : undefined}
+      onPair={scanning.holder ? (account) => borderApi.pairHolder(m.address, account) : undefined} qrOnly={scanning.what === 'Join the union'}
       onStarted={() => { const then = scanning.then; setScanning(false); then(); }} />;
   }
   const withQr = (what, then) => () => (helpUntil > Date.now() / 1000 + 10 ? then() : setScanning({ what, then }));
