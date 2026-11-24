@@ -57,11 +57,20 @@ export function useLeader(union, address, cached, saveRecord, stellar) {
     retry: 1,
   });
   const chain = q.data;
+  // Rows 25–26 (24 Nov): the Stellar app has no Init flag, so with Soroban down a leader opened the member app. The last
+  // answer the chain gave for this account is kept on this phone and stands in when the chain does not answer.
+  const known = stellar?.account ? `nila.leader.${stellar.account}` : null;
   useEffect(() => {
     if (chain !== undefined && cached !== chain && saveRecord) saveRecord(chain).catch(() => {});
+    if (chain !== undefined && known) { try { localStorage.setItem(known, chain ? '1' : '0'); } catch { /* private mode */ } }
   }, [chain, cached]); // eslint-disable-line react-hooks/exhaustive-deps
   if (chain !== undefined) return { leader: chain };
   if (cached !== undefined) return { leader: Boolean(cached) };
+  if (q.isError && known) {
+    let kept = null;
+    try { kept = localStorage.getItem(known); } catch { /* private mode */ }
+    if (kept !== null) return { leader: kept === '1' };
+  }
   if (q.isError || (stellar ? !stellar.account : !union || !address)) return { leader: false };
   return { leader: undefined };
 }

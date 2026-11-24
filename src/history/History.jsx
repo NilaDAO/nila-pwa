@@ -42,7 +42,9 @@ export default function History({ onBack }) {
       header={{ title: 'History', onBack, onSettings: () => { window.location.hash = '#/settings'; } }}>
       {h.isLoading && <p style={{ color: C.muted, padding: '0 14px' }}>…</p>}
       {h.isError && <p style={{ color: C.coral, padding: '0 14px' }}>Your history could not be read. Try again.</p>}
-      {h.isSuccess && !groups.length && <p style={{ color: C.muted, padding: '0 14px' }}>Nothing yet. Your payments and crop agreements appear here.</p>}
+      {/* Rows 25–26 (24 Nov): a chain whose history did not load is named (its rows were missing without a word). */}
+      {h.data?.note && <p role="status" style={{ color: C.gold, padding: '0 14px' }}>{h.data.note}</p>}
+      {h.isSuccess && !groups.length && !h.data?.note && <p style={{ color: C.muted, padding: '0 14px' }}>Nothing yet. Your payments and crop agreements appear here.</p>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         {groups.map(([g, rows]) => {
           const recent = g === 'Today' || g === 'Yesterday';

@@ -288,12 +288,15 @@ export function useHistory(stellarAddress, evmAddress, senderAddress) {
   return useQuery({
     queryKey: ['history', stellarAddress, senderAddress, evmAddress, Object.keys(labels).length], enabled: !!cfg && !!stellarAddress && ready, staleTime: 30_000,
     queryFn: async () => {
+      // Each source fails on its own: a read that fails hides only its rows, and the note under the list names the chain
+      // (rows 25–26, 24 Nov: the list looked complete).
+      const failed = new Set();
+      const miss = (chain, empty) => () => { failed.add(chain); return empty; };
       const [st, ev, pg, pl] = await Promise.all([
-        // Each source fails on its own: a read that fails hides only its rows.
-        stellarRows(cfg, senderAddress, stellarAddress).catch(() => []),
-        nilaEvents(cfg).catch(() => []),
-        polygonRows(evmAddress, process.env.REACT_APP_CHAIN_ID || 137).catch(() => ({ rows: [], note: null })),
-        polygonLogRows(evmAddress, shareLabel).catch(() => []),
+        stellarRows(cfg, senderAddress, stellarAddress).catch(miss('Stellar', [])),
+        nilaEvents(cfg).catch(miss('Stellar', [])),
+        polygonRows(evmAddress, process.env.REACT_APP_CHAIN_ID || 137).catch(miss('Polygon', { rows: [], note: null })),
+        polygonLogRows(evmAddress, shareLabel).catch(miss('Polygon', [])),
       ]);
       // De-duplicated by transaction: a call of her own is her Horizon row; the events of other transactions are added
       // (one transaction can carry several of hers, e.g. crop agreements attested together).
@@ -301,7 +304,9 @@ export function useHistory(stellarAddress, evmAddress, senderAddress) {
       const evRows = eventRows(ev, stellarAddress, shareLabel).filter((r) => !byHash.has(r.hash));
       const pgHashes = new Set(pg.rows.map((r) => r.hash));
       const rows = [...st, ...evRows, ...pg.rows, ...pl.filter((r) => !pgHashes.has(r.hash))];
-      return { rows: rows.sort((a, b) => b.at - a.at), note: pg.note };
+      const missing = failed.size ? `Not loaded: your history on ${[...failed].join(' and ')}.` : null;
+      // Only a failed chain is noted (pg.note, "shown in the live app only", also comes for a member without Polygon).
+      return { rows: rows.sort((a, b) => b.at - a.at), note: missing };
     },
   });
 }

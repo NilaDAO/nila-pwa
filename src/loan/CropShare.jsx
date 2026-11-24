@@ -105,6 +105,14 @@ export default function CropShare({ token, onBack, onTakeUp, bar, onSwipe }) {
   const vb = useQuery({ queryKey: ['stellar', 'voucherBook', token], enabled: !!cfg && !!token, staleTime: 30_000,
     queryFn: () => readContract(cfg, 'fund_core', 'voucher_book', [sv.address(cfg.union), sv.bytes32(tokenHex(token))]).catch(() => null) });
   // S1 until her shares and her field record are both in (21 Oct): the card never shows before its map.
+  // Rows 25–26 (24 Nov): a list that failed to load says so (it spun for ever).
+  if (!x && shares.isError && !shares.data) {
+    return (
+      <Sheet title="Your crop agreement" onBack={onBack}>
+        <p style={{ ...muted, textAlign: 'center' }}>Not loaded: your crop agreements.</p>
+      </Sheet>
+    );
+  }
   if ((!x && (shares.isLoading || !shares.data)) || (x && !record && !field.error)) return <Loading />;
   if (!x) {
     return (

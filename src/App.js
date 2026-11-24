@@ -66,7 +66,9 @@ function App({installAvailable}) {
   const [landTitleId, setLandTitleId]                      = useState(Number(db?.reload?.land?.LAND?.id) || undefined);
   const {data : bal,  error : Ebal, isFetched: Fbal }      = useErc20Balances(chain, address, { enabled: hot_ready}, landTitleId);
   const foodtokens                                         = bal && bal.filter(b => b.type === 'ERC1155').length + 1 // 0 is false...
-  const cold_ready                                         = Boolean((!!chain && !!address && !!useCache && !!foodtokens) || (registerRecoverFlag && !!foodtokens))
+  // Rows 25–26 (24 Nov): the Stellar app (StellarGate → Shell) never uses the old Polygon grant and land reads; a Polygon
+  // RPC that hung kept every Stellar member on "Loading your wallet" for minutes. They run for the Polygon app only.
+  const cold_ready                                         = chain !== 'stellar' && Boolean((!!chain && !!address && !!useCache && !!foodtokens) || (registerRecoverFlag && !!foodtokens))
   const {data : grant, error : Egrant, isFetched: Fgrant}  = useGrantInfo(chain, address, unionAddress, foodtokens, cold_ready );
   const {data : land, error : Eland,  isFetched: Fland }   = useLandTitle(chain, address, cold_ready, pendingLandMint );
 
@@ -307,8 +309,8 @@ function App({installAvailable}) {
         }
       } 
       else if (online && isFetched && !cold_ready){ 
-        // query disabled so load grants & land from db
-        const { grant, land } = db.reload
+        // query disabled so load grants & land from db (none for a Stellar member who never had the Polygon reads)
+        const { grant, land } = db.reload || {}
         handleSetLocalState(bal,grant,land)
       } 
       else if (!online){  

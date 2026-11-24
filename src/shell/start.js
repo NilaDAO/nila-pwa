@@ -32,7 +32,9 @@ export function appToOpen({ chain, signer, leader, mode }) {
  * the tab, i.e. her crop plan, never the field-point steps R5–R8.
  */
 export function screenToOpen({ titles, onboarded, demoNew, privyNew, tab, arg, leader }) {
-  if (titles.loading) return 'titleWait';
+  // Rows 25–26 (24 Nov): one chain's read failed: the app opens (an unknown count never picks registration; each screen
+  // says what did not load). Only both failed, or still loading, waits here.
+  if (titles.loading && !(titles.failed?.length === 1 && !titles.pendingOther)) return 'titleWait';
   if (!onboarded && (demoNew || (titles.count === 0 && privyNew === true))) return 'start';
   return 'tab';
 }

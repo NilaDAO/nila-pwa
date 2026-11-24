@@ -596,7 +596,10 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
     const t = setInterval(() => { titles.refetch(); stellarTitles.refetch(); }, 5000);
     return () => clearInterval(t);
   }, [minting]); // eslint-disable-line react-hooks/exhaustive-deps
-  const titlesKnown = !!forLand || (!titles.isLoading && (onPolygon || stellarTitles.isFetched));
+  // Rows 25–26 (24 Nov): a failed Polygon read with no Stellar title is not "known" (it went on with no land): it waits,
+  // then the did-not-load screen with Try again.
+  const titlesKnown = !!forLand || (!titles.isLoading && (onPolygon || stellarTitles.isFetched)
+    && !(titles.isError && !titles.data && !stellarTitle));
   // 16 Nov: never an endless loader: after 30 s "did not load" with Try again (the console names the read).
   const waitOn = !titlesKnown ? (titles.isLoading ? 'the land title on Polygon' : 'the land title on Stellar')
     : current.isLoading ? 'the crop plan' : field.isLoading ? 'the field record' : null;
@@ -655,8 +658,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
         )}
         {(titles.isError || stellarTitles.isError) && <p style={{ ...muted, color: C.coral }}>Your land title could not be loaded.</p>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-          {!minting && openJob && self && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>Mint land title</Primary>}
-          {!minting && !openJob && !helped && <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint land title</Primary>}
+          {!minting && openJob && self && !stellarTitles.isError && <Primary onClick={() => { window.location.hash = `#/tasks/border/${openJob.id}`; }}>Mint land title</Primary>}
+          {!minting && !openJob && !helped && !stellarTitles.isError && <Primary onClick={() => { window.location.hash = '#/crop/register'; }}>Mint land title</Primary>}
         </div>
       </Sheet>
     );
