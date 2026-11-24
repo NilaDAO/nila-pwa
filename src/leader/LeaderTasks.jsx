@@ -24,6 +24,7 @@ import CameraView from '../shell/CameraView';
 import DeskCard from '../shell/DeskCard';
 import { ReadyShareRows, useMyShares } from '../loan/MyShares';
 import StartHelp from '../loan/StartHelp';
+import { OtpByPick } from '../loan/OtpHelp';
 import { sessionUntil, useSessionUntil } from '../stellar/session';
 import { HandBack } from '../machine/Machinery';
 
@@ -56,6 +57,7 @@ export function PlanFor({ go }) {
   const members = useUnionMembers(api);
   const [error, setError] = useState();
   const [tries, setTries] = useState(0);
+  const [otp, setOtp] = useState(false);
   const onText = (t) => {
     const a = addressFromQr(t);
     const m = a && (members.data || []).find((x) => x.address === a);
@@ -63,11 +65,14 @@ export function PlanFor({ go }) {
     if (!(m.titleId || m.lands?.length)) { setError('This member has no land title yet.'); setTries((x) => x + 1); return; }
     go(`memberplan/${m.route}`);
   };
+  // No QR (24 Nov): pick the member and a code to the member's phone (leader OTP), then the plan as after the scan.
+  if (otp) return <OtpByPick onBack={() => setOtp(false)} onStarted={(a) => { setOtp(false); onText(a); }} />;
   return (
     <DeskCard title="Make a crop plan" onBack={() => go('tasks')}>
       <CameraView key={tries} mode="qr" onText={onText} />
       <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>Scan the member's QR. You make the plan together; at the end the member shows the QR again to accept it.</p>
       {error && <p style={{ color: C.coral, margin: 0 }}>{error}</p>}
+      <button type="button" onClick={() => setOtp(true)} style={{ minHeight: 44, border: 0, background: 'none', color: C.muted, fontSize: 14, width: '100%', textDecoration: 'underline' }}>No QR? Pick the member and send a code</button>
     </DeskCard>
   );
 }

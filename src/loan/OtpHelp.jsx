@@ -11,20 +11,50 @@ import { useKeypadClient, useKeypadMembers } from '../keypad/hooks';
 import { useNilaSigner } from '../wallet/signer';
 import { setSession } from '../stellar/session';
 import { useUnionInfo } from '../shell/SettingsParts';
+import { usePlanClient } from '../plan/hooks';
+import { useUnionMembers } from '../leader/unionMembers';
 
 const hex = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
 const b64 = (sig) => btoa(String.fromCharCode(...new Uint8Array(sig)));
 
 /** Where a code can go: a keypad member whose phone is set up (number confirmed by the SMS link), else (24 Nov) a
- *  smartphone member whose own login kept its number. { id, last4 } or null: then only the QR. */
+ *  smartphone member whose own login kept its number. { id, last4 }, null (then only the QR) or undefined (asking). */
 export function useOtpMember(member) {
   const list = useKeypadMembers();
   const api = useKeypadClient();
   const row = member ? (list.data || []).find((m) => m.account === member && m.device) : null;
   const byAccount = useQuery({ queryKey: ['oracle', 'otpTarget', member], enabled: !!api && !!member && list.isFetched && !row,
     queryFn: () => api.otpTarget(member).catch(() => null), staleTime: 60_000 });
+  if (!member) return null;
   if (row) return { id: row.id, last4: String(row.phone || '').slice(-4) };
+  if (!list.isFetched || byAccount.isLoading) return undefined;   // still asking
   return byAccount.data ? { id: member, last4: byAccount.data.last4 } : null;
+}
+
+/** The union's members to pick from when the scanner does not know the member (24 Nov), searched by name or land. */
+export function PickMember({ onBack, onPick }) {
+  const api = usePlanClient();
+  const members = useUnionMembers(api);
+  const [q, setQ] = useState('');
+  const list = (members.data || []).filter((m) => m.address && (!q || m.label.toLowerCase().includes(q.toLowerCase())));
+  return (
+    <DeskCard title="Pick the member" onBack={onBack}>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name or land" aria-label="Name or land" style={{ ...field, fontSize: 16, letterSpacing: 0, textAlign: 'left', padding: '0 14px' }} />
+      {members.isLoading && <p style={muted}>…</p>}
+      {list.map((m) => (
+        <button key={m.key} type="button" onClick={() => onPick(m)} style={{ ...link, textDecoration: 'none', color: C.text, textAlign: 'left', fontSize: 16 }}>{m.label}</button>
+      ))}
+    </DeskCard>
+  );
+}
+
+/** No QR and the member not known yet (24 Nov): pick the member, then the code. `onStarted(account)`. */
+export function OtpByPick({ onBack, onStarted }) {
+  const [picked, setPicked] = useState();
+  const row = useOtpMember(picked?.address);
+  if (!picked) return <PickMember onBack={onBack} onPick={setPicked} />;
+  if (row === undefined) return <DeskCard title="Code from the member" onBack={() => setPicked(undefined)}><p style={muted}>…</p></DeskCard>;
+  return <OtpHelp row={row} member={picked.address} onBack={() => setPicked(undefined)} onStarted={onStarted} />;
 }
 
 export default function OtpHelp({ row, member, onBack, onStarted }) {
@@ -43,6 +73,7 @@ export default function OtpHelp({ row, member, onBack, onStarted }) {
     setSession(member, Math.floor(Date.now() / 1000) + 300);
     onStarted(member);
   });
+  if (!row) return <DeskCard title="Code from the member" onBack={onBack}><p style={{ color: C.coral }}>The member's phone is not set up yet: use the member's QR.</p></DeskCard>;
   const { last4 } = row;
   return (
     <DeskCard title="Code from the member" onBack={onBack}>
