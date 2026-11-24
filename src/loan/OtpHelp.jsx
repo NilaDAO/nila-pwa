@@ -3,6 +3,7 @@
 // and the node adds the union's SMS key: nila-account start_session_by_sms opens the same 5-minute session as the QR.
 // The node is needed for this path; the help QR stays the path without it.
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import DeskCard from '../shell/DeskCard';
 import { C } from '../shell/tokens';
 import { muted } from '../plan/ui';
@@ -14,10 +15,16 @@ import { useUnionInfo } from '../shell/SettingsParts';
 const hex = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
 const b64 = (sig) => btoa(String.fromCharCode(...new Uint8Array(sig)));
 
-/** The member's keypad row (her phone set up: her number confirmed), or null: then only the QR. */
+/** Where a code can go: a keypad member whose phone is set up (number confirmed by the SMS link), else (24 Nov) a
+ *  smartphone member whose own login kept its number. { id, last4 } or null: then only the QR. */
 export function useOtpMember(member) {
   const list = useKeypadMembers();
-  return member ? (list.data || []).find((m) => m.account === member && m.device) || null : null;
+  const api = useKeypadClient();
+  const row = member ? (list.data || []).find((m) => m.account === member && m.device) : null;
+  const byAccount = useQuery({ queryKey: ['oracle', 'otpTarget', member], enabled: !!api && !!member && list.isFetched && !row,
+    queryFn: () => api.otpTarget(member).catch(() => null), staleTime: 60_000 });
+  if (row) return { id: row.id, last4: String(row.phone || '').slice(-4) };
+  return byAccount.data ? { id: member, last4: byAccount.data.last4 } : null;
 }
 
 export default function OtpHelp({ row, member, onBack, onStarted }) {
@@ -36,7 +43,7 @@ export default function OtpHelp({ row, member, onBack, onStarted }) {
     setSession(member, Math.floor(Date.now() / 1000) + 300);
     onStarted(member);
   });
-  const last4 = String(row.phone || '').slice(-4);
+  const { last4 } = row;
   return (
     <DeskCard title="Code from the member" onBack={onBack}>
       {!sent ? (

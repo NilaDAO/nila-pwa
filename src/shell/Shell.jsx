@@ -36,7 +36,7 @@ import LeaderTasks, { HandBackFor, PlanFor } from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
 import AddMember, { KeypadPoints, LeaderOwnPoints, SmartphonePoints } from '../leader/AddMember';
-import { KeypadAccounts } from '../keypad/hooks';
+import { KeepMyNumber, KeypadAccounts } from '../keypad/hooks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { onboarded } from '../register/Registration';
 import { BootLoading } from '../register/Boot';
@@ -280,6 +280,7 @@ export default function Shell({ leader }) {
             opens it raised; only a bottom-bar tab keeps a lowered card down (keepLowOnTab). */}
         <Fragment key={view}>{body}</Fragment>
         {leader && <KeypadAccounts />}
+        {!leader && <KeepMyNumber />}
         <BottomTabBar tabs={tabs} active={active} onSelect={(v) => { keepLowOnTab(); resetA1Scroll(); go(v); }} />
       </div>
     </MapStage>
