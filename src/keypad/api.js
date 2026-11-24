@@ -20,6 +20,10 @@ export function keypadClient(signer) {
     recoverAsk: (id) => call('POST', `/keypad/members/${id}/recover`, {}),
     recoverSign: (id, signature) => call('POST', `/keypad/members/${id}/recover/sign`, { signature }),
     points: (id, points) => call('POST', `/keypad/members/${id}/points`, { points }),
+    // Leader OTP (24 Nov): a code to her number on record opens the help QR's session (start_session_by_sms).
+    otpSend: (id, leaderName) => call('POST', `/keypad/members/${id}/otp`, { leader_name: leaderName || '' }),
+    otpCheck: (id, code) => call('POST', `/keypad/members/${id}/otp/check`, { code }),
+    otpSign: (id, signature) => call('POST', `/keypad/members/${id}/otp/sign`, { signature }),
     // 13 Nov: G2's bin for a member without a land title: deleted for good (409 while she holds one).
     remove: (id) => call('DELETE', `/keypad/members/${id}`),
   };

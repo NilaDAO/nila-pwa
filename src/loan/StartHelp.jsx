@@ -12,6 +12,7 @@ import { muted } from '../plan/ui';
 import { isDeskCode } from './deskCode';
 import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
 import { useNilaSigner } from '../wallet/signer';
+import OtpHelp, { useOtpMember } from './OtpHelp';
 
 /** title (13 Nov): the task only ("Join the union"); the land's name is already on the screen behind it. */
 /** `onPair(account)` (sign later, plan 050): `member` is a new member's keyless placeholder; her QR carries her new
@@ -23,6 +24,9 @@ export default function StartHelp({ member, label, title, onBack, onStarted, onD
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState();
   const [tries, setTries] = useState(0);
+  // Leader OTP (24 Nov): for a known member whose phone is set up, a code instead of the QR.
+  const otpRow = useOtpMember(onPair ? null : member);
+  const [otp, setOtp] = useState(false);
   const read = async (t) => {
     // His signed nIN cash-out QR (NILA:N, executive decision 4 Nov): no session; HandOver (CashOut.jsx) reads it.
     if (onDesk && isDeskCode(t)) { onDesk(t); return; }
@@ -60,11 +64,13 @@ export default function StartHelp({ member, label, title, onBack, onStarted, onD
   };
   if (joining) return <DeskCard title="Joining her account to the union…" onBack={onBack}><p style={muted}>One moment.</p></DeskCard>;
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
+  if (otp && otpRow) return <OtpHelp row={otpRow} member={member} onBack={() => setOtp(false)} onStarted={onStarted} />;
   return (
     <DeskCard title={title || "Scan the member's QR"} onBack={onBack}>
       <CameraView key={tries} mode="qr" onText={read} />
       <p style={muted}>Scan the QR on the member's phone. With a help QR you can then act for the member for 5 minutes.</p>
       {error && <p style={{ color: C.coral }}>{error}</p>}
+      {otpRow && <button type="button" onClick={() => setOtp(true)} style={{ minHeight: 44, border: 0, background: 'none', color: C.muted, fontSize: 14, width: '100%', textDecoration: 'underline' }}>No QR? Send a code to the member's phone</button>}
     </DeskCard>
   );
 }
