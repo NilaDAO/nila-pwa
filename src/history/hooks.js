@@ -292,11 +292,13 @@ export function useHistory(stellarAddress, evmAddress, senderAddress) {
       // (rows 25–26, 24 Nov: the list looked complete).
       const failed = new Set();
       const miss = (chain, empty) => () => { failed.add(chain); return empty; };
+      // A chain that hangs counts as failed after 20 s (the list waited for it).
+      const within = (p) => Promise.race([p, new Promise((_, no) => { setTimeout(() => no(new Error('timeout')), 20_000); })]);
       const [st, ev, pg, pl] = await Promise.all([
-        stellarRows(cfg, senderAddress, stellarAddress).catch(miss('Stellar', [])),
-        nilaEvents(cfg).catch(miss('Stellar', [])),
-        polygonRows(evmAddress, process.env.REACT_APP_CHAIN_ID || 137).catch(miss('Polygon', { rows: [], note: null })),
-        polygonLogRows(evmAddress, shareLabel).catch(miss('Polygon', [])),
+        within(stellarRows(cfg, senderAddress, stellarAddress)).catch(miss('Stellar', [])),
+        within(nilaEvents(cfg)).catch(miss('Stellar', [])),
+        within(polygonRows(evmAddress, process.env.REACT_APP_CHAIN_ID || 137)).catch(miss('Polygon', { rows: [], note: null })),
+        within(polygonLogRows(evmAddress, shareLabel)).catch(miss('Polygon', [])),
       ]);
       // De-duplicated by transaction: a call of her own is her Horizon row; the events of other transactions are added
       // (one transaction can carry several of hers, e.g. crop agreements attested together).
