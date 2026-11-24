@@ -599,7 +599,8 @@ export default function CropPlanFlow({ forLand, self = false, onExit } = {}) {
   // Rows 25–26 (24 Nov): a failed Polygon read with no Stellar title is not "known" (it went on with no land): it waits,
   // then the did-not-load screen with Try again.
   const titlesKnown = !!forLand || (!titles.isLoading && (onPolygon || stellarTitles.isFetched)
-    && !(titles.isError && !titles.data && !stellarTitle));
+    && !(titles.isError && !titles.data && !stellarTitle)
+    && !(!onPolygon && stellarTitles.isError && !stellarTitles.data));
   // 16 Nov: never an endless loader: after 30 s "did not load" with Try again (the console names the read).
   const waitOn = !titlesKnown ? (titles.isLoading ? 'the land title on Polygon' : 'the land title on Stellar')
     : current.isLoading ? 'the crop plan' : field.isLoading ? 'the field record' : null;
