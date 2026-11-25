@@ -25,6 +25,7 @@ import { Loading } from '../register/Boot';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useBookActions } from '../union/hooks';
 import { oneTimeJoin } from '../stellar/session';
+import { NoteBar } from '../loan/AssetParts';
 
 const field = { height: 48, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 16px', boxSizing: 'border-box',
   width: '100%', fontFamily: FONT, fontSize: 14, fontWeight: 700, outline: 'none' };
@@ -159,9 +160,9 @@ export default function AddMember({ id, go }) {
         <>
           <Card title="The member's phone">
             <div role="radiogroup" aria-label="The member's phone" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Radio title="Smartphone" sub="Nila app. We text the app's link; the member registers and shows their QR later, at Join the union." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
-              <Radio title="Keypad phone" sub="Nila lite. The member opens a link from SMS." on={type === 'keypad'} onClick={() => setType('keypad')} />
-              <Radio title="SMS only" sub="No app. The member reads you a code from SMS; you act for the member with a code each time." on={type === 'sms'} onClick={() => setType('sms')} />
+              <Radio title="Smartphone" sub="Nila app. The member registers and joins later." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
+              <Radio title="Keypad phone" sub="Nila lite, from an SMS link." on={type === 'keypad'} onClick={() => setType('keypad')} />
+              <Radio title="SMS only" sub="No app. You act for the member with SMS codes." on={type === 'sms'} onClick={() => setType('sms')} />
             </div>
           </Card>
           <Card title="Member">
@@ -170,10 +171,12 @@ export default function AddMember({ id, go }) {
             <label style={label} htmlFor="l14-phone">Phone number</label>
             <PhoneField id="l14-phone" value={phone} onChange={setPhone} />
             <Row k={<b style={{ color: C.text }}>Union</b>} v={union.name || '—'} />
-            <Notice kind="info">Do this at the farm: you take the field points on your phone. No phone of their own? A family member's phone works. No phone, no account.</Notice>
             {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
             <Primary disabled={!ok || send.isPending} onClick={submit}>{type === 'sms' ? 'Send code and take field points' : 'Send app link and take field points'}</Primary>
           </Card>
+          {/* 25 Nov: the farm note in the info bar above the tab bar, not in the card. */}
+          <div aria-hidden="true" style={{ height: 96 }} />
+          <NoteBar>Do this at the farm, to take the field points. A family member's phone works too.</NoteBar>
         </>
       )}
     </MapCard>
