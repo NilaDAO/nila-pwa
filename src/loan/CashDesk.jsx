@@ -223,7 +223,7 @@ function ToMembersFrom({ member }) {
 // #/cash/<arg>: L1's tasks and A1L's slides open a flow directly; settle opens the board's Cash card.
 // Her own actions start from her QR (executive decision 24 Oct, as Pay out cash): a task without her scans her wallet or
 // crop agreement QR first, then the count. From her G2 they come as #/cash/<action>/<her Stellar address>.
-const OPEN = { lpscan: 'lpscan', invest: 'invest', repay: 'repay', machine: 'machine', withdraw: 'withdraw', share: 'share', scan: 'scan' };
+const OPEN = { lpscan: 'lpscan', invest: 'invest', investself: 'investself', repay: 'repay', machine: 'machine', withdraw: 'withdraw', share: 'share', scan: 'scan' };
 const MEMBER_ACTIONS = ['invest', 'repay', 'withdraw'];   // invest and withdraw run in place on her G2 (22 Oct)
 const herFromHash = () => (window.location.hash.match(/^#\/cash\/\w+\/([GC][A-Z2-7]{55})/) || [])[1];
 
@@ -247,6 +247,8 @@ export default function CashDesk({ initial }) {
       onFound={(f) => window.location.replace(`#/loan/${f.plan}_${f.token}`)} />;
   }
   if (found) return <Scan purpose={view} onBack={toTasks} initialMember={found.who} initialToken={found.token && tokenHex(found.token)} />;
+  // 25 Nov: the leader's own investment (nIN invested → Photo count) counts here; a member's runs on the member's G2.
+  if (view === 'investself') return <Scan purpose="invest" onBack={() => window.history.back()} initialMember={member} />;
   if (view === 'invest' || view === 'withdraw') return <ToMembersFrom member={member} />;
   if (view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
   if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member || ''} />;
