@@ -165,7 +165,7 @@ describe('useRegFlow', () => {
     });
     const newCalls = updateFieldReg.mock.calls.slice(callsBefore);
     const fnCall = newCalls.find((call) => typeof call[0] === 'function');
-    const next = fnCall[0]({ neighbours: [1, 2, 3] });
+    const next = fnCall[0]({ neighbours: [1, 2, 3], positions: [] });   // the flow reads positions (suppressPolygonUntil)
     expect(next.alts).toEqual([]);
     expect(next.flow).toBe(2);
     expect(next.track).toBe(true);
