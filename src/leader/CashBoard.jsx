@@ -126,6 +126,9 @@ function Chip({ book, api, onFound }) {
           <div style={rows}>
             <Row k="On-chain book" v={inr(book.chain)} />
             <Row k="Loan list" v={inr(book.listed)} />
+            {/* 25 Nov: the loan list's two parts; vouchers are lent from junior money too. */}
+            <Row k="· Cash" v={inr(book.loans.reduce((t, l) => t + l.outstanding, 0))} />
+            <Row k="· Vouchers" v={inr(book.loans.reduce((t, l) => t + (l.voucherOut || 0), 0))} />
             {diff !== 0 && <Row k="Difference" v={inr(Math.abs(diff))} />}
           </div>
           {note && <span style={{ color: C.muted, fontSize: 13 }}>{note}.</span>}
