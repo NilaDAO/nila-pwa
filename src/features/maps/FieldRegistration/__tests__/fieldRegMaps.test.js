@@ -69,6 +69,8 @@ const renderWithProviders = (fieldReg, props = {}) => {
 describe('fieldRegMaps', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // CRA's jest resets mock implementations before each test (resetMocks): the map's centre is set again here.
+    mockMap.getCenter.mockImplementation(() => ({ lat: () => 1, lng: () => 2 }));
     mockMap._dragEnd = undefined;
     mockMap.addListener.mockImplementation((event, cb) => {
       if (event === 'dragend') mockMap._dragEnd = cb;
