@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import CameraView from '../shell/CameraView';
 import { readSessionQr, setSession } from '../stellar/session';
-import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
+import { PendingScreen, TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { C } from '../shell/tokens';
 import DeskCard from '../shell/DeskCard';
 import { muted } from '../plan/ui';
@@ -63,7 +63,7 @@ export default function StartHelp({ member, label, title, onBack, onStarted, onD
       args: q.args, auth: [q.entry], invalidate: [] });
     if (out) { setSession(q.member, Number(out.result || 0) || Math.floor(Date.now() / 1000) + 300); tx.reset(); onStarted(q.member); }
   };
-  if (joining) return <DeskCard title="Joining her account to the union…" onBack={onBack}><p style={muted}>One moment.</p></DeskCard>;
+  if (joining) return <PendingScreen label="Joining the union" rows={label ? [['Member', label]] : []} />;
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   // A scanner that does not know the member yet (Tasks, Give back vouchers): the leader picks the member first.
   if (otp && !member) return <OtpByPick onBack={() => setOtp(false)} onStarted={onStarted} />;

@@ -95,6 +95,20 @@ const Button = ({ children, onClick, primary }) => (
     background: primary ? C.accent : C.raised, color: primary ? C.ink : C.text, cursor: 'pointer' }}>{children}</button>
 );
 
+/** N1 for a step that is not one transaction and must not be closed half-way (25 Nov: Join the union makes the
+ *  member's account, joins it and pairs it). No Close button. */
+export function PendingScreen({ label, rows = [] }) {
+  const [first] = rows;
+  return (
+    <Screen>
+      <Bouncing pad={0} top={0} bottom={8} size={48} label="Sending" />
+      <h1 style={title}>{label}</h1>
+      {first && <p style={sub}>{first[0]} {first[1]}</p>}
+      <p style={{ ...sub, margin: '8px 0 16px' }}>One moment.</p>
+    </Screen>
+  );
+}
+
 /** Shows N1/N2/N3 for a running tx; renders nothing while idle. */
 export function TxScreens({ tx, onClose, onRetry, network = 'Stellar' }) {
   const [left, setLeft] = useState(5);
