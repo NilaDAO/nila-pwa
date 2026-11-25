@@ -177,7 +177,7 @@ export default function LandTitle({ onBack, bar, onSwipe, leader = false }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.5 }}>
         <span style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>Land title</span>
-          <span style={{ color: C.muted }}>{landId != null ? [farm, `id ${landId}`, onPolygon ? 'on Polygon' : 'attested'].filter(Boolean).join(' · ') : pending ? 'Being minted' : 'No land title yet'}</span>
+          <span style={{ color: C.muted }}>{landId != null ? [farm, `id ${landId}`, onPolygon ? 'on Polygon' : 'attested'].filter(Boolean).join(' · ') : pending ? 'Being minted' : (titles.isError || stellarTitles.isError) ? 'Not loaded' : 'No land title yet'}</span>
         </span>
         <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>{count}</span>
