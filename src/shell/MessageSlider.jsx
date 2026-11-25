@@ -52,8 +52,8 @@ export function memberSlides({ position, positionKnown, loans = [], now = Date.n
     const left = Math.max(0, total - l.paid);
     if (left <= 0) continue;
     out.push(
-      <section key={`repay-${l.id}`} aria-label="Repay your share" style={card}>
-        <Title Icon={RepayTile}>Repay your {l.label} share</Title>
+      <section key={`repay-${l.id}`} aria-label="Repay your crop agreement" style={card}>
+        <Title Icon={RepayTile}>Repay your {l.label} crop agreement</Title>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
           <span style={big}>{inr(left)}</span>
           <span style={{ ...small, color: C.muted, textAlign: 'right' }}>left{l.due ? ` · due end of ${new Date(l.due * 1000).toLocaleDateString('en-GB', { month: 'short' })}` : ''}</span>
