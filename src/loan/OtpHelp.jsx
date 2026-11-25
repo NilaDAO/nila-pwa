@@ -79,7 +79,7 @@ export default function OtpHelp({ row, member, onBack, onStarted }) {
     <DeskCard title="Code from the member" onBack={onBack}>
       {!sent ? (
         <>
-          <p style={muted}>Nila sends a 6-digit code to the member's number ending {last4}. The member reads it out to you.</p>
+          <p style={muted}>Nila sends a 6-digit code to the member's number ending {last4}.</p>
           <button type="button" disabled={busy} onClick={send} style={btn}>{busy ? 'Sending…' : 'Send the code'}</button>
         </>
       ) : (

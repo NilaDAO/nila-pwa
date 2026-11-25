@@ -216,7 +216,7 @@ export function SmsMember({ id, go }) {
           </>
         ) : (
           <>
-            <Text>Nila sent a 6-digit code to the number ending {last4}. The member reads it out to you.</Text>
+            <Text>Nila sent a 6-digit code to the number ending {last4}.</Text>
             <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} aria-label="Code"
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} style={{ ...field, fontSize: 24, letterSpacing: 8, textAlign: 'center' }} />
             <Primary disabled={busy || code.length !== 6 || !cfg} onClick={confirm}>{busy ? 'One moment…' : 'Check the code'}</Primary>
