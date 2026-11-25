@@ -335,7 +335,7 @@ export default function MemberStatus({ id, go }) {
             a new member's account is paired with the holding address her title was minted to (holder: her placeholder). */}
         {m.joined === false && !(m.keypadId && /^G/.test(m.address || '')) && (
           <JoinSteps m={m} holder={holder}
-            onScan={() => setScanning({ what: 'Join the union', holder, then: () => { markJoined(m.address); refetchMembers(); } })} />
+            onScan={() => setScanning({ what: 'Join the union', holder, then: () => { markJoined(m.address); refetchMembers(); window.location.hash = '#/members'; } })} />
         )}
         {/* 20 Nov: joined from her placeholder (sign later): until her account holds the title (seconds; at most the
             attester's 10-minute round), this row says so instead of the Join card or "Pending". */}
