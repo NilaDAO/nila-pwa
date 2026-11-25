@@ -56,6 +56,29 @@ export function useKeypadMembers() {
 
 export { useKeypadClient };
 
+/** Leader OTP for smartphone members (24 Nov): once a day this phone tells the node its login number (Cognito, proven
+ *  by the login's SMS code) in a request the member's own wallet signs, so a leader can send the member a code instead
+ *  of the help QR. Renders nothing; a failure is only logged (the QR still works). */
+export function KeepMyNumber() {
+  const api = useKeypadClient();
+  const s = useNilaSigner();
+  useEffect(() => {
+    if (!api || !s?.stellarAddress) return;
+    const key = `nila.otpNumber.${s.stellarAddress}`;
+    const today = new Date().toISOString().slice(0, 10);
+    try { if (localStorage.getItem(key) === today) return; } catch { /* private mode */ }
+    (async () => {
+      const { readAllItems } = await import('../utils/db');
+      const { freshAccessToken } = await import('../utils/getEncryptedKey');
+      const db = await readAllItems('Init');
+      if (!db?.jwt_token) return;
+      await api.myNumber(await freshAccessToken(db));
+      try { localStorage.setItem(key, today); } catch { /* private mode */ }
+    })().catch((e) => console.warn('[otp] login number not kept', e.message));
+  }, [api, s?.stellarAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 /** Keypad accounts (26 Oct): a keypad member's smart account is created by the leader's app as soon as the member's
  *  phone is set up (its key is made when the SMS link is opened, so it cannot be made at Add a member), then named into
  *  the union with the phone's own signed set_union (3 Nov). Runs while a

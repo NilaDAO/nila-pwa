@@ -24,6 +24,8 @@ import { PointsStep, clearPoints, readPoints } from '../border/SendLocation';
 import { Loading } from '../register/Boot';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useBookActions } from '../union/hooks';
+import { oneTimeJoin } from '../stellar/session';
+import { NoteBar } from '../loan/AssetParts';
 
 const field = { height: 48, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 16px', boxSizing: 'border-box',
   width: '100%', fontFamily: FONT, fontSize: 14, fontWeight: 700, outline: 'none' };
@@ -148,6 +150,7 @@ export default function AddMember({ id, go }) {
     // address, and her account joins at a later scan of her QR (G2).
     { onSuccess: (m) => {
       if (type === 'smartphone') { writeScanned({ account: '', polygon: '', join: null, name: name.trim(), phone: phoneValue(phone) }); return go('tasks/member/qr/points'); }
+      if (type === 'sms') return go(`tasks/member/${m.id}/sms`);   // 25 Nov: the code checks the number first
       return go(m.phone_type === 'keypad' && !m.job ? `tasks/member/${m.id}/points` : `tasks/member/${m.id}`);
     } });
   return (
@@ -157,8 +160,9 @@ export default function AddMember({ id, go }) {
         <>
           <Card title="The member's phone">
             <div role="radiogroup" aria-label="The member's phone" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Radio title="Smartphone" sub="Nila app. We text the app's link; the member registers and shows their QR later, at Join the union." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
-              <Radio title="Keypad phone" sub="Nila lite. The member opens a link from SMS." on={type === 'keypad'} onClick={() => setType('keypad')} />
+              <Radio title="Smartphone" sub="Nila app. The member registers and joins later." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
+              <Radio title="Keypad phone (with internet)" sub="Nila lite, from an SMS link." on={type === 'keypad'} onClick={() => setType('keypad')} />
+              <Radio title="Keypad phone (SMS only)" sub="No app. You act for the member with SMS codes." on={type === 'sms'} onClick={() => setType('sms')} />
             </div>
           </Card>
           <Card title="Member">
@@ -167,12 +171,61 @@ export default function AddMember({ id, go }) {
             <label style={label} htmlFor="l14-phone">Phone number</label>
             <PhoneField id="l14-phone" value={phone} onChange={setPhone} />
             <Row k={<b style={{ color: C.text }}>Union</b>} v={union.name || '—'} />
-            <Notice kind="info">Do this at the farm: you take the field points on your phone. No phone of their own? A family member's phone works. No phone, no account.</Notice>
             {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
-            <Primary disabled={!ok || send.isPending} onClick={submit}>Send app link and take field points</Primary>
+            <Primary disabled={!ok || send.isPending} onClick={submit}>{type === 'sms' ? 'Send code and take field points' : 'Send app link and take field points'}</Primary>
           </Card>
+          {/* 25 Nov: the farm note in the info bar above the tab bar, not in the card. */}
+          <div aria-hidden="true" style={{ height: 96 }} />
+          <NoteBar>Do this at the farm, to take the field points. A family member's phone works too.</NoteBar>
         </>
       )}
+    </MapCard>
+  );
+}
+
+/** tasks/member/<id>/sms (SMS-only member, executive decision 25 Nov, option A): the code the member reads out checks
+ *  the number; then this app makes the member's account with a one-time key, joins it to the union and forgets the
+ *  key; the node keeps the account on the member's row; then the field points. */
+export function SmsMember({ id, go }) {
+  const api = useKeypadClient();
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const union = useUnionInfo();
+  const m = useKeypadMember(id).data;
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState();
+  const run = async (f) => { setBusy(true); setError(undefined); try { await f(); } catch (e) { setError(e.message); } finally { setBusy(false); } };
+  const makeAccount = async () => {
+    const j = await oneTimeJoin(cfg);
+    await ensureKeypadAccount(cfg, s, j);
+    await api.smsAccount(id, j.account);
+    go(`tasks/member/${id}/points`);
+  };
+  const confirm = () => run(async () => { await api.smsConfirm(id, code); await makeAccount(); });
+  if (!m) return <Loading />;
+  const last4 = String(m.phone || '').slice(-4);
+  return (
+    <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
+      header={{ title: 'Add a member', onBack: () => go('tasks') }}>
+      <Card title="Code from the member">
+        {m.device ? (
+          <>
+            <Text>The number is checked. Make the member's account to go on.</Text>
+            <Primary disabled={busy || !cfg} onClick={() => run(makeAccount)}>{busy ? 'One moment…' : "Make the member's account"}</Primary>
+          </>
+        ) : (
+          <>
+            <Text>Nila sent a 6-digit code to the number ending {last4}.</Text>
+            <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} aria-label="Code"
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} style={{ ...field, fontSize: 24, letterSpacing: 8, textAlign: 'center' }} />
+            <Primary disabled={busy || code.length !== 6 || !cfg} onClick={confirm}>{busy ? 'One moment…' : 'Check the code'}</Primary>
+            <button type="button" disabled={busy} onClick={() => run(() => api.smsResend(id, union.rep))}
+              style={{ minHeight: 44, border: 0, background: 'none', color: C.muted, fontSize: 14, textDecoration: 'underline' }}>Send a new code</button>
+          </>
+        )}
+        {error && <Text style={{ color: C.coral }}>{error}</Text>}
+      </Card>
     </MapCard>
   );
 }

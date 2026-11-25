@@ -16,10 +16,10 @@
 // leader's app sends start_session with it, then does the member's task: every entry of the member's account is
 // signed `Leader(<the leader's account>)`, and the leader's account approves it inside the member's check.
 import { useEffect, useState } from 'react';
-import { Address, StrKey, authorizeEntry, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+import { Address, Keypair, StrKey, authorizeEntry, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 import { fromB32, toB32 } from '../loan/deskCode';
 import { server } from './soroban';
-import { signatureVal, unionEntry } from './account';
+import { accountOf, signatureVal, unionEntry } from './account';
 
 const PREFIX = 'NILA:S:';
 const LEN = 1 + 32 + 8 + 8 + 4 + 64;
@@ -67,6 +67,23 @@ async function signJoin(cfg, account, key, union, sign, exp) {
   out.set(StrKey.decodeEd25519PublicKey(key), 0); out.set(StrKey.decodeEd25519PublicKey(union), 32); out.set(nonce, 64);
   new DataView(out.buffer).setUint32(72, exp); out.set(sig, 76);
   return out;
+}
+
+/** SMS-only members (executive decision 25 Nov, option A): the leader's app makes a one-time key, signs the new
+ *  account's set_union(union) with it, and forgets it (it lives only in this call). → { account, first_signer, set_union }
+ *  for ensureKeypadAccount. From then on only codes (leader OTP) and recovery reach the account. */
+export async function oneTimeJoin(cfg) {
+  const kp = Keypair.random();
+  const account = accountOf(cfg, kp.publicKey());
+  const exp = (await server(cfg).getLatestLedger()).sequence + LEDGERS;
+  const nonce = new Uint8Array(8); crypto.getRandomValues(nonce);
+  const blank = { nonce: plainHex(nonce), exp, sig: '00'.repeat(64) };
+  let sig;
+  await authorizeEntry(xdr.SorobanAuthorizationEntry.fromXDR(unionEntry(account, cfg.union, blank, 'Ed25519'), 'base64'), async (_p, payload) => {
+    sig = Uint8Array.from(kp.sign(Buffer.from(payload)));
+    return { signatureScVal: signatureVal('Ed25519', sig), address: account };
+  }, exp, cfg.passphrase, account);
+  return { account, first_signer: plainHex(kp.rawPublicKey()), set_union: { union: cfg.union, nonce: blank.nonce, exp, sig: plainHex(sig) } };
 }
 
 /** The member's phone: a fresh session QR for `account`, signed by `sign(payload)` (64 bytes) of key `kind`;
