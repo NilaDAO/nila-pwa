@@ -234,7 +234,7 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           ? <Row label="nIN, identity check needed" icon={<NinTile />} title="nIN" warn="Identity check (KYC) needed" />
           : (leader || (lp?.idChecked && nin >= 1)) && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />}
         {invested !== undefined && (
-          <Row label={leader ? 'Open nIN invested' : 'Open union investment'} icon={<InvestedTile />} title={leader ? 'nIN invested' : 'Union investment'}
+          <Row label="Open union investment" icon={<InvestedTile />} title="Union investment"
             sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : leader ? 'Union investment' : 'In your union'}
             value={leader ? Math.floor(invested) : inr(invested)} valueSub={leader ? inr(invested) : ''} onClick={onInvested} />
         )}
