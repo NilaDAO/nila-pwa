@@ -80,16 +80,16 @@ function Amount({ value, set, max = Infinity }) {
   );
 }
 
-function Scan({ purpose, onBack, initialMember = '', initialToken }) {
+function Scan({ purpose, onBack, initialMember = '', initialToken, initialAmount, direct = false }) {
   const fixed = isG(initialMember);
   const s = useNilaSigner();
   const api = usePlanClient();
   const { data: cfg } = useStellarConfig();
   const tx = useSorobanTx();
   const [member, setMember] = useState(initialMember);
-  const [amount, setAmount] = useState(purpose === 'invest' ? 600 : 0);
+  const [amount, setAmount] = useState(initialAmount || (purpose === 'invest' ? 600 : 0));
   const [token, setToken] = useState();
-  const [counting, setCounting] = useState(false);
+  const [counting, setCounting] = useState(direct);   // direct (25 Nov): the leader's own invest opens the camera
   const [noPhotos, setNoPhotos] = useState(false);
   // Repay: her open loans from fund_core.loans_of (the contract's list, so a loan never drops out when
   // her plan is replaced). The members are the one typed here, else the borrowers in the members list kept on the
@@ -144,7 +144,7 @@ function Scan({ purpose, onBack, initialMember = '', initialToken }) {
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => { tx.reset(); onBack(); }} onRetry={() => tx.retry()} />;
   if (counting) {
     return <PhotoCount name={purpose === 'invest' ? 'Invest' : `Repay · ${sel?.crop || ''}`} target={amount} verb={purpose === 'invest' ? 'Invest' : 'Repay'} desk={desk.data}
-      onBack={() => setCounting(false)} onDone={(c) => { setCounting(false); record(c); }} />;
+      onBack={() => (direct ? onBack() : setCounting(false))} onDone={(c) => { setCounting(false); record(c); }} />;
   }
   return (
     <DeskCard title={purpose === 'invest' ? 'Invest' : 'Repay'} onBack={onBack}>
@@ -248,7 +248,11 @@ export default function CashDesk({ initial }) {
   }
   if (found) return <Scan purpose={view} onBack={toTasks} initialMember={found.who} initialToken={found.token && tokenHex(found.token)} />;
   // 25 Nov: the leader's own investment (nIN invested → Photo count) counts here; a member's runs on the member's G2.
-  if (view === 'investself') return <Scan purpose="invest" onBack={() => window.history.back()} initialMember={member} />;
+  // The amount comes from the investment screen's stepper (#/cash/investself/<account>/<rupees>): straight to the camera.
+  if (view === 'investself') {
+    const amt = Number((window.location.hash.match(/investself\/[GC][A-Z2-7]{55}\/(\d+)/) || [])[1]) || 0;
+    return <Scan purpose="invest" onBack={() => window.history.back()} initialMember={member} initialAmount={amt} direct />;
+  }
   if (view === 'invest' || view === 'withdraw') return <ToMembersFrom member={member} />;
   if (view === 'repay') return <Scan purpose={view} onBack={back} initialMember={member} />;
   if (view === 'machine') return <RegisterMachine onBack={back} initialOwner={member || ''} />;
