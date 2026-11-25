@@ -161,8 +161,8 @@ export default function AddMember({ id, go }) {
           <Card title="The member's phone">
             <div role="radiogroup" aria-label="The member's phone" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Radio title="Smartphone" sub="Nila app. The member registers and joins later." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
-              <Radio title="Keypad phone" sub="Nila lite, from an SMS link." on={type === 'keypad'} onClick={() => setType('keypad')} />
-              <Radio title="SMS only" sub="No app. You act for the member with SMS codes." on={type === 'sms'} onClick={() => setType('sms')} />
+              <Radio title="Keypad phone (with internet)" sub="Nila lite, from an SMS link." on={type === 'keypad'} onClick={() => setType('keypad')} />
+              <Radio title="Keypad phone (SMS only)" sub="No app. You act for the member with SMS codes." on={type === 'sms'} onClick={() => setType('sms')} />
             </div>
           </Card>
           <Card title="Member">
