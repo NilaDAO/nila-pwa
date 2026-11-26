@@ -343,7 +343,14 @@ export default function MemberStatus({ id, go }) {
             a new member's account is paired with the holding address her title was minted to (holder: her placeholder). */}
         {/* Plan 054: a title on a placeholder (sign later): the one SMS to the number the leader types, or (a self-mode
             member, no SMS) the scan of the member's QR. An operator-moved account (C…): the steps as before. */}
-        {holder ? (
+        {/* 26 Nov: the SMS went already (a keypad row, not joined): one button back to the two choices (QR or code). */}
+        {m.keypadId && !/^C/.test(m.address || '') && (
+          <Section title={JOIN_TEXTS.title} right="Not joined yet">
+            <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={() => go(`tasks/member/${m.keypadId}`)}>
+              {JOIN_TEXTS.title}</button>
+          </Section>
+        )}
+        {holder && m.keypadId ? null : holder ? (
           <JoinBySms m={m} go={go}
             onScan={() => setScanning({ what: 'Join the union', holder, then: () => { markJoined(m.address); refetchMembers(); window.location.hash = '#/members'; } })} />
         ) : m.joined === false && !(m.keypadId && /^G/.test(m.address || '')) && (
