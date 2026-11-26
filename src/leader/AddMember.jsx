@@ -312,12 +312,15 @@ function NewSmartphone({ go }) {
   const [name, setName] = useState(m?.name || '');
   const [phone, setPhone] = useState(m?.phone || '+91');
   const acct = useScannedAccount(m);
+  const qc = useQueryClient();
   const { setName: tag } = useBookActions();
   useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
   if (!m) return null;
   const ok = name.trim() && phoneOk(phone);
   const next = () => {
     writeScanned({ ...m, name: name.trim(), phone: phoneValue(phone) });
+    // 26 Nov: joined from her QR: in this phone's member list at once (other leaders: from the node, as before).
+    if (m.account && !m.former) addLocalMember(qc, { account: m.account, name: name.trim(), phone: phoneValue(phone) });
     // 16 Nov: an existing member's name and number, as the leader verified them, go to the union's contact book, so
     // the next new land title for her finds them filled in. Best effort: a phone without the union key skips it.
     if (m.former && m.account) tag.mutate({ address: m.account, name: name.trim(), phone: phoneValue(phone) }, { onError: () => {} });

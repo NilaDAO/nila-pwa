@@ -99,16 +99,16 @@ const finish = (members) => members.map((m) => {
  *  leaders get her from the node at their next ask, as before. `k`: the node's keypad member ({ id, name, phone,
  *  account }). The next answer from the node replaces the row (same key `keypad:<id>`, or her account once joined). */
 export function addLocalMember(qc, k) {
-  if (!k?.id) return;
+  if (!k?.id && !k?.account) return;   // 26 Nov: also a member joined from her QR (Members scan): her account, no keypad row
   qc.setQueriesData({ queryKey: ['stellar', 'unionMembers'] }, (list) => {
     if (!Array.isArray(list)) return list;
-    const at = list.findIndex((x) => x.keypadId === k.id);
+    const at = list.findIndex((x) => (k.id && x.keypadId === k.id) || (k.account && x.address === k.account));
     if (at >= 0) {
       if (!k.account || list[at].address === k.account) return list;
       return list.map((x, i) => (i === at ? { ...x, address: k.account, joined: true, note: x.lands?.length ? x.note : 'Joined' } : x));
     }
     return finish([...list, { key: k.account || `keypad:${k.id}`, address: k.account || '', name: k.name || '', phone: k.phone || '',
-      lands: new Set(), loans: [], places: [], fields: [], note: k.account ? 'Joined' : 'SMS sent', keypadId: k.id, joined: k.account ? true : undefined }]);
+      lands: new Set(), loans: [], places: [], fields: [], note: k.account ? 'Joined' : 'SMS sent', keypadId: k.id || undefined, joined: k.account ? true : undefined }]);
   });
 }
 
