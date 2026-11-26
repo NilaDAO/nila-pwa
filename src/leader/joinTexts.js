@@ -13,7 +13,9 @@ export const JOIN_TEXTS = {
   how: 'Smartphone: scan the QR. Other phone: enter the code.',
   scan: "Scan the member's QR",
   // 26 Nov: the code is behind a tappable line under the QR button; with it open, the info bar says what it means.
-  useCode: 'Phone without internet? Use the code',
+  scanQr: 'Scan QR code',
+  noInternet: 'No phone with internet',
+  cancel: 'Cancel',
   codeNote: 'With the code the member has no app. To use the app later: Recover on this phone (4 hours wait).',
   code: 'Code from the SMS',
   check: 'Check the code',

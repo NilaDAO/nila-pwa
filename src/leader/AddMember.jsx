@@ -155,7 +155,7 @@ function JoinCard({ m, go }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState();
-  const [open, setOpen] = useState(false);   // 26 Nov: the code only after "Phone without internet? Use the code"
+  const [open, setOpen] = useState(false);   // 26 Nov: two buttons first; the code entry only after "No phone with internet"
   const join = async () => {
     setBusy(true); setError(undefined);
     try {
@@ -172,10 +172,8 @@ function JoinCard({ m, go }) {
       <div style={{ fontSize: 16, fontWeight: 700, paddingTop: 8 }}>{T.title}</div>
       {!open ? (
         <>
-          <CardButton onClick={() => go(`tasks/member/${m.id}/scan`)}>{T.scan}</CardButton>
-          {/* The app's "No QR?" line under a scanner (StartHelp). */}
-          <button type="button" onClick={() => setOpen(true)} style={{ minHeight: 44, border: 0, background: 'none', color: C.muted,
-            fontSize: 14, width: '100%', textDecoration: 'underline', fontFamily: FONT }}>{T.useCode}</button>
+          <CardButton onClick={() => go(`tasks/member/${m.id}/scan`)}>{T.scanQr}</CardButton>
+          <CardButton onClick={() => setOpen(true)}>{T.noInternet}</CardButton>
         </>
       ) : (
         <>
@@ -183,6 +181,7 @@ function JoinCard({ m, go }) {
           <input id="l14-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} style={{ ...field, fontSize: 24, letterSpacing: 8, textAlign: 'center' }} />
           <Primary disabled={busy || code.length !== 6 || !cfg} onClick={join}>{busy ? 'One moment…' : T.check}</Primary>
+          <CardButton onClick={busy ? undefined : () => { setOpen(false); setCode(''); setError(undefined); }}>{T.cancel}</CardButton>
           <NoteBar>{T.codeNote}</NoteBar>
         </>
       )}
@@ -197,9 +196,15 @@ export function JoinScan({ id, go }) {
   const api = useKeypadClient();
   const qc = useQueryClient();
   const m = useKeypadMember(id).data;
-  return <StartHelp label={m?.name} title={T.title} qrOnly onBack={() => go(`tasks/member/${id}`)}
-    onPair={(account) => api.smsAccount(id, account).then((r) => { addLocalMember(qc, { ...m, account }); return r; })}
-    onStarted={() => go(m?.held || m?.job ? 'members' : `tasks/member/${id}/points`)} />;
+  // 26 Nov: Cancel under the scanner goes back to the two buttons.
+  return (
+    <>
+      <StartHelp label={m?.name} title={T.title} qrOnly onBack={() => go(`tasks/member/${id}`)}
+        onPair={(account) => api.smsAccount(id, account).then((r) => { addLocalMember(qc, { ...m, account }); return r; })}
+        onStarted={() => go(m?.held || m?.job ? 'members' : `tasks/member/${id}/points`)} />
+      <div style={{ padding: '0 8px' }}><CardButton onClick={() => go(`tasks/member/${id}`)}>{T.cancel}</CardButton></div>
+    </>
+  );
 }
 
 /** tasks/member/<id>/sms (SMS-only member, executive decision 25 Nov, option A): the code the member reads out checks
