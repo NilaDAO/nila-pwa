@@ -98,8 +98,26 @@ const finish = (members) => members.map((m) => {
 /** 26 Nov: the leader who adds or joins a member puts her in this phone's list at once, as a row of its own; other
  *  leaders get her from the node at their next ask, as before. `k`: the node's keypad member ({ id, name, phone,
  *  account }). The next answer from the node replaces the row (same key `keypad:<id>`, or her account once joined). */
+// Rows this phone added (26 Nov), kept until the node lists them too: the minute refresh must not drop them.
+const PENDING = 'nila.members.pending';
+const readPending = () => { try { return JSON.parse(localStorage.getItem(PENDING) || '[]'); } catch { return []; } };
+const writePending = (v) => { try { localStorage.setItem(PENDING, JSON.stringify(v)); } catch { /* this session only */ } };
+const samePending = (p, x) => (p.id && x.keypadId === p.id) || (p.account && x.address === p.account);
+/** The node's list plus this phone's added rows it does not hold yet (a day at most). */
+function withPending(list) {
+  const now = Date.now();
+  const left = readPending().filter((p) => now - (p.at || 0) < 86_400_000 && !list.some((x) => samePending(p, x)));
+  writePending(left);
+  if (!left.length) return list;
+  return finish([...list, ...left.map((k) => ({ key: k.account || `keypad:${k.id}`, address: k.account || '', name: k.name || '',
+    phone: k.phone || '', lands: new Set(), loans: [], places: [], fields: [], note: k.account ? 'Joined' : 'SMS sent',
+    keypadId: k.id || undefined, joined: k.account ? true : undefined }))]);
+}
+
 export function addLocalMember(qc, k) {
   if (!k?.id && !k?.account) return;   // 26 Nov: also a member joined from her QR (Members scan): her account, no keypad row
+  const pend = readPending().filter((p) => !samePending(p, { keypadId: k.id, address: k.account }) && !(k.id && p.id === k.id));
+  writePending([...pend, { id: k.id || null, account: k.account || null, name: k.name || '', phone: k.phone || '', at: Date.now() }]);
   qc.setQueriesData({ queryKey: ['stellar', 'unionMembers'] }, (list) => {
     if (!Array.isArray(list)) return list;
     const at = list.findIndex((x) => (k.id && x.keypadId === k.id) || (k.account && x.address === k.account));
@@ -149,7 +167,7 @@ export function useUnionMembers(api) {
           return m;
         })));
         if (acct) keep(acct, cfg.union, list);
-        return list;
+        return withPending(list);
       }
       const by = new Map();
       const get = (key) => {
@@ -203,7 +221,7 @@ export function useUnionMembers(api) {
       });
       const list = finish([...by.values()]);
       if (acct) keep(acct, cfg.union, list);
-      return list;
+      return withPending(list);
     },
   });
 }
