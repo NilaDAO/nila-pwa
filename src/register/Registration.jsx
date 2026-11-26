@@ -161,7 +161,7 @@ function unionLine(u) {
 
 /** After R9 (26 Nov, plan 054): while her account has not joined the union, her QR (the account and her signed
  *  set_union for the union she picked) for the leader to scan; checked every 5 s, so the step ends by itself once
- *  joined. Skipped when her account names a union already. "Later" goes on without it (the QR is in the app). */
+ *  joined. Skipped when her account names a union already. */
 export function JoinStep({ union, onDone }) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
@@ -171,13 +171,8 @@ export function JoinStep({ union, onDone }) {
   });
   useEffect(() => { if (joined.data === true) onDone(); }, [joined.data]); // eslint-disable-line react-hooks/exhaustive-deps
   if (joined.data !== false) return null;
-  return (
-    <>
-      <HelpQr union={union} note={PHONE_KEY_TEXTS.joinStepNote} />
-      <button type="button" onClick={onDone} style={{ ...btnSecondary, position: 'fixed', left: 16, right: 16, bottom: 16, width: 'auto', zIndex: 30 }}>
-        {PHONE_KEY_TEXTS.joinStepLater}</button>
-    </>
-  );
+  // 26 Nov: no Later: the step ends only when the leader's scan has joined the account.
+  return <HelpQr union={union} note={PHONE_KEY_TEXTS.joinStepNote} />;
 }
 
 /** R10 (board RegNotify-52am): updates (push notifications from her union); Skip asks to confirm. */
