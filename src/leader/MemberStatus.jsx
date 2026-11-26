@@ -10,7 +10,8 @@ import { useBorderClient, useBorderJob } from '../border/hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
-import { ConfirmCard, Text, useUnionInfo } from '../shell/SettingsParts';
+import { Keypair } from '@stellar/stellar-sdk';
+import { CardButton, ConfirmCard, Text, useUnionInfo } from '../shell/SettingsParts';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useStellarConfig, useInvestment } from '../stellar/hooks';
 import { readContract, sv } from '../stellar/soroban';
@@ -36,13 +37,14 @@ import { shareOfToken } from '../machine/hooks';
 import PhotoCount from '../loan/PhotoCount';
 import { recordCash } from '../loan/CashDesk';
 import { overRoom, useDeskRoom } from '../loan/deskRoom';
-import { AssetScreen, Card, QrCircle, Secondary, Stepper } from '../loan/AssetParts';
+import { AssetScreen, Card, NoteBar, QrCircle, Secondary, Stepper } from '../loan/AssetParts';
+import { Primary } from '../plan/ui';
 import WithdrawStart from '../loan/WithdrawStart';
 import StartHelp from '../loan/StartHelp';
 import { PersonalName } from '../union/UnionCards';
 import { useContactBook } from '../union/hooks';
 import { qrSignedByKey, useSessionUntil } from '../stellar/session';
-import { clearRecoverScan, markRecover, markRecoverScan, useInviteLink, useKeypadMembers, useRecoverPhone, wantsRecoverScan } from '../keypad/hooks';
+import { clearRecoverScan, markRecover, markRecoverScan, useInviteLink, useKeypadClient, useKeypadMembers, useRecoverPhone, wantsRecoverScan } from '../keypad/hooks';
 import { PHONE_KEY_TEXTS } from '../wallet/phoneKeyTexts';
 import CameraView from '../shell/CameraView';
 import DeskCard from '../shell/DeskCard';
@@ -538,6 +540,8 @@ function PhoneStatus({ address, onScan }) {
   // Recover on this phone (plan 054 §5): this leader's app recovers only after scanning the new phone's QR.
   const scan = r === 'needed' && wantsRecoverScan(k.id) && !!k.signer;
   if (r === 'pending') return <Row k="Phone" v={`Phone recovery · works from ${when(k.recovery.at)}`} />;
+  // Plan 054: after Recover on this phone's SMS, the same two buttons as Join: the new phone's QR, or the code.
+  if (k && wantsRecoverScan(k.id) && (waiting || r === 'needed')) return <RecoverChoice k={k} onScan={onScan} />;
   if (waiting) return <Row k="Phone" v="SMS sent · waiting for the new phone" />;
   if (r !== 'needed') return null;
   return (
@@ -549,6 +553,52 @@ function PhoneStatus({ address, onScan }) {
         <ChevronIcon color={C.text} />
       </button>
       {rec.error && <Text style={{ color: C.coral }}>{rec.error.message}</Text>}
+    </>
+  );
+}
+
+/** Recover on this phone, plan 054: "Scan QR code" (the new phone opened the link: RecoverScan), or "No phone with
+ *  internet": the member reads out the SMS's code; this app makes a one-time key, the node registers its public key as
+ *  the recovery's key (only for the right code), the existing recovery runs, and the private key is forgotten (it lives
+ *  only in this call). The member is SMS only from then on. */
+function RecoverChoice({ k, onScan }) {
+  const qc = useQueryClient();
+  const api = useKeypadClient();
+  const rec = useRecoverPhone(k.id);
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState();
+  const check = async () => {
+    setBusy(true); setError(undefined);
+    try {
+      await api.recoverKey(k.id, code, Keypair.random().publicKey());   // the private key is never kept
+      await rec.mutateAsync();
+      clearRecoverScan(k.id);
+      qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] });
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <div style={{ fontWeight: 700 }}>{PHONE_KEY_TEXTS.recoverHere}</div>
+      {!open ? (
+        <>
+          <CardButton onClick={() => onScan(k)}>{JOIN_TEXTS.scanQr}</CardButton>
+          <CardButton onClick={() => setOpen(true)}>{JOIN_TEXTS.noInternet}</CardButton>
+        </>
+      ) : (
+        <>
+          <label htmlFor="g2-recover-code" style={{ color: C.muted }}>{JOIN_TEXTS.code}</label>
+          <input id="g2-recover-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+            style={{ height: 48, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 16px', boxSizing: 'border-box',
+              width: '100%', fontFamily: FONT, fontSize: 24, letterSpacing: 8, textAlign: 'center' }} />
+          <Primary disabled={busy || code.length !== 6} onClick={check}>{busy ? 'One moment…' : JOIN_TEXTS.check}</Primary>
+          <CardButton onClick={busy ? undefined : () => { setOpen(false); setCode(''); setError(undefined); }}>{JOIN_TEXTS.cancel}</CardButton>
+          <NoteBar>{JOIN_TEXTS.codeNote}</NoteBar>
+        </>
+      )}
+      {error && <Text style={{ color: C.coral }}>{error}</Text>}
     </>
   );
 }
@@ -580,7 +630,8 @@ function Account({ m, inv, go, onSync }) {
     queryKey: ['stellar', 'signerKind', m.address], enabled: !!cfg && rcv.applies && !rcv.k && /^C/.test(m.address || ''), staleTime: 300_000,
     queryFn: async () => { const v = await readContract(cfg, m.address, 'signer', []).catch(() => null); return Array.isArray(v) && v[0] === 'P256'; },
   });
-  const here = recoverOk && /^C/.test(m.address || '') && (rcv.k ? rcv.keypad && !!rcv.k.account : p256.data === true);
+  // Plan 054: an SMS-only member too (the code note: "To use the app later: Recover on this phone").
+  const here = recoverOk && /^C/.test(m.address || '') && (rcv.k ? (rcv.keypad || rcv.k.phone_type === 'sms') && !!rcv.k.account : p256.data === true);
   const move = rcv.applies && !rcv.keypad && /^C/.test(m.address || '');
   const lite = rcv.keypad && !!m.address;   // her data as a QR for Nila lite (13 Nov, test of the offline refresh)
   // No land title but a keypad row (13 Nov: e.g. hers was removed): the bin deletes her for good.
@@ -765,8 +816,12 @@ function RecoverHere({ address, name, k, onClose }) {
 
 /** The new phone's help QR, scanned: it must be signed by the key that phone registered through the link (k.signer);
  *  then the existing recovery (the leader signs, the node's SMS key co-signs recover_by_sms for that key). */
-function RecoverScan({ k, address, onDone }) {
+function RecoverScan({ k: asked, address, onDone }) {
   const qc = useQueryClient();
+  // Plan 054: the scan may start before the list shows the key the new phone registered: read the row fresh.
+  const list = useKeypadMembers();
+  const k = (list.data || []).find((x) => x.id === asked.id) || asked;
+  useEffect(() => { qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: cfg } = useStellarConfig();
   const rec = useRecoverPhone(k.id);
   const [error, setError] = useState();

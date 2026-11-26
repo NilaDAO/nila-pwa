@@ -22,6 +22,8 @@ export function keypadClient(signer) {
     // 2 Nov: a lost phone. The node returns the leader's payload hash for recover_by_sms; the leader signs it.
     recoverAsk: (id) => call('POST', `/keypad/members/${id}/recover`, {}),
     recoverSign: (id, signature) => call('POST', `/keypad/members/${id}/recover/sign`, { signature }),
+    // Plan 054: Recover on this phone by the code the member read out: the public key of a one-time key this app made.
+    recoverKey: (id, code, key) => call('POST', `/keypad/members/${id}/recover/key`, { code, key }),
     points: (id, points) => call('POST', `/keypad/members/${id}/points`, { points }),
     // Leader OTP (24 Nov): a code to her number on record opens the help QR's session (start_session_by_sms).
     // SMS-only members (25 Nov): the number check's code, its resend, and the account the leader's app made.

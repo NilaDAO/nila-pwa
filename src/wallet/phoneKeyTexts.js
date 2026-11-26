@@ -15,7 +15,8 @@ export const PHONE_KEY_TEXTS = {
   resetNotJoined: 'Remove your key? Not joined yet: nobody can recover it.',
   // G2, the leader: a phone-key member's new phone (plan 054 §5).
   recoverHere: 'Recover on this phone',
-  recoverHereWarn: 'Send the member a link by SMS? Then scan the new phone\'s QR.',
+  // Plan 054 (26 Nov): the recovery SMS carries the link and a code.
+  recoverHereWarn: 'Send the member a link and a code by SMS? Then scan the new phone\'s QR, or enter the code.',
   recoverHereScan: "Scan the new phone's QR",
   recoverHereWrong: 'Not the phone that opened the link.',
   // Registration, after R9 (26 Nov): her QR while her account has not joined the union yet; skipped once joined.
