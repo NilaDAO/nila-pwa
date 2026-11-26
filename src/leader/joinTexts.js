@@ -16,9 +16,6 @@ export const JOIN_TEXTS = {
   scanQr: 'Scan QR code',
   noInternet: 'No phone with internet',
   cancel: 'Cancel',
-  // G2 Join the union, a member moved on 6 Nov (own account): step 1 sends the app link by SMS.
-  appLinkStep: 'Send the member the app link.',
-  appLinkSent: 'SMS sent: the member opens the link and logs in.',
   codeNote: 'With the code the member has no app. To use the app later: Recover on this phone (4 hours wait).',
   code: 'Code from the SMS',
   check: 'Check the code',
