@@ -642,7 +642,10 @@ function Account({ m, inv, go, onSync }) {
     <Section title="Account">
       {(rcv.applies || titleId || gone || m.recordHash) && (
         <div style={{ display: 'flex', gap: 8 }}>
-          {rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
+          {/* 26 Nov: one Recover button, in place: Recover on this phone (phone key, SMS only, a keypad row), else the old
+              Recover to a new number (a Privy member's sign-up). */}
+          {here ? <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('here')}>Recover</button>
+            : rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
           {move && <button type="button" style={btn()} onClick={() => setCard('keypad')}>Move</button>}
           {/* "Sync with phone" (13 Nov; was "Her data as QR"): what it does for her, not how. */}
           {lite && <button type="button" style={btn()} onClick={onSync}>Sync with phone</button>}
@@ -660,12 +663,7 @@ function Account({ m, inv, go, onSync }) {
           )}
         </div>
       )}
-      {here && (
-        <button type="button" style={rowStyle} onClick={() => setCard('here')}>
-          <span style={{ flexGrow: 1, fontWeight: 700 }}>{PHONE_KEY_TEXTS.recoverHere}</span>
-          <ChevronIcon color={C.text} />
-        </button>
-      )}
+
       {card === 'here' && <RecoverHere address={m.address} name={m.name || m.label} k={rcv.k} onClose={close} />}
       {card === 'record' && <RecordCard hash={m.recordHash} onClose={close} />}
       {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
