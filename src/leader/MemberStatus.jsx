@@ -493,6 +493,11 @@ function JoinBySms({ m, go, onScan }) {
  *  The leader picks her phone and follows the steps; the last one is the scan of her QR, which sends her signed
  *  set_union. A keypad phone needs internet only while Nila lite installs. */
 function JoinSteps({ m, holder, onScan }) {
+  const s = useNilaSigner();
+  const [num, setNum] = useState(m.phone || '+91');
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState();
   const [phone, setPhone] = useState('smart');      // 'smart' | 'keypad'
   const [moving, setMoving] = useState(false);
   // Buttons in a step keep 8 px above and below (16 / 24 to the text and the next step; 13 Nov).
@@ -501,8 +506,20 @@ function JoinSteps({ m, holder, onScan }) {
   const done = 'Scan the QR. Done: the member has joined.';
   // A new member (holder) has no account yet: she registers in the app (text confirmed, executive decision 16 Nov).
   const open = holder ? 'The member opens the Nila app and registers.' : 'The member opens the Nila app and recovers the account.';
+  // 26 Nov: a moved member's step 1 sends the app link by SMS to the number the leader types (no SMS went before).
+  const smsStep = (
+    <>{sent ? JOIN_TEXTS.appLinkSent : JOIN_TEXTS.appLinkStep}
+      {!sent && <>
+        <PhoneField id="g2-applink-phone" value={num} onChange={setNum} />
+        <button type="button" style={{ ...stepBtn, ...(phoneOk(num) && !busy ? {} : { opacity: 0.5 }) }} disabled={!phoneOk(num) || busy}
+          onClick={async () => { setBusy(true); setErr(undefined); try { await keypadClient(s).appLink(m.address, phoneValue(num)); setSent(true); } catch (e) { setErr(e.message); } finally { setBusy(false); } }}>
+          {busy ? 'Sending…' : JOIN_TEXTS.send}</button>
+        {err && <span style={{ color: C.coral }}>{err}</span>}
+      </>}
+    </>
+  );
   const steps = phone === 'smart' || holder
-    ? [open, 'The member taps the scan icon at the bottom: the QR shows.', <>{done}{scan}</>]
+    ? [holder ? open : smsStep, 'The member taps the scan icon at the bottom: the QR shows.', <>{done}{scan}</>]
     : ['The phone needs internet only while Nila lite installs.',
       <>Send the SMS.<button type="button" style={stepBtn} onClick={() => setMoving(true)}>Move</button></>,
       'The member opens the SMS and taps QR in the bottom right corner.', <>{done}{scan}</>];

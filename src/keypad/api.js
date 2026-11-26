@@ -36,5 +36,7 @@ export function keypadClient(signer) {
     otpSign: (id, signature) => call('POST', `/keypad/members/${id}/otp/sign`, { signature }),
     // 13 Nov: G2's bin for a member without a land title: deleted for good (409 while she holds one).
     remove: (id) => call('DELETE', `/keypad/members/${id}`),
+    // 26 Nov: a moved member (own account, not joined): the app's address by SMS to the number the leader types.
+    appLink: (account, phone) => call('POST', '/keypad/app-link', { account, phone }),
   };
 }
