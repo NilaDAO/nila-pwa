@@ -314,6 +314,8 @@ function NewSmartphone({ go }) {
   const acct = useScannedAccount(m);
   const qc = useQueryClient();
   const { setName: tag } = useBookActions();
+  // 26 Nov: in the member list as soon as the scan has joined her account (her name and number follow at Take field points).
+  useEffect(() => { if (acct === 'done' && m?.account && !m.former) addLocalMember(qc, { account: m.account }); }, [acct]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
   if (!m) return null;
   const ok = name.trim() && phoneOk(phone);
