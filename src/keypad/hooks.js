@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { addLocalMember } from '../leader/unionMembers';
 import { useNilaSigner } from '../wallet/signer';
 import { keypadClient } from './api';
 
@@ -22,7 +23,7 @@ export function useInviteLink() {
   return useMutation({
     mutationFn: (v) => (v.recoverTo ? api.recoverTo({ ...v, account: v.recoverTo }) : v.again ? api.sendAgain(v.again, v.phone) : api.add(v)),
     // 26 Nov: the new member shows in the union's member list at once (the node drops its cached list on the write).
-    onSuccess: (m) => { qc.setQueryData(qkKeypad.member(m.id), m); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); },
+    onSuccess: (m) => { qc.setQueryData(qkKeypad.member(m.id), m); addLocalMember(qc, m); },
   });
 }
 

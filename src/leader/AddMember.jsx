@@ -22,6 +22,7 @@ import { Notice, Primary } from '../plan/ui';
 import { useInviteLink, useKeypadClient, useKeypadMember } from '../keypad/hooks';
 import { useBorderClient, useSendFieldPoints } from '../border/hooks';
 import { PointsStep, clearPoints, readPoints } from '../border/SendLocation';
+import { addLocalMember } from './unionMembers';
 import { Loading } from '../register/Boot';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useBookActions } from '../union/hooks';
@@ -160,7 +161,7 @@ function JoinCard({ m, go }) {
       const j = await oneTimeJoin(cfg);
       await ensureKeypadAccount(cfg, s, j);
       await api.smsAccount(m.id, j.account);
-      qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });   // 26 Nov: joined, in the list at once
+      addLocalMember(qc, { ...m, account: j.account });   // 26 Nov: joined, in this phone's list at once
       go(m.held || m.job ? 'members' : `tasks/member/${m.id}/points`);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
@@ -184,7 +185,7 @@ export function JoinScan({ id, go }) {
   const qc = useQueryClient();
   const m = useKeypadMember(id).data;
   return <StartHelp label={m?.name} title={T.title} qrOnly onBack={() => go(`tasks/member/${id}`)}
-    onPair={(account) => api.smsAccount(id, account).then((r) => { qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); return r; })}
+    onPair={(account) => api.smsAccount(id, account).then((r) => { addLocalMember(qc, { ...m, account }); return r; })}
     onStarted={() => go(m?.held || m?.job ? 'members' : `tasks/member/${id}/points`)} />;
 }
 
@@ -206,7 +207,7 @@ export function SmsMember({ id, go }) {
     const j = await oneTimeJoin(cfg);
     await ensureKeypadAccount(cfg, s, j);
     await api.smsAccount(id, j.account);
-    qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });
+    addLocalMember(qc, { ...m, account: j.account });
     go(m.held || m.job ? 'members' : `tasks/member/${id}/points`);   // plan 054: a member with a title needs no points
   };
   const confirm = () => run(async () => { await api.smsConfirm(id, code); await makeAccount(); });

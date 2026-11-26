@@ -95,6 +95,23 @@ const finish = (members) => members.map((m) => {
     label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.formerTitle != null ? `Land ${m.formerTitle}` : m.address ? short(m.address) : m.phone || 'New member') };
 }).sort((a, b) => b.loans.some((x) => x.overdue) - a.loans.some((x) => x.overdue) || a.label.localeCompare(b.label));
 
+/** 26 Nov: the leader who adds or joins a member puts her in this phone's list at once, as a row of its own; other
+ *  leaders get her from the node at their next ask, as before. `k`: the node's keypad member ({ id, name, phone,
+ *  account }). The next answer from the node replaces the row (same key `keypad:<id>`, or her account once joined). */
+export function addLocalMember(qc, k) {
+  if (!k?.id) return;
+  qc.setQueriesData({ queryKey: ['stellar', 'unionMembers'] }, (list) => {
+    if (!Array.isArray(list)) return list;
+    const at = list.findIndex((x) => x.keypadId === k.id);
+    if (at >= 0) {
+      if (!k.account || list[at].address === k.account) return list;
+      return list.map((x, i) => (i === at ? { ...x, address: k.account, joined: true } : x));
+    }
+    return finish([...list, { key: k.account || `keypad:${k.id}`, address: k.account || '', name: k.name || '', phone: k.phone || '',
+      lands: new Set(), loans: [], places: [], fields: [], note: '', keypadId: k.id, joined: k.account ? true : undefined }]);
+  });
+}
+
 /** G1's list (22 Oct, lean): the union's titles, keypad members, open border jobs and the loan list, with each loan's
  *  state from one batched read of its crop agreement (the loan sits inside it). Crop agreements per member are read only on
  *  G2 (useMemberShares), so G1 waits on no mint list and no per-token read. */
