@@ -118,6 +118,7 @@ export default function AddMember({ id, go }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('+91');
   const ok = name.trim() && phoneOk(phone);
+  const qc = useQueryClient();
   // 26 Nov: a member who shows a QR (a self-mode sign-up, or a smartphone member) is added from it, as from the
   // Members scan: the QR says which kind it is.
   const [scan, setScan] = useState(false);
@@ -125,8 +126,14 @@ export default function AddMember({ id, go }) {
   const onQr = (text) => {
     const n = memberOfQr(text);
     if (n) { scannedNewMember(n); go('tasks/member/qr'); return; }
+    // 26 Nov: a joined member's plain account (a self-mode member after the join, no title yet) who is not in the list:
+    // the same name, number and field points, for her account.
+    const g = addressFromQr(text);
+    const known = g && (qc.getQueriesData({ queryKey: ['stellar', 'unionMembers'] })
+      .some(([, list]) => Array.isArray(list) && list.some((x) => x.address === g && (x.lands?.length || x.job))));
+    if (g && /^C/.test(g) && !known) { scannedNewMember({ account: g, polygon: '', join: null }); go('tasks/member/qr'); return; }
     setScan(false);
-    setScanMsg(addressFromQr(text) ? T.qrKnown : T.qrOther);
+    setScanMsg(g ? T.qrKnown : T.qrOther);
   };
   // Plan 054: no phone type to pick. The node sends one SMS (link and code); the progress screen offers the QR scan or
   // the code, and the field points (before or after the join: sign later, plan 050).
@@ -338,7 +345,7 @@ function NewSmartphone({ go }) {
   const qc = useQueryClient();
   const { setName: tag } = useBookActions();
   // 26 Nov: in the member list as soon as the scan has joined her account (her name and number follow at Take field points).
-  useEffect(() => { if (acct === 'done' && m?.account && !m.former) addLocalMember(qc, { account: m.account }); }, [acct]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if ((acct === 'done' || (acct === 'idle' && !m?.join)) && m?.account && !m.former) addLocalMember(qc, { account: m.account }); }, [acct]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!m) go('tasks/member'); }, [m, go]);
   if (!m) return null;
   const ok = name.trim() && phoneOk(phone);
