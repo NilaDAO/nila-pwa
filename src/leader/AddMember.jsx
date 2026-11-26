@@ -104,8 +104,9 @@ function Sent({ id, go }) {
         style={{ background: 'none', border: 0, padding: 0, color: C.text, textDecoration: 'underline', font: 'inherit', cursor: 'pointer' }}>{T.again}</button></Text>
       {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
       {m.account ? <Text style={{ fontWeight: 700 }}>{T.joined}</Text> : <JoinCard m={m} go={go} />}
-      {keypad && !m.job && !m.held && <CardButton onClick={() => go(`tasks/member/${m.id}/points`)}>Take field points</CardButton>}
-      {keypad && m.job && <CardButton onClick={() => go(`tasks/border/${m.job}`)}>Check field borders</CardButton>}
+      {/* 26 Nov: no field points here while joining; after the join this screen goes on to the points. */}
+      {m.account && keypad && !m.job && !m.held && <CardButton onClick={() => go(`tasks/member/${m.id}/points`)}>Take field points</CardButton>}
+      {m.account && keypad && m.job && <CardButton onClick={() => go(`tasks/border/${m.job}`)}>Check field borders</CardButton>}
     </Card>
   );
 }
@@ -169,10 +170,13 @@ function JoinCard({ m, go }) {
   return (
     <>
       <div style={{ fontSize: 16, fontWeight: 700, paddingTop: 8 }}>{T.title}</div>
-      <CardButton onClick={() => go(`tasks/member/${m.id}/scan`)}>{T.scan}</CardButton>
       {!open ? (
-        <button type="button" onClick={() => setOpen(true)} style={{ background: 'none', border: 0, padding: '4px 0', color: C.text,
-          textDecoration: 'underline', font: 'inherit', fontSize: 14, cursor: 'pointer', alignSelf: 'center' }}>{T.useCode}</button>
+        <>
+          <CardButton onClick={() => go(`tasks/member/${m.id}/scan`)}>{T.scan}</CardButton>
+          {/* The app's "No QR?" line under a scanner (StartHelp). */}
+          <button type="button" onClick={() => setOpen(true)} style={{ minHeight: 44, border: 0, background: 'none', color: C.muted,
+            fontSize: 14, width: '100%', textDecoration: 'underline', fontFamily: FONT }}>{T.useCode}</button>
+        </>
       ) : (
         <>
           <label style={label} htmlFor="l14-code">{T.code}</label>
