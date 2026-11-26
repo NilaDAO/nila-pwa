@@ -25,7 +25,12 @@
     // the full app with a key on the phone (a recovery link to a smartphone member's own sign-up, as before).
     (function () {
       var m = location.pathname.match(/^\/l\/([0-9A-Za-z]+)\/?$/);
-      if (m) location.replace('/lite/#/l/' + m[1].toUpperCase());
+      // 26 Nov (plan 054): a smartphone stays in the app (src/index.js reads the link); only a KaiOS / keypad-size
+      // browser goes to Nila lite, at /lite/index.html (Amplify serves /lite/ as the app itself).
+      if (m) {
+        var kai = /KAIOS/i.test(navigator.userAgent) || (window.innerWidth <= 320 && window.innerHeight <= 400);
+        location.replace((kai ? '/lite/index.html#/l/' : '/#/link/') + m[1].toUpperCase());
+      }
     })();
     </script>
     <script>
