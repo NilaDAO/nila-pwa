@@ -642,7 +642,9 @@ function Account({ m, inv, go, onSync }) {
     <Section title="Account">
       {(rcv.applies || titleId || gone || m.recordHash) && (
         <div style={{ display: 'flex', gap: 8 }}>
-          {rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
+          {/* 26 Nov: one recover button. Where Recover on this phone applies (phone key, SMS only, a keypad row) the old
+              Recover (a new number, a Privy member's sign-up) is not shown. */}
+          {rcv.applies && !here && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
           {move && <button type="button" style={btn()} onClick={() => setCard('keypad')}>Move</button>}
           {/* "Sync with phone" (13 Nov; was "Her data as QR"): what it does for her, not how. */}
           {lite && <button type="button" style={btn()} onClick={onSync}>Sync with phone</button>}
