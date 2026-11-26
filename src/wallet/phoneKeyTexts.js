@@ -18,4 +18,7 @@ export const PHONE_KEY_TEXTS = {
   recoverHereWarn: 'Send the member a link by SMS? Then scan the new phone\'s QR.',
   recoverHereScan: "Scan the new phone's QR",
   recoverHereWrong: 'Not the phone that opened the link.',
+  // Registration, after R9 (26 Nov): her QR while her account has not joined the union yet; skipped once joined.
+  joinStepNote: 'Show this QR to your union leader to join.',
+  joinStepLater: 'Later',
 };

@@ -17,7 +17,7 @@ const assisted = () => { try { return localStorage.getItem('nila.mode') !== 'sel
 
 /** `note`: what the leader will do (repay, invest, collect…); `onBack` when opened from a page (not the Scan tab). */
 /** `withPolygon`: carry her Polygon address in any mode (the no-title card, 3 Nov), so a leader can add her (L14). */
-export default function HelpQr({ note, onBack, withPolygon = false } = {}) {
+export default function HelpQr({ note, onBack, withPolygon = false, union } = {}) {
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const [qr, setQr] = useState();
@@ -33,9 +33,10 @@ export default function HelpQr({ note, onBack, withPolygon = false } = {}) {
       // Plan 053: a key on her own phone (P-256, no Polygon wallet): kind 4 while not joined, else kind 2.
       const phoneKey = s.kind === 'P256';
       const smart = phoneKey || (s.stellarAddress && s.stellarAddress !== s.senderAddress);
-      const joined = !smart || !cfg.union || ((await isDeployed(cfg, s.stellarAddress))
+      const u = union || cfg.union;   // registration (R9 then the join step): the union she picked
+      const joined = !smart || !u || ((await isDeployed(cfg, s.stellarAddress))
         && !!(await readAccountUnion(cfg, s.stellarAddress).catch(() => null)));
-      const join = joined ? undefined : { key: phoneKey ? s.publicKey : s.senderAddress, union: cfg.union };
+      const join = joined ? undefined : { key: phoneKey ? s.publicKey : s.senderAddress, union: u };
       setQr(phoneKey ? await makeSessionQr(cfg, s.stellarAddress, s.signHash, 'P256', undefined, join)
         : await makeSessionQr(cfg, s.stellarAddress, s.signHash, 'Ed25519', join || withPolygon || assisted() ? s.evmAddress : undefined, join));
     } catch (e) { setError(e.message); }
