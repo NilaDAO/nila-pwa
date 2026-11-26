@@ -112,7 +112,7 @@ export default function Members({ go }) {
             <span style={{ color: C.muted, fontWeight: 700, paddingTop: 4 }}>Joining · {joining.length}</span>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', borderTop: `1px solid ${C.raised}` }}>
               {joining.map((m, i) => (
-                <ListRow key={m.key} first={i === 0} title={m.label} sub={<span style={{ color: C.muted }}>{m.note || 'App link sent'}</span>}
+                <ListRow key={m.key} first={i === 0} title={m.label} sub={<span style={{ color: C.muted }}>{m.note || 'SMS sent'}</span>}
                   onClick={() => pick(m.key)} />
               ))}
             </ul>

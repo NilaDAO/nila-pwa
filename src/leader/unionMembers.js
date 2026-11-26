@@ -105,10 +105,10 @@ export function addLocalMember(qc, k) {
     const at = list.findIndex((x) => x.keypadId === k.id);
     if (at >= 0) {
       if (!k.account || list[at].address === k.account) return list;
-      return list.map((x, i) => (i === at ? { ...x, address: k.account, joined: true } : x));
+      return list.map((x, i) => (i === at ? { ...x, address: k.account, joined: true, note: x.lands?.length ? x.note : 'Joined' } : x));
     }
     return finish([...list, { key: k.account || `keypad:${k.id}`, address: k.account || '', name: k.name || '', phone: k.phone || '',
-      lands: new Set(), loans: [], places: [], fields: [], note: '', keypadId: k.id, joined: k.account ? true : undefined }]);
+      lands: new Set(), loans: [], places: [], fields: [], note: k.account ? 'Joined' : 'SMS sent', keypadId: k.id, joined: k.account ? true : undefined }]);
   });
 }
 
@@ -192,7 +192,7 @@ export function useUnionMembers(api) {
       for (const k of keypad) {
         const m = get(k.device && k.account ? k.account : `keypad:${k.id}`); m.name = m.name || k.name || ''; m.phone = k.phone || '';
         m.keypadId = k.id;   // her keypad row: the leader takes her points again for a new title (13 Nov)
-        if (!m.lands.size) m.note = k.device ? 'Keypad phone set up' : k.link?.opened ? 'Opened the app link' : 'App link sent';
+        if (!m.lands.size) m.note = k.account ? 'Joined' : k.device ? 'Keypad phone set up' : k.link?.opened ? 'Opened the link' : 'SMS sent';
       }
       // Loans: what is left and whether it is overdue, from the loan inside its crop agreement (one batched read).
       loanList.forEach((l, i) => {
