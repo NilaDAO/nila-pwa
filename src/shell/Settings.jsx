@@ -19,26 +19,47 @@ import { C, FONT } from './tokens';
 import { assisted } from '../loan/MyShares';
 import { IdentityRow } from '../leader/LeaderSettings';
 import { PHONE_KEY_TEXTS } from '../wallet/phoneKeyTexts';
+import { loadOrMakeKey, markPhoneKeyPhone } from '../wallet/phoneKey';
+import { signerVal } from '../stellar/account';
 
 
-/** "How you use Nila": the tab bar follows nila.mode, so the app opens again with the new mode. */
+/** "How you use Nila": the tab bar follows nila.mode, so the app opens again with the new mode.
+ *  26 Nov: a phone-key member stays in assist mode for good (no switch). A self-mode user (Privy) may switch to assist
+ *  mode once, for good: her Privy key signs `set_signer` to a new key on this phone (same account, no wait), and the
+ *  phone becomes a phone-key phone; the unused Privy user is deleted later from the console (Privy's cost). */
 function ModeCard() {
   const u = useUnionInfo();
   const s = useNilaSigner();
   const on = assisted();
-  const [later, setLater] = useState(false);
+  const tx = useSorobanTx();
+  const [ask, setAsk] = useState(false);
   const name = (u.rep || '').replace(/^(Mrs?|Ms)\.\s*/, '') || 'Your union leader';
-  // Plan 053: a key on her own phone stays in assist mode; the switch to self (her key hands over to a Privy key) comes
-  // with the ID check, not built yet.
+  if (s?.kind === 'P256') {
+    return <Card title="How you use Nila"><Text>{PHONE_KEY_TEXTS.assistForGood}</Text></Card>;
+  }
+  const toAssist = async () => {
+    setAsk(false);
+    const { pub } = await loadOrMakeKey();
+    const out = await tx.run({ label: PHONE_KEY_TEXTS.toAssistOk, rows: [], contractName: s.stellarAddress, fn: 'set_signer',
+      args: [signerVal(pub)], invalidate: [] });
+    if (!out) return;
+    markPhoneKeyPhone();
+    window.location.hash = '#/wallet';
+    window.location.reload();
+  };
   const flip = () => {
-    if (s?.kind === 'P256' && on) { setLater(true); return; }
+    if (!on && s?.stellarAddress && s?.signHash) { setAsk(true); return; }
     try { localStorage.setItem('nila.mode', on ? 'self' : 'assist'); } catch { return; } window.location.reload();
   };
+  if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   return (
     <Card title="How you use Nila">
       <SwitchRow title="Union leader helps me" on={on} onClick={flip}
         sub={on ? `${name} does the steps. You look and press Confirm.` : 'Off: you send, spend and register yourself.'} />
-      {later && <Text>{PHONE_KEY_TEXTS.selfLater}</Text>}
+      {ask && (
+        <ConfirmCard title={PHONE_KEY_TEXTS.toAssistTitle} warn={PHONE_KEY_TEXTS.toAssistWarn} ok={PHONE_KEY_TEXTS.toAssistOk}
+          okStyle={{ background: C.coral }} onCancel={() => setAsk(false)} onOk={toAssist} />
+      )}
     </Card>
   );
 }

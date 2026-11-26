@@ -34,7 +34,8 @@ export default function AfterCode({ onNew, onExisting }) {
     if (recoveredAccount(s.senderAddress)) { onExisting(evm); return; }
     // Demo only: the dummy member registers again every time, even though her earlier demo title on Stellar
     // cannot be taken back (the mark is cleared when R14 ends, see Registration).
-    if (demoNew(evm) || (s.privyNew && titles === 0)) onNew(evm);
+    // 26 Nov: someone who registers on pwa.nila.land directly (Privy) starts in self mode; members come through a leader.
+    if (demoNew(evm) || (s.privyNew && titles === 0)) { try { localStorage.setItem('nila.mode', 'self'); } catch { /* not kept */ } onNew(evm); }
     else onExisting(evm);
   }, [known]); // eslint-disable-line react-hooks/exhaustive-deps
 
