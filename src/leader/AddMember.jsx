@@ -154,6 +154,7 @@ function JoinCard({ m, go }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState();
+  const [open, setOpen] = useState(false);   // 26 Nov: the code only after "Phone without internet? Use the code"
   const join = async () => {
     setBusy(true); setError(undefined);
     try {
@@ -169,10 +170,18 @@ function JoinCard({ m, go }) {
     <>
       <div style={{ fontSize: 16, fontWeight: 700, paddingTop: 8 }}>{T.title}</div>
       <CardButton onClick={() => go(`tasks/member/${m.id}/scan`)}>{T.scan}</CardButton>
-      <label style={label} htmlFor="l14-code">{T.code}</label>
-      <input id="l14-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
-        onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} style={{ ...field, fontSize: 24, letterSpacing: 8, textAlign: 'center' }} />
-      <Primary disabled={busy || code.length !== 6 || !cfg} onClick={join}>{busy ? 'One moment…' : T.check}</Primary>
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} style={{ background: 'none', border: 0, padding: '4px 0', color: C.text,
+          textDecoration: 'underline', font: 'inherit', fontSize: 14, cursor: 'pointer', alignSelf: 'center' }}>{T.useCode}</button>
+      ) : (
+        <>
+          <label style={label} htmlFor="l14-code">{T.code}</label>
+          <input id="l14-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} style={{ ...field, fontSize: 24, letterSpacing: 8, textAlign: 'center' }} />
+          <Primary disabled={busy || code.length !== 6 || !cfg} onClick={join}>{busy ? 'One moment…' : T.check}</Primary>
+          <NoteBar>{T.codeNote}</NoteBar>
+        </>
+      )}
       {error && <Text style={{ color: C.coral }}>{error}</Text>}
     </>
   );
