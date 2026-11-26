@@ -22,11 +22,12 @@ import { Notice, Primary } from '../plan/ui';
 import { useInviteLink, useKeypadClient, useKeypadMember } from '../keypad/hooks';
 import { useBorderClient, useSendFieldPoints } from '../border/hooks';
 import { PointsStep, clearPoints, readPoints } from '../border/SendLocation';
-import { addLocalMember } from './unionMembers';
+import { addLocalMember, addressFromQr } from './unionMembers';
 import { Loading } from '../register/Boot';
 import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useBookActions } from '../union/hooks';
-import { oneTimeJoin } from '../stellar/session';
+import { memberOfQr, oneTimeJoin } from '../stellar/session';
+import CameraView from '../shell/CameraView';
 import { NoteBar } from '../loan/AssetParts';
 import StartHelp from '../loan/StartHelp';
 import { JOIN_TEXTS as T } from './joinTexts';
@@ -117,6 +118,16 @@ export default function AddMember({ id, go }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('+91');
   const ok = name.trim() && phoneOk(phone);
+  // 26 Nov: a member who shows a QR (a self-mode sign-up, or a smartphone member) is added from it, as from the
+  // Members scan: the QR says which kind it is.
+  const [scan, setScan] = useState(false);
+  const [scanMsg, setScanMsg] = useState('');
+  const onQr = (text) => {
+    const n = memberOfQr(text);
+    if (n) { scannedNewMember(n); go('tasks/member/qr'); return; }
+    setScan(false);
+    setScanMsg(addressFromQr(text) ? T.qrKnown : T.qrOther);
+  };
   // Plan 054: no phone type to pick. The node sends one SMS (link and code); the progress screen offers the QR scan or
   // the code, and the field points (before or after the join: sign later, plan 050).
   const submit = () => send.mutate({ name: name.trim(), phone: phoneValue(phone), unionName: union.name, leaderName: union.rep },
@@ -134,6 +145,13 @@ export default function AddMember({ id, go }) {
             <Row k={<b style={{ color: C.text }}>Union</b>} v={union.name || '—'} />
             {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
             <Primary disabled={!ok || send.isPending} onClick={submit}>{T.send}</Primary>
+            {!scan ? <CardButton onClick={() => { setScan(true); setScanMsg(''); }}>{T.scanQr}</CardButton> : (
+              <>
+                <CameraView mode="qr" onText={onQr} />
+                <CardButton onClick={() => setScan(false)}>{T.cancel}</CardButton>
+              </>
+            )}
+            {scanMsg && <Text style={{ color: C.coral }}>{scanMsg}</Text>}
           </Card>
           {/* 25 Nov: the farm note in the info bar above the tab bar, not in the card. */}
           <div aria-hidden="true" style={{ height: 96 }} />
