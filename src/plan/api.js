@@ -12,16 +12,21 @@ export async function signStellarMessage(signHash, message) {
   return hex(await signHash(h));
 }
 
+const b64 = (u8) => btoa(String.fromCharCode(...u8));
+
 /** A signed fetch to the node, for /plan and the other signed APIs (border O16 …). */
-export function signedCall({ stellarAddress, senderAddress, signHash }) {
+export function signedCall({ stellarAddress, senderAddress, signHash, kind, signMessage }) {
+  // A phone-key member (plan 053): her account (C…) and the phone key's raw r|s over the message (base64); the node
+  // checks it against the account's signer on chain.
+  const phoneKey = kind === 'P256';
   // The key that signs (her Privy wallet, G…); the node maps it to her smart account (26 Oct).
-  const signer = senderAddress || stellarAddress;
+  const signer = phoneKey ? stellarAddress : senderAddress || stellarAddress;
   // opts.etag: sent as If-None-Match; a 304 returns { notModified: true } and the reply's ETag is kept in out.etag.
   return async function call(method, path, body, opts = {}) {
     const raw = body === undefined ? '' : JSON.stringify(body);
     const ts = Math.floor(Date.now() / 1000);
     const msg = `nila-plan\n${method} ${path.split('?')[0]}\n${ts}\n${hex(await sha256(enc.encode(raw)))}`;
-    const sig = await signStellarMessage(signHash, msg);
+    const sig = phoneKey ? b64(await signMessage(enc.encode(msg))) : await signStellarMessage(signHash, msg);
     const r = await fetch(`${API}${path}`, {
       method,
       headers: { 'Content-Type': 'application/json', 'X-Nila-Account': signer, 'X-Nila-Ts': String(ts), 'X-Nila-Sig': sig,

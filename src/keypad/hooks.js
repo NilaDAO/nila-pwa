@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { addLocalMember } from '../leader/unionMembers';
 import { useNilaSigner } from '../wallet/signer';
 import { keypadClient } from './api';
 
@@ -21,7 +22,8 @@ export function useInviteLink() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v) => (v.recoverTo ? api.recoverTo({ ...v, account: v.recoverTo }) : v.again ? api.sendAgain(v.again, v.phone) : api.add(v)),
-    onSuccess: (m) => qc.setQueryData(qkKeypad.member(m.id), m),
+    // 26 Nov: the new member shows in the union's member list at once (the node drops its cached list on the write).
+    onSuccess: (m) => { qc.setQueryData(qkKeypad.member(m.id), m); addLocalMember(qc, m); },
   });
 }
 
@@ -89,6 +91,12 @@ export function KeepMyNumber() {
 const RECOVER = (id) => `nila.keypad.recover.${id}`;
 export function markRecover(id) { try { localStorage.setItem(RECOVER(id), '1'); } catch { /* the G2 button still works */ } }
 const wantsRecover = (id) => { try { return localStorage.getItem(RECOVER(id)) === '1'; } catch { return false; } };
+/** Plan 054 §5 "Recover on this phone": the leader recovers only after scanning the new phone's QR (G2), so this is
+ *  kept apart from markRecover (no recovery without the scan). */
+const RECOVER_SCAN = (id) => `nila.keypad.recoverScan.${id}`;
+export function markRecoverScan(id) { try { localStorage.setItem(RECOVER_SCAN(id), '1'); } catch { /* no scan asked */ } }
+export const wantsRecoverScan = (id) => { try { return localStorage.getItem(RECOVER_SCAN(id)) === '1'; } catch { return false; } };
+export function clearRecoverScan(id) { try { localStorage.removeItem(RECOVER_SCAN(id)); } catch { /* not kept */ } }
 
 export function KeypadAccounts() {
   const s = useNilaSigner();

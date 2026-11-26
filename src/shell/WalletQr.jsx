@@ -4,7 +4,10 @@
 import MapCard from './MapCard';
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
+import { readAccountUnion, useStellarConfig } from '../stellar/hooks';
+import { isDeployed } from '../stellar/soroban';
 import { C, FONT, R, TAB_BAR_HEIGHT } from './tokens';
 import HelpQr from '../loan/HelpQr';
 import { NoteBar } from '../loan/AssetParts';
@@ -18,7 +21,17 @@ const assisted = () => { try { return localStorage.getItem('nila.mode') !== 'sel
 /** A member in assist mode shows the help QR (executive decision 26 Oct); a member in self mode and a leader show the
  *  plain account number (revised 31 Oct, executive decision). */
 /** `note` (G9, 4 Nov): what the leader does with it at the office (invest, repay). */
+/** Plan 054: a self-mode member whose account is not joined yet shows the help QR (kind 5: the account and its signed
+ *  set_union) for the leader's Join the union; once joined, the plain account number again. */
 export default function WalletQr({ onBack, leader, note }) {
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const self = !leader && !assisted();
+  const joined = useQuery({
+    queryKey: ['stellar', 'wallet-qr-joined', s?.stellarAddress], enabled: self && !!cfg?.union && !!s?.stellarAddress,
+    queryFn: async () => (await isDeployed(cfg, s.stellarAddress)) && !!(await readAccountUnion(cfg, s.stellarAddress).catch(() => null)),
+  });
+  if (self && joined.data === false) return <HelpQr onBack={onBack} note={note} />;
   return leader || !assisted() ? <AccountQr onBack={onBack} note={note} /> : <HelpQr onBack={onBack} note={note} />;
 }
 

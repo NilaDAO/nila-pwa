@@ -35,7 +35,7 @@ import Settings from './Settings';
 import LeaderTasks, { HandBackFor, PlanFor } from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
-import AddMember, { KeypadPoints, LeaderOwnPoints, SmartphonePoints, SmsMember } from '../leader/AddMember';
+import AddMember, { JoinScan, KeypadPoints, LeaderOwnPoints, SmartphonePoints, SmsMember } from '../leader/AddMember';
 import { KeepMyNumber, KeypadAccounts } from '../keypad/hooks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { onboarded } from '../register/Registration';
@@ -72,7 +72,7 @@ function Later({ title, step }) {
 // tasks/border/<job id>[/<field>]: L2a–L4 for a leader.
 const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+|add))?/) || [];
 // tasks/member[/<id>]: L14 Add a member and its #sent progress (P8).
-const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?(\/points|\/sms)?$/);
+const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?(\/points|\/sms|\/scan)?$/);
 
 /** A member's crop plan, made by the leader with the member (assist mode, 26 Oct): #/memberplan/<route>. */
 function MemberPlan({ route }) {
@@ -97,6 +97,7 @@ function TasksView({ leader, go }) {
   const member = readMember();
   if (leader && member && member[1] === 'qr' && member[2]) return <SmartphonePoints go={go} />;
   if (leader && member && member[2] === '/sms') return <SmsMember key={member[1]} id={member[1]} go={go} />;
+  if (leader && member && member[2] === '/scan') return <JoinScan key={member[1]} id={member[1]} go={go} />;
   if (leader && member && member[2]) return <KeypadPoints key={member[1]} id={member[1]} go={go} />;
   if (leader && member) return <AddMember key={member[1] || 'new'} id={member[1]} go={go} />;
   if (leader) return <LeaderTasks go={go} />;
@@ -176,14 +177,15 @@ export default function Shell({ leader }) {
   const idCheck = useLpStatus();
   const me = s?.stellarAddress;
   useEffect(() => {
-    if (leader || !me || !idCheck.data?.idChecked) return;
+    // Plan 053: a phone-key member stays in assist mode (the switch to a Privy key is not built yet).
+    if (leader || !me || !idCheck.data?.idChecked || s?.kind === 'P256') return;
     try {
       const k = `nila.mode.k1.${me}`;
       if (localStorage.getItem(k)) return;
       localStorage.setItem(k, '1');
       if (localStorage.getItem('nila.mode') !== 'self') { localStorage.setItem('nila.mode', 'self'); window.location.reload(); }
     } catch { /* private mode: stays in assist mode */ }
-  }, [leader, me, idCheck.data?.idChecked]);
+  }, [leader, me, idCheck.data?.idChecked, s?.kind]);
   const tabs = leader ? LEADER_TABS : assisted() ? ASSISTED_TABS : MEMBER_TABS;
   const [view, setView] = useState(() => readTab() || 'assets');
   const [, setHash] = useState(window.location.hash);

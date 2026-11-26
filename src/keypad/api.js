@@ -6,8 +6,11 @@ export function keypadClient(signer) {
   const call = signedCall(signer);
   return {
     // account (2 Nov): a smartphone member's existing account moving to a keypad phone.
-    add: ({ name, phone, phoneType, unionName, leaderName, account }) => call('POST', '/keypad/members',
-      { name, phone, phone_type: phoneType, union_name: unionName || '', leader_name: leaderName || '', ...(account ? { account } : {}) }),
+    // Plan 054: no phoneType (the node's default: the one SMS with link and code); placeholder: Join the union on G2 for
+    // a member whose title sits on a placeholder.
+    add: ({ name, phone, phoneType, unionName, leaderName, account, placeholder }) => call('POST', '/keypad/members',
+      { name, phone, ...(phoneType ? { phone_type: phoneType } : {}), union_name: unionName || '', leader_name: leaderName || '',
+        ...(account ? { account } : {}), ...(placeholder ? { placeholder } : {}) }),
     // phone (4 Nov, G2 Recover on another number): the link goes to a new number (409: another member's number).
     sendAgain: (id, phone) => call('POST', `/keypad/members/${id}/link`, phone ? { phone } : {}),
     // 4 Nov: a smartphone member's account recovered to a new number; returns the member row (its id for /recover).
@@ -19,6 +22,8 @@ export function keypadClient(signer) {
     // 2 Nov: a lost phone. The node returns the leader's payload hash for recover_by_sms; the leader signs it.
     recoverAsk: (id) => call('POST', `/keypad/members/${id}/recover`, {}),
     recoverSign: (id, signature) => call('POST', `/keypad/members/${id}/recover/sign`, { signature }),
+    // Plan 054: Recover on this phone by the code the member read out: the public key of a one-time key this app made.
+    recoverKey: (id, code, key) => call('POST', `/keypad/members/${id}/recover/key`, { code, key }),
     points: (id, points) => call('POST', `/keypad/members/${id}/points`, { points }),
     // Leader OTP (24 Nov): a code to her number on record opens the help QR's session (start_session_by_sms).
     // SMS-only members (25 Nov): the number check's code, its resend, and the account the leader's app made.

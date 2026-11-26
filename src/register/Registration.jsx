@@ -3,8 +3,12 @@
 // R9 (decision 008, 3 Nov) lists the anchor's union directory (src/union/directory.js), nearest first; the node's own
 // union alone when there is none. Recover (only the missing R9 / R13 / R10)
 // is src/register/RecoverSteps.jsx.
-import { useMemo, useState } from 'react';
-import { useStellarConfig } from '../stellar/hooks';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { isDeployed } from '../stellar/soroban';
+import HelpQr from '../loan/HelpQr';
+import { PHONE_KEY_TEXTS } from '../wallet/phoneKeyTexts';
+import { readAccountUnion, useStellarConfig } from '../stellar/hooks';
 import { checkLeader } from '../shell/leader';
 import { setDBitem } from '../utils/db';
 import { useNilaSigner } from '../wallet/signer';
@@ -19,7 +23,9 @@ const UNIONS = [{ name: 'Mother Theresa Union', rep: 'Mrs. Rosalie Susairaj', po
   location: [11.878671, 78.964561] }];
 // No R13 any more (26 Oct): every member starts in assist mode; the identity check or Settings switches to self.
 // After the code (28 Oct, executive decision): R9 union and R10 updates, then straight to the Crop plan.
-const START_STEPS = ['union', 'notify'];
+// 26 Nov (plan 054): after R9 her QR while her account has not joined the union (the leader's scan joins it); skipped
+// once joined.
+const START_STEPS = ['union', 'join', 'notify'];
 const onboardedKey = (evm) => `nila.reg.onboarded.${(evm || '').toLowerCase()}`;
 export const onboarded = (evm) => { try { return localStorage.getItem(onboardedKey(evm)) === '1'; } catch { return false; } };
 const markOnboarded = (evm) => { try { localStorage.setItem(onboardedKey(evm), '1'); } catch { /* not kept */ } };
@@ -153,6 +159,22 @@ function unionLine(u) {
   return parts.join(' · ') || null;
 }
 
+/** After R9 (26 Nov, plan 054): while her account has not joined the union, her QR (the account and her signed
+ *  set_union for the union she picked) for the leader to scan; checked every 5 s, so the step ends by itself once
+ *  joined. Skipped when her account names a union already. */
+export function JoinStep({ union, onDone }) {
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const joined = useQuery({
+    queryKey: ['stellar', 'reg-joined', s?.stellarAddress], enabled: !!cfg && !!s?.stellarAddress, refetchInterval: 5000,
+    queryFn: async () => (await isDeployed(cfg, s.stellarAddress)) && !!(await readAccountUnion(cfg, s.stellarAddress).catch(() => null)),
+  });
+  useEffect(() => { if (joined.data === true) onDone(); }, [joined.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (joined.data !== false) return null;
+  // 26 Nov: no Later: the step ends only when the leader's scan has joined the account.
+  return <HelpQr union={union} note={PHONE_KEY_TEXTS.joinStepNote} />;
+}
+
 /** R10 (board RegNotify-52am): updates (push notifications from her union); Skip asks to confirm. */
 export function NotifyStep({ evm, onDone }) {
   const [skip, setSkip] = useState(false);
@@ -187,5 +209,6 @@ export default function Registration({ onStarted }) {
   const started = () => { markOnboarded(evm); clearDemoNew(evm); onStarted?.(); };
 
   if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={(union) => next({ union })} />;
+  if (step === 'join') return <JoinStep union={reg.union?.stellar} onDone={() => next()} />;
   return <NotifyStep evm={evm} onDone={started} />;
 }
