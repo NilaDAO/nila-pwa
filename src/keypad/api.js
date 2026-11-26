@@ -6,8 +6,11 @@ export function keypadClient(signer) {
   const call = signedCall(signer);
   return {
     // account (2 Nov): a smartphone member's existing account moving to a keypad phone.
-    add: ({ name, phone, phoneType, unionName, leaderName, account }) => call('POST', '/keypad/members',
-      { name, phone, phone_type: phoneType, union_name: unionName || '', leader_name: leaderName || '', ...(account ? { account } : {}) }),
+    // Plan 054: no phoneType (the node's default: the one SMS with link and code); placeholder: Join the union on G2 for
+    // a member whose title sits on a placeholder.
+    add: ({ name, phone, phoneType, unionName, leaderName, account, placeholder }) => call('POST', '/keypad/members',
+      { name, phone, ...(phoneType ? { phone_type: phoneType } : {}), union_name: unionName || '', leader_name: leaderName || '',
+        ...(account ? { account } : {}), ...(placeholder ? { placeholder } : {}) }),
     // phone (4 Nov, G2 Recover on another number): the link goes to a new number (409: another member's number).
     sendAgain: (id, phone) => call('POST', `/keypad/members/${id}/link`, phone ? { phone } : {}),
     // 4 Nov: a smartphone member's account recovered to a new number; returns the member row (its id for /recover).

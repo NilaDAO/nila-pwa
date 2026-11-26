@@ -44,6 +44,7 @@ import { useContactBook } from '../union/hooks';
 import { useSessionUntil } from '../stellar/session';
 import { markRecover, useInviteLink, useKeypadMembers, useRecoverPhone } from '../keypad/hooks';
 import { formerMember } from './AddMember';
+import { JOIN_TEXTS } from './joinTexts';
 import { Bouncing } from '../register/RegFrame';
 
 const U = 10_000_000;
@@ -154,7 +155,8 @@ export default function MemberStatus({ id, go }) {
   const borderApi = useBorderClient();
   // Sign later (plan 050): a member mapped without her phone holds her title on a keyless placeholder (G…, not a smart
   // account) until her QR is scanned. A keypad member's is moved when her phone is set up, not by a scan.
-  const holder = /^G[A-Z2-7]{55}$/.test(m?.address || '') && m?.joined === false && !m?.keypadId;
+  // Plan 054: a keypad member's placeholder joins the same way (the one SMS, then her QR or the code).
+  const holder = /^G[A-Z2-7]{55}$/.test(m?.address || '') && (m?.joined === false || (!!m?.keypadId && m?.joined !== true));
   const labels = useMemo(() => {
     // Only what grows on an area today (sown, not harvested), as on A5; an area with nothing in the ground stays plain.
     // A financed share grows too (23 Oct): its draw is the start, whatever the plan's sowing date says.
@@ -205,7 +207,8 @@ export default function MemberStatus({ id, go }) {
   if (syncing) return <LiteDataQr m={m} inv={inv} onClose={() => setSyncing(false)} />;
   if (scanning) {
     return <StartHelp member={m.address} label={m.label} title={scanning.what} onBack={() => setScanning(false)}
-      onPair={scanning.holder ? (account) => borderApi.pairHolder(m.address, account) : undefined} qrOnly={scanning.what === 'Join the union'}
+      onPair={scanning.holder ? (account) => (m.keypadId ? keypadClient(s).smsAccount(m.keypadId, account) : borderApi.pairHolder(m.address, account)) : undefined}
+      qrOnly={scanning.what === 'Join the union'}
       onStarted={() => { const then = scanning.then; setScanning(false); then(); }} />;
   }
   const withQr = (what, then) => () => (helpUntil > Date.now() / 1000 + 10 ? then() : setScanning({ what, then }));
@@ -333,7 +336,12 @@ export default function MemberStatus({ id, go }) {
         {m.joined === false && !holder && investedSection}
         {/* Sign later (plan 050, 15 Nov): her title and crop plan never wait for this scan. The scan joins her account;
             a new member's account is paired with the holding address her title was minted to (holder: her placeholder). */}
-        {m.joined === false && !(m.keypadId && /^G/.test(m.address || '')) && (
+        {/* Plan 054: a title on a placeholder (sign later): the one SMS to the number the leader types, or (a self-mode
+            member, no SMS) the scan of the member's QR. An operator-moved account (C…): the steps as before. */}
+        {holder ? (
+          <JoinBySms m={m} go={go}
+            onScan={() => setScanning({ what: 'Join the union', holder, then: () => { markJoined(m.address); refetchMembers(); window.location.hash = '#/members'; } })} />
+        ) : m.joined === false && !(m.keypadId && /^G/.test(m.address || '')) && (
           <JoinSteps m={m} holder={holder}
             onScan={() => setScanning({ what: 'Join the union', holder, then: () => { markJoined(m.address); refetchMembers(); window.location.hash = '#/members'; } })} />
         )}
@@ -444,6 +452,28 @@ export default function MemberStatus({ id, go }) {
       <Account m={m} inv={inv} go={go} onSync={() => setSyncing(true)} />
       </div>
     </MapCard>
+  );
+}
+
+/** Join the union (plan 054) for a member whose title sits on a placeholder: the leader types the member's number and
+ *  the node sends the one SMS (link and code); the join screen (Add a member's progress) offers her QR or the code. A
+ *  self-mode member needs no SMS: the leader scans the member's QR (kind 5: account and signed set_union). */
+function JoinBySms({ m, go, onScan }) {
+  const union = useUnionInfo();
+  const send = useInviteLink();
+  const [num, setNum] = useState(m.phone || '+91');
+  const stepBtn = { ...btn(), flex: 'none', width: '100%', margin: '8px 0' };
+  const sms = () => send.mutate({ name: m.name || m.label || 'Member', phone: phoneValue(num), placeholder: m.address,
+    unionName: union.name, leaderName: union.rep }, { onSuccess: (k) => go(`tasks/member/${k.id}`) });
+  return (
+    <Section title={JOIN_TEXTS.title} right="Not joined yet" gap={20}>
+      <label htmlFor="g2-join-phone" style={{ color: C.muted }}>{JOIN_TEXTS.number}</label>
+      <PhoneField id="g2-join-phone" value={num} onChange={setNum} />
+      <button type="button" style={{ ...btn(phoneOk(num) && !send.isPending), flex: 'none', width: '100%' }} disabled={!phoneOk(num) || send.isPending} onClick={sms}>
+        {send.isPending ? 'Sending…' : JOIN_TEXTS.send}</button>
+      {send.error && <span style={{ color: C.coral }}>{send.error.message}</span>}
+      <button type="button" style={stepBtn} onClick={onScan}>Scan the QR</button>
+    </Section>
   );
 }
 

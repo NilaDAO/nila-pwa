@@ -21,7 +21,8 @@
     <title>Nila Farm Finance App</title>
     <script>
     // The keypad app's one-time link (SMS from L14): /l/<code> opens /lite (P8). Plain ES5, before the app loads,
-    // so a KaiOS browser never loads the app bundle.
+    // so a KaiOS browser never loads the app bundle. Plan 054: Nila lite reads the link and sends a smartphone on to
+    // the full app with a key on the phone (a recovery link to a smartphone member's own sign-up, as before).
     (function () {
       var m = location.pathname.match(/^\/l\/([0-9A-Za-z]+)\/?$/);
       if (m) location.replace('/lite/#/l/' + m[1].toUpperCase());

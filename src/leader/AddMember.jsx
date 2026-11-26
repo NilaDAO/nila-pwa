@@ -1,5 +1,6 @@
-// L14 — Add a member (board LeaderAddMember, #sent): the leader at her farm enters her name and number and her phone
-// type, and Nila texts her the app link (oracle O17). A keypad phone gets a one-time link to Nila lite (/l/<code>,
+// L14 — Add a member (board LeaderAddMember, #sent): the leader at her farm enters her name and number, and Nila texts
+// her one SMS with the app link and a code (plan 054: no phone type to pick; JoinCard below: her QR or the code).
+// Before plan 054 the leader picked her phone type and Nila texted her the app link (oracle O17). A keypad phone gets a one-time link to Nila lite (/l/<code>,
 // 30 minutes, one use, bound to her number; F9); a smartphone the app's address (she registers herself, R1–R14).
 // #sent follows her progress: link sent, opened and agreed, phone set up (no PIN, executive decision 22 Oct). Then the
 // leader takes the field points on the leader's own phone (26 Oct, executive decision: the keypad phone takes none;
@@ -26,28 +27,14 @@ import PhoneField, { phoneOk, phoneValue } from '../register/PhoneField';
 import { useBookActions } from '../union/hooks';
 import { oneTimeJoin } from '../stellar/session';
 import { NoteBar } from '../loan/AssetParts';
+import StartHelp from '../loan/StartHelp';
+import { JOIN_TEXTS as T } from './joinTexts';
 
 const field = { height: 48, borderRadius: R.button, border: 0, background: C.raised, color: C.text, padding: '0 16px', boxSizing: 'border-box',
   width: '100%', fontFamily: FONT, fontSize: 14, fontWeight: 700, outline: 'none' };
 const label = { fontSize: 14, lineHeight: 1.5, color: C.muted, marginTop: 4 };
 const time = (ts) => (ts ? new Date(ts * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '');
 const phoneText = (p) => { const d = String(p || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `+91 ${d.slice(0, 5)} ${d.slice(5)}` : p; };
-
-function Radio({ title, sub, on, onClick }) {
-  return (
-    <button type="button" role="radio" aria-checked={on ? 'true' : 'false'} onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%',
-      textAlign: 'left', background: C.raised, border: `2px solid ${on ? C.accent : 'transparent'}`, borderRadius: R.button, padding: '12px 16px',
-      color: C.text, fontFamily: FONT, fontSize: 14, lineHeight: 1.5, cursor: 'pointer' }}>
-      <span style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-        <span style={{ fontWeight: 700 }}>{title}</span><span style={{ color: C.muted }}>{sub}</span>
-      </span>
-      <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: R.round, border: `2px solid ${on ? C.accent : C.muted}`, flexShrink: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {on && <span style={{ width: 10, height: 10, borderRadius: R.round, background: C.accent }} />}
-      </span>
-    </button>
-  );
-}
 
 function Step({ done, title, sub }) {
   return (
@@ -100,6 +87,9 @@ function Sent({ id, go }) {
   const m = q.data;
   const acct = useKeypadAccount(m);
   const accountMade = acct.made;
+  // Plan 054: the code was checked but the account not made (a failed try): the SMS-only screen makes it.
+  const smsLeft = m?.phone_type === 'sms' && !m.account;
+  useEffect(() => { if (smsLeft) go(`tasks/member/${id}/sms`); }, [smsLeft, id, go]);
   if (!m) return <Text>{q.error ? q.error.message : '…'}</Text>;
   const l = m.link || {};
   const keypad = m.phone_type === 'keypad';
@@ -111,7 +101,7 @@ function Sent({ id, go }) {
         </div>
         {keypad ? (
           <>
-            <Step done title="Link sent" sub={`${time(l.sent)} · works once, for 30 minutes`} />
+            <Step done title={T.sent} sub={`${time(l.sent)} · works once, for 30 minutes`} />
             <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for the member' : 'The link no longer works: send it again')} />
             <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
             {m.account && <Step done={accountMade} title="Account made" sub={accountMade ? `${m.account.slice(0, 4)}…${m.account.slice(-4)}` : 'Making it…'} />}
@@ -126,12 +116,15 @@ function Sent({ id, go }) {
           </>
         )}
         {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
+        {/* Plan 054: a member joined (or with a title) needs no new field points. */}
         {/* A keypad member's fields (26 Oct): the leader takes the points on the leader's phone, without waiting for
             the member to open the SMS link; once taken, the borders are checked (L2–L4). */}
-        {keypad && !m.job && <CardButton onClick={() => go(`tasks/member/${m.id}/points`)}>Take field points</CardButton>}
+        {keypad && !m.job && !m.held && <CardButton onClick={() => go(`tasks/member/${m.id}/points`)}>Take field points</CardButton>}
         {keypad && m.job && <CardButton onClick={() => go(`tasks/border/${m.job}`)}>Check field borders</CardButton>}
         <CardButton onClick={send.isPending ? undefined : () => send.mutate({ again: m.id })}>Send the link again</CardButton>
       </Card>
+      {/* Plan 054: the one SMS sent, the leader joins the member: the QR of the phone that opened the link, or the code. */}
+      {!m.account && keypad && <JoinCard m={m} go={go} />}
     </>
   );
 }
@@ -141,30 +134,16 @@ export default function AddMember({ id, go }) {
   const send = useInviteLink();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('+91');
-  const [type, setType] = useState('smartphone');
   const ok = name.trim() && phoneOk(phone);
-  const submit = () => send.mutate({ name: name.trim(), phone: phoneValue(phone), phoneType: type, unionName: union.name, leaderName: union.rep },
-    // A keypad member (26 Oct): all in one go at the farm — the link is sent and the leader goes straight on to the
-    // field points (R5–R7 on the leader's phone); a member who already has fields goes to the progress screen.
-    // A smartphone member (sign later, plan 050, 15 Nov): the same, with no QR; the node mints her title to a holding
-    // address, and her account joins at a later scan of her QR (G2).
-    { onSuccess: (m) => {
-      if (type === 'smartphone') { writeScanned({ account: '', polygon: '', join: null, name: name.trim(), phone: phoneValue(phone) }); return go('tasks/member/qr/points'); }
-      if (type === 'sms') return go(`tasks/member/${m.id}/sms`);   // 25 Nov: the code checks the number first
-      return go(m.phone_type === 'keypad' && !m.job ? `tasks/member/${m.id}/points` : `tasks/member/${m.id}`);
-    } });
+  // Plan 054: no phone type to pick. The node sends one SMS (link and code); the progress screen offers the QR scan or
+  // the code, and the field points (before or after the join: sign later, plan 050).
+  const submit = () => send.mutate({ name: name.trim(), phone: phoneValue(phone), unionName: union.name, leaderName: union.rep },
+    { onSuccess: (m) => go(`tasks/member/${m.id}`) });
   return (
     <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: 'Add a member', onBack: () => go('tasks'), onSettings: () => go('settings') }}>
       {id === 'qr' ? <NewSmartphone go={go} /> : id ? <Sent id={id} go={go} /> : (
         <>
-          <Card title="The member's phone">
-            <div role="radiogroup" aria-label="The member's phone" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Radio title="Smartphone" sub="Nila app. The member registers and joins later." on={type === 'smartphone'} onClick={() => setType('smartphone')} />
-              <Radio title="Keypad phone (with internet)" sub="Nila lite, from an SMS link." on={type === 'keypad'} onClick={() => setType('keypad')} />
-              <Radio title="Keypad phone (SMS only)" sub="No app. You act for the member with SMS codes." on={type === 'sms'} onClick={() => setType('sms')} />
-            </div>
-          </Card>
           <Card title="Member">
             <label style={label} htmlFor="l14-name">Name</label>
             <input id="l14-name" style={field} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
@@ -172,7 +151,7 @@ export default function AddMember({ id, go }) {
             <PhoneField id="l14-phone" value={phone} onChange={setPhone} />
             <Row k={<b style={{ color: C.text }}>Union</b>} v={union.name || '—'} />
             {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
-            <Primary disabled={!ok || send.isPending} onClick={submit}>{type === 'sms' ? 'Send code and take field points' : 'Send app link and take field points'}</Primary>
+            <Primary disabled={!ok || send.isPending} onClick={submit}>{T.send}</Primary>
           </Card>
           {/* 25 Nov: the farm note in the info bar above the tab bar, not in the card. */}
           <div aria-hidden="true" style={{ height: 96 }} />
@@ -181,6 +160,49 @@ export default function AddMember({ id, go }) {
       )}
     </MapCard>
   );
+}
+
+/** Plan 054: after the one SMS. A smartphone opened the link and shows its QR (tasks/member/<id>/scan), or the member
+ *  reads out the code: this app then makes the account with a one-time key and joins it, as for an SMS-only member.
+ *  Either way the node gives the account the titles held for the member (sign later). */
+function JoinCard({ m, go }) {
+  const api = useKeypadClient();
+  const s = useNilaSigner();
+  const { data: cfg } = useStellarConfig();
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState();
+  const join = async () => {
+    setBusy(true); setError(undefined);
+    try {
+      await api.smsConfirm(m.id, code);
+      const j = await oneTimeJoin(cfg);
+      await ensureKeypadAccount(cfg, s, j);
+      await api.smsAccount(m.id, j.account);
+      go(m.held || m.job ? 'members' : `tasks/member/${m.id}/points`);
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <Card title={T.title}>
+      <Text>{T.how}</Text>
+      <CardButton onClick={() => go(`tasks/member/${m.id}/scan`)}>{T.scan}</CardButton>
+      <label style={label} htmlFor="l14-code">{T.code}</label>
+      <input id="l14-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
+        onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} style={{ ...field, fontSize: 24, letterSpacing: 8, textAlign: 'center' }} />
+      <Primary disabled={busy || code.length !== 6 || !cfg} onClick={join}>{busy ? 'One moment…' : T.check}</Primary>
+      {error && <Text style={{ color: C.coral }}>{error}</Text>}
+    </Card>
+  );
+}
+
+/** tasks/member/<id>/scan (plan 054): the existing scan of a help QR (kind 4 from a phone key, kind 5 from a Privy
+ *  key): this app makes and joins the account, then the node gives it the titles held for the member. */
+export function JoinScan({ id, go }) {
+  const api = useKeypadClient();
+  const m = useKeypadMember(id).data;
+  return <StartHelp label={m?.name} title={T.title} qrOnly onBack={() => go(`tasks/member/${id}`)}
+    onPair={(account) => api.smsAccount(id, account)}
+    onStarted={() => go(m?.held || m?.job ? 'members' : `tasks/member/${id}/points`)} />;
 }
 
 /** tasks/member/<id>/sms (SMS-only member, executive decision 25 Nov, option A): the code the member reads out checks
@@ -200,7 +222,7 @@ export function SmsMember({ id, go }) {
     const j = await oneTimeJoin(cfg);
     await ensureKeypadAccount(cfg, s, j);
     await api.smsAccount(id, j.account);
-    go(`tasks/member/${id}/points`);
+    go(m.held || m.job ? 'members' : `tasks/member/${id}/points`);   // plan 054: a member with a title needs no points
   };
   const confirm = () => run(async () => { await api.smsConfirm(id, code); await makeAccount(); });
   if (!m) return <Loading />;

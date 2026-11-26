@@ -17,8 +17,6 @@ const NewStart = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./regis
 // Recover asks only what is missing (R9 / R13 / R10, notes reg-recover), same gate.
 const RecoverSteps = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/RecoverSteps')) : null;
 const AfterCode = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/AfterCode')) : null;
-// Plan 053: the first open asks member (a key on this phone, no login) or leader / self (today's login); same gate.
-const FirstOpen = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/FirstOpen')) : null;
 import { Routes, Route } from 'react-router-dom';
 
 // 🛠️ UI pieces (place‑holders)
@@ -49,7 +47,6 @@ function App({installAvailable}) {
   const [ bootStage, setBootStage]                                                      = useState('loading');
   const [ fromRegister, setFromRegister ]                                               = useState(false); // R3 done: load on the R ground
   const [ codeDone, setCodeDone ]                                                       = useState(false); // R3 done: Privy decides R5 or R9
-  const [ toLogin, setToLogin ]                                                         = useState(false); // plan 053: "Leader / I use Nila myself"
   const [ recovered, setRecovered ]                                                     = useState(null);  // her Polygon address after a recover
   const [ chain, setChain]                                                              = useState();
   const [ address, setAddress]                                                          = useState('');
@@ -367,7 +364,6 @@ function App({installAvailable}) {
             : codeDone
               // Privy decides new (R5) or existing (R9), not R1's button (LOAN_RULES §5, 20 Oct).
               ? <AfterCode onNew={() => { setFromRegister(true); NewBoot.markFromRegister(); setBootStage('loading'); }} onExisting={(evm) => setRecovered(evm)} />
-              : FirstOpen && !toLogin ? <FirstOpen onLogin={() => setToLogin(true)} />
               : <NewStart onDone={() => setCodeDone(true)} />}</Suspense>
           : <RegisterRecover setBootStage={setBootStage} />} />}
         {bootStage === 'ready' && <Route path="/*" element={StellarGate
