@@ -10,7 +10,7 @@
 // title to a holding address, and her account joins at a later scan of her QR on G2. DESIGN GAPs: the leader's own name is not on Stellar, so the
 // link names the union's representative (R9's union list); the hooks' names are the design's proposal (Q53).
 import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
 import { ensureKeypadAccount, ensureMemberAccount, readAccountUnion, useStellarConfig } from '../stellar/hooks';
 import { isDeployed } from '../stellar/soroban';
@@ -85,47 +85,27 @@ function Sent({ id, go }) {
   const q = useKeypadMember(id);
   const send = useInviteLink();
   const m = q.data;
-  const acct = useKeypadAccount(m);
-  const accountMade = acct.made;
+  useKeypadAccount(m);   // a keypad phone's account is made as soon as the phone sent its key
   // Plan 054: the code was checked but the account not made (a failed try): the SMS-only screen makes it.
   const smsLeft = m?.phone_type === 'sms' && !m.account;
   useEffect(() => { if (smsLeft) go(`tasks/member/${id}/sms`); }, [smsLeft, id, go]);
   if (!m) return <Text>{q.error ? q.error.message : '…'}</Text>;
   const l = m.link || {};
   const keypad = m.phone_type === 'keypad';
+  // 26 Nov (simplified): name and number, when the SMS went (Send again), Join (QR or code) until joined, then the
+  // field points. The keypad's own steps (opened, set up) are left out; the account is still made by useKeypadAccount.
   return (
-    <>
-      <Card label="Progress">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 16, lineHeight: 1.3, marginBottom: 6 }}>
-          <span style={{ fontWeight: 700 }}>{m.name}</span><span style={{ color: C.muted }}>{phoneText(m.phone)}</span>
-        </div>
-        {keypad ? (
-          <>
-            <Step done title={T.sent} sub={`${time(l.sent)} · works once, for 30 minutes`} />
-            <Step done={!!m.consent} title="Opened, agreed to SMS and calls" sub={m.consent ? time(m.consent) : (l.live ? 'Waiting for the member' : 'The link no longer works: send it again')} />
-            <Step done={!!m.device} title="Phone set up" sub={m.device ? time(m.device) : ''} />
-            {m.account && <Step done={accountMade} title="Account made" sub={accountMade ? `${m.account.slice(0, 4)}…${m.account.slice(-4)}` : 'Making it…'} />}
-            {m.account && accountMade && <Step done={!!acct.union} title="Account joined the union" sub={acct.union ? '' : (m.set_union?.sig ? 'Joining…' : 'Waiting for the member\'s phone')} />}
-            <Step done={!!m.job} title="Field points taken" sub={m.job ? `${(m.fields || []).length} field${(m.fields || []).length === 1 ? '' : 's'}` : 'On your phone, at the farm'} />
-            <Notice kind="info">Pin Nila to the apps menu: on the member's phone, in the browser, Options → Pin to Apps Menu.</Notice>
-          </>
-        ) : (
-          <>
-            <Step done title="Link sent" sub={time(l.sent || m.added)} />
-            <Step title="The member registers" sub="In the Nila app, with their own number" />
-          </>
-        )}
-        {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
-        {/* Plan 054: a member joined (or with a title) needs no new field points. */}
-        {/* A keypad member's fields (26 Oct): the leader takes the points on the leader's phone, without waiting for
-            the member to open the SMS link; once taken, the borders are checked (L2–L4). */}
-        {keypad && !m.job && !m.held && <CardButton onClick={() => go(`tasks/member/${m.id}/points`)}>Take field points</CardButton>}
-        {keypad && m.job && <CardButton onClick={() => go(`tasks/border/${m.job}`)}>Check field borders</CardButton>}
-        <CardButton onClick={send.isPending ? undefined : () => send.mutate({ again: m.id })}>Send the link again</CardButton>
-      </Card>
-      {/* Plan 054: the one SMS sent, the leader joins the member: the QR of the phone that opened the link, or the code. */}
-      {!m.account && keypad && <JoinCard m={m} go={go} />}
-    </>
+    <Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 16, lineHeight: 1.3 }}>
+        <span style={{ fontWeight: 700 }}>{m.name}</span><span style={{ color: C.muted }}>{phoneText(m.phone)}</span>
+      </div>
+      <Text>{T.sent} {time(l.sent || m.added)} · <button type="button" onClick={send.isPending ? undefined : () => send.mutate({ again: m.id })}
+        style={{ background: 'none', border: 0, padding: 0, color: C.text, textDecoration: 'underline', font: 'inherit', cursor: 'pointer' }}>{T.again}</button></Text>
+      {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
+      {m.account ? <Text style={{ fontWeight: 700 }}>{T.joined}</Text> : <JoinCard m={m} go={go} />}
+      {keypad && !m.job && !m.held && <CardButton onClick={() => go(`tasks/member/${m.id}/points`)}>Take field points</CardButton>}
+      {keypad && m.job && <CardButton onClick={() => go(`tasks/border/${m.job}`)}>Check field borders</CardButton>}
+    </Card>
   );
 }
 
@@ -167,6 +147,7 @@ export default function AddMember({ id, go }) {
  *  Either way the node gives the account the titles held for the member (sign later). */
 function JoinCard({ m, go }) {
   const api = useKeypadClient();
+  const qc = useQueryClient();
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const [code, setCode] = useState('');
@@ -179,19 +160,20 @@ function JoinCard({ m, go }) {
       const j = await oneTimeJoin(cfg);
       await ensureKeypadAccount(cfg, s, j);
       await api.smsAccount(m.id, j.account);
+      qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });   // 26 Nov: joined, in the list at once
       go(m.held || m.job ? 'members' : `tasks/member/${m.id}/points`);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   return (
-    <Card title={T.title}>
-      <Text>{T.how}</Text>
+    <>
+      <div style={{ fontSize: 16, fontWeight: 700, paddingTop: 8 }}>{T.title}</div>
       <CardButton onClick={() => go(`tasks/member/${m.id}/scan`)}>{T.scan}</CardButton>
       <label style={label} htmlFor="l14-code">{T.code}</label>
       <input id="l14-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
         onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} style={{ ...field, fontSize: 24, letterSpacing: 8, textAlign: 'center' }} />
       <Primary disabled={busy || code.length !== 6 || !cfg} onClick={join}>{busy ? 'One moment…' : T.check}</Primary>
       {error && <Text style={{ color: C.coral }}>{error}</Text>}
-    </Card>
+    </>
   );
 }
 
@@ -199,9 +181,10 @@ function JoinCard({ m, go }) {
  *  key): this app makes and joins the account, then the node gives it the titles held for the member. */
 export function JoinScan({ id, go }) {
   const api = useKeypadClient();
+  const qc = useQueryClient();
   const m = useKeypadMember(id).data;
   return <StartHelp label={m?.name} title={T.title} qrOnly onBack={() => go(`tasks/member/${id}`)}
-    onPair={(account) => api.smsAccount(id, account)}
+    onPair={(account) => api.smsAccount(id, account).then((r) => { qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); return r; })}
     onStarted={() => go(m?.held || m?.job ? 'members' : `tasks/member/${id}/points`)} />;
 }
 
@@ -210,6 +193,7 @@ export function JoinScan({ id, go }) {
  *  key; the node keeps the account on the member's row; then the field points. */
 export function SmsMember({ id, go }) {
   const api = useKeypadClient();
+  const qc = useQueryClient();
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const union = useUnionInfo();
@@ -222,6 +206,7 @@ export function SmsMember({ id, go }) {
     const j = await oneTimeJoin(cfg);
     await ensureKeypadAccount(cfg, s, j);
     await api.smsAccount(id, j.account);
+    qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] });
     go(m.held || m.job ? 'members' : `tasks/member/${id}/points`);   // plan 054: a member with a title needs no points
   };
   const confirm = () => run(async () => { await api.smsConfirm(id, code); await makeAccount(); });

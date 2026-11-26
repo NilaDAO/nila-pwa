@@ -21,7 +21,8 @@ export function useInviteLink() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v) => (v.recoverTo ? api.recoverTo({ ...v, account: v.recoverTo }) : v.again ? api.sendAgain(v.again, v.phone) : api.add(v)),
-    onSuccess: (m) => qc.setQueryData(qkKeypad.member(m.id), m),
+    // 26 Nov: the new member shows in the union's member list at once (the node drops its cached list on the write).
+    onSuccess: (m) => { qc.setQueryData(qkKeypad.member(m.id), m); qc.invalidateQueries({ queryKey: ['stellar', 'unionMembers'] }); },
   });
 }
 

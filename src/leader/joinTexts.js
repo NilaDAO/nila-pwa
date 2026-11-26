@@ -3,6 +3,9 @@
 export const JOIN_TEXTS = {
   // Add a member and G2 Join the union: the button that sends the one SMS (link and code).
   send: 'Send SMS',
+  // The progress screen (26 Nov, simplified): next to the time the SMS went; and once the member has joined.
+  again: 'Send again',
+  joined: 'Joined ✓',
   // Add a member, #sent: the first progress step.
   sent: 'SMS sent',
   // The join card after the SMS.
