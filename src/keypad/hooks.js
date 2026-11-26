@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { addLocalMember } from '../leader/unionMembers';
 import { useNilaSigner } from '../wallet/signer';
 import { keypadClient } from './api';
 
@@ -21,7 +22,8 @@ export function useInviteLink() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v) => (v.recoverTo ? api.recoverTo({ ...v, account: v.recoverTo }) : v.again ? api.sendAgain(v.again, v.phone) : api.add(v)),
-    onSuccess: (m) => qc.setQueryData(qkKeypad.member(m.id), m),
+    // 26 Nov: the new member shows in the union's member list at once (the node drops its cached list on the write).
+    onSuccess: (m) => { qc.setQueryData(qkKeypad.member(m.id), m); addLocalMember(qc, m); },
   });
 }
 
@@ -56,6 +58,29 @@ export function useKeypadMembers() {
 
 export { useKeypadClient };
 
+/** Leader OTP for smartphone members (24 Nov): once a day this phone tells the node its login number (Cognito, proven
+ *  by the login's SMS code) in a request the member's own wallet signs, so a leader can send the member a code instead
+ *  of the help QR. Renders nothing; a failure is only logged (the QR still works). */
+export function KeepMyNumber() {
+  const api = useKeypadClient();
+  const s = useNilaSigner();
+  useEffect(() => {
+    if (!api || !s?.stellarAddress) return;
+    const key = `nila.otpNumber.${s.stellarAddress}`;
+    const today = new Date().toISOString().slice(0, 10);
+    try { if (localStorage.getItem(key) === today) return; } catch { /* private mode */ }
+    (async () => {
+      const { readAllItems } = await import('../utils/db');
+      const { freshAccessToken } = await import('../utils/getEncryptedKey');
+      const db = await readAllItems('Init');
+      if (!db?.jwt_token) return;
+      await api.myNumber(await freshAccessToken(db));
+      try { localStorage.setItem(key, today); } catch { /* private mode */ }
+    })().catch((e) => console.warn('[otp] login number not kept', e.message));
+  }, [api, s?.stellarAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 /** Keypad accounts (26 Oct): a keypad member's smart account is created by the leader's app as soon as the member's
  *  phone is set up (its key is made when the SMS link is opened, so it cannot be made at Add a member), then named into
  *  the union with the phone's own signed set_union (3 Nov). Runs while a
@@ -66,6 +91,12 @@ export { useKeypadClient };
 const RECOVER = (id) => `nila.keypad.recover.${id}`;
 export function markRecover(id) { try { localStorage.setItem(RECOVER(id), '1'); } catch { /* the G2 button still works */ } }
 const wantsRecover = (id) => { try { return localStorage.getItem(RECOVER(id)) === '1'; } catch { return false; } };
+/** Plan 054 §5 "Recover on this phone": the leader recovers only after scanning the new phone's QR (G2), so this is
+ *  kept apart from markRecover (no recovery without the scan). */
+const RECOVER_SCAN = (id) => `nila.keypad.recoverScan.${id}`;
+export function markRecoverScan(id) { try { localStorage.setItem(RECOVER_SCAN(id), '1'); } catch { /* no scan asked */ } }
+export const wantsRecoverScan = (id) => { try { return localStorage.getItem(RECOVER_SCAN(id)) === '1'; } catch { return false; } };
+export function clearRecoverScan(id) { try { localStorage.removeItem(RECOVER_SCAN(id)); } catch { /* not kept */ } }
 
 export function KeypadAccounts() {
   const s = useNilaSigner();

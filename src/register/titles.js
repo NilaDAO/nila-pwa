@@ -19,7 +19,7 @@ export function useTitleCount(evm, stellarAddress) {
   const known = [polygon, stellar].filter((v) => v !== undefined);
   const count = pending ? undefined : known.some((v) => v >= 1) ? Math.max(...known) : failed.length ? undefined : 0;
   const retry = () => { if (failed.includes('polygon')) legacy.refetch?.(); if (failed.includes('stellar')) st.refetch?.(); };
-  return { count, polygon, stellar, loading: count === undefined, failed: count === undefined ? failed : [], retry, legacy };
+  return { count, polygon, stellar, loading: count === undefined, failed: count === undefined ? failed : [], pendingOther: pending, retry, legacy };
 }
 
 /** Query keys to refresh once a title may have arrived (R14). */

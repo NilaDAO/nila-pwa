@@ -35,8 +35,8 @@ import Settings from './Settings';
 import LeaderTasks, { HandBackFor, PlanFor } from '../leader/LeaderTasks';
 import Members from '../leader/Members';
 import MemberStatus from '../leader/MemberStatus';
-import AddMember, { KeypadPoints, LeaderOwnPoints, SmartphonePoints } from '../leader/AddMember';
-import { KeypadAccounts } from '../keypad/hooks';
+import AddMember, { JoinScan, KeypadPoints, LeaderOwnPoints, SmartphonePoints, SmsMember } from '../leader/AddMember';
+import { KeepMyNumber, KeypadAccounts } from '../keypad/hooks';
 import LeaderBorder from '../border/LeaderBorder';
 import Registration, { onboarded } from '../register/Registration';
 import { BootLoading } from '../register/Boot';
@@ -72,7 +72,7 @@ function Later({ title, step }) {
 // tasks/border/<job id>[/<field>]: L2a–L4 for a leader.
 const readBorder = () => window.location.hash.match(/^#\/tasks\/border\/([\w-]+)(?:\/(\d+|add))?/) || [];
 // tasks/member[/<id>]: L14 Add a member and its #sent progress (P8).
-const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?(\/points)?$/);
+const readMember = () => window.location.hash.match(/^#\/tasks\/member(?:\/([\w-]+))?(\/points|\/sms|\/scan)?$/);
 
 /** A member's crop plan, made by the leader with the member (assist mode, 26 Oct): #/memberplan/<route>. */
 function MemberPlan({ route }) {
@@ -96,6 +96,8 @@ function TasksView({ leader, go }) {
   if (leader && window.location.hash.startsWith('#/tasks/handback')) return <HandBackFor go={go} />;
   const member = readMember();
   if (leader && member && member[1] === 'qr' && member[2]) return <SmartphonePoints go={go} />;
+  if (leader && member && member[2] === '/sms') return <SmsMember key={member[1]} id={member[1]} go={go} />;
+  if (leader && member && member[2] === '/scan') return <JoinScan key={member[1]} id={member[1]} go={go} />;
   if (leader && member && member[2]) return <KeypadPoints key={member[1]} id={member[1]} go={go} />;
   if (leader && member) return <AddMember key={member[1] || 'new'} id={member[1]} go={go} />;
   if (leader) return <LeaderTasks go={go} />;
@@ -175,14 +177,15 @@ export default function Shell({ leader }) {
   const idCheck = useLpStatus();
   const me = s?.stellarAddress;
   useEffect(() => {
-    if (leader || !me || !idCheck.data?.idChecked) return;
+    // Plan 053: a phone-key member stays in assist mode (the switch to a Privy key is not built yet).
+    if (leader || !me || !idCheck.data?.idChecked || s?.kind === 'P256') return;
     try {
       const k = `nila.mode.k1.${me}`;
       if (localStorage.getItem(k)) return;
       localStorage.setItem(k, '1');
       if (localStorage.getItem('nila.mode') !== 'self') { localStorage.setItem('nila.mode', 'self'); window.location.reload(); }
     } catch { /* private mode: stays in assist mode */ }
-  }, [leader, me, idCheck.data?.idChecked]);
+  }, [leader, me, idCheck.data?.idChecked, s?.kind]);
   const tabs = leader ? LEADER_TABS : assisted() ? ASSISTED_TABS : MEMBER_TABS;
   const [view, setView] = useState(() => readTab() || 'assets');
   const [, setHash] = useState(window.location.hash);
@@ -240,7 +243,7 @@ export default function Shell({ leader }) {
   else if (view === 'usdc') body = <UsdcAsset leader={leader} onBack={() => go('assets')} />;
   else if (view === 'lpcode') body = <LpCodeScreen key={readArg()} id={readArg()} onBack={() => go('assets')} />;
   else if (view === 'land') body = <AssetStep view={view}>{(p) => <LandTitle onBack={() => go('assets')} leader={leader} {...p} />}</AssetStep>;
-  else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={() => go(`cash/invest/${s?.stellarAddress}`)} />;
+  else if (view === 'invested') body = <Investment leader={leader} onBack={() => go('assets')} onPhotoCount={(a) => go(`cash/investself/${s?.stellarAddress}/${Math.round(a)}`)} />;
   // A member holds no nIN (22 Oct, desk only): A7 and its cash-out are a leader's only.
   // nIN for a leader, or a member whose identity the anchor checked (K1, 24 Oct); A7 then collects it in cash.
   else if (view === 'cashout') body = <CashOut onBack={() => go('assets')} kycOnly={!leader} />;
@@ -280,6 +283,7 @@ export default function Shell({ leader }) {
             opens it raised; only a bottom-bar tab keeps a lowered card down (keepLowOnTab). */}
         <Fragment key={view}>{body}</Fragment>
         {leader && <KeypadAccounts />}
+        {!leader && <KeepMyNumber />}
         <BottomTabBar tabs={tabs} active={active} onSelect={(v) => { keepLowOnTab(); resetA1Scroll(); go(v); }} />
       </div>
     </MapStage>

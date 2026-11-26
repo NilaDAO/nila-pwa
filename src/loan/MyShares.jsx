@@ -44,7 +44,10 @@ export function useMyLand() {
   const stellarTitles = useStellarTitles(s);
   const onPolygon = !!titles.data?.length;
   const stellarTitle = onPolygon ? undefined : stellarTitles.data?.[0];
-  return { landId: onPolygon ? titles.data[0] : stellarTitle?.title_id, onPolygon, stellarTitle, evm: s?.evmAddress };
+  // Rows 25–26 (24 Nov): no title found while a chain's read failed is "unknown", never "no land" (screens show
+  // Not loaded, never No land title yet or a mint button).
+  const unknown = !onPolygon && !stellarTitle && ((titles.isError && !titles.data) || (stellarTitles.isError && !stellarTitles.data));
+  return { landId: onPolygon ? titles.data[0] : stellarTitle?.title_id, onPolygon, stellarTitle, evm: s?.evmAddress, unknown };
 }
 
 // FoodToken status (FoodTokenUpgradeable): 0 none, 1 active, 2 verified, 3 harvest confirmed, 4 burned (lapsed or
@@ -92,7 +95,9 @@ export function useMyShares() {
         return true;
       });
       // Every share's state in one batched read (22 Oct), instead of a simulation each.
-      const fts = withId.length ? await readFoodTokens(cfg, cfg.union, withId.map((m) => tokenHex(m.token_id))).catch(() => ({})) : {};
+      // Rows 25–26 (24 Nov): a failed Stellar read fails the whole list (it made every share "Not attested yet" and hid
+      // her open loans); the screens say it did not load.
+      const fts = withId.length ? await readFoodTokens(cfg, cfg.union, withId.map((m) => tokenHex(m.token_id))) : {};
       return Promise.all(withId.map(async (m) => {
         const ft = fts[tokenHex(m.token_id)] || null;
         const p = m.p;

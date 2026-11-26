@@ -30,6 +30,7 @@ import Spinner from './components/UI/spinner.js';
 import { readAllItems, setDBitem, deleteItem } from './utils/db';
 import { getUserAttributes } from './utils/cognito_helpers.js'
 import { chainFromCognito } from './wallet/chainAttr';
+import { isPhoneKeyPhone } from './wallet/phoneKey';
 import { useErc20Balances, useGrantInfo, useLandTitle } from './hooks/useLoadETH.ts';
 import { useUnionGenericFunds } from './hooks/useLoadFunds.ts';
 import { useDataContext } from './utils/NavigationContext.js';
@@ -66,7 +67,9 @@ function App({installAvailable}) {
   const [landTitleId, setLandTitleId]                      = useState(Number(db?.reload?.land?.LAND?.id) || undefined);
   const {data : bal,  error : Ebal, isFetched: Fbal }      = useErc20Balances(chain, address, { enabled: hot_ready}, landTitleId);
   const foodtokens                                         = bal && bal.filter(b => b.type === 'ERC1155').length + 1 // 0 is false...
-  const cold_ready                                         = Boolean((!!chain && !!address && !!useCache && !!foodtokens) || (registerRecoverFlag && !!foodtokens))
+  // Rows 25–26 (24 Nov): the Stellar app (StellarGate → Shell) never uses the old Polygon grant and land reads; a Polygon
+  // RPC that hung kept every Stellar member on "Loading your wallet" for minutes. They run for the Polygon app only.
+  const cold_ready                                         = chain !== 'stellar' && Boolean((!!chain && !!address && !!useCache && !!foodtokens) || (registerRecoverFlag && !!foodtokens))
   const {data : grant, error : Egrant, isFetched: Fgrant}  = useGrantInfo(chain, address, unionAddress, foodtokens, cold_ready );
   const {data : land, error : Eland,  isFetched: Fland }   = useLandTitle(chain, address, cold_ready, pendingLandMint );
 
@@ -240,6 +243,9 @@ function App({installAvailable}) {
     if (_rpc.includes('127.0.0.1') || _rpc.includes('localhost')) {
       merged.chain = '31337';
     }
+    // Plan 053: a phone-key member has no Cognito login and no Polygon wallet: the Stellar app, her account from the key.
+    const phoneKey = NEW_BOOT && isPhoneKeyPhone();
+    if (phoneKey) merged.chain = 'stellar';
     setDb(merged);
       
     // 5️⃣ Set any Debt the user has from indexedDB, if no attribute, call getLoansByBorrower with address to reset
@@ -249,7 +255,7 @@ function App({installAvailable}) {
     }
     
     // 6️⃣ User has to recover or register a new account, no local data
-    if (!merged.address) {
+    if (!merged.address && !phoneKey) {
       setBootStage('register');
       return
     }
@@ -270,14 +276,15 @@ function App({installAvailable}) {
       // IN CASE ADDRESS IS MISSING, GET IT FROM COGNITO.
       let address,chain
       const isFetched = Fbal && !cold_ready || Fbal && Fgrant && Fland
-      if (!initDb.address){
+      if (!initDb.address && !phoneKey){
         const attributes = await getUserAttributes(db['token'])
         address = attributes.UserAttributes.find(attribute => attribute.Name === 'custom:address')?.Value;
         chain = chainFromCognito(attributes.UserAttributes.find(attribute => attribute.Name === 'custom:chain')?.Value);
       }
       // set the props to load the wallet properties
       setChain(merged.chain || chain || process.env.REACT_APP_CHAIN_ID || '137');
-      setAddress(merged.address || address);
+      // A phone-key member: no Polygon address (the balance read returns nothing for 'stellar'); a stand-in starts it.
+      setAddress(merged.address || address || (phoneKey ? 'phone-key' : undefined));
 
       function handleSetLocalState(bal,grant,land){
         // escape route if grant and|or land are undefined
@@ -307,8 +314,8 @@ function App({installAvailable}) {
         }
       } 
       else if (online && isFetched && !cold_ready){ 
-        // query disabled so load grants & land from db
-        const { grant, land } = db.reload
+        // query disabled so load grants & land from db (none for a Stellar member who never had the Polygon reads)
+        const { grant, land } = db.reload || {}
         handleSetLocalState(bal,grant,land)
       } 
       else if (!online){  

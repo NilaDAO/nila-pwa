@@ -473,7 +473,9 @@
    *  the union's wait). Until then nothing here can show a working QR. */
   function recovering(d) {
     var r = d.me.recovery;
-    qrKey = false;       // its QR would not work: the account does not sign with this phone's key yet
+    // Its QR does not work for tasks until the recovery runs; plan 054 §5: while one is needed the leader scans it to
+    // check this is the phone that opened the link ("Recover on this phone").
+    qrKey = r.state === 'needed';
     screen('<h1>Waiting for recovery</h1>' +
       (r.state === 'pending' ? '<p>This phone works from ' + new Date(r.at * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</p>'
         : '<p class="muted">Ask your union leader to recover this phone.</p>'),
@@ -1031,6 +1033,14 @@
         // 4 Nov (one recovery path): a smartphone member's account recovered to this number. She signs up in the full
         // app, which finishes the link with her new Privy key (src/wallet/RecoverLink.jsx); the code waits there.
         if (invite.phone_type === 'smartphone') { store('nila.recoverLink', m[1]); location.replace('/'); return; }
+        // Plan 054: a join link (no account yet) opened on a smartphone: the full app with a key on this phone (plan
+        // 053) shows the member's QR for the leader to scan. A KaiOS / keypad-size browser stays here.
+        // Plan 054 §5: a recovery link (the account exists) on a smartphone goes there too: the full app registers its
+        // phone key with the link (src/wallet/RecoverLink.jsx) and shows the QR the leader scans.
+        if (!(/KAIOS/i.test(navigator.userAgent) || (window.innerWidth <= 320 && window.innerHeight <= 400))) {
+          if (invite.account) store('nila.recoverLink', m[1]);
+          store('nila.signer', 'phone'); store('nila.mode', 'assist'); location.replace('/#/wallet'); return;
+        }
         welcome(m[1]);
       });
       return;

@@ -147,7 +147,9 @@ export function LeaderLoan({ initial }) {
       .filter((m) => m.type && (m.acres ?? 0) > 0);
     const acres = {};
     for (const m of ms) acres[m.type] = (acres[m.type] || 0) + m.acres;
-    setMach(Object.fromEntries(Object.entries(acres).map(([t, a]) => [t, Math.round(a * 10) / 10])));
+    // 25 Nov: to the hundredth, as the contract counts acres (was a tenth: 0.82 became 0.8, 0.73 tractor acres where
+    // the agreement was attested for 0.75).
+    setMach(Object.fromEntries(Object.entries(acres).map(([t, a]) => [t, Math.round(a * 100) / 100])));
   }, [shares.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // The plan's amounts, within the union's caps once they are read (the steppers start inside the limit).
   useEffect(() => {
@@ -159,7 +161,7 @@ export function LeaderLoan({ initial }) {
     setMach((m) => {
       let left = c.hours;
       return Object.fromEntries(Object.entries(m).map(([t, h]) => {
-        const k = Math.min(h, Math.floor(acresFor(left, rateOf(t), tractorRate) * 10) / 10); left -= unitsOf(k, rateOf(t), tractorRate); return [t, k];
+        const k = Math.min(h, Math.floor(acresFor(left, rateOf(t), tractorRate) * 100) / 100); left -= unitsOf(k, rateOf(t), tractorRate); return [t, k];
       }));
     });
   }, [checks.data, pickFt, tractorRate]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -391,7 +393,7 @@ export function LeaderLoan({ initial }) {
               const room = tractorRate > 0 ? Math.floor(acresFor(Math.max(0, caps.hours - hours), rateOf(t), tractorRate) * 10) / 10 : 0;
               return (
                 <Stepper key={t} label={`${typeName(t)}${rateOf(t) ? ` · ${inr(rateOf(t))}/ac` : ''}`} value={h}
-                  set={(v) => setMach((m) => ({ ...m, [t]: v }))} onZero={() => setMach((m) => { const n = { ...m }; delete n[t]; return n; })} step={0.1} max={Math.round((h + room) * 10) / 10} fmt={(v) => `${v} ac`} />
+                  set={(v) => setMach((m) => ({ ...m, [t]: Math.round(v * 100) / 100 }))} onZero={() => setMach((m) => { const n = { ...m }; delete n[t]; return n; })} step={0.1} max={Math.round((h + room) * 100) / 100} fmt={(v) => `${v} ac`} />
               );
             })}
             {checks.data && listed.length > 0 && (

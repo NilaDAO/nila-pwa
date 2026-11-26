@@ -67,16 +67,19 @@ export function useUnionBook(api) {
       ]);
       const now = Date.now() / 1000;
       const rows = await Promise.all(loans.map(async (l) => {
-        const [g, v] = await Promise.all([
+        const [g, v, vb] = await Promise.all([
           readContract(cfg, 'fund_core', 'food_token', [u, sv.bytes32(l.token_id)]).then(loanOf).catch(() => null),
           // Her voucher's tractor acres left, from the chain (27 Oct; the node's list carries no units).
           cfg.contracts.machinery ? readContract(cfg, 'machinery', 'voucher', [u, sv.bytes32(l.token_id)]).catch(() => null) : null,
+          // Its voucher part (25 Nov): lent from junior since lane B, so in total_borrows; the list counts it too.
+          readContract(cfg, 'fund_core', 'voucher_book', [u, sv.bytes32(l.token_id)]).catch(() => null),
         ]);
         if (!g || g.closed) return null;
         const out = n(g.principal) - n(g.principal_paid);
         const since = Math.max(0, now - Number(g.last_accrual_ts || g.drawdown_ts));
         const interest = n(g.interest_accrued) - n(g.interest_paid) + (out * Number(g.rate_bp) * since) / (10_000 * YEAR);
-        return { token: l.token_id, borrower: l.borrower, drawnAt: l.drawn_at, outstanding: out, interest, rateBp: Number(g.rate_bp), overdue: !!g.overdue,
+        const voucherOut = vb ? Math.max(0, n(vb.value) - n(vb.repaid)) : 0;
+        return { token: l.token_id, borrower: l.borrower, drawnAt: l.drawn_at, outstanding: out, voucherOut, interest, rateBp: Number(g.rate_bp), overdue: !!g.overdue,
           hours: v && !v.void ? (Number(v.units) - Number(v.used)) / 100 : 0 };   // tractor acres left (field name kept)
       }));
       const open = rows.filter(Boolean);
@@ -84,7 +87,7 @@ export function useUnionBook(api) {
       const interestPending = open.reduce((t, r) => t + r.interest, 0);
       // The union's cut of interest as fund_core pays it (distribute_interest: interest × fee_bp / 10,000).
       const earningsPending = open.reduce((t, r) => t + (r.interest * feeBp) / 10_000, 0);
-      const listed = open.reduce((t, r) => t + r.outstanding, 0);
+      const listed = open.reduce((t, r) => t + r.outstanding + r.voucherOut, 0);   // cash and voucher parts, as total_borrows
       const chain = n(junior?.total_borrows);
       const contributions = n(junior?.cash) + n(junior?.total_borrows);
       return {

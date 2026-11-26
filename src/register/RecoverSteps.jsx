@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import { useStellarConfig } from '../stellar/hooks';
 import { checkLeader } from '../shell/leader';
-import { NotifyStep, UNIONS_ONE, UnionStep, readUnion, saveUnionRecord, unionByPolygon } from './Registration';
+import { JoinStep, NotifyStep, UNIONS_ONE, UnionStep, readUnion, saveUnionRecord, unionByPolygon } from './Registration';
 import { useNilaSigner } from '../wallet/signer';
 import { useLandTitles } from '../plan/hooks';
 import { useStellarTitles } from '../stellar/hooks';
@@ -43,8 +43,9 @@ export default function RecoverSteps({ evm, onDone }) {
   useEffect(() => { const t = setTimeout(() => setStep((v) => v || 'union'), 8000); return () => clearTimeout(t); }, []);
 
   const after = (from) => {
-    const order = ['union', 'notify'];   // no R13 (26 Oct; removed 4 Nov, G3): assist mode until K1 or the Settings toggle
+    const order = ['union', 'join', 'notify'];   // no R13 (26 Oct; removed 4 Nov, G3): assist mode until K1 or the Settings toggle
     for (const s of order.slice(order.indexOf(from) + 1)) {
+      if (s === 'join') return setStep('join');   // 26 Nov: JoinStep skips itself when her account has joined
       if (s === 'notify' && !notifyAllowed()) return setStep('notify');
     }
     return onDone();
@@ -64,5 +65,6 @@ export default function RecoverSteps({ evm, onDone }) {
 
   if (!step || step === 'restore') return <Loading />;
   if (step === 'union') return <UnionStep union={cfg?.union} evm={evm} onDone={() => after('union')} />;
+  if (step === 'join') return <JoinStep union={(restoreUnion || stored)?.stellar} onDone={() => after('join')} />;
   return <NotifyStep evm={evm} onDone={() => after('notify')} />;
 }

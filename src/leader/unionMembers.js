@@ -95,6 +95,41 @@ const finish = (members) => members.map((m) => {
     label: m.name || (lands.length ? `Land ${lands.join(', ')}` : m.formerTitle != null ? `Land ${m.formerTitle}` : m.address ? short(m.address) : m.phone || 'New member') };
 }).sort((a, b) => b.loans.some((x) => x.overdue) - a.loans.some((x) => x.overdue) || a.label.localeCompare(b.label));
 
+/** 26 Nov: the leader who adds or joins a member puts her in this phone's list at once, as a row of its own; other
+ *  leaders get her from the node at their next ask, as before. `k`: the node's keypad member ({ id, name, phone,
+ *  account }). The next answer from the node replaces the row (same key `keypad:<id>`, or her account once joined). */
+// Rows this phone added (26 Nov), kept until the node lists them too: the minute refresh must not drop them.
+const PENDING = 'nila.members.pending';
+const readPending = () => { try { return JSON.parse(localStorage.getItem(PENDING) || '[]'); } catch { return []; } };
+const writePending = (v) => { try { localStorage.setItem(PENDING, JSON.stringify(v)); } catch { /* this session only */ } };
+const samePending = (p, x) => (p.id && x.keypadId === p.id) || (p.account && x.address === p.account);
+/** The node's list plus this phone's added rows it does not hold yet (a day at most). */
+function withPending(list) {
+  const now = Date.now();
+  const left = readPending().filter((p) => now - (p.at || 0) < 86_400_000 && !list.some((x) => samePending(p, x)));
+  writePending(left);
+  if (!left.length) return list;
+  return finish([...list, ...left.map((k) => ({ key: k.account || `keypad:${k.id}`, address: k.account || '', name: k.name || '',
+    phone: k.phone || '', lands: new Set(), loans: [], places: [], fields: [], note: k.account ? 'Joined' : 'SMS sent',
+    keypadId: k.id || undefined, joined: k.account ? true : undefined }))]);
+}
+
+export function addLocalMember(qc, k) {
+  if (!k?.id && !k?.account) return;   // 26 Nov: also a member joined from her QR (Members scan): her account, no keypad row
+  const pend = readPending().filter((p) => !samePending(p, { keypadId: k.id, address: k.account }) && !(k.id && p.id === k.id));
+  writePending([...pend, { id: k.id || null, account: k.account || null, name: k.name || '', phone: k.phone || '', at: Date.now() }]);
+  qc.setQueriesData({ queryKey: ['stellar', 'unionMembers'] }, (list) => {
+    if (!Array.isArray(list)) return list;
+    const at = list.findIndex((x) => (k.id && x.keypadId === k.id) || (k.account && x.address === k.account));
+    if (at >= 0) {
+      return finish(list.map((x, i) => (i !== at ? x : { ...x, address: k.account || x.address, name: k.name || x.name,
+        phone: k.phone || x.phone, joined: k.account ? true : x.joined, note: x.lands?.length ? x.note : k.account ? 'Joined' : x.note })));
+    }
+    return finish([...list, { key: k.account || `keypad:${k.id}`, address: k.account || '', name: k.name || '', phone: k.phone || '',
+      lands: new Set(), loans: [], places: [], fields: [], note: k.account ? 'Joined' : 'SMS sent', keypadId: k.id || undefined, joined: k.account ? true : undefined }]);
+  });
+}
+
 /** G1's list (22 Oct, lean): the union's titles, keypad members, open border jobs and the loan list, with each loan's
  *  state from one batched read of its crop agreement (the loan sits inside it). Crop agreements per member are read only on
  *  G2 (useMemberShares), so G1 waits on no mint list and no per-token read. */
@@ -132,7 +167,7 @@ export function useUnionMembers(api) {
           return m;
         })));
         if (acct) keep(acct, cfg.union, list);
-        return list;
+        return withPending(list);
       }
       const by = new Map();
       const get = (key) => {
@@ -175,7 +210,7 @@ export function useUnionMembers(api) {
       for (const k of keypad) {
         const m = get(k.device && k.account ? k.account : `keypad:${k.id}`); m.name = m.name || k.name || ''; m.phone = k.phone || '';
         m.keypadId = k.id;   // her keypad row: the leader takes her points again for a new title (13 Nov)
-        if (!m.lands.size) m.note = k.device ? 'Keypad phone set up' : k.link?.opened ? 'Opened the app link' : 'App link sent';
+        if (!m.lands.size) m.note = k.account ? 'Joined' : k.device ? 'Keypad phone set up' : k.link?.opened ? 'Opened the link' : 'SMS sent';
       }
       // Loans: what is left and whether it is overdue, from the loan inside its crop agreement (one batched read).
       loanList.forEach((l, i) => {
@@ -186,7 +221,7 @@ export function useUnionMembers(api) {
       });
       const list = finish([...by.values()]);
       if (acct) keep(acct, cfg.union, list);
-      return list;
+      return withPending(list);
     },
   });
 }

@@ -142,7 +142,14 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
     counted && (lp?.usdcFailed || lp?.positionFailed) && 'USDC',
     counted && usdcHeld > 0 && !rate && (rateQ.isError || rateQ.data === null) && 'the dollar rate',
   ].filter(Boolean);
-  const shares = useMyShares().data || [];
+  // Rows 25–26 (24 Nov): while a counted part is still loading the total is not shown either (a slow chain read gave a
+  // partial number or ₹0): "…", as the land title row.
+  const loadingPart = (!!s?.stellarAddress && inv.isLoading)
+    || (counted && !s?.stellarAccount && !s?.stellarAccountFailed)
+    || (!!s?.stellarAddress && lpQ.isLoading)
+    || (counted && usdcHeld > 0 && rateQ.isLoading);
+  const sharesQ = useMyShares();
+  const shares = sharesQ.data || [];
   const refresh = () => { qc.invalidateQueries({ queryKey: ['stellar'] }); qc.invalidateQueries({ queryKey: ['polygon'] }); qc.invalidateQueries({ queryKey: ['oracle', 'myShares'] }); };
   const fetching = useIsFetching({ queryKey: ['stellar'] }) > 0;
   // The open loans for the repay card (fund_core food_token loans, 7 decimals). A closed loan is skipped (24 Oct: a
@@ -210,9 +217,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
           </button>
           <style>{'@keyframes nila-spin{to{transform:rotate(360deg)}}'}</style>
         </div>
-        <div style={{ fontSize: 32, fontWeight: 700, margin: '4px 0 12px' }} data-testid="total-balance">{missing.length ? '—' : `${inr(nin + (invested || 0) + usdcInr)}/-`}</div>
-        {missing.length > 0 && <div role="status" data-testid="total-missing" style={{ color: C.gold, fontSize: 14, margin: '-4px 0 12px' }}>
-          Not loaded: {missing.join(', ')}. Tap ↻ to try again.</div>}
+        <div style={{ fontSize: 32, fontWeight: 700, margin: '4px 0 12px' }} data-testid="total-balance">{missing.length ? '—' : loadingPart ? '…' : `${inr(nin + (invested || 0) + usdcInr)}/-`}</div>
+        {(missing.length > 0 || sharesQ.isError) && <div role="status" data-testid="total-missing" style={{ color: C.gold, fontSize: 14, margin: '-4px 0 12px' }}>
+          Not loaded: {[...missing, ...(sharesQ.isError && !sharesQ.data ? ['your crop agreements'] : [])].join(', ')}. Tap ↻ to try again.</div>}
         <button type="button" aria-label="Show wallet QR code" onClick={onWalletQr} style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, height: 40, padding: '0 16px',
           borderRadius: R.button, background: C.raised, border: 0, color: C.text, fontWeight: 700,
@@ -232,9 +239,9 @@ export default function A1({ leader, onTasks, onSettings, onHistory, onWalletQr,
         {/* 13 Nov: nIN opens only after the identity check too, as USDC: a leader without it sees the row locked. */}
         {leader && !lp?.idChecked
           ? <Row label="nIN, identity check needed" icon={<NinTile />} title="nIN" warn="Identity check (KYC) needed" />
-          : (leader || (lp?.idChecked && nin >= 1)) && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={Math.floor(nin)} valueSub={inr(nin)} onClick={onNin} />}
+          : (leader || (lp?.idChecked && nin >= 1)) && <Row label="Open nIN" icon={<NinTile />} title="nIN" value={s?.stellarAccountFailed ? 'Not loaded' : Math.floor(nin)} valueSub={s?.stellarAccountFailed ? '—' : inr(nin)} onClick={onNin} />}
         {invested !== undefined && (
-          <Row label={leader ? 'Open nIN invested' : 'Open union investment'} icon={<InvestedTile />} title={leader ? 'nIN invested' : 'Union investment'}
+          <Row label="Open union investment" icon={<InvestedTile />} title="Union investment"
             sub={inv.data.locked > 0 ? `Locked ${inr(Number(inv.data.locked) / 1e7)} · what you owe` : leader ? 'Union investment' : 'In your union'}
             value={leader ? Math.floor(invested) : inr(invested)} valueSub={leader ? inr(invested) : ''} onClick={onInvested} />
         )}

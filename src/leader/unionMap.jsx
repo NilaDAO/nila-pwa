@@ -5,7 +5,7 @@
 // 13 Nov (Carst), per area from each member's field record (her title's outline when there is no record yet):
 //  - members: every property's outline, with the member's name;
 //  - assets: every area's outline; the areas with a crop agreement ready to use in accent, named by its crop;
-//  - cash: the areas whose crop agreement was taken up (cash drawn), as outlines, the member's name on one;
+//  - cash: the property outline of each member with a crop agreement taken up (cash drawn), with the name (25 Nov);
 //  - harvests: what grows on each area now, from the record (its crop's colour; unidentified in grey).
 // (Crop plan keeps the leader's own property, CropPlanFlow.)
 import { useCallback, useMemo } from 'react';
@@ -93,11 +93,11 @@ export function useLeaderMap(filter = 'members', fitBottom = 170, on = true) {
         } else outline();
         count += ready.size ? 1 : 0;
       } else if (filter === 'cash') {
-        // Only the areas whose crop agreement was taken up (cash drawn), as outlines.
-        const taken = new Set(mine.filter((x) => x.drawn).flatMap((x) => x.zones || []));
-        const hit = areas.filter((z) => taken.has(z.zone_id));
-        if (!hit.length) continue;
-        hit.forEach((z, i) => add(`${m.key}#${z.zone_id}`, z.geometry, i ? { hide: true, colour: '#ffffff', outline: true } : { text: m.label, colour: '#ffffff', outline: true }));
+        // 25 Nov: a member with a crop agreement taken up (cash drawn) as the property outline, with the name (as Members);
+        // not the agreement's areas, whose merged parts drew as one small area.
+        if (!mine.some((x) => x.drawn)) continue;
+        if (m.places.length) m.places.forEach((p, i) => add(`${m.key}#p${i}`, p.geometry, { ...(i ? { hide: true } : { text: m.label }), colour: '#ffffff', outline: true }));
+        else areas.forEach((z, i) => add(`${m.key}#${z.zone_id}`, z.geometry, { ...(i ? { hide: true } : { text: m.label }), colour: '#ffffff', outline: true }));
         count += 1;
       } else if (filter === 'harvests') {
         // What grows on each area now, in its crop's colour.

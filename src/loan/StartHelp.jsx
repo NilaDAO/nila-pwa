@@ -5,24 +5,29 @@
 import { useState } from 'react';
 import CameraView from '../shell/CameraView';
 import { readSessionQr, setSession } from '../stellar/session';
-import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
+import { PendingScreen, TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { C } from '../shell/tokens';
 import DeskCard from '../shell/DeskCard';
 import { muted } from '../plan/ui';
 import { isDeskCode } from './deskCode';
 import { ensureKeypadAccount, useStellarConfig } from '../stellar/hooks';
 import { useNilaSigner } from '../wallet/signer';
+import OtpHelp, { OtpByPick, useOtpMember } from './OtpHelp';
 
 /** title (13 Nov): the task only ("Join the union"); the land's name is already on the screen behind it. */
 /** `onPair(account)` (sign later, plan 050): `member` is a new member's keyless placeholder; her QR carries her new
  *  account, which is made and joined here and then paired with the holding address on the node. */
-export default function StartHelp({ member, label, title, onBack, onStarted, onDesk, onPair }) {
+export default function StartHelp({ member, label, title, onBack, onStarted, onDesk, onPair, qrOnly }) {
   const tx = useSorobanTx();
   const s = useNilaSigner();
   const { data: cfg } = useStellarConfig();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState();
   const [tries, setTries] = useState(0);
+  // Leader OTP (24 Nov): for a known member whose phone is set up, a code instead of the QR.
+  // Never for Join the union (qrOnly): set_union needs the member's own key; a session cannot reach the account.
+  const otpRow = useOtpMember(onPair || qrOnly ? null : member);
+  const [otp, setOtp] = useState(false);
   const read = async (t) => {
     // His signed nIN cash-out QR (NILA:N, executive decision 4 Nov): no session; HandOver (CashOut.jsx) reads it.
     if (onDesk && isDeskCode(t)) { onDesk(t); return; }
@@ -58,13 +63,18 @@ export default function StartHelp({ member, label, title, onBack, onStarted, onD
       args: q.args, auth: [q.entry], invalidate: [] });
     if (out) { setSession(q.member, Number(out.result || 0) || Math.floor(Date.now() / 1000) + 300); tx.reset(); onStarted(q.member); }
   };
-  if (joining) return <DeskCard title="Joining her account to the union…" onBack={onBack}><p style={muted}>One moment.</p></DeskCard>;
+  if (joining) return <PendingScreen label="Joining the union" rows={label ? [['Member', label]] : []} />;
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
+  // A scanner that does not know the member yet (Tasks, Give back vouchers): the leader picks the member first.
+  if (otp && !member) return <OtpByPick onBack={() => setOtp(false)} onStarted={onStarted} />;
+  if (otp && otpRow) return <OtpHelp row={otpRow} member={member} onBack={() => setOtp(false)} onStarted={onStarted} />;
   return (
     <DeskCard title={title || "Scan the member's QR"} onBack={onBack}>
       <CameraView key={tries} mode="qr" onText={read} />
       <p style={muted}>Scan the QR on the member's phone. With a help QR you can then act for the member for 5 minutes.</p>
       {error && <p style={{ color: C.coral }}>{error}</p>}
+      {!member && !onPair && !qrOnly && <button type="button" onClick={() => setOtp(true)} style={{ minHeight: 44, border: 0, background: 'none', color: C.muted, fontSize: 14, width: '100%', textDecoration: 'underline' }}>No QR? Pick the member and send a code</button>}
+      {member && otpRow && <button type="button" onClick={() => setOtp(true)} style={{ minHeight: 44, border: 0, background: 'none', color: C.muted, fontSize: 14, width: '100%', textDecoration: 'underline' }}>No QR? Send a code to the member's phone</button>}
     </DeskCard>
   );
 }

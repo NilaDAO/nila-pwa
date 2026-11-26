@@ -125,11 +125,11 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
   if (showQr) return <WalletQr onBack={() => setShowQr(false)} note={`Bring ${inr(bring)} in cash to the union office. Your leader scans this, counts the cash and records your investment.`} />;
   return (
     <AssetScreen title="Union investment" onBack={onBack} note={NOTE}>
-      <Card label="nIN invested">
+      <Card label="Union investment">
         <MarkCircle size={72} bg={C.gold} />
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <span style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>nIN invested</span>
+            <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>Union investment</span>
             <span style={{ ...muted }}>Your union</span>
           </span>
           <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
@@ -153,7 +153,7 @@ export default function Investment({ onBack, leader, onPhotoCount }) {
             <KV k="After" v={`${fmt(invested + bring)} nIN`} />
             {leader ? (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <Secondary icon={<CameraIcon />} onClick={onPhotoCount}>Photo count</Secondary>
+                <Secondary icon={<CameraIcon />} disabled={bring < 1} onClick={() => onPhotoCount(bring)}>Photo count</Secondary>
                 <Secondary icon={<TellerIcon />} disabled>Cash teller · soon</Secondary>
               </div>
             ) : (

@@ -213,11 +213,18 @@ function resetAccount() {
     document.cookie = 'offsite=; Max-Age=0; path=/;';
   } catch (_) { /* storage blocked: the wipe and reload still run */ }
   deleteAllItems();
+  // Plan 054 §5: the phone key goes too (a leader can recover a joined account on this phone). Not awaited either: the
+  // reload closes the key's database, and an open after it waits for the delete.
+  try {
+    localStorage.removeItem('nila.signer');
+    indexedDB.deleteDatabase('nila-phonekey');
+  } catch (_) { /* storage blocked */ }
   window.location.reload();
 }
 
 /** "Reset account" and its confirm. The board's line says "a new WhatsApp code"; the code is SMS only (LOAN_RULES R2). */
-export function ResetCard({ leader }) {
+/** `warn` (plan 054): a phone-key member's own confirm text. */
+export function ResetCard({ leader, warn }) {
   const [ask, setAsk] = useState(false);
   return (
     <Card title="Reset account">
@@ -225,7 +232,7 @@ export function ResetCard({ leader }) {
       <CardButton color={C.coral} onClick={() => setAsk(true)}>Reset account</CardButton>
       {ask && (
         <ConfirmCard ok="Reset" okStyle={{ background: C.coral }} onCancel={() => setAsk(false)} onOk={resetAccount}
-          warn={`Remove your account from this phone? ${leader ? 'Your assets and your signer role stay with your wallet.' : 'Your assets stay in your wallet.'} To open it again you need your phone number and a new SMS code.`} />
+          warn={warn || `Remove your account from this phone? ${leader ? 'Your assets and your signer role stay with your wallet.' : 'Your assets stay in your wallet.'} To open it again you need your phone number and a new SMS code.`} />
       )}
     </Card>
   );

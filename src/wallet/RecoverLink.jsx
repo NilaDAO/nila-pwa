@@ -7,6 +7,7 @@
 // The node: nila-sensing 4d31025 (app/routers/keypad.py). DESIGN GAP: no board; the key screens' frame.
 import { useCallback, useEffect, useState } from 'react';
 import { Card } from './KeyScreens';
+import { signBytes } from './phoneKey';
 
 const API = process.env.REACT_APP_API_BASE_URL;
 const LINK = 'nila.recoverLink';                       // written by public/lite/lite.js
@@ -36,7 +37,13 @@ async function node(method, path, body) {
 
 const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-export default function RecoverLink({ stellar, signHash, onDone }) {
+/** Plan 054 §5 "Recover on this phone": a phone-key member's new phone. `phoneKey` is its key pair and `stellar` its
+ *  SPKI (base64url, as the node keeps a keypad's device key); the link registers that P-256 key (as Nila lite does) and
+ *  the phone opens at once on the member's account, showing its QR for the leader to scan. */
+export const spkiId = async (pair) => btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.exportKey('spki', pair.publicKey))))
+  .replace(/\+/g, '-').replace(/\//g, '_');
+
+export default function RecoverLink({ stellar, signHash, phoneKey, onDone }) {
   const code = linkCode();
   const waits = recoveryWaits(stellar);
   const [invite, setInvite] = useState();
@@ -72,6 +79,15 @@ export default function RecoverLink({ stellar, signHash, onDone }) {
     setBusy(true); setError(undefined);
     try {
       await node('POST', `/keypad/l/${code}/consent`);
+      if (phoneKey) {
+        const spki = stellar.replace(/-/g, '+').replace(/_/g, '/');
+        const sig = await signBytes(phoneKey, new TextEncoder().encode(`nila-keypad-register\n${code}\n${spki}`));
+        const out = await node('POST', `/keypad/l/${code}/finish`, { device_key: spki, sig: btoa(String.fromCharCode(...sig)) });
+        put(acctKey(stellar), out.account);
+        put(LINK, '');
+        onDone();
+        return;
+      }
       const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`nila-keypad-register\n${code}\n${stellar}`)));
       const sig = await signHash(h);
       const out = await node('POST', `/keypad/l/${code}/finish`, { stellar_key: stellar, sig: btoa(String.fromCharCode(...sig)) });

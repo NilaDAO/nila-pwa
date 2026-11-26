@@ -4,9 +4,10 @@
 // are sent with her union (R9) and the node draws the shapes for a leader to check (L2a–L4). R14 waits for the mint.
 // The boards ask a field name per point (R6, R7), no farm name: the title's name is given by the leader at L4.
 import { useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { C, FONT, R } from '../shell/tokens';
-import { unionCentre } from '../leader/unionMap';
+import { UNION_START } from '../shell/MapStage';
+import { readCachedUnions } from '../union/directory';
+import { useStellarConfig } from '../stellar/hooks';
 import { useFieldMapLoaded } from '../register/FieldMap';
 import RegFrame, { Bouncing, MapFrame, btnDisabled, btnPrimary, btnSecondary, cardTitle, fieldInput, sheetText } from '../register/RegFrame';
 
@@ -96,14 +97,15 @@ export function PointsStep({ evm, onDone, forName, onBack, startAt = null, shape
     if (pan) save({ ...q, pan: false });
     fix((m) => { setMe(m); setBlocked(false); setLoc('on'); }, (e) => { setBlocked(e.code === 1); setLoc('off'); });
   };
-  // "Choose on the map" starts at the union's location in every build (Carst, 13 Nov; was the demo only): the middle of
-  // its members' land when this phone has the members list (a leader), else the union's place (UNION_START).
-  const qc = useQueryClient();
+  // "Choose on the map" starts at the union's location in every build (executive decision 13 Nov; was the demo only).
+  // 25 Nov: the union's own place (its nila.geo, from the union directory kept on this phone), else UNION_START; no
+  // longer the middle of its members' land, which one stray border job (points taken at a desk) pulled far away.
+  const { data: cfg } = useStellarConfig();
   const choose = () => {
     save({ ...q, pan: true });
     if (startAt) { setMe(startAt); return; }
-    const members = qc.getQueriesData({ queryKey: ['stellar', 'unionMembers'] }).map(([, d]) => d).find(Array.isArray);
-    setMe({ ...unionCentre(members), acc: 0 });
+    const own = (readCachedUnions()?.unions || []).find((u) => u.union === cfg?.union && Number.isFinite(u.lat) && Number.isFinite(u.lon));
+    setMe(own ? { lat: own.lat, lng: own.lon, acc: 0 } : { ...UNION_START, acc: 0 });
   };
   useEffect(() => {
     let live = true;
