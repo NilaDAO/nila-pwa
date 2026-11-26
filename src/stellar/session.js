@@ -130,6 +130,26 @@ export function readSessionQr(text) {
     args: [nativeToScVal(BigInt(notAfter), { type: 'u64' })], entry: entry.toXDR('base64') };
 }
 
+/** Plan 054 §5 "Recover on this phone": whether a scanned help QR of `account` was signed by the P-256 key `keyHex`
+ *  (65 bytes, hex: the key the new phone registered through the SMS link). The QR's session cannot start before the
+ *  recovery has run; its signature still shows the phone in front of the leader holds that key. */
+export async function qrSignedByKey(cfg, text, account, keyHex) {
+  const q = readSessionQr(text);
+  const b = fromB32((text || '').trim().toUpperCase().slice(PREFIX.length));
+  if (q.member !== account || KINDS[b[0]] !== 'P256' || !/^04[0-9a-f]{128}$/i.test(keyHex || '')) return false;
+  // The payload the phone signed, made as makeSessionQr makes it (authorizeEntry hands it to the signer).
+  const d = new DataView(b.buffer, b.byteOffset);
+  const exp = d.getUint32(49);
+  let payload;
+  await authorizeEntry(entryOf(account, q.notAfter, d.getBigInt64(41), exp), async (_p, p) => {
+    payload = Uint8Array.from(p);
+    return { signatureScVal: xdr.ScVal.scvVoid(), address: account };
+  }, exp, cfg.passphrase, account);
+  const key = await crypto.subtle.importKey('raw', Uint8Array.from(keyHex.match(/../g), (x) => parseInt(x, 16)),
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+  return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, b.slice(53, LEN), payload);
+}
+
 /** A member's QR's phone (27 Oct): 'keypad' (P-256 device key), 'phone' (Privy key), or '' when it is not one. */
 export function sessionQrPhone(text) {
   try {

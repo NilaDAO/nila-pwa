@@ -8,8 +8,8 @@ import MapCard from './MapCard';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNilaSigner } from '../wallet/signer';
-import { useStellarConfig } from '../stellar/hooks';
-import { readContract, sv } from '../stellar/soroban';
+import { readAccountUnion, useStellarConfig } from '../stellar/hooks';
+import { isDeployed, readContract, sv } from '../stellar/soroban';
 import { TxScreens, useSorobanTx } from '../stellar/TxStatus';
 import { useLpStatus } from '../anchor/hooks';
 import { HOLD_REASONS, typeName, useMyMachine, useRates } from '../machine/hooks';
@@ -33,6 +33,13 @@ function ModeCard() {
   const on = assisted();
   const tx = useSorobanTx();
   const [ask, setAsk] = useState(false);
+  // Plan 054 §4: a self-mode user switches to assist mode only once the account names a union (recovery needs it).
+  const { data: cfg } = useStellarConfig();
+  const toAssistOk = !on && s?.kind !== 'P256' && !!s?.stellarAddress && !!s?.signHash;
+  const joined = useQuery({
+    queryKey: ['stellar', 'wallet-qr-joined', s?.stellarAddress], enabled: toAssistOk && !!cfg,
+    queryFn: async () => (await isDeployed(cfg, s.stellarAddress)) && !!(await readAccountUnion(cfg, s.stellarAddress).catch(() => null)),
+  });
   const name = (u.rep || '').replace(/^(Mrs?|Ms)\.\s*/, '') || 'Your union leader';
   if (s?.kind === 'P256') {
     return <Card title="How you use Nila"><Text>{PHONE_KEY_TEXTS.assistForGood}</Text></Card>;
@@ -48,14 +55,15 @@ function ModeCard() {
     window.location.reload();
   };
   const flip = () => {
-    if (!on && s?.stellarAddress && s?.signHash) { setAsk(true); return; }
+    if (toAssistOk) { if (joined.data === true) setAsk(true); return; }
     try { localStorage.setItem('nila.mode', on ? 'self' : 'assist'); } catch { return; } window.location.reload();
   };
   if (tx.status !== 'idle') return <TxScreens tx={tx} onClose={() => tx.reset()} onRetry={() => tx.retry()} />;
   return (
     <Card title="How you use Nila">
-      <SwitchRow title="Union leader helps me" on={on} onClick={flip}
-        sub={on ? `${name} does the steps. You look and press Confirm.` : 'Off: you send, spend and register yourself.'} />
+      <SwitchRow title="Union leader helps me" on={on} onClick={flip} disabled={toAssistOk && joined.data !== true}
+        sub={on ? `${name} does the steps. You look and press Confirm.`
+          : toAssistOk && joined.data === false ? PHONE_KEY_TEXTS.joinFirst : 'Off: you send, spend and register yourself.'} />
       {ask && (
         <ConfirmCard title={PHONE_KEY_TEXTS.toAssistTitle} warn={PHONE_KEY_TEXTS.toAssistWarn} ok={PHONE_KEY_TEXTS.toAssistOk}
           okStyle={{ background: C.coral }} onCancel={() => setAsk(false)} onOk={toAssist} />
@@ -148,6 +156,13 @@ function MachineCard() {
   );
 }
 
+/** Reset (plan 054 §5): a phone-key member's confirm says whether a leader can recover the account on this phone. */
+function MemberReset() {
+  const s = useNilaSigner();
+  if (s?.kind !== 'P256') return <ResetCard />;
+  return <ResetCard warn={s.stellarAccount?.union ? PHONE_KEY_TEXTS.resetJoined : PHONE_KEY_TEXTS.resetNotJoined} />;
+}
+
 export default function Settings({ onBack, onIdCheck, onOffers }) {
   return (
     <MapCard style={{ padding: '0 8px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }} header={{ title: 'Settings', onBack, settings: false }}>
@@ -157,7 +172,7 @@ export default function Settings({ onBack, onIdCheck, onOffers }) {
       <LpCard onIdCheck={onIdCheck} onOffers={onOffers} />
       <MachineCard />
       <AccountCard />
-      <ResetCard />
+      <MemberReset />
     </MapCard>
   );
 }

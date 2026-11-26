@@ -89,6 +89,12 @@ export function KeepMyNumber() {
 const RECOVER = (id) => `nila.keypad.recover.${id}`;
 export function markRecover(id) { try { localStorage.setItem(RECOVER(id), '1'); } catch { /* the G2 button still works */ } }
 const wantsRecover = (id) => { try { return localStorage.getItem(RECOVER(id)) === '1'; } catch { return false; } };
+/** Plan 054 §5 "Recover on this phone": the leader recovers only after scanning the new phone's QR (G2), so this is
+ *  kept apart from markRecover (no recovery without the scan). */
+const RECOVER_SCAN = (id) => `nila.keypad.recoverScan.${id}`;
+export function markRecoverScan(id) { try { localStorage.setItem(RECOVER_SCAN(id), '1'); } catch { /* no scan asked */ } }
+export const wantsRecoverScan = (id) => { try { return localStorage.getItem(RECOVER_SCAN(id)) === '1'; } catch { return false; } };
+export function clearRecoverScan(id) { try { localStorage.removeItem(RECOVER_SCAN(id)); } catch { /* not kept */ } }
 
 export function KeypadAccounts() {
   const s = useNilaSigner();

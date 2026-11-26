@@ -12,6 +12,7 @@ import { PHONE_KEY_TEXTS as T } from './phoneKeyTexts';
 import { useStellarConfig } from '../stellar/hooks';
 import { accountOfKey } from '../stellar/account';
 import { isDeployed, readContract, sv } from '../stellar/soroban';
+import RecoverLink, { linkCode, recoveredAccount, spkiId } from './RecoverLink';
 import { BootLoading } from '../register/Boot';
 import RegFrame from '../register/RegFrame';
 
@@ -25,12 +26,21 @@ export default function PhoneKeyRoot({ children }) {
   const [error, setError] = useState();
   useEffect(() => { loadOrMakeKey().then(setKey).catch((e) => { console.error('[phonekey] no key', e); setError(e.message); }); }, []);
 
-  // Her account: the one the key makes, or (not made yet) the one a recovery put this key on.
+  // Plan 054 §5: this key as the node knows a device key (SPKI, base64url): a recovery link registers it, and the
+  // member's account the link named is kept for it (RecoverLink).
+  const [kid, setKid] = useState();
+  const [tick, setTick] = useState(0);
+  useEffect(() => { if (key) spkiId(key.pair).then(setKid).catch(() => setKid('')); }, [key]);
+  const linked = useCallback(() => setTick((x) => x + 1), []);
+
+  // Her account: the one the key makes, or (not made yet) the one a recovery put this key on: the account the
+  // recovery link named, else the indexer's signer_set events.
   const derived = useMemo(() => (cfg && key ? accountOfKey(cfg, key.pub) : undefined), [cfg, key]);
   const found = useQuery({
-    queryKey: ['phonekey', 'account', derived], enabled: !!derived, staleTime: Infinity, retry: 1,
+    queryKey: ['phonekey', 'account', derived, kid, tick], enabled: !!derived && kid !== undefined, staleTime: Infinity, retry: 1,
     queryFn: async () => {
       if (await isDeployed(cfg, derived)) return derived;
+      if (recoveredAccount(kid)) return recoveredAccount(kid);
       const base = indexerUrl(cfg);
       return (base && await findAccountByKey(base, hex(key.pub)).catch((e) => { console.warn('[phonekey] indexer', e); return undefined; }))
         || derived;
@@ -86,6 +96,7 @@ export default function PhoneKeyRoot({ children }) {
 
   let screen = children;
   if (error) screen = <RegFrame><p style={{ margin: 0, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>{T.noKey}</p></RegFrame>;
+  else if (key && kid && linkCode()) screen = <RecoverLink stellar={kid} phoneKey={key.pair} onDone={linked} />;
   else if (!ready) screen = <BootLoading />;
   return <SignerContext.Provider value={value}>{screen}</SignerContext.Provider>;
 }

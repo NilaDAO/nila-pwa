@@ -1,6 +1,7 @@
 // Plan 053 (26 Nov): an assist-mode member's own key on her own phone, no Privy, no Cognito. ECDSA P-256 made with
 // WebCrypto, not extractable, kept in this phone's IndexedDB (as Nila lite's device key, public/lite/lite.js). Its own
-// database ('nila-phonekey'), so the app's Reset (deleteAllItems) never removes the key: the key is her account.
+// database ('nila-phonekey'), apart from the app's other data; Settings › Reset deletes it too since a leader can
+// recover a joined account on a new key (plan 054 §5).
 // The account checks secp256r1 over sha256(payload), which is what WebCrypto's ECDSA/SHA-256 signs; s is made low
 // (the account accepts only that form, as public/lite/session.js lowS).
 // No React here: WalletRoot and App read the flag at start.
