@@ -30,11 +30,14 @@ export default function HelpQr({ note, onBack, withPolygon = false } = {}) {
     // While her account is not made or names no union (4 Nov: she holds no XLM for the fee), the QR also carries her
     // signed set_union and always her Polygon address (kind 5): the leader's scan (L14, L4) makes and joins the account.
     try {
-      const smart = s.stellarAddress && s.stellarAddress !== s.senderAddress;
+      // Plan 053: a key on her own phone (P-256, no Polygon wallet): kind 4 while not joined, else kind 2.
+      const phoneKey = s.kind === 'P256';
+      const smart = phoneKey || (s.stellarAddress && s.stellarAddress !== s.senderAddress);
       const joined = !smart || !cfg.union || ((await isDeployed(cfg, s.stellarAddress))
         && !!(await readAccountUnion(cfg, s.stellarAddress).catch(() => null)));
-      const join = joined ? undefined : { key: s.senderAddress, union: cfg.union };
-      setQr(await makeSessionQr(cfg, s.stellarAddress, s.signHash, 'Ed25519', join || withPolygon || assisted() ? s.evmAddress : undefined, join));
+      const join = joined ? undefined : { key: phoneKey ? s.publicKey : s.senderAddress, union: cfg.union };
+      setQr(phoneKey ? await makeSessionQr(cfg, s.stellarAddress, s.signHash, 'P256', undefined, join)
+        : await makeSessionQr(cfg, s.stellarAddress, s.signHash, 'Ed25519', join || withPolygon || assisted() ? s.evmAddress : undefined, join));
     } catch (e) { setError(e.message); }
   };
   useEffect(() => { if (cfg && s?.ready && !qr) make(); }, [cfg, s?.ready]); // eslint-disable-line react-hooks/exhaustive-deps

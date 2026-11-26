@@ -54,18 +54,20 @@ const entryOf = (account, notAfter, nonce, exp, signature = xdr.ScVal.scvVoid())
 });
 
 /** A smartphone's join for its help QR (kind 5, 4 Nov): her Privy key (G…) signs `set_union(union)` on her account,
- *  for the leader's app to send after making the account. Valid until ledger `exp`. */
-async function signJoin(cfg, account, key, union, sign, exp) {
+ *  for the leader's app to send after making the account. Valid until ledger `exp`. Plan 053: a phone key (kind 4,
+ *  `kind` 'P256', `key` its 65 bytes) the same way, as Nila lite's join. */
+async function signJoin(cfg, account, key, union, sign, exp, kind = 'Ed25519') {
   const nonce = new Uint8Array(8); crypto.getRandomValues(nonce);
   const blank = { nonce: plainHex(nonce), exp, sig: '00'.repeat(64) };
   let sig;
-  await authorizeEntry(xdr.SorobanAuthorizationEntry.fromXDR(unionEntry(account, union, blank, 'Ed25519'), 'base64'), async (_p, payload) => {
+  await authorizeEntry(xdr.SorobanAuthorizationEntry.fromXDR(unionEntry(account, union, blank, kind), 'base64'), async (_p, payload) => {
     sig = Uint8Array.from(await sign(payload));
-    return { signatureScVal: signatureVal('Ed25519', sig), address: account };
+    return { signatureScVal: signatureVal(kind, sig), address: account };
   }, exp, cfg.passphrase, account);
-  const out = new Uint8Array(SJOIN);
-  out.set(StrKey.decodeEd25519PublicKey(key), 0); out.set(StrKey.decodeEd25519PublicKey(union), 32); out.set(nonce, 64);
-  new DataView(out.buffer).setUint32(72, exp); out.set(sig, 76);
+  const k = kind === 'P256' ? Uint8Array.from(key) : StrKey.decodeEd25519PublicKey(key);
+  const out = new Uint8Array(k.length + 32 + 8 + 4 + 64);
+  out.set(k, 0); out.set(StrKey.decodeEd25519PublicKey(union), k.length); out.set(nonce, k.length + 32);
+  new DataView(out.buffer).setUint32(k.length + 40, exp); out.set(sig, k.length + 44);
   return out;
 }
 
@@ -88,7 +90,8 @@ export async function oneTimeJoin(cfg) {
 
 /** The member's phone: a fresh session QR for `account`, signed by `sign(payload)` (64 bytes) of key `kind`;
  *  `polygon` (an assist-mode smartphone) adds the member's Polygon address (kind 3). `join` (4 Nov): { key (her Privy
- *  key, G…), union } while her account is not made or names no union; with `polygon` it makes kind 5. */
+ *  key, G…), union } while her account is not made or names no union; with `polygon` it makes kind 5. Plan 053: with
+ *  `kind` 'P256' and `join` { key (her phone key, 65 bytes), union } it makes kind 4 (as Nila lite). */
 export async function makeSessionQr(cfg, account, sign, kind = 'Ed25519', polygon, join) {
   const notAfter = Math.floor(Date.now() / 1000) + QR_LIFE;
   const exp = (await server(cfg).getLatestLedger()).sequence + LEDGERS;
@@ -99,11 +102,12 @@ export async function makeSessionQr(cfg, account, sign, kind = 'Ed25519', polygo
     return { signatureScVal: signatureVal(kind, sig), address: account };
   }, exp, cfg.passphrase, account);
   const withPoly = kind !== 'P256' && /^0x[0-9a-fA-F]{40}$/.test(polygon || '');
-  const j = withPoly && join?.key && join?.union ? await signJoin(cfg, account, join.key, join.union, sign, exp) : null;
-  const b = new Uint8Array((withPoly ? LEN + POLY : LEN) + (j ? SJOIN : 0)); const d = new DataView(b.buffer);
-  b[0] = kind === 'P256' ? 2 : j ? 5 : withPoly ? 3 : 1;
+  const j = (withPoly || kind === 'P256') && join?.key && join?.union
+    ? await signJoin(cfg, account, join.key, join.union, sign, exp, kind) : null;
+  const b = new Uint8Array((withPoly ? LEN + POLY : LEN) + (j ? j.length : 0)); const d = new DataView(b.buffer);
+  b[0] = kind === 'P256' ? (j ? 4 : 2) : j ? 5 : withPoly ? 3 : 1;
   if (withPoly) b.set(Uint8Array.from(polygon.slice(2).match(/../g), (x) => parseInt(x, 16)), LEN);
-  if (j) b.set(j, LEN + POLY);
+  if (j) b.set(j, withPoly ? LEN + POLY : LEN);
   b.set(StrKey.decodeContract(account), 1);
   d.setBigUint64(33, BigInt(notAfter)); d.setBigInt64(41, nonce); d.setUint32(49, exp); b.set(sig, 53);
   return { qr: PREFIX + toB32(b), until: notAfter, kind };

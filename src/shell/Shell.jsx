@@ -176,14 +176,15 @@ export default function Shell({ leader }) {
   const idCheck = useLpStatus();
   const me = s?.stellarAddress;
   useEffect(() => {
-    if (leader || !me || !idCheck.data?.idChecked) return;
+    // Plan 053: a phone-key member stays in assist mode (the switch to a Privy key is not built yet).
+    if (leader || !me || !idCheck.data?.idChecked || s?.kind === 'P256') return;
     try {
       const k = `nila.mode.k1.${me}`;
       if (localStorage.getItem(k)) return;
       localStorage.setItem(k, '1');
       if (localStorage.getItem('nila.mode') !== 'self') { localStorage.setItem('nila.mode', 'self'); window.location.reload(); }
     } catch { /* private mode: stays in assist mode */ }
-  }, [leader, me, idCheck.data?.idChecked]);
+  }, [leader, me, idCheck.data?.idChecked, s?.kind]);
   const tabs = leader ? LEADER_TABS : assisted() ? ASSISTED_TABS : MEMBER_TABS;
   const [view, setView] = useState(() => readTab() || 'assets');
   const [, setHash] = useState(window.location.hash);

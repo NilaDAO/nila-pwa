@@ -17,6 +17,8 @@ const NewStart = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./regis
 // Recover asks only what is missing (R9 / R13 / R10, notes reg-recover), same gate.
 const RecoverSteps = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/RecoverSteps')) : null;
 const AfterCode = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/AfterCode')) : null;
+// Plan 053: the first open asks member (a key on this phone, no login) or leader / self (today's login); same gate.
+const FirstOpen = process.env.REACT_APP_PRIVY_APP_ID ? lazy(() => import('./register/FirstOpen')) : null;
 import { Routes, Route } from 'react-router-dom';
 
 // 🛠️ UI pieces (place‑holders)
@@ -30,6 +32,7 @@ import Spinner from './components/UI/spinner.js';
 import { readAllItems, setDBitem, deleteItem } from './utils/db';
 import { getUserAttributes } from './utils/cognito_helpers.js'
 import { chainFromCognito } from './wallet/chainAttr';
+import { isPhoneKeyPhone } from './wallet/phoneKey';
 import { useErc20Balances, useGrantInfo, useLandTitle } from './hooks/useLoadETH.ts';
 import { useUnionGenericFunds } from './hooks/useLoadFunds.ts';
 import { useDataContext } from './utils/NavigationContext.js';
@@ -46,6 +49,7 @@ function App({installAvailable}) {
   const [ bootStage, setBootStage]                                                      = useState('loading');
   const [ fromRegister, setFromRegister ]                                               = useState(false); // R3 done: load on the R ground
   const [ codeDone, setCodeDone ]                                                       = useState(false); // R3 done: Privy decides R5 or R9
+  const [ toLogin, setToLogin ]                                                         = useState(false); // plan 053: "Leader / I use Nila myself"
   const [ recovered, setRecovered ]                                                     = useState(null);  // her Polygon address after a recover
   const [ chain, setChain]                                                              = useState();
   const [ address, setAddress]                                                          = useState('');
@@ -242,6 +246,9 @@ function App({installAvailable}) {
     if (_rpc.includes('127.0.0.1') || _rpc.includes('localhost')) {
       merged.chain = '31337';
     }
+    // Plan 053: a phone-key member has no Cognito login and no Polygon wallet: the Stellar app, her account from the key.
+    const phoneKey = NEW_BOOT && isPhoneKeyPhone();
+    if (phoneKey) merged.chain = 'stellar';
     setDb(merged);
       
     // 5️⃣ Set any Debt the user has from indexedDB, if no attribute, call getLoansByBorrower with address to reset
@@ -251,7 +258,7 @@ function App({installAvailable}) {
     }
     
     // 6️⃣ User has to recover or register a new account, no local data
-    if (!merged.address) {
+    if (!merged.address && !phoneKey) {
       setBootStage('register');
       return
     }
@@ -272,14 +279,15 @@ function App({installAvailable}) {
       // IN CASE ADDRESS IS MISSING, GET IT FROM COGNITO.
       let address,chain
       const isFetched = Fbal && !cold_ready || Fbal && Fgrant && Fland
-      if (!initDb.address){
+      if (!initDb.address && !phoneKey){
         const attributes = await getUserAttributes(db['token'])
         address = attributes.UserAttributes.find(attribute => attribute.Name === 'custom:address')?.Value;
         chain = chainFromCognito(attributes.UserAttributes.find(attribute => attribute.Name === 'custom:chain')?.Value);
       }
       // set the props to load the wallet properties
       setChain(merged.chain || chain || process.env.REACT_APP_CHAIN_ID || '137');
-      setAddress(merged.address || address);
+      // A phone-key member: no Polygon address (the balance read returns nothing for 'stellar'); a stand-in starts it.
+      setAddress(merged.address || address || (phoneKey ? 'phone-key' : undefined));
 
       function handleSetLocalState(bal,grant,land){
         // escape route if grant and|or land are undefined
@@ -359,6 +367,7 @@ function App({installAvailable}) {
             : codeDone
               // Privy decides new (R5) or existing (R9), not R1's button (LOAN_RULES §5, 20 Oct).
               ? <AfterCode onNew={() => { setFromRegister(true); NewBoot.markFromRegister(); setBootStage('loading'); }} onExisting={(evm) => setRecovered(evm)} />
+              : FirstOpen && !toLogin ? <FirstOpen onLogin={() => setToLogin(true)} />
               : <NewStart onDone={() => setCodeDone(true)} />}</Suspense>
           : <RegisterRecover setBootStage={setBootStage} />} />}
         {bootStage === 'ready' && <Route path="/*" element={StellarGate

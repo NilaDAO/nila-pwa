@@ -18,18 +18,27 @@ import { AccountCard, Card, CardButton, ConfirmCard, NotificationsCard, ResetCar
 import { C, FONT } from './tokens';
 import { assisted } from '../loan/MyShares';
 import { IdentityRow } from '../leader/LeaderSettings';
+import { PHONE_KEY_TEXTS } from '../wallet/phoneKeyTexts';
 
 
 /** "How you use Nila": the tab bar follows nila.mode, so the app opens again with the new mode. */
 function ModeCard() {
   const u = useUnionInfo();
+  const s = useNilaSigner();
   const on = assisted();
+  const [later, setLater] = useState(false);
   const name = (u.rep || '').replace(/^(Mrs?|Ms)\.\s*/, '') || 'Your union leader';
-  const flip = () => { try { localStorage.setItem('nila.mode', on ? 'self' : 'assist'); } catch { return; } window.location.reload(); };
+  // Plan 053: a key on her own phone stays in assist mode; the switch to self (her key hands over to a Privy key) comes
+  // with the ID check, not built yet.
+  const flip = () => {
+    if (s?.kind === 'P256' && on) { setLater(true); return; }
+    try { localStorage.setItem('nila.mode', on ? 'self' : 'assist'); } catch { return; } window.location.reload();
+  };
   return (
     <Card title="How you use Nila">
       <SwitchRow title="Union leader helps me" on={on} onClick={flip}
         sub={on ? `${name} does the steps. You look and press Confirm.` : 'Off: you send, spend and register yourself.'} />
+      {later && <Text>{PHONE_KEY_TEXTS.selfLater}</Text>}
     </Card>
   );
 }
