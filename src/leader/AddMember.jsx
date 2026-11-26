@@ -132,6 +132,16 @@ export default function AddMember({ id, go }) {
   // the code, and the field points (before or after the join: sign later, plan 050).
   const submit = () => send.mutate({ name: name.trim(), phone: phoneValue(phone), unionName: union.name, leaderName: union.rep },
     { onSuccess: (m) => go(`tasks/member/${m.id}`) });
+  // 26 Nov: the camera on its own screen, as every other scan; Cancel (or back) returns to the form.
+  if (scan && !id) {
+    return (
+      <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 16 }}
+        header={{ title: T.scanQr, onBack: () => setScan(false), onSettings: () => go('settings') }}>
+        <CameraView mode="qr" onText={onQr} />
+        <CardButton onClick={() => setScan(false)}>{T.cancel}</CardButton>
+      </MapCard>
+    );
+  }
   return (
     <MapCard style={{ padding: '0 8px 24px', fontFamily: FONT, color: C.text, display: 'flex', flexDirection: 'column', gap: 24 }}
       header={{ title: 'Add a member', onBack: () => go('tasks'), onSettings: () => go('settings') }}>
@@ -145,12 +155,7 @@ export default function AddMember({ id, go }) {
             <Row k={<b style={{ color: C.text }}>Union</b>} v={union.name || '—'} />
             {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
             <Primary disabled={!ok || send.isPending} onClick={submit}>{T.send}</Primary>
-            {!scan ? <CardButton onClick={() => { setScan(true); setScanMsg(''); }}>{T.scanQr}</CardButton> : (
-              <>
-                <CameraView mode="qr" onText={onQr} />
-                <CardButton onClick={() => setScan(false)}>{T.cancel}</CardButton>
-              </>
-            )}
+            <CardButton onClick={() => { setScan(true); setScanMsg(''); }}>{T.scanQr}</CardButton>
             {scanMsg && <Text style={{ color: C.coral }}>{scanMsg}</Text>}
           </Card>
           {/* 25 Nov: the farm note in the info bar above the tab bar, not in the card. */}
