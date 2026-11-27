@@ -336,6 +336,7 @@ export default function MemberStatus({ id, go }) {
         {/* Fields: the fields her title was minted with (L3/L4), from the title's record (meta.geometry.field_features);
             the record's areas are only for the crops on the map. "—" when the record lists none. */}
         {hasLand && <Row k="Fields" v={fields.length || '—'} />}
+        {m.address && <AccountKind address={m.address} />}
         {/* The leaders' contact book (1 Nov): the member's full name, beside the public farm name in the header. */}
         {m.address && <PersonalName address={m.address} phone={m.phone} />}
         {/* Moved by the operator (7 Nov): her account holds her title and investment but does not name the union yet; one
@@ -517,6 +518,22 @@ function JoinSteps({ m, holder, onScan }) {
       {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
     </Section>
   );
+}
+
+/** How the member's account signs (27 Nov), from its signer on chain and the node's row: Privy (self mode), a key on
+ *  the member's phone (assist mode: smartphone or keypad, the chain cannot tell them apart), or SMS only (a one-time
+ *  key, the member reads out codes). */
+function AccountKind({ address }) {
+  const { data: cfg } = useStellarConfig();
+  const list = useKeypadMembers();
+  const k = (list.data || []).find((x) => x.account && x.account === address);
+  const signer = useQuery({
+    queryKey: ['stellar', 'signerKind', address], enabled: !!cfg && /^C/.test(address || ''), staleTime: 300_000,
+    queryFn: async () => { const v = await readContract(cfg, address, 'signer', []).catch(() => null); return Array.isArray(v) ? v[0] : null; },
+  });
+  const v = signer.data === 'Ed25519' ? 'Self mode (Privy)' : k?.phone_type === 'sms' ? 'SMS only'
+    : signer.data === 'P256' ? 'Assist mode (key on the phone)' : null;
+  return v ? <Row k="Account" v={v} /> : null;
 }
 
 const when = (ts) => new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
