@@ -531,7 +531,7 @@ function AccountKind({ address }) {
     queryKey: ['stellar', 'signerKind', address], enabled: !!cfg && /^C/.test(address || ''), staleTime: 300_000,
     queryFn: async () => { const v = await readContract(cfg, address, 'signer', []).catch(() => null); return Array.isArray(v) ? v[0] : null; },
   });
-  const v = signer.data === 'Ed25519' ? 'Self mode (Privy)' : k?.phone_type === 'sms' ? 'SMS only'
+  const v = signer.data === 'Ed25519' ? 'Self mode' : k?.phone_type === 'sms' ? 'SMS only'
     : signer.data === 'P256' ? 'Assist mode (key on the phone)' : null;
   return v ? <Row k="Account" v={v} /> : null;
 }
