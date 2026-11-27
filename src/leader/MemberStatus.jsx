@@ -796,18 +796,19 @@ function RecoverHere({ address, name, k, onClose }) {
   const qc = useQueryClient();
   const union = useUnionInfo();
   const send = useInviteLink();
-  // 27 Nov: no number on record (e.g. a moved member who never logged in): the node says so, the leader types it once.
-  const [ask, setAsk] = useState(false);
-  const [num, setNum] = useState('+91');
-  const go = () => send.mutate(k ? { again: k.id } : { recoverTo: address, phone: ask ? phoneValue(num) : '', name, unionName: union.name, leaderName: union.rep },
-    { onSuccess: (row) => { markRecoverScan(row.id); onClose(); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); },
-      onError: (e) => { if (/not on record/.test(e.message || '')) setAsk(true); } });
+  // 27 Nov: a member with no row (e.g. a Privy account): the number field as on Move, from the contact book when it
+  // has the number. A row keeps its own number.
+  const book = useContactBook();
+  const known = book.data?.names.get(address)?.phone || '';
+  const [num, setNum] = useState();
+  const value = num ?? (known || '+91');
+  const go = () => send.mutate(k ? { again: k.id } : { recoverTo: address, phone: phoneValue(value), name, unionName: union.name, leaderName: union.rep },
+    { onSuccess: (row) => { markRecoverScan(row.id); onClose(); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); } });
   return (
-    <ConfirmCard title={PHONE_KEY_TEXTS.recoverHere} ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending || (ask && !phoneOk(num))}
+    <ConfirmCard title={PHONE_KEY_TEXTS.recoverHere} ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending || (!k && !phoneOk(value))}
       onCancel={onClose} onOk={go} warn={PHONE_KEY_TEXTS.recoverHereWarn}>
-      {ask && <Text>{PHONE_KEY_TEXTS.recoverHereNumber}</Text>}
-      {ask && <PhoneField id="g2-recover-here-phone" value={num} onChange={setNum} />}
-      {send.error && !ask && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
+      {!k && <PhoneField id="g2-recover-here-phone" value={value} onChange={setNum} />}
+      {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
     </ConfirmCard>
   );
 }
