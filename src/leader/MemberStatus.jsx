@@ -330,8 +330,6 @@ export default function MemberStatus({ id, go }) {
       {/* The card's 22 px side padding (MapCard takes the sheet's padding back for screens with cards of their own). */}
       <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {/* A recovery under way shows here, under her name, not in the Account group (4 Nov). */}
-        {m.address && <PhoneStatus address={m.address} onScan={setRecoverScan} />}
         {hasLand && <Row k="Property" v={`${acres.toFixed(1)} acres`} />}
         {/* Fields: the fields her title was minted with (L3/L4), from the title's record (meta.geometry.field_features);
             the record's areas are only for the crops on the map. "—" when the record lists none. */}
@@ -464,7 +462,7 @@ export default function MemberStatus({ id, go }) {
           {helpError && <span style={{ color: C.coral }}>{helpError}</span>}
         </Section>
       )}
-      <Account m={m} inv={inv} go={go} onSync={() => setSyncing(true)} />
+      <Account m={m} inv={inv} go={go} onSync={() => setSyncing(true)} onScan={setRecoverScan} />
       </div>
     </MapCard>
   );
@@ -627,7 +625,7 @@ const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, background: C
 /** G2 ends with "Account" (Carst 4 Nov): one row of Recover and Move (secondary buttons sharing the row) and a square
  *  delete button, each opening the same confirm card as before, then her record. Recover is disabled while a recovery
  *  waits out the union's wait or the app must finish it (its status under her name says which). */
-function Account({ m, inv, go, onSync }) {
+function Account({ m, inv, go, onSync, onScan }) {
   const [card, setCard] = useState();       // 'recover' | 'keypad' | 'remove' | 'delete' | 'record'
   const rcv = useRecovery(m.address);
   const titleId = m.titleId || [...(m.lands || [])][0];
@@ -651,6 +649,8 @@ function Account({ m, inv, go, onSync }) {
   const close = () => setCard();
   return (
     <Section title="Account">
+      {/* 27 Nov: a recovery under way (Recover on this phone's scan or code, its wait) in the Account group. */}
+      {m.address && <PhoneStatus address={m.address} onScan={onScan} />}
       {(rcv.applies || titleId || gone || m.recordHash) && (
         <div style={{ display: 'flex', gap: 8 }}>
           {/* 26 Nov: one Recover button, in place: Recover on this phone (phone key, SMS only, a keypad row), else the old
