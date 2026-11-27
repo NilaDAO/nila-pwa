@@ -242,7 +242,7 @@
     var msg = document.getElementById('msg');
     if (msg) msg.textContent = '';
     makeKey(code).then(function (k) {
-      return call('POST', '/keypad/l/' + code + '/finish', { device_key: k.device_key, sig: k.sig, polygon: k.polygon });
+      return call('POST', '/keypad/l/' + code + '/finish', { device_key: k.device_key, sig: k.sig, polygon: k.polygon, lite: true });
     }).then(function (out) {
       busy = false;
       try {
