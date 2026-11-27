@@ -16,6 +16,7 @@ export const JOIN_TEXTS = {
   scanQr: 'Scan QR code',
   noInternet: 'No phone with internet',
   cancel: 'Cancel',
+  movedNote: "Log in on a phone with the member's number, then scan its QR.",
   // Add a member, Scan QR code: a QR that is not a new member's.
   qrKnown: 'This member has joined already: find them in Members.',
   qrOther: 'Not a member QR.',

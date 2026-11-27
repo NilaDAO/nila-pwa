@@ -20,8 +20,6 @@ import { usePendingApprovals, usePlanClient } from '../plan/hooks';
 import { C, FONT, R } from '../shell/tokens';
 import { ChevronIcon, FileIcon, TrashIcon, WarnIcon } from '../shell/icons';
 import MapCard from '../shell/MapCard';
-import { Steps } from '../shell/MessageSlider';
-import Segmented from '../shell/Segmented';   // the numbered steps of the Assets slider cards (13 Nov)
 import AreaMap from '../plan/AreaMap';
 import { unionCentre } from './unionMap';
 import { areaM2 } from '../plan/mapTap';
@@ -355,7 +353,7 @@ export default function MemberStatus({ id, go }) {
           <JoinBySms m={m} go={go}
             onScan={() => setScanning({ what: 'Join the union', holder, then: () => { markJoined(m.address); refetchMembers(); window.location.hash = '#/members'; } })} />
         ) : m.joined === false && !(m.keypadId && /^G/.test(m.address || '')) && (
-          <JoinSteps m={m} holder={holder}
+          <JoinSteps
             onScan={() => setScanning({ what: 'Join the union', holder, then: () => { markJoined(m.address); refetchMembers(); window.location.hash = '#/members'; } })} />
         )}
         {/* 20 Nov: joined from her placeholder (sign later): until her account holds the title (seconds; at most the
@@ -490,30 +488,14 @@ function JoinBySms({ m, go, onScan }) {
   );
 }
 
-/** Not joined yet (moved by the operator, 7 Nov; steps 13 Nov): her account holds her title but does not name the union.
- *  The leader picks her phone and follows the steps; the last one is the scan of her QR, which sends her signed
- *  set_union. A keypad phone needs internet only while Nila lite installs. */
-function JoinSteps({ m, holder, onScan }) {
-  const [phone, setPhone] = useState('smart');      // 'smart' | 'keypad'
-  const [moving, setMoving] = useState(false);
-  // Buttons in a step keep 8 px above and below (16 / 24 to the text and the next step; 13 Nov).
-  const stepBtn = { ...btn(), flex: 'none', width: '100%', margin: '8px 0' };
-  const scan = <button type="button" style={stepBtn} onClick={onScan}>Scan the QR</button>;
-  const done = 'Scan the QR. Done: the member has joined.';
-  // A new member (holder) has no account yet: she registers in the app (text confirmed, executive decision 16 Nov).
-  const open = holder ? 'The member opens the Nila app and registers.' : 'The member opens the Nila app and recovers the account.';
-  const steps = phone === 'smart' || holder
-    ? [open, 'The member taps the scan icon at the bottom: the QR shows.', <>{done}{scan}</>]
-    : ['The phone needs internet only while Nila lite installs.',
-      <>Send the SMS.<button type="button" style={stepBtn} onClick={() => setMoving(true)}>Move</button></>,
-      'The member opens the SMS and taps QR in the bottom right corner.', <>{done}{scan}</>];
-  // A G2 section (13 Nov), not a card: the phone switch, then numbered steps with the action in its step.
+/** Not joined yet (moved by the operator, 7 Nov): her account holds her title but does not name the union. 27 Nov
+ *  (route 1): she logs in with her number on a phone, its QR shows, the leader's scan sends her signed set_union. A
+ *  keypad phone or another number comes after joining (Move, Recover). */
+function JoinSteps({ onScan }) {
   return (
-    <Section title="Join the union" right="Not joined yet" gap={20}>
-      {/* The phone switch as Cash ahead's All | Half (13 Nov). A new member (holder) joins on a smartphone first. */}
-      {!holder && <Segmented label="The member's phone" value={phone} onChange={setPhone} options={[['smart', 'Smartphone'], ['keypad', 'Keypad phone']]} />}
-      <Steps items={steps} gap={16} />
-      {moving && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={() => setMoving(false)} />}
+    <Section title={JOIN_TEXTS.title} right="Not joined yet" gap={20}>
+      <span style={{ color: C.muted }}>{JOIN_TEXTS.movedNote}</span>
+      <button type="button" style={{ ...btn(), flex: 'none', width: '100%' }} onClick={onScan}>{JOIN_TEXTS.scanQr}</button>
     </Section>
   );
 }
@@ -868,26 +850,6 @@ function RecoverScan({ k: asked, address, onDone }) {
       <CameraView key={tries} mode="qr" onText={read} />
       {error && <p style={{ color: C.coral }}>{error}</p>}
     </DeskCard>
-  );
-}
-
-/** Every member starts on a smartphone (2 Nov). A member with a JioPhone is moved here: the leader confirms Send SMS
- *  to the member's number; the keypad phone opens the link and makes its key, and this leader's app recovers the account
- *  to it (as Lost phone). The account keeps its address, land title, investment and Polygon pair. */
-function MoveToKeypad({ address, name, phone, onClose }) {
-  const qc = useQueryClient();
-  const union = useUnionInfo();
-  const send = useInviteLink();
-  const [num, setNum] = useState(phone || '+91');
-  const go = () => send.mutate({ name, phone: phoneValue(num), phoneType: 'keypad', unionName: union.name, leaderName: union.rep, account: address },
-    { onSuccess: (m) => { markRecover(m.id); onClose(); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); } });
-  return (
-    <ConfirmCard title="Move to a keypad phone" ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending || !phoneOk(num)}
-      onCancel={onClose} onOk={go}
-      warn="Send a link by SMS to the keypad phone? Once the member opens it there, the member's account moves to that phone and the smartphone no longer signs.">
-      <PhoneField id="g2-keypad-phone" value={num} onChange={setNum} />
-      {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
-    </ConfirmCard>
   );
 }
 
