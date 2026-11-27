@@ -550,7 +550,7 @@ function useRecovery(address) {
 
 /** What needs attention on G2 itself (executive decision 4 Nov), under her name: a recovery waiting out the union's
  *  wait, an SMS link not opened yet, or a recovery the leader's app must finish (tap: the same call as before). */
-function PhoneStatus({ address, onScan }) {
+function PhoneStatus({ address, onScan, onCancel }) {
   const qc = useQueryClient();
   const { k, r, waiting } = useRecovery(address);
   const rec = useRecoverPhone(k?.id);
@@ -558,7 +558,7 @@ function PhoneStatus({ address, onScan }) {
   const scan = r === 'needed' && wantsRecoverScan(k.id) && !!k.signer;
   if (r === 'pending') return <Row k="Phone" v={`Phone recovery · works from ${when(k.recovery.at)}`} />;
   // Plan 054: after Recover on this phone's SMS, the same two buttons as Join: the new phone's QR, or the code.
-  if (k && wantsRecoverScan(k.id) && (waiting || r === 'needed')) return <RecoverChoice k={k} onScan={onScan} />;
+  if (k && wantsRecoverScan(k.id) && (waiting || r === 'needed')) return <RecoverChoice k={k} onScan={onScan} onCancel={onCancel} />;
   if (waiting) return <Row k="Phone" v="SMS sent · waiting for the new phone" />;
   if (r !== 'needed') return null;
   return (
@@ -578,7 +578,7 @@ function PhoneStatus({ address, onScan }) {
  *  internet": the member reads out the SMS's code; this app makes a one-time key, the node registers its public key as
  *  the recovery's key (only for the right code), the existing recovery runs, and the private key is forgotten (it lives
  *  only in this call). The member is SMS only from then on. */
-function RecoverChoice({ k, onScan }) {
+function RecoverChoice({ k, onScan, onCancel }) {
   const qc = useQueryClient();
   const api = useKeypadClient();
   const rec = useRecoverPhone(k.id);
@@ -602,6 +602,7 @@ function RecoverChoice({ k, onScan }) {
         <>
           <CardButton onClick={() => onScan(k)}>{JOIN_TEXTS.scanQr}</CardButton>
           <CardButton onClick={() => setOpen(true)}>{JOIN_TEXTS.noInternet}</CardButton>
+          {onCancel && <CardButton onClick={() => { clearRecoverScan(k.id); onCancel(); }}>{JOIN_TEXTS.cancel}</CardButton>}
         </>
       ) : (
         <>
@@ -629,6 +630,7 @@ const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, background: C
  *  waits out the union's wait or the app must finish it (its status under her name says which). */
 function Account({ m, inv, go, onSync, onScan }) {
   const [card, setCard] = useState();       // 'recover' | 'keypad' | 'remove' | 'delete' | 'record'
+  const [, bump] = useState(0);             // Cancel of a recovery's QR/code step: draw again
   const rcv = useRecovery(m.address);
   const titleId = m.titleId || [...(m.lands || [])][0];
   const p = inv.data;
@@ -644,16 +646,18 @@ function Account({ m, inv, go, onSync, onScan }) {
   // 27 Nov: every account of the union, a Privy one too: the new phone's key goes on the same account (off Privy).
   const here = recoverOk && /^C/.test(m.address || '') && (rcv.k ? (rcv.keypad || rcv.k.phone_type === 'sms') && !!rcv.k.account : true);
   const move = rcv.applies && !rcv.keypad && /^C/.test(m.address || '');
-  const lite = rcv.keypad && !!m.address;   // her data as a QR for Nila lite (13 Nov, test of the offline refresh)
+  const lite = rcv.keypad && !!m.address && !!rcv.k?.device;   // her data as a QR for Nila lite (13 Nov, test of the offline refresh)
   // No land title but a keypad row (13 Nov: e.g. hers was removed): the bin deletes her for good.
   const gone = !titleId && (!!m.keypadId || m.formerTitle != null);   // 13 Nov: also a smartphone member whose title was burned
   if (!rcv.applies && !titleId && !m.recordHash && !gone) return null;
   const close = () => setCard();
+  // 27 Nov: while a recovery waits for the new phone's QR or code, the Account section shows only that step.
+  const choosing = !!rcv.k && wantsRecoverScan(rcv.k.id) && (rcv.waiting || rcv.r === 'needed');
   return (
     <Section title="Account">
       {/* 27 Nov: a recovery under way (Recover on this phone's scan or code, its wait) in the Account group. */}
-      {m.address && <PhoneStatus address={m.address} onScan={onScan} />}
-      {(rcv.applies || titleId || gone || m.recordHash) && (
+      {m.address && <PhoneStatus address={m.address} onScan={onScan} onCancel={() => bump((x) => x + 1)} />}
+      {!choosing && (rcv.applies || titleId || gone || m.recordHash) && (
         <div style={{ display: 'flex', gap: 8 }}>
           {/* 26 Nov: one Recover button, in place: Recover on this phone (phone key, SMS only, a keypad row), else the old
               Recover to a new number (a Privy member's sign-up). */}
