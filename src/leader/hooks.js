@@ -20,11 +20,9 @@ export function useUnionCash({ poll = 30_000, on = true } = {}) {
       const fx = (fn, args = u) => readContract(cfg, 'fx_pool', fn, args);
       const fc = (fn, args = u) => readContract(cfg, 'fund_core', fn, args);
       // fund_core's union book in one read (30 Oct): treasury, rainy-day fund and the loans on hold.
-      // Senior USDC per residency (2 Nov): held by the senior contract, not fx_pool.
-      const sen = (tag) => (cfg.contracts.senior ? readContract(cfg, 'senior', 'union_usdc', [...u, sv.u32(tag)]).catch(() => null) : 0n);
-      const [book, atHand, rows, lpUsdc, dom, off] = await Promise.all([
-        fc('union_book'), fx('cash_at_hand'), fx('open_escrows'),
-        fx('lp_usdc').catch(() => null), sen(1), sen(0),
+      // 27 Nov: no senior read here: senior is a guarantee pool since the upgrade (no union_usdc per union).
+      const [book, atHand, rows, lpUsdc] = await Promise.all([
+        fc('union_book'), fx('cash_at_hand'), fx('open_escrows'), fx('lp_usdc').catch(() => null),
       ]);
       const { treasury, rainy, on_hold: hold } = book || {};
       // The union's open escrows in one read (fx_pool keeps them in one list since 24 Oct).
@@ -32,9 +30,8 @@ export function useUnionCash({ poll = 30_000, on = true } = {}) {
         amount: n(e.amount), remaining: n(e.remaining), expires: Number(e.expires) })).sort((a, b) => a.expires - b.expires);
       return {
         treasury: n(treasury), rainy: n(rainy), atHand: n(atHand), escrows,
-        // The union's USDC per tag (R24): what LPs brought in (domestic) and senior USDC, domestic and offshore.
-        // A failed read is null, not 0 (SCF T2 row 25); a screen showing these says "Not loaded".
-        usdc: { lp: lpUsdc === null ? null : n(lpUsdc), domestic: dom === null ? null : n(dom), offshore: off === null ? null : n(off) },
+        // The union's USDC that LPs brought in. A failed read is null, not 0 (SCF T2 row 25): "Not loaded".
+        usdc: { lp: lpUsdc === null ? null : n(lpUsdc) },
         // Lending is on hold while a loan is overdue (fund_core.on_hold: the count).
         overdue: Number(hold || 0),
         // Available to cash in = treasury − cash at the office, never below 0 (cash at hand may pass the treasury, 24 Oct).
