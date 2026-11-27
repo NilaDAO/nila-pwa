@@ -531,7 +531,7 @@ function AccountKind({ address }) {
   });
   // A one-time key (SMS only) is Ed25519 too: the node's row says it, once no recovery is still waiting.
   const sms = k?.phone_type === 'sms' && k?.recovery?.state !== 'pending';
-  const v = sms ? 'SMS only' : signer.data === 'Ed25519' ? 'Self mode'
+  const v = sms ? 'SMS only' : k?.lite && k?.recovery?.state !== 'pending' ? 'Keypad' : signer.data === 'Ed25519' ? 'Self mode'
     : signer.data === 'P256' ? 'Assist mode (key on the phone)' : null;
   return v ? <Row k="Account" v={v} /> : null;
 }
@@ -645,8 +645,9 @@ function Account({ m, inv, go, onSync, onScan }) {
   // Plan 054: an SMS-only member too (the code note: "To use the app later: Recover on this phone").
   // 27 Nov: every account of the union, a Privy one too: the new phone's key goes on the same account (off Privy).
   const here = recoverOk && /^C/.test(m.address || '') && (rcv.k ? (rcv.keypad || rcv.k.phone_type === 'sms') && !!rcv.k.account : true);
-  const move = rcv.applies && !rcv.keypad && /^C/.test(m.address || '');
-  const lite = rcv.keypad && !!m.address && !!rcv.k?.device;   // her data as a QR for Nila lite (13 Nov, test of the offline refresh)
+  // 27 Nov: Move (a new number) for every member of the union, a keypad phone too; Sync only for a keypad phone.
+  const move = rcv.applies && /^C/.test(m.address || '');
+  const lite = !!rcv.k?.lite && !!m.address && !!rcv.k?.device;   // her data as a QR for Nila lite (13 Nov, test of the offline refresh)
   // No land title but a keypad row (13 Nov: e.g. hers was removed): the bin deletes her for good.
   const gone = !titleId && (!!m.keypadId || m.formerTitle != null);   // 13 Nov: also a smartphone member whose title was burned
   if (!rcv.applies && !titleId && !m.recordHash && !gone) return null;
@@ -664,8 +665,8 @@ function Account({ m, inv, go, onSync, onScan }) {
           {here ? <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('here')}>Recover</button>
             : rcv.applies && <button type="button" style={btn(recoverOk)} disabled={!recoverOk} onClick={() => setCard('recover')}>Recover</button>}
           {move && <button type="button" style={btn()} onClick={() => setCard('keypad')}>Move</button>}
-          {/* "Sync with phone" (13 Nov; was "Her data as QR"): what it does for her, not how. */}
-          {lite && <button type="button" style={btn()} onClick={onSync}>Sync with phone</button>}
+          {/* "Sync" (13 Nov "Sync with phone"; 27 Nov "Sync", only for a keypad phone): what it does for her, not how. */}
+          {lite && <button type="button" style={btn()} onClick={onSync}>Sync</button>}
           {/* Her record as a square button before the bin (13 Nov; was a "Record" row): the hash is for checking, not
               reading, so it opens in a card with Copy. Disabled without a record. */}
           <button type="button" aria-label="Field record" disabled={!m.recordHash} onClick={() => setCard('record')}
@@ -684,7 +685,7 @@ function Account({ m, inv, go, onSync, onScan }) {
       {card === 'here' && <RecoverHere address={m.address} name={m.name || m.label} k={rcv.k} onClose={close} />}
       {card === 'record' && <RecordCard hash={m.recordHash} onClose={close} />}
       {card === 'recover' && <RecoverCard address={m.address} name={m.name || m.label} rcv={rcv} onClose={close} />}
-      {card === 'keypad' && <MoveToKeypad address={m.address} name={m.name || m.label} phone={m.phone} onClose={close} />}
+      {card === 'keypad' && <RecoverHere move address={m.address} name={m.name || m.label} k={rcv.k} onClose={close} />}
       {card === 'remove' && <RemoveMember m={m} why={why} titleId={titleId} go={go} onClose={close} />}
       {card === 'delete' && <DeleteMember m={m} why={why} go={go} onClose={close} />}
     </Section>
@@ -815,22 +816,25 @@ function RecoverCard({ address, name, rcv, onClose }) {
 /** Recover on this phone (plan 054 §5): the SMS link goes to the member's number on record (a keypad row's, or for a
  *  member with no row the login number the node keeps: POST /keypad/recoveries without a number); the new phone opens
  *  it, registers its key and shows its QR; G2's status row then asks for the scan (RecoverScan) before recovering. */
-function RecoverHere({ address, name, k, onClose }) {
+function RecoverHere({ address, name, k, onClose, move }) {
   const qc = useQueryClient();
   const union = useUnionInfo();
   const send = useInviteLink();
-  // 27 Nov: a member with no row (e.g. a Privy account): the number field as on Move, from the contact book when it
-  // has the number. A row keeps its own number.
+  // 27 Nov: a member with no row (e.g. a Privy account): the number field, from the contact book when it has the
+  // number. A row keeps its own number. Move (27 Nov): the same flow to a new number, the field always shown.
   const book = useContactBook();
-  const known = book.data?.names.get(address)?.phone || '';
+  const known = (move && k?.phone) || book.data?.names.get(address)?.phone || '';
   const [num, setNum] = useState();
   const value = num ?? (known || '+91');
-  const go = () => send.mutate(k ? { again: k.id } : { recoverTo: address, phone: phoneValue(value), name, unionName: union.name, leaderName: union.rep },
-    { onSuccess: (row) => { markRecoverScan(row.id); onClose(); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); } });
+  const field = move || !k;
+  const go = () => send.mutate(k ? { again: k.id, ...(move ? { phone: phoneValue(value) } : {}) }
+    : { recoverTo: address, phone: phoneValue(value), name, unionName: union.name, leaderName: union.rep },
+  { onSuccess: (row) => { markRecoverScan(row.id); onClose(); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); } });
   return (
-    <ConfirmCard title={PHONE_KEY_TEXTS.recoverHere} ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending || (!k && !phoneOk(value))}
-      onCancel={onClose} onOk={go} warn={PHONE_KEY_TEXTS.recoverHereWarn}>
-      {!k && <PhoneField id="g2-recover-here-phone" value={value} onChange={setNum} />}
+    <ConfirmCard title={move ? PHONE_KEY_TEXTS.moveTitle : PHONE_KEY_TEXTS.recoverHere} ok={send.isPending ? 'Sending…' : 'Send SMS'}
+      okDisabled={send.isPending || (field && !phoneOk(value))}
+      onCancel={onClose} onOk={go} warn={move ? PHONE_KEY_TEXTS.moveWarn : PHONE_KEY_TEXTS.recoverHereWarn}>
+      {field && <PhoneField id="g2-recover-here-phone" value={value} onChange={setNum} />}
       {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
     </ConfirmCard>
   );
