@@ -17,6 +17,7 @@ export const PHONE_KEY_TEXTS = {
   recoverHere: 'Recover on this phone',
   // Plan 054 (26 Nov): the recovery SMS carries the link and a code.
   recoverHereWarn: 'Send the member a link and a code by SMS? Then scan the new phone\'s QR, or enter the code.',
+  recoverHereNumber: "The member's number is not on record. Type it:",
   recoverHereScan: "Scan the new phone's QR",
   recoverHereWrong: 'Not the phone that opened the link.',
   // Registration, after R9 (26 Nov): her QR while her account has not joined the union yet; skipped once joined.

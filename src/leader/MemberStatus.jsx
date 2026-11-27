@@ -623,15 +623,9 @@ function Account({ m, inv, go, onSync }) {
     : investment == null ? (inv.isError ? 'The investment could not be read.' : 'Reading the investment…')
       : investment > 0 ? 'The member has an investment: pay it out first.' : null;
   const recoverOk = rcv.r !== 'pending' && rcv.r !== 'needed';
-  // Recover on this phone (plan 054 §5): a phone-key account (P-256), on a keypad row or (a member who switched to
-  // assist mode) on no row yet.
-  const { data: cfg } = useStellarConfig();
-  const p256 = useQuery({
-    queryKey: ['stellar', 'signerKind', m.address], enabled: !!cfg && rcv.applies && !rcv.k && /^C/.test(m.address || ''), staleTime: 300_000,
-    queryFn: async () => { const v = await readContract(cfg, m.address, 'signer', []).catch(() => null); return Array.isArray(v) && v[0] === 'P256'; },
-  });
   // Plan 054: an SMS-only member too (the code note: "To use the app later: Recover on this phone").
-  const here = recoverOk && /^C/.test(m.address || '') && (rcv.k ? (rcv.keypad || rcv.k.phone_type === 'sms') && !!rcv.k.account : p256.data === true);
+  // 27 Nov: every account of the union, a Privy one too: the new phone's key goes on the same account (off Privy).
+  const here = recoverOk && /^C/.test(m.address || '') && (rcv.k ? (rcv.keypad || rcv.k.phone_type === 'sms') && !!rcv.k.account : true);
   const move = rcv.applies && !rcv.keypad && /^C/.test(m.address || '');
   const lite = rcv.keypad && !!m.address;   // her data as a QR for Nila lite (13 Nov, test of the offline refresh)
   // No land title but a keypad row (13 Nov: e.g. hers was removed): the bin deletes her for good.
@@ -802,12 +796,18 @@ function RecoverHere({ address, name, k, onClose }) {
   const qc = useQueryClient();
   const union = useUnionInfo();
   const send = useInviteLink();
-  const go = () => send.mutate(k ? { again: k.id } : { recoverTo: address, phone: '', name, unionName: union.name, leaderName: union.rep },
-    { onSuccess: (row) => { markRecoverScan(row.id); onClose(); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); } });
+  // 27 Nov: no number on record (e.g. a moved member who never logged in): the node says so, the leader types it once.
+  const [ask, setAsk] = useState(false);
+  const [num, setNum] = useState('+91');
+  const go = () => send.mutate(k ? { again: k.id } : { recoverTo: address, phone: ask ? phoneValue(num) : '', name, unionName: union.name, leaderName: union.rep },
+    { onSuccess: (row) => { markRecoverScan(row.id); onClose(); qc.invalidateQueries({ queryKey: ['oracle', 'keypad', 'members'] }); },
+      onError: (e) => { if (/not on record/.test(e.message || '')) setAsk(true); } });
   return (
-    <ConfirmCard title={PHONE_KEY_TEXTS.recoverHere} ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending}
+    <ConfirmCard title={PHONE_KEY_TEXTS.recoverHere} ok={send.isPending ? 'Sending…' : 'Send SMS'} okDisabled={send.isPending || (ask && !phoneOk(num))}
       onCancel={onClose} onOk={go} warn={PHONE_KEY_TEXTS.recoverHereWarn}>
-      {send.error && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
+      {ask && <Text>{PHONE_KEY_TEXTS.recoverHereNumber}</Text>}
+      {ask && <PhoneField id="g2-recover-here-phone" value={num} onChange={setNum} />}
+      {send.error && !ask && <Text style={{ color: C.coral }}>{send.error.message}</Text>}
     </ConfirmCard>
   );
 }
