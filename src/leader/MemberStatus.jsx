@@ -529,7 +529,9 @@ function AccountKind({ address }) {
     queryKey: ['stellar', 'signerKind', address], enabled: !!cfg && /^C/.test(address || ''), staleTime: 300_000,
     queryFn: async () => { const v = await readContract(cfg, address, 'signer', []).catch(() => null); return Array.isArray(v) ? v[0] : null; },
   });
-  const v = signer.data === 'Ed25519' ? 'Self mode' : k?.phone_type === 'sms' ? 'SMS only'
+  // A one-time key (SMS only) is Ed25519 too: the node's row says it, once no recovery is still waiting.
+  const sms = k?.phone_type === 'sms' && k?.recovery?.state !== 'pending';
+  const v = sms ? 'SMS only' : signer.data === 'Ed25519' ? 'Self mode'
     : signer.data === 'P256' ? 'Assist mode (key on the phone)' : null;
   return v ? <Row k="Account" v={v} /> : null;
 }
